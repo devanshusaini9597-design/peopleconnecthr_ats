@@ -11,15 +11,11 @@
   ],
   "routes": [
     {
-      "src": "/assets/(.*)",
-      "dest": "/frontend/dist/assets/$1"
+      "handle": "filesystem"
     },
     {
       "src": "/(.*)",
       "dest": "/frontend/dist/index.html"
     }
-  ],
-  "env": {
-    "VITE_API_URL": "https://skillnix-backend.onrender.com"
-  }
+  ]
 }

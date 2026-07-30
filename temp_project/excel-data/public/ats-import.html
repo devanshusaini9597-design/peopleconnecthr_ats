@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PeopleConnect HR — ATS Import | Enterprise</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --primary: #0f62fe;
+      --primary-hover: #0043ce;
+      --primary-light: #edf5ff;
+      --success: #198038;
+      --success-bg: #defbe6;
+      --warning: #b28600;
+      --warning-bg: #fcf4d6;
+      --danger: #da1e28;
+      --danger-bg: #fff1f1;
+      --gray-100: #f4f4f4;
+      --gray-200: #e0e0e0;
+      --gray-300: #a8a8a8;
+      --gray-700: #525252;
+      --gray-900: #161616;
+      --sidebar-bg: #161616;
+      --card-shadow: 0 2px 6px rgba(0,0,0,0.07);
+      --radius: 8px;
+      --radius-sm: 6px;
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--gray-100);
+      color: var(--gray-900);
+      line-height: 1.5;
+      font-size: 14px;
+    }
+    .app-container { display: flex; min-height: 100vh; }
+    .sidebar {
+      width: 260px;
+      background: var(--sidebar-bg);
+      color: #fff;
+      padding: 24px 16px;
+      flex-shrink: 0;
+    }
+    .sidebar-logo {
+      font-weight: 700;
+      font-size: 16px;
+      padding-bottom: 20px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.15);
+    }
+    .sidebar-menu { list-style: none; }
+    .menu-item {
+      padding: 10px 14px;
+      margin-bottom: 4px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    .menu-item:hover { background: rgba(255,255,255,0.1); }
+    .menu-item.active { background: var(--primary); }
+    .main-content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .top-bar {
+      background: #fff;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--gray-200);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .top-bar h1 { font-size: 20px; font-weight: 600; color: var(--gray-900); }
+    .user-badge {
+      background: var(--primary-light);
+      color: var(--primary);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .content-area { flex: 1; padding: 24px; overflow-y: auto; }
+    .progress-tracker {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+    .progress-step {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 100px;
+    }
+    .step-circle {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--gray-200);
+      color: var(--gray-700);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .progress-step.completed .step-circle { background: var(--success); color: #fff; }
+    .progress-step.active .step-circle { background: var(--primary); color: #fff; }
+    .step-label { font-size: 12px; color: var(--gray-700); font-weight: 500; }
+    .progress-step.active .step-label { color: var(--gray-900); }
+    .card {
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--card-shadow);
+    }
+    .card h2 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: var(--gray-900);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .upload-box {
+      border: 2px dashed var(--primary);
+      border-radius: var(--radius);
+      padding: 48px 32px;
+      text-align: center;
+      cursor: pointer;
+      background: var(--primary-light);
+      transition: all 0.2s;
+    }
+    .upload-box:hover { background: #d0e2ff; border-color: var(--primary-hover); }
+    .upload-box input { display: none; }
+    .upload-icon { font-size: 40px; margin-bottom: 12px; }
+    .upload-text { font-size: 15px; font-weight: 600; color: var(--gray-900); margin-bottom: 4px; }
+    .upload-hint { font-size: 13px; color: var(--gray-700); }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: #fff;
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius);
+      padding: 20px;
+      text-align: center;
+    }
+    .stat-card.success { border-color: var(--success); background: var(--success-bg); }
+    .stat-card.warning { border-color: var(--warning); background: var(--warning-bg); }
+    .stat-card.danger { border-color: var(--danger); background: var(--danger-bg); }
+    .stat-value { font-size: 28px; font-weight: 700; color: var(--gray-900); margin-bottom: 4px; }
+    .stat-card.success .stat-value { color: var(--success); }
+    .stat-card.warning .stat-value { color: var(--warning); }
+    .stat-card.danger .stat-value { color: var(--danger); }
+    .stat-label { font-size: 12px; color: var(--gray-700); font-weight: 500; }
+    .btn {
+      padding: 10px 18px;
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.2s;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { background: #0e6027; }
+    .btn-secondary { background: var(--gray-200); color: var(--gray-900); }
+    .btn-secondary:hover { background: #c6c6c6; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+    .button-group { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-success { background: var(--success-bg); color: var(--success); }
+    .badge-warning { background: var(--warning-bg); color: var(--warning); }
+    .badge-danger { background: var(--danger-bg); color: var(--danger); }
+    .table-wrapper { overflow-x: auto; border: 1px solid var(--gray-200); border-radius: var(--radius); margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      background: var(--gray-100);
+      color: var(--gray-900);
+      padding: 12px 14px;
+      text-align: left;
+      font-weight: 600;
+      border-bottom: 1px solid var(--gray-200);
+    }
+    td { padding: 12px 14px; border-bottom: 1px solid var(--gray-200); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--primary-light); }
+    .feedback {
+      padding: 14px 18px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 16px;
+      font-size: 14px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .feedback-success { background: var(--success-bg); border: 1px solid #92d36e; color: #0e6027; }
+    .feedback-warning { background: var(--warning-bg); border: 1px solid #f1c21b; color: #735f00; }
+    .feedback-error { background: var(--danger-bg); border: 1px solid #fa4d56; color: #a2191f; }
+    .feedback-icon { font-size: 18px; flex-shrink: 0; }
+    .hidden { display: none !important; }
+    .review-row {
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius);
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .review-row-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      background: #fff;
+      cursor: pointer;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .review-row-header:hover { background: var(--gray-100); }
+    .review-row-header .left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .review-row-header .right { display: flex; align-items: center; gap: 8px; }
+    .review-row-body {
+      padding: 18px;
+      background: var(--gray-100);
+      border-top: 1px solid var(--gray-200);
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--gray-700);
+      margin-bottom: 4px;
+    }
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-family: inherit;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px var(--primary-light);
+    }
+    .validation-errors, .validation-warnings {
+      margin-top: 12px;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+    }
+    .validation-errors { background: var(--danger-bg); color: #a2191f; margin-bottom: 8px; }
+    .validation-warnings { background: var(--warning-bg); color: #735f00; }
+    .validation-errors ul, .validation-warnings ul { margin-left: 18px; margin-top: 4px; }
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--gray-700);
+    }
+    .empty-state-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+    .section-title { font-size: 14px; font-weight: 600; margin: 20px 0 12px 0; color: var(--gray-900); }
+    .section-hint { font-weight: 400; color: var(--gray-700); font-size: 12px; }
+    .rules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+    .rule-card { background: white; padding: 14px; border: 1px solid var(--gray-200); border-radius: var(--radius-sm); }
+    .rule-field { font-weight: 600; color: var(--primary); margin-bottom: 6px; font-size: 13px; }
+    .rule-text { font-size: 13px; color: var(--gray-700); line-height: 1.5; }
+    #validationRulesSection { max-height: 1000px; overflow: hidden; transition: max-height 0.3s ease; }
+    #validationRulesSection.collapsed { max-height: 0; padding: 0 16px; }
+    .validation-edit-row td { background: var(--gray-100); padding: 16px; border-bottom: 1px solid var(--gray-200); vertical-align: top; }
+    .validation-edit-row .edit-form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px 16px; margin-bottom: 12px; }
+    .validation-edit-row .edit-form-grid .form-group { margin: 0; }
+    .validation-edit-row .edit-form-grid label { display: block; font-size: 11px; font-weight: 600; color: var(--gray-700); margin-bottom: 2px; }
+    .validation-edit-row .edit-form-grid input { width: 100%; padding: 6px 10px; border: 1px solid var(--gray-200); border-radius: 4px; font-size: 12px; box-sizing: border-box; }
+    .validation-edit-row .edit-actions { margin-top: 12px; }
+    .table-wrapper.data-table-full { min-width: 100%; }
+    .data-table-full table { min-width: 1100px; }
+    .data-table-full th, .data-table-full td { min-width: 90px; max-width: 220px; word-break: break-word; }
+    #validationTable { min-width: 1100px; }
+    @media (max-width: 768px) {
+      .app-container { flex-direction: column; }
+      .sidebar { width: 100%; }
+      .content-area { padding: 16px; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <aside class="sidebar">
+    <div class="sidebar-logo">PeopleConnect HR</div>
+    <ul class="sidebar-menu">
+      <li class="menu-item active" data-view="upload">Upload</li>
+      <li class="menu-item" data-view="validate">Validation</li>
+      <li class="menu-item" data-view="review">Review & Fix</li>
+      <li class="menu-item" data-view="import">Import</li>
+      <li class="menu-item" data-view="database">Database</li>
+      <li class="menu-item" data-view="report">Reports</li>
+    </ul>
+  </aside>
+  <main class="main-content">
+    <div class="top-bar">
+      <h1 id="pageTitle">ATS Data Import</h1>
+      <div class="top-right">
+        <button type="button" class="btn btn-secondary btn-sm" id="btnClearCache" title="Clear all imported data (start fresh)">Clear cached data</button>
+        <span class="user-badge">Admin</span>
+      </div>
+    </div>
+    <div class="content-area">
+      <div class="progress-tracker" id="progressTracker">
+        <div class="progress-step active" data-step="1"><div class="step-circle">1</div><div class="step-label">Upload</div></div>
+        <div class="progress-step" data-step="2"><div class="step-circle">2</div><div class="step-label">Validate</div></div>
+        <div class="progress-step" data-step="3"><div class="step-circle">3</div><div class="step-label">Review</div></div>
+        <div class="progress-step" data-step="4"><div class="step-circle">4</div><div class="step-label">Import</div></div>
+        <div class="progress-step" data-step="5"><div class="step-circle">5</div><div class="step-label">Report</div></div>
+      </div>
+
+      <!-- UPLOAD -->
+      <div id="view-upload" class="view">
+        <div class="card">
+          <h2>Upload Excel file</h2>
+          <p style="color: var(--gray-700); margin-bottom: 20px;">Data is auto-mapped using global validation rules — column names are ignored; values are detected by content.</p>
+          <div class="upload-box" id="uploadBox">
+            <div class="upload-icon">📁</div>
+            <div class="upload-text">Click or drag to upload</div>
+            <div class="upload-hint">.xlsx or .xls</div>
+            <input type="file" id="fileInput" accept=".xlsx,.xls" />
+          </div>
+        </div>
+      </div>
+
+      <!-- VALIDATION -->
+      <div id="view-validate" class="view hidden">
+        <div class="card">
+          <h2>Validation summary</h2>
+          <div class="stats-grid" id="statsGrid"></div>
+          <div id="validationDetails"></div>
+          
+          <!-- 100% ACCURACY TAB -->
+          <div style="margin-top: 30px; padding: 15px; background: #f0f9ff; border-left: 4px solid #10b981; border-radius: 6px;">
+            <h3 style="margin-top: 0; color: #10b981;">✅ 100% Accuracy Records (Ready to Import)</h3>
+            <div class="table-wrapper data-table-full" id="accuracyTableWrap" style="max-height: 400px; overflow-y: auto;">
+              <table id="accuracyTable" style="font-size: 13px;">
+                <thead id="accuracyTableHead"></thead>
+                <tbody id="accuracyTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+          
+          <div class="section-title">All rows — Import status <span class="section-hint">(scroll right to see all fields · use Edit to correct any row)</span></div>
+          <div class="table-wrapper data-table-full" id="validationTableWrap">
+            <table id="validationTable">
+              <thead id="validationTableHead"></thead>
+              <tbody id="validationTableBody"></tbody>
+            </table>
+          </div>
+          <div class="button-group">
+            <button class="btn btn-primary" id="btnGoReview" style="display:none;">Review & fix issues</button>
+            <button class="btn btn-success" id="btnGoImport" style="display:none;">Proceed to import</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- REVIEW & FIX -->
+      <div id="view-review" class="view hidden">
+        <div class="card">
+          <h2>Review & fix</h2>
+          <p style="color: var(--gray-700); margin-bottom: 20px;">Edit fields and re-validate. Approved rows will be included in the next import.</p>
+          <div id="reviewUI"></div>
+        </div>
+      </div>
+
+      <!-- IMPORT -->
+      <div id="view-import" class="view hidden">
+        <div class="card">
+          <h2>Import to database</h2>
+          <div id="importSummary"></div>
+          <div class="button-group">
+            <button class="btn btn-success" id="btnAutoImport" style="background: #198038; font-weight: 600;">🚀 Auto Import (Ready Records)</button>
+            <button class="btn btn-success" id="btnDoImport">Import selected records</button>
+            <button class="btn btn-secondary" onclick="switchView('database')">View database</button>
+          </div>
+          <div id="importResult" class="hidden"></div>
+          <div id="importProgress" class="hidden" style="margin-top: 16px; padding: 12px; background: var(--primary-light); border-radius: var(--radius); text-align: center;">
+            <div style="font-weight: 600; color: var(--primary); margin-bottom: 8px;">Importing...</div>
+            <div id="progressBar" style="height: 6px; background: var(--gray-200); border-radius: 3px; overflow: hidden;">
+              <div id="progressFill" style="height: 100%; background: var(--primary); width: 0%; transition: width 0.3s;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DATABASE -->
+      <div id="view-database" class="view hidden">
+        <div class="card">
+          <h2>Final database — all imported records</h2>
+          <p style="color: var(--gray-700); margin-bottom: 16px; font-size: 13px;">Scroll right to see all fields.</p>
+          <div class="button-group">
+            <button class="btn btn-primary" onclick="exportToCSV()">Export CSV</button>
+            <button class="btn btn-secondary" onclick="refreshDatabase()">Refresh</button>
+            <button type="button" class="btn btn-danger btn-sm" id="btnClearCacheDb" title="Remove all imported records (start fresh)">Clear cached data</button>
+          </div>
+          <div id="databaseView"></div>
+        </div>
+      </div>
+
+      <!-- REPORT -->
+      <div id="view-report" class="view hidden">
+        <div class="card">
+          <h2>Import report</h2>
+          <div id="reportView"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+  // Global error handler to catch and log all errors
+  window.addEventListener('error', (event) => {
+    console.error('❌ [ERROR]', event.message, '\n📍 File:', event.filename, '\n📍 Line:', event.lineno, '\n📍 Stack:', event.error?.stack);
+    event.preventDefault();
+  });
+
+  let processResults = [];
+  let processStats = { ready: 0, review: 0, blocked: 0, total: 0 };
+  let lastImportedCount = 0;
+  let fileName = '';
+  let approvedFromReview = {}; // rowIndex -> fixed record
+
+  // Use this for all API calls so we don't parse HTML as JSON (e.g. when server isn't running or wrong URL)
+  async function apiFetch(url, options) {
+    const base = window.location.origin || '';
+    const fullUrl = url.startsWith('http') ? url : base + url;
+    const res = await fetch(fullUrl, options);
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    const text = await res.text();
+    if (ct.indexOf('application/json') === -1 || text.trimStart().startsWith('<')) {
+      throw new Error('Server returned a page instead of data. Open the app at http://localhost:3000 (run: node server.js) and try again.');
+    }
+    return JSON.parse(text);
+  }
+
+  document.querySelectorAll('.menu-item').forEach(el => {
+    el.addEventListener('click', () => switchView(el.dataset.view, el));
+  });
+
+  async function clearCachedData() {
+    if (!confirm('Clear all imported data? This cannot be undone. You will only see new records after your next import.')) return;
+    try {
+      var json = await apiFetch('/api/enterprise/clear-database', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (json.success) {
+        document.getElementById('databaseView').innerHTML = '<div class="empty-state"><div class="empty-state-icon">🗃️</div><p><strong>Database cleared.</strong> No imported records. Import new data to see records here.</p></div>';
+        document.getElementById('reportView').innerHTML = '<div class="empty-state"><p>No data. Clear imported records or import a file to see the report.</p></div>';
+        await refreshDatabase();
+        alert(json.message || 'Cached data cleared.');
+      }
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  }
+  document.getElementById('btnClearCache').addEventListener('click', clearCachedData);
+  document.getElementById('btnClearCacheDb').addEventListener('click', clearCachedData);
+
+  function switchView(view, menuEl) {
+    document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+    const panel = document.getElementById('view-' + view);
+    if (panel) panel.classList.remove('hidden');
+    document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+    (menuEl || document.querySelector(`.menu-item[data-view="${view}"]`))?.classList.add('active');
+    const titles = { upload: 'Upload', validate: 'Validation', review: 'Review & Fix', import: 'Import', database: 'Database', report: 'Reports' };
+    document.getElementById('pageTitle').textContent = titles[view] ? titles[view] + ' — ATS Import' : 'ATS Import';
+    if (view === 'review') renderReviewUI();
+    if (view === 'import') renderImportSummary();
+    if (view === 'database' || view === 'report') refreshDatabase();
+  }
+
+  function setStep(step, status) {
+    const el = document.querySelector(`.progress-step[data-step="${step}"]`);
+    if (!el) return;
+    el.classList.remove('active', 'completed');
+    if (status === 'active') el.classList.add('active');
+    if (status === 'completed') el.classList.add('completed');
+  }
+
+  document.getElementById('uploadBox').addEventListener('click', () => document.getElementById('fileInput').click());
+  document.getElementById('fileInput').addEventListener('change', handleUpload);
+
+  async function handleUpload(e) {
+    const files = e.target.files;
+    if (!files || files.length === 0) {
+      alert('No file selected');
+      return;
+    }
+    const file = files[0];
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const json = await apiFetch('/api/enterprise/step1-upload', { method: 'POST', body: fd });
+      if (!json.success) throw new Error(json.error || 'Upload failed');
+      const data = json.file.data;
+      fileName = json.file.name;
+      const processJson = await apiFetch('/api/enterprise/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data })
+      });
+      if (!processJson.success) throw new Error(processJson.error || 'Process failed');
+      processResults = processJson.results;
+      processStats = processJson.stats;
+      approvedFromReview = {};
+      setStep(1, 'completed');
+      setStep(2, 'active');
+      renderValidationSummary();
+      switchView('validate');
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  }
+
+  function renderValidationSummary() {
+    document.getElementById('statsGrid').innerHTML = `
+      <div class="stat-card success"><div class="stat-value">${processStats.ready}</div><div class="stat-label">Ready</div></div>
+      <div class="stat-card warning"><div class="stat-value">${processStats.review}</div><div class="stat-label">Review</div></div>
+      <div class="stat-card danger"><div class="stat-value">${processStats.blocked}</div><div class="stat-label">Blocked</div></div>
+      <div class="stat-card"><div class="stat-value">${processStats.total}</div><div class="stat-label">Total</div></div>
+    `;
+    let details = '';
+    if (processStats.ready > 0) {
+      details += '<div class="feedback feedback-success"><span class="feedback-icon">✓</span><div><strong>' + processStats.ready + '</strong> records are valid and can be imported.</div></div>';
+    }
+    if (processStats.review > 0 || processStats.blocked > 0) {
+      details += '<div class="feedback feedback-warning"><span class="feedback-icon">⚠</span><div><strong>' + (processStats.review + processStats.blocked) + '</strong> records need review. Fix issues and re-validate, then approve for import.</div></div>';
+    }
+    document.getElementById('validationDetails').innerHTML = details || '<div class="feedback feedback-success"><span class="feedback-icon">✓</span><div>All records passed validation.</div></div>';
+
+    var thead = document.getElementById('validationTableHead');
+    var tbody = document.getElementById('validationTableBody');
+    var allFields = getAllFieldsFromFixed(processResults);
+    var colCount = 3 + allFields.length;
+    thead.innerHTML = '<tr><th>Row</th><th>Status</th><th>Edit</th>' + allFields.map(f => '<th>' + fieldLabel(f) + '</th>').join('') + '</tr>';
+    tbody.innerHTML = processResults.map(r => {
+      var cat = r.validation.category;
+      var badge = '<span class="badge badge-' + (cat === 'ready' ? 'success' : cat === 'review' ? 'warning' : 'danger') + '">' + cat + '</span>';
+      var cells = allFields.map(f => '<td>' + cell(r.fixed[f]) + '</td>').join('');
+      var fixed = approvedFromReview[r.rowIndex] || r.fixed;
+      var editFormFields = allFields.map(f => '<div class="form-group"><label>' + fieldLabel(f) + '</label><input type="text" data-row="' + r.rowIndex + '" data-field="' + f + '" value="' + (fixed[f] != null && fixed[f] !== '' ? String(fixed[f]).replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '') + '" placeholder="—" /></div>').join('');
+      var editRow = '<tr id="validation-edit-row-' + r.rowIndex + '" class="validation-edit-row" style="display:none"><td colspan="' + colCount + '"><div class="edit-form-grid">' + editFormFields + '</div><div class="edit-actions"><button type="button" class="btn btn-sm btn-secondary" onclick="revalidateRowThenClose(' + r.rowIndex + ')">Re-validate</button> <button type="button" class="btn btn-sm btn-success" onclick="approveRow(' + r.rowIndex + '); afterValidationEdit(' + r.rowIndex + ');">Approve for import</button> <button type="button" class="btn btn-sm btn-secondary" onclick="toggleValidationEdit(' + r.rowIndex + ')">Close</button></div></td></tr>';
+      return '<tr><td>' + r.rowIndex + '</td><td>' + badge + '</td><td><button type="button" class="btn btn-sm btn-secondary" onclick="toggleValidationEdit(' + r.rowIndex + ')">Edit</button></td>' + cells + '</tr>' + editRow;
+    }).join('');
+
+    document.getElementById('btnGoReview').style.display = (processStats.review + processStats.blocked) > 0 ? 'inline-flex' : 'none';
+    document.getElementById('btnGoImport').style.display = processStats.ready > 0 ? 'inline-flex' : 'none';
+    
+    // Render 100% accuracy records separately
+    render100AccuracyTable();
+  }
+
+  function render100AccuracyTable() {
+    // Define which fields have 100% accuracy (based on analysis)
+    const accuracyFields = ['name', 'phone', 'email', 'position', 'ctc'];
+    
+    // Filter records where ALL accuracy fields are present and valid
+    const perfectRecords = processResults.filter(r => {
+      return accuracyFields.every(f => r.fixed[f] !== null && r.fixed[f] !== '' && r.fixed[f] !== undefined);
+    });
+    
+    const thead = document.getElementById('accuracyTableHead');
+    const tbody = document.getElementById('accuracyTableBody');
+    
+    if (perfectRecords.length === 0) {
+      thead.innerHTML = '<tr><th colspan="6" style="text-align: center; padding: 20px;">No records with 100% accuracy yet</th></tr>';
+      tbody.innerHTML = '';
+      return;
+    }
+    
+    thead.innerHTML = '<tr><th>Row</th><th>Name</th><th>Phone</th><th>Email</th><th>Position</th><th>CTC (LPA)</th></tr>';
+    tbody.innerHTML = perfectRecords.map(r => {
+      return '<tr style="background: #f9fafb;">' +
+        '<td style="font-weight: 600;">' + r.rowIndex + '</td>' +
+        '<td>' + (r.fixed.name || '—') + '</td>' +
+        '<td>' + (r.fixed.phone || '—') + '</td>' +
+        '<td style="max-width: 150px; word-break: break-all;">' + (r.fixed.email || '—') + '</td>' +
+        '<td>' + (r.fixed.position || '—') + '</td>' +
+        '<td>' + (r.fixed.ctc || '—') + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function toggleValidationEdit(rowIndex) {
+    var el = document.getElementById('validation-edit-row-' + rowIndex);
+    if (!el) return;
+    var isShow = el.style.display === 'none';
+    document.querySelectorAll('.validation-edit-row').forEach(function(r) { r.style.display = 'none'; });
+    if (isShow) el.style.display = 'table-row';
+  }
+  function afterValidationEdit(rowIndex) {
+    renderValidationSummary();
+    var el = document.getElementById('validation-edit-row-' + rowIndex);
+    if (el) el.style.display = 'none';
+  }
+  function revalidateRowThenClose(rowIndex) {
+    revalidateRow(rowIndex).then(function() { afterValidationEdit(rowIndex); });
+  }
+
+  document.getElementById('btnGoReview').addEventListener('click', () => { setStep(2, 'completed'); setStep(3, 'active'); switchView('review'); });
+  document.getElementById('btnGoImport').addEventListener('click', () => { setStep(2, 'completed'); setStep(3, 'completed'); setStep(4, 'active'); switchView('import'); });
+
+  const FIELD_LABELS = {
+    name: 'Name', phone: 'Phone', email: 'Email', location: 'Location', position: 'Position',
+    experience: 'Experience (yrs)', ctc: 'CTC (LPA)', expectedSalary: 'Expected (LPA)', noticePeriod: 'Notice (days)',
+    company: 'Company', client: 'Client', spoc: 'SPOC', status: 'Status', sourceOfCV: 'Source'
+  };
+  function fieldLabel(f) { return FIELD_LABELS[f] || f.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()); }
+
+  function getAllFieldsFromFixed(results) {
+    var set = {};
+    (results || []).forEach(r => { if (r.fixed && typeof r.fixed === 'object') Object.keys(r.fixed).forEach(k => set[k] = true); });
+    var known = ['name','phone','email','location','position','experience','ctc','expectedSalary','noticePeriod','company','client','spoc','status','sourceOfCV'];
+    var rest = Object.keys(set).filter(k => known.indexOf(k) === -1).sort();
+    return known.concat(rest);
+  }
+  function getAllFieldsFromData(data) {
+    var set = {};
+    (data || []).forEach(r => { if (r && typeof r === 'object') Object.keys(r).forEach(k => set[k] = true); });
+    var first = ['id'];
+    var last = ['importedAt'];
+    var mid = Object.keys(set).filter(k => k !== 'id' && k !== 'importedAt').sort();
+    return first.filter(k => set[k]).concat(mid).concat(last.filter(k => set[k]));
+  }
+
+  function cell(val) {
+    if (val == null || val === '') return '—';
+    return String(val).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function renderReviewUI() {
+    const needReview = processResults.filter(r => r.validation.category === 'review' || r.validation.category === 'blocked');
+    const container = document.getElementById('reviewUI');
+    if (needReview.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">✓</div><p>No rows need review. All records are ready or already fixed.</p></div>';
+      return;
+    }
+    var allFields = getAllFieldsFromFixed(processResults);
+    container.innerHTML = needReview.map(r => {
+      const v = r.validation;
+      const cat = v.category;
+      const fixed = approvedFromReview[r.rowIndex] || r.fixed;
+      const errList = (v.errors || []).map(e => `<li>${e.field}: ${e.message}</li>`).join('');
+      const warnList = (v.warnings || []).map(w => `<li>${w.field}: ${w.message}</li>`).join('');
+      const fieldsHtml = allFields.map(f => `
+        <div class="form-group">
+          <label>${fieldLabel(f)}</label>
+          <input type="text" data-row="${r.rowIndex}" data-field="${f}" value="${(fixed[f] != null && fixed[f] !== '') ? String(fixed[f]).replace(/"/g, '&quot;') : ''}" placeholder="—" />
+        </div>
+      `).join('');
+      return `
+        <div class="review-row" data-row="${r.rowIndex}">
+          <div class="review-row-header" onclick="toggleReviewRow(${r.rowIndex})">
+            <div class="left">
+              <span class="badge badge-${cat === 'blocked' ? 'danger' : 'warning'}">${cat}</span>
+              <strong>Row ${r.rowIndex}</strong>
+              <span>${fixed.name || '—'}</span>
+              <span style="color:var(--gray-700)">${fixed.email || '—'}</span>
+              <span style="color:var(--gray-700)">Confidence: ${v.confidence}%</span>
+            </div>
+            <div class="right" onclick="event.stopPropagation()">
+              <button class="btn btn-sm btn-secondary" onclick="revalidateRow(${r.rowIndex})">Re-validate</button>
+              <button class="btn btn-sm btn-success" onclick="approveRow(${r.rowIndex})">Approve for import</button>
+            </div>
+          </div>
+          <div class="review-row-body" id="review-body-${r.rowIndex}" style="display:none;">
+            <div class="form-grid">${fieldsHtml}</div>
+            ${errList ? '<div class="validation-errors"><strong>Errors</strong><ul>' + errList + '</ul></div>' : ''}
+            ${warnList ? '<div class="validation-warnings"><strong>Warnings</strong><ul>' + warnList + '</ul></div>' : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function toggleReviewRow(rowIndex) {
+    const body = document.getElementById('review-body-' + rowIndex);
+    if (body) body.style.display = body.style.display === 'none' ? 'block' : 'none';
+  }
+
+  function getEditedRecord(rowIndex) {
+    const fixed = { ...(approvedFromReview[rowIndex] || processResults.find(r => r.rowIndex === rowIndex).fixed) };
+    document.querySelectorAll(`input[data-row="${rowIndex}"]`).forEach(inp => {
+      const f = inp.dataset.field;
+      const val = inp.value.trim();
+      fixed[f] = val === '' ? null : (f === 'experience' || f === 'ctc' || f === 'expectedSalary' || f === 'noticePeriod' ? parseFloat(val) || null : val);
+    });
+    return fixed;
+  }
+
+  async function revalidateRow(rowIndex) {
+    const record = getEditedRecord(rowIndex);
+    try {
+      const json = await apiFetch('/api/enterprise/revalidate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ record })
+      });
+      if (!json.success) throw new Error(json.error || 'Re-validation failed');
+      const r = processResults.find(x => x.rowIndex === rowIndex);
+      r.fixed = json.fixed;
+      r.validation = json.validation;
+      if (json.validation.category === 'ready') approvedFromReview[rowIndex] = json.fixed;
+      updateStatsFromResults();
+      renderReviewUI();
+    } catch (err) {
+      alert('Re-validate error: ' + err.message);
+    }
+  }
+
+  function approveRow(rowIndex) {
+    const record = getEditedRecord(rowIndex);
+    approvedFromReview[rowIndex] = record;
+    const r = processResults.find(x => x.rowIndex === rowIndex);
+    r.fixed = record;
+    r.validation = { ...r.validation, category: 'ready', confidence: 100 };
+    updateStatsFromResults();
+    renderReviewUI();
+  }
+
+  function updateStatsFromResults() {
+    processStats.ready = processResults.filter(r => r.validation.category === 'ready').length;
+    processStats.review = processResults.filter(r => r.validation.category === 'review').length;
+    processStats.blocked = processResults.filter(r => r.validation.category === 'blocked').length;
+    processStats.total = processResults.length;
+  }
+
+  function renderImportSummary() {
+    const readyRecords = processResults.filter(r => r.validation.category === 'ready').map(r => r.fixed);
+    const count = readyRecords.length;
+    document.getElementById('importSummary').innerHTML = count === 0
+      ? '<div class="feedback feedback-warning"><span class="feedback-icon">⚠</span><div>No records are marked ready. Complete validation or approve rows in Review & Fix.</div></div>'
+      : '<div class="feedback feedback-success"><span class="feedback-icon">✓</span><div><strong>' + count + '</strong> records will be imported.</div></div>';
+    document.getElementById('btnDoImport').disabled = count === 0;
+    document.getElementById('importResult').classList.add('hidden');
+  }
+
+  document.getElementById('btnDoImport').addEventListener('click', async () => {
+    const readyRecords = processResults.filter(r => r.validation.category === 'ready').map(r => r.fixed);
+    if (readyRecords.length === 0) return;
+    try {
+      const json = await apiFetch('/api/enterprise/step8-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ readyData: readyRecords })
+      });
+      if (!json.success) throw new Error(json.error || 'Import failed');
+      lastImportedCount = json.import.imported || 0;
+      document.getElementById('importResult').innerHTML = '<div class="feedback feedback-success"><span class="feedback-icon">✓</span><div><strong>' + json.import.imported + '</strong> records imported successfully.</div><div class="button-group" style="margin-top:12px"><button class="btn btn-primary" onclick="switchView(\'database\')">View database</button> <button class="btn btn-secondary" onclick="switchView(\'report\')">View report</button></div></div>';
+      document.getElementById('importResult').classList.remove('hidden');
+      setStep(4, 'completed');
+      setStep(5, 'active');
+    } catch (err) {
+      alert('Import error: ' + err.message);
+    }
+  });
+
+  document.getElementById('btnAutoImport').addEventListener('click', async () => {
+    const readyRecords = processResults.filter(r => r.validation.category === 'ready').map(r => r.fixed);
+    if (readyRecords.length === 0) {
+      alert('No ready records to import. Complete validation first.');
+      return;
+    }
+    
+    // Show progress
+    document.getElementById('importProgress').classList.remove('hidden');
+    const progressFill = document.getElementById('progressFill');
+    
+    try {
+      // Perform auto import
+      const json = await apiFetch('/api/enterprise/auto-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ readyData: readyRecords })
+      });
+      
+      if (!json.success) throw new Error(json.error || 'Auto import failed');
+      
+      progressFill.style.width = '100%';
+      lastImportedCount = json.import.imported || 0;
+      
+      setTimeout(() => {
+        document.getElementById('importProgress').classList.add('hidden');
+        progressFill.style.width = '0%';
+        
+        document.getElementById('importResult').innerHTML = 
+          '<div class="feedback feedback-success">' +
+          '<span class="feedback-icon">✓</span>' +
+          '<div>' +
+          '<strong style="font-size: 16px;">' + json.import.imported + ' records imported automatically!</strong>' +
+          '<div style="margin-top: 8px; font-size: 13px;">Records have been migrated to the database.</div>' +
+          '<div class="button-group" style="margin-top:12px;">' +
+          '<button class="btn btn-primary" onclick="switchView(\'database\')">View database</button> ' +
+          '<button class="btn btn-secondary" onclick="switchView(\'report\')">View report</button>' +
+          '</div>' +
+          '</div></div>';
+        document.getElementById('importResult').classList.remove('hidden');
+        
+        setStep(4, 'completed');
+        setStep(5, 'active');
+      }, 600);
+    } catch (err) {
+      document.getElementById('importProgress').classList.add('hidden');
+      progressFill.style.width = '0%';
+      alert('Auto import error: ' + err.message);
+    }
+  });
+
+  async function refreshDatabase() {
+    try {
+      const json = await apiFetch('/api/enterprise/get-final-data');
+      if (!json.success) throw new Error('Fetch failed');
+      const data = json.finalData || [];
+      const container = document.getElementById('databaseView');
+      if (data.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><p><strong>No records in database.</strong> Import a file to see correct/imported records here.</p></div>';
+        renderReportEmptyOrQuality();
+        return;
+      }
+      var dbFields = getAllFieldsFromData(data);
+      var dbHeaders = dbFields.map(f => f === 'id' ? 'ID' : f === 'importedAt' ? 'Imported at' : fieldLabel(f));
+      container.innerHTML = `
+        <div class="table-wrapper data-table-full">
+          <table>
+            <thead><tr>${dbHeaders.map(h => '<th>' + h + '</th>').join('')}</tr></thead>
+            <tbody>
+              ${data.map(r => `
+                <tr>
+                  ${dbFields.map(f => {
+                    if (f === 'importedAt') return '<td>' + (r[f] ? new Date(r[f]).toLocaleString() : '—') + '</td>';
+                    return '<td>' + cell(r[f]) + '</td>';
+                  }).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+      generateReport(data);
+    } catch (err) {
+      document.getElementById('databaseView').innerHTML = '<div class="feedback feedback-error">Failed to load: ' + err.message + '</div>';
+    }
+  }
+
+  function renderReportEmptyOrQuality() {
+    var reportView = document.getElementById('reportView');
+    var total = processStats.total || 0;
+    var ready = processStats.ready || 0;
+    var review = processStats.review || 0;
+    var blocked = processStats.blocked || 0;
+    var pct = total ? function(n) { return ((n / total) * 100).toFixed(1); } : function() { return '0'; };
+    var qualityHtml = '';
+    if (total > 0) {
+      qualityHtml = `
+        <div class="card" style="margin-bottom: 20px;">
+          <h3 class="section-title">Data quality — last file</h3>
+          <div class="stats-grid" style="margin-bottom: 16px;">
+            <div class="stat-card"><div class="stat-value">${total}</div><div class="stat-label">Total rows</div></div>
+            <div class="stat-card success"><div class="stat-value">${ready}</div><div class="stat-label">Correct (ready)</div><div style="font-size:12px;margin-top:4px;">${pct(ready)}%</div></div>
+            <div class="stat-card warning"><div class="stat-value">${review}</div><div class="stat-label">Needs review</div><div style="font-size:12px;margin-top:4px;">${pct(review)}%</div></div>
+            <div class="stat-card danger"><div class="stat-value">${blocked}</div><div class="stat-label">Incorrect (blocked)</div><div style="font-size:12px;margin-top:4px;">${pct(blocked)}%</div></div>
+            <div class="stat-card"><div class="stat-value">${lastImportedCount}</div><div class="stat-label">Imported to DB</div></div>
+          </div>
+          <p style="color: var(--gray-700); font-size: 13px;">Correct = passed validation (ready). Incorrect = blocked (e.g. missing required fields). Use Edit to fix and re-validate.</p>
+        </div>
+      `;
+    }
+    reportView.innerHTML = qualityHtml + '<div class="empty-state"><p>No records in database. Import a file and then import records to see the full report.</p></div>';
+  }
+
+  function generateReport(data) {
+    var total = processStats.total || 0;
+    var ready = processStats.ready || 0;
+    var review = processStats.review || 0;
+    var blocked = processStats.blocked || 0;
+    var pct = total ? function(n) { return ((n / total) * 100).toFixed(1); } : function() { return '0'; };
+    var qualityBlock = total > 0 ? `
+      <div class="card" style="margin-bottom: 20px;">
+        <h3 class="section-title">Data quality — last file</h3>
+        <div class="stats-grid" style="margin-bottom: 16px;">
+          <div class="stat-card"><div class="stat-value">${total}</div><div class="stat-label">Total rows</div></div>
+          <div class="stat-card success"><div class="stat-value">${ready}</div><div class="stat-label">Correct (ready)</div><div style="font-size:12px;margin-top:4px;">${pct(ready)}%</div></div>
+          <div class="stat-card warning"><div class="stat-value">${review}</div><div class="stat-label">Needs review</div><div style="font-size:12px;margin-top:4px;">${pct(review)}%</div></div>
+          <div class="stat-card danger"><div class="stat-value">${blocked}</div><div class="stat-label">Incorrect (blocked)</div><div style="font-size:12px;margin-top:4px;">${pct(blocked)}%</div></div>
+          <div class="stat-card"><div class="stat-value">${lastImportedCount}</div><div class="stat-label">Imported to DB</div></div>
+        </div>
+        <p style="color: var(--gray-700); font-size: 13px;">Correct = passed validation. Imported = records in database (correct data only).</p>
+      </div>
+    ` : '';
+
+    const stats = { total: data.length, byStatus: {}, byLocation: {}, byPosition: {}, exp: { min: Infinity, max: 0, sum: 0, n: 0 }, ctc: { min: Infinity, max: 0, sum: 0, n: 0 } };
+    data.forEach(r => {
+      stats.byStatus[r.status || '—'] = (stats.byStatus[r.status || '—'] || 0) + 1;
+      stats.byLocation[r.location || '—'] = (stats.byLocation[r.location || '—'] || 0) + 1;
+      stats.byPosition[r.position || '—'] = (stats.byPosition[r.position || '—'] || 0) + 1;
+      if (r.experience != null) { stats.exp.n++; stats.exp.sum += r.experience; stats.exp.min = Math.min(stats.exp.min, r.experience); stats.exp.max = Math.max(stats.exp.max, r.experience); }
+      if (r.ctc != null) { stats.ctc.n++; stats.ctc.sum += r.ctc; stats.ctc.min = Math.min(stats.ctc.min, r.ctc); stats.ctc.max = Math.max(stats.ctc.max, r.ctc); }
+    });
+    const reportView = document.getElementById('reportView');
+    reportView.innerHTML = qualityBlock + `
+      <div class="card" style="margin-bottom: 20px;">
+        <h3 class="section-title" onclick="toggleValidationRules()" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 12px 0;">
+          <span>📋 Validation Rules & Status Definitions</span>
+          <span id="rulesToggleIcon" style="font-size: 14px;">▼</span>
+        </h3>
+        <div id="validationRulesSection" style="background: #f9fafb; padding: 16px; border-radius: var(--radius); border-left: 4px solid var(--primary);">
+          <div class="validation-rules-content">
+            <div style="margin-bottom: 20px;">
+              <h4 style="color: var(--success); margin-bottom: 10px;">✅ READY (can import directly)</h4>
+              <p style="font-size: 13px; line-height: 1.6;">Record has all required fields (name, phone, email, position) with valid data that passes all validation rules. No placeholders, duplicates, or format errors.</p>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+              <h4 style="color: var(--warning); margin-bottom: 10px;">⚠️ REVIEW (needs human review)</h4>
+              <p style="font-size: 13px; line-height: 1.6;">Record has some issues: missing optional fields, confidence < 100%, or validation warnings. Can be fixed in the Review & Fix step before import.</p>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+              <h4 style="color: var(--danger); margin-bottom: 10px;">❌ BLOCKED (cannot import)</h4>
+              <p style="font-size: 13px; line-height: 1.6;">Record has critical errors: missing required fields (name, phone, email), invalid formats, or placeholder values. Must be fixed before import is possible.</p>
+            </div>
+
+            <hr style="border: none; border-top: 1px solid var(--gray-200); margin: 20px 0;">
+
+            <div style="margin-bottom: 16px;">
+              <h4 style="margin-bottom: 10px;">🔍 Field Validation Rules</h4>
+              <div class="rules-grid">
+                <div class="rule-card">
+                  <div class="rule-field">Name</div>
+                  <div class="rule-text">Required. Letters, spaces, 2-4 words. Must not contain numbers or placeholders (NA, TBD, etc). Auto-formatted to Title Case.</div>
+                </div>
+                <div class="rule-card">
+                  <div class="rule-field">Phone</div>
+                  <div class="rule-text">Required. Exactly 10 digits, starts with 6-9 (Indian mobile). Any format accepted: 7359355840, +91-735-9355840, etc. Auto-normalized to 10 digits.</div>
+                </div>
+                <div class="rule-card">
+                  <div class="rule-field">Email</div>
+                  <div class="rule-text">Required. Must match format name@domain.extension. Only one email per row. Auto-converted to lowercase.</div>
+                </div>
+                <div class="rule-card">
+                  <div class="rule-field">Position</div>
+                  <div class="rule-text">Required. Job title or role (developer, manager, engineer, analyst, etc). Cannot be a placeholder value.</div>
+                </div>
+                <div class="rule-card">
+                  <div class="rule-field">Experience</div>
+                  <div class="rule-text">Optional. Number 0-50, with optional "yrs"/"years" suffix. Formats: "7.9Yrs", "3", "5.5 years". Auto-parsed to number only.</div>
+                </div>
+                <div class="rule-card">
+                  <div class="rule-field">CTC</div>
+                  <div class="rule-text">Optional. Salary in LPA (Lakhs Per Annum). Formats: "2LPA", "2.5", "2,50,000", "250K". Range: 0-100 LPA. Auto-normalized to LPA.</div>
+                </div>
+                <div class="rule-card">
+                  <div class="rule-field">Expected Salary</div>
+                  <div class="rule-text">Optional. Same rules as CTC. Expected salary the candidate is looking for.</div>
+                </div>
+                <div class="rule-card">
+                  <div class="rule-field">Notice Period</div>
+                  <div class="rule-text">Optional. Number 0-180 days. Formats: "30 days", "1 month", "Immediate". Auto-converted to days.</div>
+                </div>
+                <div class="rule-card">
+                  <div class="rule-field">Location</div>
+                  <div class="rule-text">Optional. City name (Bangalore, Pune, Delhi). Known cities recognized automatically.</div>
+                </div>
+                <div class="rule-card">
+                  <div class="rule-field">Status</div>
+                  <div class="rule-text">Optional. Candidate stage: interested, scheduled, interviewed, rejected, joined, etc.</div>
+                </div>
+                <div class="rule-card">
+                  <div class="rule-field">Company</div>
+                  <div class="rule-text">Optional. Current employer name or freelancer. Not required for import.</div>
+                </div>
+                <div class="rule-card">
+                  <div class="rule-field">Client</div>
+                  <div class="rule-text">Optional. Client or project the candidate is placed with or for.</div>
+                </div>
+                <div class="rule-card">
+                  <div class="rule-field">Source of CV</div>
+                  <div class="rule-text">Optional. How we got the CV: Naukri, LinkedIn, referral, Indeed, walk-in, etc.</div>
+                </div>
+                <div class="rule-card">
+                  <div class="rule-field">SPOC</div>
+                  <div class="rule-text">Optional. Single Point of Contact (HR name, feedback, person responsible).</div>
+                </div>
+              </div>
+            </div>
+
+            <hr style="border: none; border-top: 1px solid var(--gray-200); margin: 20px 0;">
+
+            <div>
+              <h4 style="margin-bottom: 10px;">🛠️ How Validation Works</h4>
+              <ol style="font-size: 13px; line-height: 1.8; padding-left: 20px;">
+                <li><strong>Column Detection:</strong> System detects field type by value content (not column header). An email is recognized anywhere.</li>
+                <li><strong>Format Detection:</strong> Accepts multiple formats. "7.9Yrs", "3", "5.5 years" all recognized as experience.</li>
+                <li><strong>Placeholder Rejection:</strong> Values like "NA", "TBD", "As per company norms", "Pending" are excluded.</li>
+                <li><strong>Auto-fix:</strong> Common issues fixed automatically: uppercase emails → lowercase, "7359355840" → valid phone, "2LPA" → 2.</li>
+                <li><strong>Confidence Score:</strong> If all required fields are present with high confidence → READY. Missing optional fields or low confidence → REVIEW.</li>
+                <li><strong>Duplicate Detection:</strong> Same value in multiple fields (e.g., name = email) causes validation failure.</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="section-title">Imported records (correct data only)</div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-value">${stats.total}</div><div class="stat-label">In database</div></div>
+      </div>
+      <div class="section-title">By status</div>
+      <div class="table-wrapper"><table><thead><tr><th>Status</th><th>Count</th></tr></thead><tbody>
+        ${Object.entries(stats.byStatus).map(([k,v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="section-title">Experience (years)</div>
+      <p>Min: ${stats.exp.min === Infinity ? '—' : stats.exp.min} | Max: ${stats.exp.max} | Avg: ${stats.exp.n ? (stats.exp.sum / stats.exp.n).toFixed(1) : '—'}</p>
+      <div class="section-title">CTC (LPA)</div>
+      <p>Min: ${stats.ctc.min === Infinity ? '—' : stats.ctc.min} | Max: ${stats.ctc.max} | Avg: ${stats.ctc.n ? (stats.ctc.sum / stats.ctc.n).toFixed(1) : '—'}</p>
+      <div class="button-group">
+        <button class="btn btn-secondary" onclick="printReport()">Print</button>
+      </div>
+    `;
+  }
+
+  function printReport() { window.print(); }
+
+  function toggleValidationRules() {
+    const section = document.getElementById('validationRulesSection');
+    const icon = document.getElementById('rulesToggleIcon');
+    if (!section) return;
+    
+    if (section.classList.contains('collapsed')) {
+      section.classList.remove('collapsed');
+      icon.textContent = '▼';
+    } else {
+      section.classList.add('collapsed');
+      icon.textContent = '▶';
+    }
+  }
+
+  function exportToCSV() {
+    apiFetch('/api/enterprise/get-final-data').then(json => {
+      const data = json.finalData || [];
+      const headers = ['id','name','phone','email','location','position','experience','ctc','expectedSalary','noticePeriod','company','client','spoc','status','sourceOfCV','importedAt'];
+      let csv = headers.join(',') + '\n';
+      data.forEach(r => {
+        csv += headers.map(h => '"' + (r[h] != null ? String(r[h]).replace(/"/g, '""') : '') + '"').join(',') + '\n';
+      });
+      const a = document.createElement('a');
+      a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+      a.download = 'ats-import-' + new Date().toISOString().slice(0,10) + '.csv';
+      a.click();
+    }).catch(err => alert(err.message));
+  }
+</script>
+</body>
+</html>
