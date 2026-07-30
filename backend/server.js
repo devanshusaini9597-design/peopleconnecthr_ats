@@ -706,7 +706,15 @@ app.post('/jobs', verifyToken, async (req, res) => {
 // DATABASE CONNECTION
 // ══════════════════════════════════════════════════════════════════════
 
-mongoose.connect(process.env.MONGODB_URL || 'mongodb://localhost:27017/allinone')
+mongoose.connect(process.env.MONGODB_URL || 'mongodb://localhost:27017/allinone', {
+  serverSelectionTimeoutMS: 30000,
+  connectTimeoutMS: 30000,
+  socketTimeoutMS: 45000,
+  maxPoolSize: 10,
+  minPoolSize: 2,
+  retryWrites: true,
+  retryReads: true
+})
   .then(() => console.log('✅ MongoDB Connected'))
   .catch(err => console.error('❌ Mongo Error:', err));
 
