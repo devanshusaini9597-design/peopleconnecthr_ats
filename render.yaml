@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: peopleconnecthr-ats
+    env: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: MONGODB_URL
+        value: mongodb+srv://devlumiq_db_user:tvzr9ON9Yudof4ue@cluster0.x8k3wvk.mongodb.net/?appName=Cluster0
+      - key: PORT
+        value: 5000
+      - key: JWT_SECRET
+        value: peopleconnecthr_jwt_secret_key_2024_secure_random_string
+      - key: FRONTEND_URL
+        value: https://frontend-self-one-14.vercel.app
+      - key: NODE_ENV
+        value: production
