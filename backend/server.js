@@ -106,6 +106,70 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const ENABLE_DEMO_LOGIN = process.env.ENABLE_DEMO_LOGIN === 'true' || process.env.NODE_ENV !== 'production';
+const DEMO_EMAIL = (process.env.DEMO_EMAIL || 'demo@skillnix.app').toLowerCase().trim();
+const DEMO_PASSWORD = process.env.DEMO_PASSWORD || 'Demo1234!';
+const DEMO_ORG_NAME = process.env.DEMO_ORG_NAME || 'SkillNix Demo';
+const DEMO_ORG_SLUG = process.env.DEMO_ORG_SLUG || 'skillnix-demo';
+
+const createDemoAccount = async () => {
+  let user = await User.findOne({ email: DEMO_EMAIL });
+  let organization = null;
+
+  if (!user) {
+    user = new User({
+      name: 'Demo Recruiter',
+      email: DEMO_EMAIL,
+      password: DEMO_PASSWORD,
+      role: 'owner',
+      isEmailVerified: true,
+      onboardingCompleted: true,
+      isActive: true
+    });
+    await user.save();
+  }
+
+  if (user.organizationId) {
+    organization = await Organization.findById(user.organizationId);
+  }
+
+  if (!organization) {
+    let slug = DEMO_ORG_SLUG;
+    let existingSlug = await Organization.findOne({ slug });
+    let suffix = 1;
+    while (existingSlug) {
+      slug = `${DEMO_ORG_SLUG}-${suffix}`;
+      existingSlug = await Organization.findOne({ slug });
+      suffix += 1;
+    }
+
+    organization = new Organization({
+      name: DEMO_ORG_NAME,
+      slug,
+      ownerId: user._id,
+      plan: 'free_trial',
+      usageCurrent: { users: 1, jobs: 0, candidates: 0, emailsSent: 0 },
+      settings: { timezone: 'Asia/Kolkata', currency: 'INR', dateFormat: 'DD/MM/YYYY' },
+      atsSettings: {
+        pipelineStages: ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'],
+        defaultSources: ['LinkedIn', 'Indeed', 'Naukri', 'Referral', 'Direct'],
+        enableCandidatePortal: true,
+        enableCareersPage: true,
+      }
+    });
+    await organization.save();
+    user.organizationId = organization._id;
+    await user.save();
+  }
+
+  if (user.organizationId && !organization.ownerId) {
+    organization.ownerId = user._id;
+    await organization.save();
+  }
+
+  return { user, organization };
+};
+
 const publicApplyLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10, // 10 applications per hour per IP
@@ -230,6 +294,17 @@ app.get('/health', (req, res) => res.json({
   timestamp: new Date().toISOString() 
 }));
 
+// ── Database connection guard ──────────────────────────────────────────
+app.use((req, res, next) => {
+  if (req.path === '/health') {
+    return next();
+  }
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ success: false, message: 'Service unavailable. Database connection is not ready.' });
+  }
+  next();
+});
+
 // ══════════════════════════════════════════════════════════════════════
 // AUTH ROUTES (kept inline for backward compatibility)
 // ══════════════════════════════════════════════════════════════════════
@@ -317,6 +392,35 @@ app.post('/api/login', authLimiter, async (req, res) => {
   } catch (err) { 
     console.error('[LOGIN] ERROR:', err.message);
     res.status(500).json({ message: 'Internal server error' }); 
+  }
+});
+
+app.post('/api/demo-login', authLimiter, async (req, res) => {
+  if (!ENABLE_DEMO_LOGIN) {
+    return res.status(404).json({ message: 'Demo login is unavailable.' });
+  }
+
+  try {
+    const { user, organization } = await createDemoAccount();
+    const token = generateToken(user);
+
+    res.json({
+      message: 'Demo login successful',
+      token,
+      user: {
+        name: user.name || 'Demo Recruiter',
+        email: user.email,
+        role: user.role,
+        organizationId: user.organizationId,
+        isEmailVerified: user.isEmailVerified,
+        onboardingCompleted: user.onboardingCompleted,
+        profilePicture: user.profilePicture || ''
+      },
+      organization
+    });
+  } catch (err) {
+    console.error('[DEMO LOGIN] ERROR:', err);
+    res.status(500).json({ message: 'Failed to create demo account.' });
   }
 });
 
@@ -706,17 +810,52 @@ app.post('/jobs', verifyToken, async (req, res) => {
 // DATABASE CONNECTION
 // ══════════════════════════════════════════════════════════════════════
 
-mongoose.connect(process.env.MONGODB_URL || 'mongodb://localhost:27017/allinone', {
+const mongoUrl = process.env.MONGODB_URL || process.env.MONGODB_URI || process.env.DATABASE_URL || 'mongodb://localhost:27017/allinone';
+
+const startServer = () => {
+  const server = app.listen(PORT, () => {
+    console.log(`🚀 SkillNix SaaS ATS v3 running on port ${PORT}`);
+    const s3Resume = require('./services/s3Service').isS3Configured();
+    console.log(s3Resume
+      ? `[Resume storage] S3 — bucket: ${process.env.S3_BUCKET_NAME}`
+      : '[Resume storage] Local (uploads/)');
+    startNotificationScheduler();
+    console.log('[Event Bus] Initialized with listeners:', eventBus.eventNames().join(', '));
+  });
+
+  server.timeout = 600000;
+  server.keepAliveTimeout = 61000;
+};
+
+console.log('🔌 Connecting to MongoDB...', mongoUrl.replace(/^(mongodb\+srv:\/\/[^:]+):[^@]+@/, '$1:****@'));
+
+mongoose.connect(mongoUrl, {
   serverSelectionTimeoutMS: 30000,
   connectTimeoutMS: 30000,
   socketTimeoutMS: 45000,
   maxPoolSize: 10,
   minPoolSize: 2,
   retryWrites: true,
-  retryReads: true
+  retryReads: true,
+  bufferCommands: false,
+  bufferMaxEntries: 0
 })
-  .then(() => console.log('✅ MongoDB Connected'))
-  .catch(err => console.error('❌ Mongo Error:', err));
+  .then(() => {
+    console.log('✅ MongoDB Connected');
+    startServer();
+  })
+  .catch(err => {
+    console.error('❌ Mongo Error:', err);
+    process.exit(1);
+  });
+
+mongoose.connection.on('error', (err) => {
+  console.error('❌ MongoDB connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.warn('⚠️ MongoDB disconnected');
+});
 
 // ── Post-connection migrations ───────────────────────────────────────
 mongoose.connection.once('open', async () => {
