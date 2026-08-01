@@ -5,7 +5,7 @@ import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { 
   Plus, Search, Mail, MessageCircle, Upload, 
-  Filter, CheckSquare, Square, FileText, Cpu, Trash2, Edit, X, Briefcase, BarChart3, AlertCircle, RefreshCw, Download, Eye, Info, Share2, Megaphone, Users
+  Filter, CheckSquare, Square, FileText, Cpu, Trash2, Edit, X, Briefcase, BarChart3, AlertCircle, RefreshCw, Download, Eye, Info, Share2, Megaphone, Users, ArrowUpDown, Building2, MapPin, User
 } from 'lucide-react';
 import { useParsing } from '../hooks/useParsing';
 import PhoneInput from 'react-phone-input-2';
@@ -20,6 +20,7 @@ import ConfirmationModal from './ConfirmationModal';
 import SendWhatsAppButton from './SendWhatsAppButton';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
+import PremiumSelect from './ui/PremiumSelect';
 import { ctcRanges, ctcLpaBreakpoints, expectedCtcOptions, noticePeriodOptions } from '../utils/ctcRanges';
 import { dedupeByName } from '../utils/dedupeMasterData';
 
@@ -2248,13 +2249,20 @@ const handleAddCandidate = async (e) => {
     { key: 'position', label: 'Position', render: (candidate) => candidate.position ? <span className="text-sm font-semibold text-brand-700 whitespace-nowrap">{candidate.position}</span> : <span className="text-stone-300">—</span> },
     { key: 'fls', label: 'FLS', render: (candidate) => candidate.fls ? <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${candidate.fls === 'FLS' ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-100 text-stone-600'}`}>{candidate.fls}</span> : <span className="text-stone-300">—</span> },
     { key: 'name', label: 'Name', render: (candidate) => (
-      <div className="flex items-center gap-1.5">
-        <span className="text-sm font-semibold text-stone-900 whitespace-nowrap">{candidate.name}</span>
-        {candidate._isShared && (
-          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 whitespace-nowrap" title={`Shared by ${candidate._sharedByOwner || 'team member'}`}>
-            Shared
-          </span>
-        )}
+      <div className="flex items-center gap-2.5 min-w-0">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-teal-700 text-white flex items-center justify-center text-[11px] font-bold flex-shrink-0 shadow-sm shadow-brand-500/20">
+          {(candidate.name || '?').charAt(0).toUpperCase()}
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-sm font-semibold text-stone-900 whitespace-nowrap truncate">{candidate.name}</span>
+            {candidate._isShared && (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 whitespace-nowrap" title={`Shared by ${candidate._sharedByOwner || 'team member'}`}>
+                Shared
+              </span>
+            )}
+          </div>
+        </div>
       </div>
     )},
     { key: 'contact', label: 'Contact', render: (candidate) => <span className="text-sm font-mono text-stone-600 whitespace-nowrap">{candidate.contact || '—'}</span> },
@@ -2606,7 +2614,7 @@ const handleAddCandidate = async (e) => {
         subtitle={`${filteredCandidates.length.toLocaleString()} records in your pipeline${searchQuery ? ` · “${searchQuery}”` : ''}.`}
         gradientTitle
       >
-        <button type="button" onClick={() => fileInputRef.current?.click()} className="btn-secondary">
+        <button type="button" onClick={() => fileInputRef.current?.click()} className="btn-secondary flex-1 sm:flex-none">
           <Upload size={16} /> Import
         </button>
         <button
@@ -2617,7 +2625,7 @@ const handleAddCandidate = async (e) => {
             setFormErrors({});
             setShowModal(true);
           }}
-          className="btn-primary"
+          className="btn-primary flex-1 sm:flex-none"
         >
           <Plus size={16} /> Add Candidate
         </button>
@@ -2634,32 +2642,35 @@ const handleAddCandidate = async (e) => {
       <input type="file" accept=".csv, .xlsx, .xls" ref={fileInputRef} onChange={handleBulkUpload} className="hidden" />
       <input type="file" accept=".csv, .xlsx, .xls" ref={autoUploadInputRef} onChange={handleAutoUpload} className="hidden" />
 
-      {/* HEADER + TOOLBAR — single card, enterprise layout */}
-      <div className="card-ats-bordered overflow-hidden">
-        {/* Row 1: View toggle, count, import actions */}
-        <div className="flex flex-wrap items-center gap-4 px-5 py-4 border-b border-stone-100">
-          <div className="inline-flex rounded-xl bg-stone-100 p-1 border border-stone-200/80">
+      {/* HEADER + TOOLBAR — premium enterprise layout */}
+      <div className="card-ats-bordered overflow-visible">
+        {/* Row 1: View toggle + import */}
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 border-b border-stone-100">
+          <div className="inline-flex rounded-xl bg-stone-100/90 p-1 border border-stone-200/80 w-fit">
             <button
               type="button"
               onClick={() => setCandidatesViewMode('mine')}
-              className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-all duration-150 ${candidatesViewMode === 'mine' ? 'bg-white text-brand-700 shadow-sm border border-brand-200' : 'text-stone-500 hover:text-stone-700'}`}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold rounded-lg transition-all duration-150 ${candidatesViewMode === 'mine' ? 'bg-white text-brand-700 shadow-sm border border-brand-200' : 'text-stone-500 hover:text-stone-700'}`}
             >
-              Show only mine
+              <User size={14} /> Show only mine
             </button>
             <button
               type="button"
               onClick={() => setCandidatesViewMode('all')}
-              className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-all duration-150 ${candidatesViewMode === 'all' ? 'bg-white text-brand-700 shadow-sm border border-brand-200' : 'text-stone-500 hover:text-stone-700'}`}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold rounded-lg transition-all duration-150 ${candidatesViewMode === 'all' ? 'bg-white text-brand-700 shadow-sm border border-brand-200' : 'text-stone-500 hover:text-stone-700'}`}
             >
-              View all
+              <Users size={14} /> View all
             </button>
           </div>
-          <span className="text-sm font-medium text-stone-600 tabular-nums">
-            {filteredCandidates.length.toLocaleString()} records
-            {searchQuery && <span className="font-normal text-stone-500"> · &ldquo;{searchQuery}&rdquo;</span>}
+          <span className="inline-flex items-center gap-2 text-sm font-medium text-stone-600 tabular-nums">
+            <span className="inline-flex items-center justify-center min-w-[1.75rem] h-7 px-2 rounded-lg bg-brand-50 text-brand-700 font-bold text-xs border border-brand-100">
+              {filteredCandidates.length.toLocaleString()}
+            </span>
+            records
+            {searchQuery && <span className="font-normal text-stone-400">· “{searchQuery}”</span>}
           </span>
           {candidatesViewMode === 'all' && (
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
               <button
                 onClick={handleImportAllToMineClick}
                 disabled={isImportingShared || isImportingAll}
@@ -2673,7 +2684,7 @@ const handleAddCandidate = async (e) => {
                 <button
                   onClick={handleImportSharedToMineClick}
                   disabled={isImportingShared || isImportingAll}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium shadow-sm hover:bg-emerald-700 hover:shadow disabled:opacity-50 transition-all duration-150"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold shadow-sm hover:bg-emerald-700 hover:shadow disabled:opacity-50 transition-all duration-150"
                   title="Import only candidates shared with you"
                 >
                   {isImportingShared ? <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Plus size={14} />}
@@ -2684,82 +2695,99 @@ const handleAddCandidate = async (e) => {
           )}
         </div>
 
-        {/* Row 2: Search + Filters + Export + Sort — one toolbar */}
-        <div className="flex flex-wrap items-center gap-3 px-5 py-3 bg-stone-50/80 border-t border-stone-100">
-          <div className="flex items-center gap-2 flex-1 min-w-[280px] max-w-xl bg-white rounded-xl border border-stone-200 px-3 py-2.5 shadow-sm focus-within:ring-2 focus-within:ring-brand-500/20 focus-within:border-brand-500 transition-all">
-            <Search className="text-stone-400 flex-shrink-0" size={18} />
-            <select
+        {/* Row 2: Search + Filters + Export + Sort */}
+        <div className="flex flex-col lg:flex-row lg:items-center gap-2.5 sm:gap-3 px-4 sm:px-5 py-3.5 bg-gradient-to-b from-stone-50/90 to-white">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 min-w-0">
+            <PremiumSelect
+              className="w-full sm:w-[9.5rem] flex-shrink-0"
               value={searchScope}
-              onChange={(e) => setSearchScope(e.target.value)}
-              className="text-sm border-0 bg-transparent text-stone-600 font-medium outline-none cursor-pointer py-0"
-              title="Search in"
-            >
-              <option value="all">All fields</option>
-              <option value="spoc">SPOC</option>
-              <option value="name">Name</option>
-              <option value="email">Email</option>
-              <option value="position">Position</option>
-              <option value="location">Location</option>
-              <option value="company">Company</option>
-              <option value="client">Client</option>
-            </select>
-            <input
-              type="text"
-              placeholder={searchScope === 'all' ? 'Search candidates...' : `Search ${searchScope}...`}
-              className="flex-1 min-w-0 text-sm outline-none text-stone-800 placeholder-stone-400 bg-transparent"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(v) => { setSearchScope(v); setCurrentPage(1); }}
+              options={[
+                { value: 'all', label: 'All fields', icon: Search },
+                { value: 'spoc', label: 'SPOC', icon: User },
+                { value: 'name', label: 'Name', icon: User },
+                { value: 'email', label: 'Email', icon: Mail },
+                { value: 'position', label: 'Position', icon: Briefcase },
+                { value: 'location', label: 'Location', icon: MapPin },
+                { value: 'company', label: 'Company', icon: Building2 },
+                { value: 'client', label: 'Client', icon: Building2 },
+              ]}
+              placeholder="All fields"
+              icon={Search}
             />
-            {(searchScope !== 'all' || searchQuery.trim()) && (
-              <button type="button" onClick={() => { setSearchScope('all'); setSearchQuery(''); setCurrentPage(1); }} className="p-1 rounded-md text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors" title="Clear">
-                <X size={16} />
-              </button>
-            )}
+            <div className="relative flex-1 min-w-0">
+              <Search className="text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" size={16} />
+              <input
+                type="search"
+                placeholder={searchScope === 'all' ? 'Search candidates…' : `Search ${searchScope}…`}
+                className="input-ats !pl-10 w-full"
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+              />
+              {(searchScope !== 'all' || searchQuery.trim()) && (
+                <button
+                  type="button"
+                  onClick={() => { setSearchScope('all'); setSearchQuery(''); setCurrentPage(1); }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+                  title="Clear"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
           </div>
-          <button
-            onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
-            className={showAdvancedSearch ? 'btn-primary !py-2' : 'btn-secondary !py-2'}
-          >
-            <Filter size={16} /> {showAdvancedSearch ? 'Close' : 'Filters'}
-          </button>
-          <button
-            onClick={() => { if (filteredCandidates.length === 0) toast.warning('No candidates to download.'); else setShowDownloadModal(true); }}
-            className="btn-secondary !py-2"
-          >
-            <Download size={16} /> Export{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
-          </button>
-          <div className="flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-2 py-1.5 shadow-sm">
-            <span className="text-sm text-stone-500 font-medium">Sort</span>
-            <select
-              value={sortField}
-              onChange={(e) => { setSortField(e.target.value); setCurrentPage(1); }}
-              className="text-sm py-1 pr-6 border-0 bg-transparent text-stone-700 font-medium outline-none cursor-pointer focus:ring-0"
-            >
-              <option value="date">Date Added</option>
-              <option value="name">Name</option>
-              <option value="email">Email</option>
-              <option value="position">Position</option>
-              <option value="location">Location</option>
-              <option value="company">Company</option>
-              <option value="status">Status</option>
-              <option value="spoc">SPOC</option>
-            </select>
+
+          <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
             <button
-              onClick={() => { setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc'); setCurrentPage(1); }}
-              className="p-1.5 rounded-md text-stone-500 hover:text-stone-700 hover:bg-stone-100 transition-colors"
-              title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+              onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
+              className={showAdvancedSearch ? 'btn-primary !py-2.5 !h-[42px]' : 'btn-secondary !py-2.5 !h-[42px]'}
             >
-              {sortOrder === 'asc' ? '↑' : '↓'}
+              <Filter size={16} /> {showAdvancedSearch ? 'Close' : 'Filters'}
             </button>
+            <button
+              onClick={() => { if (filteredCandidates.length === 0) toast.warning('No candidates to download.'); else setShowDownloadModal(true); }}
+              className="btn-secondary !py-2.5 !h-[42px]"
+            >
+              <Download size={16} /> Export{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+            </button>
+            <div className="flex items-center gap-1.5 min-w-0 sm:min-w-[12rem]">
+              <PremiumSelect
+                className="w-full sm:w-40"
+                value={sortField}
+                onChange={(v) => { setSortField(v); setCurrentPage(1); }}
+                options={[
+                  { value: 'date', label: 'Date Added', icon: ArrowUpDown },
+                  { value: 'name', label: 'Name', icon: User },
+                  { value: 'email', label: 'Email', icon: Mail },
+                  { value: 'position', label: 'Position', icon: Briefcase },
+                  { value: 'location', label: 'Location', icon: MapPin },
+                  { value: 'company', label: 'Company', icon: Building2 },
+                  { value: 'status', label: 'Status', icon: RefreshCw },
+                  { value: 'spoc', label: 'SPOC', icon: User },
+                ]}
+                placeholder="Sort"
+                icon={ArrowUpDown}
+              />
+              <button
+                onClick={() => { setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc'); setCurrentPage(1); }}
+                className="h-[42px] w-[42px] flex items-center justify-center rounded-xl border border-stone-200 bg-stone-50 text-stone-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 transition-all font-bold text-sm flex-shrink-0"
+                title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+              >
+                {sortOrder === 'asc' ? '↑' : '↓'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
       {/* ADVANCED SEARCH PANEL - ABOVE TABLE */}
       {showAdvancedSearch && (
-        <div className="card-ats-bordered p-6 animate-fade-in">
+        <div className="card-ats-bordered p-5 sm:p-6 animate-fade-in">
           <div className="flex justify-between items-center mb-5">
-            <h3 className="text-base font-bold text-stone-900">Advanced Search Filters</h3>
+            <div>
+              <h3 className="text-base font-bold text-stone-900 tracking-tight">Advanced Filters</h3>
+              <p className="text-xs text-stone-400 mt-0.5">Filters apply instantly to the list below</p>
+            </div>
             <button
               onClick={() => {
                 setAdvancedSearchFilters({
@@ -2785,11 +2813,11 @@ const handleAddCandidate = async (e) => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Position - Dropdown */}
             <div>
-              <label className="block text-sm font-bold text-stone-700 mb-1.5">Position</label>
+              <label className="label-ats">Position</label>
               <select
                 value={advancedSearchFilters.position}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, position: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm bg-white"
+                className="select-ats"
               >
                 <option value="">All Positions</option>
                 {masterPositions.map(pos => (
@@ -2800,35 +2828,35 @@ const handleAddCandidate = async (e) => {
 
             {/* Company - Text Input */}
             <div>
-              <label className="block text-sm font-bold text-stone-700 mb-1.5">Company</label>
+              <label className="label-ats">Company</label>
               <input
                 type="text"
                 value={advancedSearchFilters.companyName}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, companyName: e.target.value }))}
                 placeholder="Search company"
-                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm"
+                className="input-ats"
               />
             </div>
 
             {/* Location - Text input */}
             <div>
-              <label className="block text-sm font-bold text-stone-700 mb-1.5">Location</label>
+              <label className="label-ats">Location</label>
               <input
                 type="text"
                 value={advancedSearchFilters.location}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, location: e.target.value }))}
                 placeholder="City or location"
-                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm"
+                className="input-ats"
               />
             </div>
 
             {/* Experience Min - Number Dropdown */}
             <div>
-              <label className="block text-sm font-bold text-stone-700 mb-1.5">Min Experience (Yrs)</label>
+              <label className="label-ats">Min Experience (Yrs)</label>
               <select
                 value={advancedSearchFilters.expMin}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, expMin: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm bg-white"
+                className="select-ats"
               >
                 <option value="">Any</option>
                 {[...Array(31).keys()].map(num => (
@@ -2839,11 +2867,11 @@ const handleAddCandidate = async (e) => {
 
             {/* Experience Max - Number Dropdown */}
             <div>
-              <label className="block text-sm font-bold text-stone-700 mb-1.5">Max Experience (Yrs)</label>
+              <label className="label-ats">Max Experience (Yrs)</label>
               <select
                 value={advancedSearchFilters.expMax}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, expMax: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm bg-white"
+                className="select-ats"
               >
                 <option value="">Any</option>
                 {[...Array(31).keys()].map(num => (
@@ -2854,11 +2882,11 @@ const handleAddCandidate = async (e) => {
 
             {/* CTC Min - Range Dropdown */}
             <div>
-              <label className="block text-sm font-bold text-stone-700 mb-1.5">Min CTC</label>
+              <label className="label-ats">Min CTC</label>
               <select
                 value={advancedSearchFilters.ctcMin}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, ctcMin: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm bg-white"
+                className="select-ats"
               >
                 <option value="">Any</option>
                 {ctcRanges.map(range => (
@@ -2869,11 +2897,11 @@ const handleAddCandidate = async (e) => {
 
             {/* CTC Max - Range Dropdown */}
             <div>
-              <label className="block text-sm font-bold text-stone-700 mb-1.5">Max CTC</label>
+              <label className="label-ats">Max CTC</label>
               <select
                 value={advancedSearchFilters.ctcMax}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, ctcMax: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm bg-white"
+                className="select-ats"
               >
                 <option value="">Any</option>
                 {ctcRanges.map(range => (
@@ -2884,11 +2912,11 @@ const handleAddCandidate = async (e) => {
 
             {/* Expected CTC Min - Range Dropdown */}
             <div>
-              <label className="block text-sm font-bold text-stone-700 mb-1.5">Min Expected CTC</label>
+              <label className="label-ats">Min Expected CTC</label>
               <select
                 value={advancedSearchFilters.expectedCtcMin}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, expectedCtcMin: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm bg-white"
+                className="select-ats"
               >
                 <option value="">Any</option>
                 {ctcRanges.map(range => (
@@ -2899,11 +2927,11 @@ const handleAddCandidate = async (e) => {
 
             {/* Expected CTC Max - Range Dropdown */}
             <div>
-              <label className="block text-sm font-bold text-stone-700 mb-1.5">Max Expected CTC</label>
+              <label className="label-ats">Max Expected CTC</label>
               <select
                 value={advancedSearchFilters.expectedCtcMax}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, expectedCtcMax: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm bg-white"
+                className="select-ats"
               >
                 <option value="">Any</option>
                 {ctcRanges.map(range => (
@@ -2914,17 +2942,15 @@ const handleAddCandidate = async (e) => {
 
             {/* Date */}
             <div>
-              <label className="block text-sm font-bold text-stone-700 mb-1.5">Date</label>
+              <label className="label-ats">Date</label>
               <input
                 type="date"
                 value={advancedSearchFilters.date}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, date: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm"
+                className="input-ats"
               />
             </div>
           </div>
-
-          <p className="text-xs text-stone-400 mt-4">Filters apply instantly to the candidate list below</p>
         </div>
       )}
 
@@ -3024,19 +3050,19 @@ const handleAddCandidate = async (e) => {
       )}
 
       {/* MAIN TABLE */}
-      <div className="table-shell-ats overflow-x-auto">
-        <table className="w-full text-left border-collapse">
+      <div className="table-shell-ats overflow-x-auto overflow-y-visible">
+        <table className="w-full text-left border-collapse min-w-[1100px]">
           <thead>
-            <tr className="bg-stone-900 border-b border-stone-800">
-              <th className="px-4 py-3.5 w-[50px] text-center">
+            <tr className="bg-gradient-to-r from-stone-100 via-stone-50 to-stone-100 border-b border-stone-200/90">
+              <th className="px-4 py-3.5 w-[50px] text-center sticky left-0 bg-stone-100 z-10">
                 <div onClick={() => selectAll(filteredCandidates.map(c => c._id))} className="cursor-pointer flex justify-center">
-                  {isAllSelected ? <CheckSquare size={18} className="text-brand-300" /> : <Square size={18} className="text-stone-400" />}
+                  {isAllSelected ? <CheckSquare size={18} className="text-brand-600" /> : <Square size={18} className="text-stone-400" />}
                 </div>
               </th>
               {tableColumns.map((column) => (
                 <th
                   key={column.key}
-                  className="px-4 py-3.5 text-xs font-bold text-stone-200 uppercase tracking-wider whitespace-nowrap border-r border-stone-700/80"
+                  className="px-4 py-3.5 text-[10px] font-bold text-stone-500 uppercase tracking-wider whitespace-nowrap border-r border-stone-200/60 last:border-r-0"
                 >
                   {column.label}
                 </th>
@@ -3045,7 +3071,7 @@ const handleAddCandidate = async (e) => {
           </thead>
           <tbody className="divide-y divide-stone-100">
             {visibleCandidates.map((candidate, index) => (
-              <tr key={candidate._id} className={`transition-colors duration-150 ${selectedIds.includes(candidate._id) ? 'bg-brand-50/70' : index % 2 === 0 ? 'bg-white' : 'bg-stone-50/40'} hover:bg-brand-50/50`}>
+              <tr key={candidate._id} className={`transition-colors duration-150 ${selectedIds.includes(candidate._id) ? 'bg-brand-50/80' : index % 2 === 0 ? 'bg-white' : 'bg-stone-50/30'} hover:bg-brand-50/40`}>
                 <td className="px-4 py-3 text-center w-[50px]">
                   <div onClick={() => toggleSelection(candidate._id)} className="cursor-pointer flex justify-center">
                     {selectedIds.includes(candidate._id) ? <CheckSquare className="text-brand-600" size={17} /> : <Square className="text-stone-300 hover:text-stone-400" size={17} />}
@@ -3054,7 +3080,7 @@ const handleAddCandidate = async (e) => {
                 {tableColumns.map((column) => (
                   <td
                     key={`${candidate._id}-${column.key}`}
-                    className="px-4 py-3 text-sm text-stone-700 border-r border-stone-200 font-medium"
+                    className="px-4 py-3 text-sm text-stone-700 border-r border-stone-100/80 last:border-r-0 font-medium"
                   >
                     {column.render(candidate, index)}
                   </td>
@@ -3124,11 +3150,11 @@ const handleAddCandidate = async (e) => {
       <div ref={loadMoreRef} />
       
       {/* PAGINATION */}
-      <div className="flex items-center justify-between py-4 px-1">
-        <p className="text-xs text-stone-500">
-          Showing {visibleCandidates.length > 0 ? (currentPage - 1) * PAGE_SIZE + 1 : 0}–{Math.min(currentPage * PAGE_SIZE, filteredCandidates.length)} of {filteredCandidates.length.toLocaleString()} candidates
+      <div className="card-ats-bordered px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <p className="text-xs sm:text-sm text-stone-500 font-medium">
+          Showing <span className="text-stone-800 font-semibold">{visibleCandidates.length > 0 ? (currentPage - 1) * PAGE_SIZE + 1 : 0}–{Math.min(currentPage * PAGE_SIZE, filteredCandidates.length)}</span> of <span className="text-stone-800 font-semibold">{filteredCandidates.length.toLocaleString()}</span> candidates
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
               disabled={currentPage === 1}
