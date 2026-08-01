@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Plus, MapPin, BookOpen, UserCheck, Briefcase, IndianRupee, Globe2, Loader2,
   Search, Pencil, Trash2, MoreHorizontal, X, Check, PauseCircle, Lock, Unlock,
-  Filter, Building2
+  Filter, Building2, BookmarkPlus
 } from 'lucide-react';
 import JDLibraryModal from '../components/JDLibraryModal';
 import PageHeader from '../components/ui/PageHeader';
@@ -256,6 +256,35 @@ const Jobs = () => {
     }
   };
 
+  const handleSaveAsTemplate = async (job) => {
+    setMenuOpenId(null);
+    try {
+      const res = await authenticatedFetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          role: job.role || job.title,
+          title: job.role || job.title,
+          location: job.location || 'TBD',
+          ctc: job.ctc || '',
+          experience: job.experience || '',
+          skills: job.skills || [],
+          description: job.description || '',
+          hiringManagers: [],
+          status: 'Draft',
+          isTemplate: true,
+        }),
+      });
+      if (isUnauthorized(res)) return handleUnauthorized();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Failed to save template');
+      }
+      showToast('Saved to JD Library');
+    } catch (error) {
+      showToast(error.message || 'Failed to save template', 'error');
+    }
+  };
+
   const closeModal = () => {
     if (saving) return;
     setShowModal(false);
@@ -428,6 +457,13 @@ const Jobs = () => {
                               Post to Job Board
                             </button>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => handleSaveAsTemplate(job)}
+                            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-50"
+                          >
+                            <BookmarkPlus size={14} className="text-brand-500" /> Save as Template
+                          </button>
                           <div className="my-1 border-t border-stone-100" />
                           <button
                             type="button"

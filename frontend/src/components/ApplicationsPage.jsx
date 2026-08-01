@@ -463,29 +463,45 @@ export default function ApplicationsPage() {
     <div className="flex flex-col h-full min-h-0 bg-stone-50/60 overflow-hidden content-fill-ats">
       {/* Top Bar */}
       <div className="bg-white/95 backdrop-blur-xl border-b border-stone-200/70 px-3 sm:px-5 lg:px-6 py-3 sm:py-4 flex-shrink-0 z-10 shadow-[var(--shadow-card)]">
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 sm:gap-4">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 min-w-0">
+        <div className="flex flex-col gap-3">
+          {/* Row 1: brand + primary CTA */}
+          <div className="flex items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="icon-box-ats !w-10 !h-10 !rounded-xl">
+              <div className="icon-box-ats !w-10 !h-10 !rounded-xl flex-shrink-0">
                 <Activity className="w-5 h-5 text-white" />
               </div>
               <div className="min-w-0">
-                <h1 className="text-xl sm:text-2xl font-bold text-gradient tracking-tight truncate" style={{ letterSpacing: '-0.025em' }}>
+                <h1 className="text-xl sm:text-2xl font-bold text-gradient tracking-tight" style={{ letterSpacing: '-0.025em' }}>
                   Pipeline Board
                 </h1>
-                <p className="text-xs text-stone-500 font-medium hidden sm:block truncate">
-                  {selectedJob ? jobTitle(selectedJob) : 'Drag candidates across stages'}
+                <p className="text-xs text-stone-500 font-medium mt-0.5 hidden sm:block">
+                  {selectedJob ? (
+                    <span className="inline-flex items-center gap-1.5 max-w-[min(100%,28rem)]">
+                      <Briefcase className="w-3 h-3 text-brand-500 flex-shrink-0" />
+                      <span className="truncate">{jobTitle(selectedJob)}</span>
+                    </span>
+                  ) : (
+                    'Drag candidates across stages'
+                  )}
                 </p>
               </div>
             </div>
+            <button type="button" onClick={openAddModal} className="btn-primary !py-2 !px-3.5 sm:!px-5 flex-shrink-0">
+              <Plus className="w-4 h-4" />
+              <span className="whitespace-nowrap text-sm sm:text-[13px]">
+                <span className="sm:hidden">Add</span>
+                <span className="hidden sm:inline">Add Application</span>
+              </span>
+            </button>
+          </div>
 
-            <div className="h-6 w-px bg-stone-200 hidden md:block flex-shrink-0" />
-
-            <div className="relative w-full sm:w-auto min-w-0 sm:min-w-[200px]">
+          {/* Row 2: filters — always one clean row that wraps evenly */}
+          <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_auto] gap-2 sm:gap-3 items-center">
+            <div className="relative min-w-0">
               <select
                 value={selectedJobId}
                 onChange={(e) => setSelectedJobId(e.target.value)}
-                className="select-ats appearance-none !pr-10 cursor-pointer font-medium"
+                className="select-ats appearance-none !pr-10 cursor-pointer font-medium w-full"
               >
                 <option value="">Select a Job</option>
                 {jobs.map((job) => (
@@ -494,22 +510,20 @@ export default function ApplicationsPage() {
               </select>
               <ChevronDown className="w-4 h-4 text-stone-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <div className="relative flex-1 sm:flex-none min-w-[140px]">
+            <div className="relative min-w-0">
               <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="search"
                 placeholder="Search candidates…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="input-ats !pl-9 w-full sm:w-56 lg:w-64"
+                className="input-ats !pl-9 w-full"
                 disabled={!selectedJobId}
               />
             </div>
 
-            <div className="flex bg-stone-100 p-1 rounded-xl">
+            <div className="flex bg-stone-100 p-1 rounded-xl w-fit justify-self-start sm:justify-self-end">
               <button
                 type="button"
                 onClick={() => setViewMode('kanban')}
@@ -533,15 +547,10 @@ export default function ApplicationsPage() {
                 <List className="w-4 h-4" />
               </button>
             </div>
-
-            <button type="button" onClick={openAddModal} className="btn-primary !py-2 flex-1 sm:flex-none">
-              <Plus className="w-4 h-4" />
-              <span className="whitespace-nowrap">Add Application</span>
-            </button>
           </div>
         </div>
 
-        <div className="mt-3 sm:mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm">
+        <div className="mt-3 sm:mt-3.5 pt-3 border-t border-stone-100 flex flex-wrap gap-x-5 gap-y-2 text-sm">
           <div className="flex items-center gap-2 text-stone-600">
             <span className="inline-flex items-center justify-center min-w-[1.75rem] h-7 px-2 rounded-lg bg-brand-50 text-brand-700 font-bold text-xs border border-brand-100">
               {displayTotal}
