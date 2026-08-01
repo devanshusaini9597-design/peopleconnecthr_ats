@@ -3,7 +3,7 @@ import {
   Search, Plus, LayoutGrid, List, Star, Clock,
   Phone, Mail, Briefcase, FileText,
   X, User, Calendar, CheckCircle2,
-  AlertCircle, ChevronDown, Activity, XCircle, Award, Target,
+  AlertCircle, Activity, XCircle, Award, Target,
   Loader2, Trash2, Save, Video, MapPin
 } from 'lucide-react';
 import { ShieldCheck, FileSignature } from 'lucide-react';
@@ -13,6 +13,7 @@ import { planHasFeature } from '../config/planFeatures';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import Modal from './ui/Modal';
 import EmptyState from './ui/EmptyState';
+import PremiumSelect from './ui/PremiumSelect';
 
 const STAGES = [
   { id: 'Applied', label: 'Applied', color: 'bg-sky-50', borderColor: 'border-sky-200', textColor: 'text-sky-700', bar: 'bg-sky-500', icon: FileText },
@@ -440,12 +441,23 @@ export default function ApplicationsPage() {
   };
 
   const filteredApplications = useMemo(() => {
-    if (!searchQuery.trim()) return applications;
-    const term = searchQuery.toLowerCase();
+    const term = searchQuery.trim().toLowerCase();
+    if (!term) return applications;
     return applications.filter((app) => {
       const name = app.candidate?.name?.toLowerCase() || '';
       const email = app.candidate?.email?.toLowerCase() || '';
-      return name.includes(term) || email.includes(term);
+      const phone = String(app.candidate?.phone || app.candidate?.contact || '').toLowerCase();
+      const source = String(app.source || '').toLowerCase();
+      const stage = String(app.stage || '').toLowerCase();
+      const title = jobTitle(app.job).toLowerCase();
+      return (
+        name.includes(term) ||
+        email.includes(term) ||
+        phone.includes(term) ||
+        source.includes(term) ||
+        stage.includes(term) ||
+        title.includes(term)
+      );
     });
   }, [applications, searchQuery]);
 
@@ -456,121 +468,122 @@ export default function ApplicationsPage() {
     setIsAddModalOpen(true);
   };
 
-  const displayTotal = stats.total || applications.length;
   const selectedJob = jobs.find((j) => j._id === selectedJobId);
+
+  const jobOptions = useMemo(
+    () =>
+      jobs.map((job) => ({
+        value: job._id,
+        label: jobTitle(job),
+        description: job.location || job.experience || 'Open role',
+        icon: Briefcase,
+        searchText: `${jobTitle(job)} ${job.location || ''} ${job.experience || ''}`,
+      })),
+    [jobs]
+  );
+
+  const sourceOptions = [
+    { value: 'Direct', label: 'Direct', icon: User },
+    { value: 'Referral', label: 'Referral', icon: User },
+    { value: 'LinkedIn', label: 'LinkedIn', icon: Briefcase },
+    { value: 'Job Board', label: 'Job Board', icon: Briefcase },
+    { value: 'Careers Page', label: 'Careers Page', icon: FileText },
+    { value: 'Agency', label: 'Agency', icon: Briefcase },
+  ];
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-stone-50/60 overflow-hidden content-fill-ats">
       {/* Top Bar */}
-      <div className="bg-white/95 backdrop-blur-xl border-b border-stone-200/70 px-3 sm:px-5 lg:px-6 py-3 sm:py-4 flex-shrink-0 z-10 shadow-[var(--shadow-card)]">
-        <div className="flex flex-col gap-3">
-          {/* Row 1: brand + primary CTA */}
-          <div className="flex items-start sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="icon-box-ats !w-10 !h-10 !rounded-xl flex-shrink-0">
-                <Activity className="w-5 h-5 text-white" />
-              </div>
-              <div className="min-w-0">
-                <h1 className="text-xl sm:text-2xl font-bold text-gradient tracking-tight" style={{ letterSpacing: '-0.025em' }}>
-                  Pipeline Board
-                </h1>
-                <p className="text-xs text-stone-500 font-medium mt-0.5 hidden sm:block">
-                  {selectedJob ? (
-                    <span className="inline-flex items-center gap-1.5 max-w-[min(100%,28rem)]">
-                      <Briefcase className="w-3 h-3 text-brand-500 flex-shrink-0" />
-                      <span className="truncate">{jobTitle(selectedJob)}</span>
-                    </span>
-                  ) : (
-                    'Drag candidates across stages'
-                  )}
-                </p>
-              </div>
+      <div className="bg-white/95 backdrop-blur-xl border-b border-stone-200/70 px-3 sm:px-5 lg:px-6 py-3 sm:py-3.5 flex-shrink-0 z-20 shadow-[var(--shadow-card)]">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-4">
+          {/* Brand */}
+          <div className="flex items-center gap-3 min-w-0 lg:min-w-[11.5rem] flex-shrink-0">
+            <div className="icon-box-ats !w-10 !h-10 !rounded-xl flex-shrink-0">
+              <Activity className="w-5 h-5 text-white" />
             </div>
-            <button type="button" onClick={openAddModal} className="btn-primary !py-2 !px-3.5 sm:!px-5 flex-shrink-0">
-              <Plus className="w-4 h-4" />
-              <span className="whitespace-nowrap text-sm sm:text-[13px]">
-                <span className="sm:hidden">Add</span>
-                <span className="hidden sm:inline">Add Application</span>
-              </span>
-            </button>
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold text-gradient tracking-tight leading-tight" style={{ letterSpacing: '-0.025em' }}>
+                Pipeline Board
+              </h1>
+              <p className="text-[11px] sm:text-xs text-stone-500 font-medium mt-0.5 truncate max-w-[14rem]">
+                {selectedJob ? jobTitle(selectedJob) : 'Drag candidates across stages'}
+              </p>
+            </div>
           </div>
 
-          {/* Row 2: filters — always one clean row that wraps evenly */}
-          <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_auto] gap-2 sm:gap-3 items-center">
-            <div className="relative min-w-0">
-              <select
-                value={selectedJobId}
-                onChange={(e) => setSelectedJobId(e.target.value)}
-                className="select-ats appearance-none !pr-10 cursor-pointer font-medium w-full"
-              >
-                <option value="">Select a Job</option>
-                {jobs.map((job) => (
-                  <option key={job._id} value={job._id}>{jobTitle(job)}</option>
-                ))}
-              </select>
-              <ChevronDown className="w-4 h-4 text-stone-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
+          {/* Controls cluster — one fitted toolbar */}
+          <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2.5">
+            <PremiumSelect
+              className="w-full sm:flex-1 sm:min-w-[11rem] sm:max-w-xs"
+              value={selectedJobId}
+              onChange={setSelectedJobId}
+              options={jobOptions}
+              placeholder="Select a Job"
+              icon={Briefcase}
+              searchable
+              searchPlaceholder="Search jobs…"
+              emptyLabel="No jobs found"
+              allowClear
+            />
 
-            <div className="relative min-w-0">
-              <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <div className="relative w-full sm:flex-1 sm:min-w-[10rem] sm:max-w-sm">
+              <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="search"
-                placeholder="Search candidates…"
+                placeholder={selectedJobId ? 'Search name, email, stage…' : 'Select a job to search'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="input-ats !pl-9 w-full"
+                className="input-ats !pl-10 w-full"
                 disabled={!selectedJobId}
               />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100"
+                  aria-label="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
-            <div className="flex bg-stone-100 p-1 rounded-xl w-fit justify-self-start sm:justify-self-end">
-              <button
-                type="button"
-                onClick={() => setViewMode('kanban')}
-                className={classNames(
-                  'p-2 rounded-lg transition-all',
-                  viewMode === 'kanban' ? 'bg-white shadow-sm text-brand-600' : 'text-stone-500 hover:text-stone-700'
-                )}
-                title="Kanban view"
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                className={classNames(
-                  'p-2 rounded-lg transition-all',
-                  viewMode === 'table' ? 'bg-white shadow-sm text-brand-600' : 'text-stone-500 hover:text-stone-700'
-                )}
-                title="Table view"
-              >
-                <List className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-3 sm:mt-3.5 pt-3 border-t border-stone-100 flex flex-wrap gap-x-5 gap-y-2 text-sm">
-          <div className="flex items-center gap-2 text-stone-600">
-            <span className="inline-flex items-center justify-center min-w-[1.75rem] h-7 px-2 rounded-lg bg-brand-50 text-brand-700 font-bold text-xs border border-brand-100">
-              {displayTotal}
-            </span>
-            Total Applications
-          </div>
-          <div className="flex items-center gap-2 text-stone-600">
-            <span className="font-bold text-stone-900">{stats.avgTime || 'N/A'}</span>
-            Avg Time-to-Hire
-          </div>
-          {selectedJobId && STAGES.map((s) => {
-            const n = (stats.byStage && stats.byStage[s.id]) ?? getAppsByStage(s.id).length;
-            if (!n) return null;
-            return (
-              <div key={s.id} className="hidden lg:flex items-center gap-1.5 text-xs text-stone-500">
-                <span className={classNames('w-1.5 h-1.5 rounded-full', s.bar)} />
-                {s.label} <span className="font-semibold text-stone-700">{n}</span>
+            <div className="flex items-center gap-2 flex-shrink-0 self-stretch sm:self-auto">
+              <div className="flex bg-stone-100 p-1 rounded-xl h-[42px] items-center">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('kanban')}
+                  className={classNames(
+                    'h-8 w-8 flex items-center justify-center rounded-lg transition-all',
+                    viewMode === 'kanban' ? 'bg-white shadow-sm text-brand-600' : 'text-stone-500 hover:text-stone-700'
+                  )}
+                  title="Kanban view"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('table')}
+                  className={classNames(
+                    'h-8 w-8 flex items-center justify-center rounded-lg transition-all',
+                    viewMode === 'table' ? 'bg-white shadow-sm text-brand-600' : 'text-stone-500 hover:text-stone-700'
+                  )}
+                  title="Table view"
+                >
+                  <List className="w-4 h-4" />
+                </button>
               </div>
-            );
-          })}
+
+              <button
+                type="button"
+                onClick={openAddModal}
+                className="btn-primary !h-[42px] !py-0 !px-3.5 sm:!px-4 inline-flex items-center gap-1.5 flex-1 sm:flex-none justify-center"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="whitespace-nowrap text-sm font-semibold">Add Application</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -807,19 +820,19 @@ export default function ApplicationsPage() {
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-6">
-                <div className="flex flex-wrap gap-2">
-                  <div className="relative">
-                    <select
-                      value={selectedApp.stage}
-                      onChange={(e) => handleStageChange(selectedApp._id, e.target.value)}
-                      className="appearance-none bg-brand-50 border border-brand-200 text-brand-700 font-semibold py-2 pl-3 pr-9 rounded-xl focus:ring-2 focus:ring-brand-500/20 cursor-pointer text-sm"
-                    >
-                      {STAGES.map((s) => (
-                        <option key={s.id} value={s.id}>{s.label}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="w-4 h-4 text-brand-600 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <PremiumSelect
+                    className="w-full sm:w-44"
+                    value={selectedApp.stage}
+                    onChange={(v) => handleStageChange(selectedApp._id, v)}
+                    options={STAGES.map((s) => ({
+                      value: s.id,
+                      label: s.label,
+                      icon: s.icon,
+                    }))}
+                    placeholder="Stage"
+                    icon={Target}
+                  />
 
                   <button
                     type="button"
@@ -836,7 +849,7 @@ export default function ApplicationsPage() {
                       });
                       setIsScheduleOpen(true);
                     }}
-                    className="btn-secondary !py-2 !px-3 !text-xs"
+                    className="btn-secondary !py-2 !px-3 !text-xs !h-[42px]"
                   >
                     <Calendar className="w-3.5 h-3.5" /> Schedule
                   </button>
@@ -978,17 +991,16 @@ export default function ApplicationsPage() {
         <form id="add-app-form" onSubmit={handleAddApplication} className="space-y-4">
           <div>
             <label className="label-ats">Job *</label>
-            <select
-              required
-              className="select-ats"
+            <PremiumSelect
               value={addForm.jobId}
-              onChange={(e) => setAddForm({ ...addForm, jobId: e.target.value })}
-            >
-              <option value="">Select a job</option>
-              {jobs.map((job) => (
-                <option key={job._id} value={job._id}>{jobTitle(job)}</option>
-              ))}
-            </select>
+              onChange={(v) => setAddForm({ ...addForm, jobId: v })}
+              options={jobOptions}
+              placeholder="Select a job"
+              icon={Briefcase}
+              searchable
+              searchPlaceholder="Search jobs…"
+              emptyLabel="No jobs found"
+            />
           </div>
           <div>
             <label className="label-ats">Candidate Name *</label>
@@ -1005,11 +1017,13 @@ export default function ApplicationsPage() {
             </div>
             <div>
               <label className="label-ats">Source</label>
-              <select className="select-ats" value={addForm.source} onChange={(e) => setAddForm({ ...addForm, source: e.target.value })}>
-                {['Direct', 'Referral', 'LinkedIn', 'Job Board', 'Careers Page', 'Agency'].map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
+              <PremiumSelect
+                value={addForm.source}
+                onChange={(v) => setAddForm({ ...addForm, source: v })}
+                options={sourceOptions}
+                placeholder="Source"
+                icon={User}
+              />
             </div>
           </div>
         </form>
@@ -1072,11 +1086,18 @@ export default function ApplicationsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="label-ats">Mode</label>
-              <select className="select-ats" value={scheduleForm.mode} onChange={(e) => setScheduleForm({ ...scheduleForm, mode: e.target.value })}>
-                {['Video', 'Phone', 'On-site', 'Hybrid'].map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
+              <PremiumSelect
+                value={scheduleForm.mode}
+                onChange={(v) => setScheduleForm({ ...scheduleForm, mode: v })}
+                options={[
+                  { value: 'Video', label: 'Video', icon: Video },
+                  { value: 'Phone', label: 'Phone', icon: Phone },
+                  { value: 'On-site', label: 'On-site', icon: MapPin },
+                  { value: 'Hybrid', label: 'Hybrid', icon: Briefcase },
+                ]}
+                placeholder="Mode"
+                icon={Video}
+              />
             </div>
             <div>
               <label className="label-ats">Location / link</label>

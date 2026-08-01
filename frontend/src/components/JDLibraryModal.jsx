@@ -140,12 +140,20 @@ const JDLibraryModal = ({ isOpen, onClose, onSelectTemplate }) => {
   const filteredTemplates = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     if (!q) return allTemplates;
-    return allTemplates.filter(
-      (t) =>
-        t.role.toLowerCase().includes(q) ||
-        (t.skills || []).some((s) => String(s).toLowerCase().includes(q)) ||
-        (t.description || '').toLowerCase().includes(q)
-    );
+    return allTemplates.filter((t) => {
+      const hay = [
+        t.role,
+        t.experience,
+        t.location,
+        t.ctc,
+        t.description,
+        ...(t.skills || []),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
   }, [allTemplates, searchTerm]);
 
   const openCreate = () => {
@@ -315,11 +323,6 @@ const JDLibraryModal = ({ isOpen, onClose, onSelectTemplate }) => {
                 {t.label}
               </button>
             ))}
-          </div>
-
-          <div className="rounded-xl border border-brand-100 bg-brand-50/50 px-3.5 py-2.5 text-xs text-brand-800 leading-relaxed">
-            <span className="font-bold">How to save a template:</span>{' '}
-            Click <strong>New Template</strong> here, or open any job → ⋮ menu → <strong>Save as Template</strong>.
           </div>
 
           <div className="space-y-2.5 max-h-[46vh] overflow-y-auto pr-1 -mr-1">
