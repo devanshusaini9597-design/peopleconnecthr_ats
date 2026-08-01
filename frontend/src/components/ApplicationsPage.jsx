@@ -4,9 +4,10 @@ import {
   Phone, Mail, Briefcase, FileText,
   X, User, Calendar, CheckCircle2,
   AlertCircle, Activity, XCircle, Award, Target,
-  Loader2, Trash2, Save, Video, MapPin
+  Loader2, Trash2, Save, Video, MapPin, GitPullRequest
 } from 'lucide-react';
 import { ShieldCheck, FileSignature } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import API_URL from '../config';
 import { useAuth } from '../context/AuthContext';
 import { planHasFeature } from '../config/planFeatures';
@@ -65,6 +66,14 @@ const emptyAddForm = {
 };
 
 export default function ApplicationsPage() {
+  const location = useLocation();
+  const isApplicationsRoute = location.pathname.startsWith('/applications');
+  const pageTitle = isApplicationsRoute ? 'Applications' : 'Pipeline Board';
+  const pageSubtitle = isApplicationsRoute
+    ? 'Browse and manage applications in a list'
+    : 'Drag candidates across stages';
+  const PageIcon = isApplicationsRoute ? GitPullRequest : Activity;
+
   const { organization } = useAuth();
   const hasBackgroundCheck = planHasFeature(organization?.plan, 'integrations.backgroundCheck');
   const hasEsign = planHasFeature(organization?.plan, 'integrations.esign');
@@ -76,7 +85,11 @@ export default function ApplicationsPage() {
   const [stats, setStats] = useState({ total: 0, byStage: {}, avgTime: 'N/A' });
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState('kanban');
+  const [viewMode, setViewMode] = useState(isApplicationsRoute ? 'table' : 'kanban');
+
+  useEffect(() => {
+    setViewMode(isApplicationsRoute ? 'table' : 'kanban');
+  }, [isApplicationsRoute]);
 
   const [selectedApp, setSelectedApp] = useState(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
@@ -499,14 +512,14 @@ export default function ApplicationsPage() {
           {/* Brand */}
           <div className="flex items-center gap-3 min-w-0 lg:min-w-[11.5rem] flex-shrink-0">
             <div className="icon-box-ats !w-10 !h-10 !rounded-xl flex-shrink-0">
-              <Activity className="w-5 h-5 text-white" />
+              <PageIcon className="w-5 h-5 text-white" />
             </div>
             <div className="min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold text-gradient tracking-tight leading-tight" style={{ letterSpacing: '-0.025em' }}>
-                Pipeline Board
+                {pageTitle}
               </h1>
-              <p className="text-[11px] sm:text-xs text-stone-500 font-medium mt-0.5 truncate max-w-[14rem]">
-                {selectedJob ? jobTitle(selectedJob) : 'Drag candidates across stages'}
+              <p className="text-[11px] sm:text-xs text-stone-500 font-medium mt-0.5 truncate max-w-[16rem]">
+                {selectedJob ? jobTitle(selectedJob) : pageSubtitle}
               </p>
             </div>
           </div>
@@ -599,7 +612,9 @@ export default function ApplicationsPage() {
             </div>
             <h2 className="text-xl font-bold text-stone-800 tracking-tight mb-2">Select a Job</h2>
             <p className="text-sm text-stone-500 max-w-sm leading-relaxed mb-5">
-              Choose a job from the dropdown to view its hiring pipeline, or add an application to get started.
+              {isApplicationsRoute
+                ? 'Choose a job to browse its applications in list view, or add an application to get started.'
+                : 'Choose a job from the dropdown to view its hiring pipeline, or add an application to get started.'}
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               <button type="button" onClick={openAddModal} className="btn-primary" disabled={jobs.length === 0}>

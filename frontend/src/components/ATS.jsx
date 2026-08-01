@@ -5,7 +5,7 @@ import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { 
   Plus, Search, Mail, MessageCircle, Upload, 
-  Filter, CheckSquare, Square, FileText, Cpu, Trash2, Edit, X, Briefcase, BarChart3, AlertCircle, RefreshCw, Download, Eye, Info, Share2, Megaphone, Users, ArrowUpDown, Building2, MapPin, User
+  Filter, CheckSquare, Square, FileText, Cpu, Trash2, Edit, X, Briefcase, BarChart3, AlertCircle, RefreshCw, Download, Eye, Info, Share2, Megaphone, Users, ArrowUpDown, Building2, MapPin, User, GripVertical, ChevronDown, Database
 } from 'lucide-react';
 import { useParsing } from '../hooks/useParsing';
 import PhoneInput from 'react-phone-input-2';
@@ -2345,6 +2345,87 @@ const handleAddCandidate = async (e) => {
 
   const [statusOptions, setStatusOptions] = useState(['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected']);
 
+  const DEFAULT_COLUMN_KEYS = [
+    'actions', 'srNo', 'resume', 'tools', 'date', 'location', 'position', 'fls',
+    'name', 'contact', 'email', 'companyName', 'experience', 'ctc', 'expectedCtc',
+    'noticePeriod', 'status', 'client', 'spoc', 'source', 'sharedBy'
+  ];
+
+  const [columnOrder, setColumnOrder] = useState(() => {
+    try {
+      const raw = localStorage.getItem('ats-candidate-column-order');
+      if (!raw) return DEFAULT_COLUMN_KEYS;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed) || !parsed.length) return DEFAULT_COLUMN_KEYS;
+      const merged = parsed.filter((k) => DEFAULT_COLUMN_KEYS.includes(k));
+      DEFAULT_COLUMN_KEYS.forEach((k) => { if (!merged.includes(k)) merged.push(k); });
+      return merged;
+    } catch {
+      return DEFAULT_COLUMN_KEYS;
+    }
+  });
+
+  const [dragColKey, setDragColKey] = useState(null);
+  const [dragOverColKey, setDragOverColKey] = useState(null);
+  const [showImportMenu, setShowImportMenu] = useState(false);
+
+  const orderedColumns = useMemo(() => {
+    const byKey = Object.fromEntries(tableColumns.map((c) => [c.key, c]));
+    const present = columnOrder.filter((k) => byKey[k]);
+    tableColumns.forEach((c) => {
+      if (!present.includes(c.key)) present.push(c.key);
+    });
+    return present.map((k) => byKey[k]).filter(Boolean);
+  }, [tableColumns, columnOrder]);
+
+  const persistColumnOrder = (next) => {
+    setColumnOrder(next);
+    try {
+      localStorage.setItem('ats-candidate-column-order', JSON.stringify(next));
+    } catch { /* ignore */ }
+  };
+
+  const handleColumnDragStart = (e, key) => {
+    setDragColKey(key);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', key);
+  };
+
+  const handleColumnDragOver = (e, key) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverColKey !== key) setDragOverColKey(key);
+  };
+
+  const handleColumnDrop = (e, targetKey) => {
+    e.preventDefault();
+    const fromKey = dragColKey || e.dataTransfer.getData('text/plain');
+    setDragColKey(null);
+    setDragOverColKey(null);
+    if (!fromKey || fromKey === targetKey) return;
+
+    const current = orderedColumns.map((c) => c.key);
+    const fromIdx = current.indexOf(fromKey);
+    const toIdx = current.indexOf(targetKey);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const next = [...current];
+    next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, fromKey);
+    // keep any saved keys that aren't currently visible (e.g. sharedBy)
+    const extras = columnOrder.filter((k) => !next.includes(k));
+    persistColumnOrder([...next, ...extras]);
+  };
+
+  const handleColumnDragEnd = () => {
+    setDragColKey(null);
+    setDragOverColKey(null);
+  };
+
+  const resetColumnOrder = () => {
+    persistColumnOrder(DEFAULT_COLUMN_KEYS);
+    toast.success('Column order reset');
+  };
+
   // Fetch status options from master data (or backend) on mount
   useEffect(() => {
     const fetchStatusOptions = async () => {
@@ -2611,12 +2692,53 @@ const handleAddCandidate = async (e) => {
       <PageHeader
         icon={Users}
         title="Candidates"
-        subtitle={`${filteredCandidates.length.toLocaleString()} records in your pipeline${searchQuery ? ` · “${searchQuery}”` : ''}.`}
+        subtitle="Talent database — search, filter, and manage every profile."
         gradientTitle
       >
-        <button type="button" onClick={() => fileInputRef.current?.click()} className="btn-secondary flex-1 sm:flex-none">
-          <Upload size={16} /> Import
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowImportMenu((v) => !v)}
+            className="btn-secondary flex-1 sm:flex-none"
+          >
+            <Upload size={16} /> Import <ChevronDown size={14} className="opacity-60" />
+          </button>
+          {showImportMenu && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setShowImportMenu(false)} aria-hidden />
+              <div className="absolute right-0 top-full mt-1.5 z-40 w-56 rounded-xl border border-stone-200 bg-white shadow-xl py-1.5 animate-fade-in">
+                <button
+                  type="button"
+                  onClick={() => { setShowImportMenu(false); fileInputRef.current?.click(); }}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-50"
+                >
+                  <Upload size={14} className="text-brand-600" /> Import Excel / CSV
+                </button>
+                {candidatesViewMode === 'all' && (
+                  <button
+                    type="button"
+                    onClick={() => { setShowImportMenu(false); handleImportAllToMineClick(); }}
+                    disabled={isImportingShared || isImportingAll}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+                  >
+                    <Database size={14} className="text-brand-600" /> Import all from database
+                  </button>
+                )}
+                {candidatesViewMode === 'all' && filteredCandidates.some(c => c._isShared) && (
+                  <button
+                    type="button"
+                    onClick={() => { setShowImportMenu(false); handleImportSharedToMineClick(); }}
+                    disabled={isImportingShared || isImportingAll}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+                  >
+                    <Share2 size={14} className="text-emerald-600" />
+                    {selectedIds.length > 0 ? `Import ${selectedIds.length} shared` : 'Import shared'}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => {
@@ -2631,153 +2753,131 @@ const handleAddCandidate = async (e) => {
         </button>
       </PageHeader>
 
-      {/* Loading bar only — thin top bar when initial load, no skeleton */}
       {isLoadingInitial && candidates.length === 0 && (
         <div className="h-1 w-full bg-stone-100 rounded-full overflow-hidden">
           <div className="h-full w-1/3 bg-gradient-to-r from-brand-500 to-teal-400 rounded-full animate-shimmer" />
         </div>
       )}
       
-      {/* Hidden file inputs (no UI) */}
       <input type="file" accept=".csv, .xlsx, .xls" ref={fileInputRef} onChange={handleBulkUpload} className="hidden" />
       <input type="file" accept=".csv, .xlsx, .xls" ref={autoUploadInputRef} onChange={handleAutoUpload} className="hidden" />
 
-      {/* HEADER + TOOLBAR — premium enterprise layout */}
-      <div className="card-ats-bordered overflow-visible">
-        {/* Row 1: View toggle + import */}
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 border-b border-stone-100">
-          <div className="inline-flex rounded-xl bg-stone-100/90 p-1 border border-stone-200/80 w-fit">
+      {/* Enterprise toolbar — single clean strip */}
+      <div className="card-ats-bordered overflow-visible px-3 sm:px-4 py-3">
+        <div className="flex flex-col xl:flex-row xl:items-center gap-2.5 xl:gap-3">
+          <div className="inline-flex rounded-xl bg-stone-100/90 p-1 border border-stone-200/70 w-fit flex-shrink-0">
             <button
               type="button"
               onClick={() => setCandidatesViewMode('mine')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold rounded-lg transition-all duration-150 ${candidatesViewMode === 'mine' ? 'bg-white text-brand-700 shadow-sm border border-brand-200' : 'text-stone-500 hover:text-stone-700'}`}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${candidatesViewMode === 'mine' ? 'bg-white text-brand-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
             >
-              <User size={14} /> Show only mine
+              <User size={13} /> Mine
             </button>
             <button
               type="button"
               onClick={() => setCandidatesViewMode('all')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold rounded-lg transition-all duration-150 ${candidatesViewMode === 'all' ? 'bg-white text-brand-700 shadow-sm border border-brand-200' : 'text-stone-500 hover:text-stone-700'}`}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${candidatesViewMode === 'all' ? 'bg-white text-brand-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
             >
-              <Users size={14} /> View all
+              <Users size={13} /> All
             </button>
           </div>
-          <span className="inline-flex items-center gap-2 text-sm font-medium text-stone-600 tabular-nums">
-            <span className="inline-flex items-center justify-center min-w-[1.75rem] h-7 px-2 rounded-lg bg-brand-50 text-brand-700 font-bold text-xs border border-brand-100">
-              {filteredCandidates.length.toLocaleString()}
-            </span>
-            records
-            {searchQuery && <span className="font-normal text-stone-400">· “{searchQuery}”</span>}
-          </span>
-          {candidatesViewMode === 'all' && (
-            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-              <button
-                onClick={handleImportAllToMineClick}
-                disabled={isImportingShared || isImportingAll}
-                className="btn-primary !py-2"
-                title="Copy every candidate in the database into your list"
-              >
-                {isImportingAll ? <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Plus size={14} />}
-                {isImportingAll ? 'Importing...' : 'Import all from database'}
-              </button>
-              {filteredCandidates.some(c => c._isShared) && (
+
+          <div className="relative flex-1 min-w-0">
+            <Search className="text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" size={16} />
+            <input
+              type="search"
+              placeholder="Search name, email, phone, position…"
+              className="input-ats !pl-10 !pr-24 w-full"
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+            />
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+              {searchQuery.trim() && (
                 <button
-                  onClick={handleImportSharedToMineClick}
-                  disabled={isImportingShared || isImportingAll}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold shadow-sm hover:bg-emerald-700 hover:shadow disabled:opacity-50 transition-all duration-150"
-                  title="Import only candidates shared with you"
+                  type="button"
+                  onClick={() => { setSearchQuery(''); setCurrentPage(1); }}
+                  className="p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100"
+                  title="Clear"
                 >
-                  {isImportingShared ? <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Plus size={14} />}
-                  {isImportingShared ? 'Importing...' : (selectedIds.length > 0 ? `Import ${selectedIds.length} shared` : 'Import shared')}
+                  <X size={14} />
                 </button>
               )}
+              <span className="hidden sm:inline text-[10px] font-bold text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded-md tabular-nums">
+                {filteredCandidates.length.toLocaleString()}
+              </span>
             </div>
-          )}
-        </div>
+          </div>
 
-        {/* Row 2: Search + Filters + Export + Sort */}
-        <div className="flex flex-col lg:flex-row lg:items-center gap-2.5 sm:gap-3 px-4 sm:px-5 py-3.5 bg-gradient-to-b from-stone-50/90 to-white">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
             <PremiumSelect
-              className="w-full sm:w-[9.5rem] flex-shrink-0"
+              className="w-[8.5rem]"
               value={searchScope}
               onChange={(v) => { setSearchScope(v); setCurrentPage(1); }}
               options={[
                 { value: 'all', label: 'All fields', icon: Search },
-                { value: 'spoc', label: 'SPOC', icon: User },
                 { value: 'name', label: 'Name', icon: User },
                 { value: 'email', label: 'Email', icon: Mail },
                 { value: 'position', label: 'Position', icon: Briefcase },
                 { value: 'location', label: 'Location', icon: MapPin },
                 { value: 'company', label: 'Company', icon: Building2 },
                 { value: 'client', label: 'Client', icon: Building2 },
+                { value: 'spoc', label: 'SPOC', icon: User },
               ]}
-              placeholder="All fields"
+              placeholder="Field"
               icon={Search}
             />
-            <div className="relative flex-1 min-w-0">
-              <Search className="text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" size={16} />
-              <input
-                type="search"
-                placeholder={searchScope === 'all' ? 'Search candidates…' : `Search ${searchScope}…`}
-                className="input-ats !pl-10 w-full"
-                value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-              />
-              {(searchScope !== 'all' || searchQuery.trim()) && (
-                <button
-                  type="button"
-                  onClick={() => { setSearchScope('all'); setSearchQuery(''); setCurrentPage(1); }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
-                  title="Clear"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
             <button
+              type="button"
               onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
-              className={showAdvancedSearch ? 'btn-primary !py-2.5 !h-[42px]' : 'btn-secondary !py-2.5 !h-[42px]'}
+              className={showAdvancedSearch ? 'btn-primary !py-2 !h-[42px]' : 'btn-secondary !py-2 !h-[42px]'}
             >
-              <Filter size={16} /> {showAdvancedSearch ? 'Close' : 'Filters'}
+              <Filter size={15} /> Filters
             </button>
             <button
+              type="button"
               onClick={() => { if (filteredCandidates.length === 0) toast.warning('No candidates to download.'); else setShowDownloadModal(true); }}
-              className="btn-secondary !py-2.5 !h-[42px]"
+              className="btn-secondary !py-2 !h-[42px]"
             >
-              <Download size={16} /> Export{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+              <Download size={15} /> Export{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
             </button>
-            <div className="flex items-center gap-1.5 min-w-0 sm:min-w-[12rem]">
-              <PremiumSelect
-                className="w-full sm:w-40"
-                value={sortField}
-                onChange={(v) => { setSortField(v); setCurrentPage(1); }}
-                options={[
-                  { value: 'date', label: 'Date Added', icon: ArrowUpDown },
-                  { value: 'name', label: 'Name', icon: User },
-                  { value: 'email', label: 'Email', icon: Mail },
-                  { value: 'position', label: 'Position', icon: Briefcase },
-                  { value: 'location', label: 'Location', icon: MapPin },
-                  { value: 'company', label: 'Company', icon: Building2 },
-                  { value: 'status', label: 'Status', icon: RefreshCw },
-                  { value: 'spoc', label: 'SPOC', icon: User },
-                ]}
-                placeholder="Sort"
-                icon={ArrowUpDown}
-              />
-              <button
-                onClick={() => { setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc'); setCurrentPage(1); }}
-                className="h-[42px] w-[42px] flex items-center justify-center rounded-xl border border-stone-200 bg-stone-50 text-stone-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 transition-all font-bold text-sm flex-shrink-0"
-                title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
-              >
-                {sortOrder === 'asc' ? '↑' : '↓'}
-              </button>
-            </div>
+            <PremiumSelect
+              className="w-[9rem]"
+              value={sortField}
+              onChange={(v) => { setSortField(v); setCurrentPage(1); }}
+              options={[
+                { value: 'date', label: 'Date', icon: ArrowUpDown },
+                { value: 'name', label: 'Name', icon: User },
+                { value: 'email', label: 'Email', icon: Mail },
+                { value: 'position', label: 'Position', icon: Briefcase },
+                { value: 'location', label: 'Location', icon: MapPin },
+                { value: 'company', label: 'Company', icon: Building2 },
+                { value: 'status', label: 'Status', icon: RefreshCw },
+                { value: 'spoc', label: 'SPOC', icon: User },
+              ]}
+              placeholder="Sort"
+              icon={ArrowUpDown}
+            />
+            <button
+              type="button"
+              onClick={() => { setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc'); setCurrentPage(1); }}
+              className="h-[42px] w-[42px] flex items-center justify-center rounded-xl border border-stone-200 bg-stone-50 text-stone-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 transition-all font-bold text-sm"
+              title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+            >
+              {sortOrder === 'asc' ? '↑' : '↓'}
+            </button>
+            <button
+              type="button"
+              onClick={resetColumnOrder}
+              className="btn-ghost !py-2 !px-2.5 !h-[42px] !text-xs text-stone-500"
+              title="Reset column order"
+            >
+              <GripVertical size={15} />
+            </button>
           </div>
         </div>
+        <p className="mt-2 text-[11px] text-stone-400 font-medium hidden sm:block">
+          Drag column headers to reorder · order is saved on this device
+        </p>
       </div>
 
       {/* ADVANCED SEARCH PANEL - ABOVE TABLE */}
@@ -3059,12 +3159,23 @@ const handleAddCandidate = async (e) => {
                   {isAllSelected ? <CheckSquare size={18} className="text-brand-600" /> : <Square size={18} className="text-stone-400" />}
                 </div>
               </th>
-              {tableColumns.map((column) => (
+              {orderedColumns.map((column) => (
                 <th
                   key={column.key}
-                  className="px-4 py-3.5 text-[10px] font-bold text-stone-500 uppercase tracking-wider whitespace-nowrap border-r border-stone-200/60 last:border-r-0"
+                  draggable
+                  onDragStart={(e) => handleColumnDragStart(e, column.key)}
+                  onDragOver={(e) => handleColumnDragOver(e, column.key)}
+                  onDrop={(e) => handleColumnDrop(e, column.key)}
+                  onDragEnd={handleColumnDragEnd}
+                  title="Drag to reorder column"
+                  className={`px-3 py-3.5 text-[10px] font-bold text-stone-500 uppercase tracking-wider whitespace-nowrap border-r border-stone-200/60 last:border-r-0 select-none cursor-grab active:cursor-grabbing transition-colors ${
+                    dragColKey === column.key ? 'opacity-40 bg-brand-50' : ''
+                  } ${dragOverColKey === column.key && dragColKey !== column.key ? 'bg-brand-100/70 ring-2 ring-inset ring-brand-400' : ''}`}
                 >
-                  {column.label}
+                  <span className="inline-flex items-center gap-1">
+                    <GripVertical size={12} className="text-stone-300 flex-shrink-0" />
+                    {column.label}
+                  </span>
                 </th>
               ))}
             </tr>
@@ -3077,7 +3188,7 @@ const handleAddCandidate = async (e) => {
                     {selectedIds.includes(candidate._id) ? <CheckSquare className="text-brand-600" size={17} /> : <Square className="text-stone-300 hover:text-stone-400" size={17} />}
                   </div>
                 </td>
-                {tableColumns.map((column) => (
+                {orderedColumns.map((column) => (
                   <td
                     key={`${candidate._id}-${column.key}`}
                     className="px-4 py-3 text-sm text-stone-700 border-r border-stone-100/80 last:border-r-0 font-medium"
@@ -3089,7 +3200,7 @@ const handleAddCandidate = async (e) => {
             ))}
             {visibleCandidates.length === 0 && !isLoadingInitial && (
               <tr>
-                <td colSpan={tableColumns.length + 1}>
+                <td colSpan={orderedColumns.length + 1}>
                   {viewMode === 'shared' ? (
                     <EmptyState icon={Share2} message="No shared candidates yet" subMessage="When team members share candidates with you, they will appear here." />
                   ) : searchQuery ? (
