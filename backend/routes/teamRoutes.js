@@ -7,6 +7,8 @@ const Company = require('../models/Company');
 const Notification = require('../models/Notification');
 const { normalizeText } = require('../utils/textNormalize');
 const { sendEmail } = require('../services/emailService');
+const eventBus = require('../events/eventBus');
+const eventTypes = require('../events/eventTypes');
 
 // All routes require auth
 router.use(verifyToken);
@@ -56,13 +58,34 @@ const isValidCompanyEmail = (email, companyInfo) => {
   return { valid: isCompanyEmail, isCompanyEmail };
 };
 
-// GET all team members for current user: people I invited + people who invited me (so both sides see each other)
+// GET all team members in the current user's organization (shared roster —
+// everyone in the same org sees the same team directory, regardless of who
+// sent each invite). Falls back to the legacy per-inviter view only for
+// accounts that somehow have no organizationId yet.
 router.get('/', async (req, res) => {
   try {
     const userId = req.user.id;
     const userEmail = (req.user.email || '').toLowerCase();
 
-    // 1) People I invited (createdBy me, Active or Accepted)
+    if (req.user.organizationId) {
+      const members = await TeamMember.find({
+        organizationId: req.user.organizationId,
+        $or: [
+          { invitationStatus: 'Active' },
+          { invitationStatus: 'Accepted' },
+          { invitationStatus: { $exists: false } },
+          { invitationStatus: { $in: [null, ''] } }
+        ]
+      }).sort({ name: 1 }).lean();
+
+      const result = members
+        .filter(m => (m.email || '').toLowerCase() !== userEmail)
+        .map(m => ({ ...m, invitedByMe: String(m.createdBy) === String(userId) }));
+
+      return res.json({ success: true, members: result });
+    }
+
+    // ── Legacy fallback (no organizationId on this account) ──
     const invitedByMe = await TeamMember.find({
       createdBy: userId,
       $or: [
@@ -73,7 +96,6 @@ router.get('/', async (req, res) => {
       ]
     }).sort({ name: 1 }).lean();
 
-    // 2) People who invited me (where I am the invitee and I accepted)
     const invitedMe = await TeamMember.find({
       email: userEmail,
       invitationStatus: 'Accepted'
@@ -87,7 +109,6 @@ router.get('/', async (req, res) => {
     const inviterMap = {};
     inviterUsers.forEach(u => { inviterMap[String(u._id)] = u; });
 
-    // Build "members who invited me" as synthetic members so both sides see each other
     const invitedMeAsMembers = invitedMe.map(m => {
       const inviter = inviterMap[String(m.createdBy)];
       return {
@@ -103,17 +124,14 @@ router.get('/', async (req, res) => {
       };
     });
 
-    // Mark my list as invitedByMe: true
     invitedByMe.forEach(m => { m.invitedByMe = true; m.invitedMe = false; });
 
-    // Combine and dedupe by email (in case same person invited me and I invited them)
     const byEmail = {};
     [...invitedByMe, ...invitedMeAsMembers].forEach(m => {
       const e = (m.email || '').toLowerCase();
       if (!e) return;
       if (!byEmail[e] || m.invitedMe) byEmail[e] = m;
     });
-    // Exclude current user from team directory — show only other members
     const members = Object.values(byEmail)
       .filter(m => (m.email || '').toLowerCase() !== userEmail)
       .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -174,10 +192,14 @@ router.post('/', async (req, res) => {
     
     // Check if email is from company domain
     const isCompanyEmail = validation.isCompanyEmail;
-    
+
+    // Scope duplicate checks to the organization (falls back to createdBy for
+    // legacy accounts with no organizationId) so two orgs can't collide/leak.
+    const teamScope = req.user.organizationId ? { organizationId: req.user.organizationId } : { createdBy: req.user.id };
+
     // Check for existing member (active) - include backward compatibility for members without invitationStatus field
     const existing = await TeamMember.findOne({ 
-      createdBy: req.user.id, 
+      ...teamScope, 
       email: emailLower,
       $or: [
         { invitationStatus: { $in: ['Active', 'Accepted'] } },
@@ -189,7 +211,7 @@ router.post('/', async (req, res) => {
 
     // Check for pending invitation
     const existingPending = await TeamMember.findOne({
-      createdBy: req.user.id,
+      ...teamScope,
       email: emailLower,
       invitationStatus: 'Pending'
     });
@@ -217,6 +239,7 @@ router.post('/', async (req, res) => {
     
     const member = new TeamMember({
       createdBy: req.user.id,
+      organizationId: req.user.organizationId,
       name: normalizeText(name),
       email: emailLower,
       role: role ? normalizeText(role) : 'Team Member',
@@ -293,6 +316,17 @@ router.post('/', async (req, res) => {
       ? 'Team member added successfully (company email)'
       : 'Invitation sent successfully. They need to accept the invitation.';
 
+    if (req.user.organizationId) {
+      eventBus.emit(eventTypes.USER_INVITED, {
+        organizationId: req.user.organizationId,
+        userId: req.user.id,
+        resourceType: 'TeamMember',
+        resourceId: member._id,
+        invitedEmail: emailLower,
+        role: role || 'Team Member'
+      });
+    }
+
     res.status(201).json({ 
       success: true, 
       member, 
@@ -309,7 +343,8 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { name, email, role, phone, department } = req.body;
-    const member = await TeamMember.findOne({ _id: req.params.id, createdBy: req.user.id });
+    const teamScope = req.user.organizationId ? { organizationId: req.user.organizationId } : { createdBy: req.user.id };
+    const member = await TeamMember.findOne({ _id: req.params.id, ...teamScope });
     if (!member) return res.status(404).json({ success: false, message: 'Team member not found' });
 
     if (name) member.name = normalizeText(name);
@@ -318,15 +353,28 @@ router.put('/:id', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Invalid email address' });
       }
       // Check duplicate (different member same email)
-      const dup = await TeamMember.findOne({ createdBy: req.user.id, email: email.toLowerCase(), _id: { $ne: req.params.id } });
+      const dup = await TeamMember.findOne({ ...teamScope, email: email.toLowerCase(), _id: { $ne: req.params.id } });
       if (dup) return res.status(400).json({ success: false, message: 'Another team member with this email already exists' });
       member.email = email.toLowerCase().trim();
     }
+    const previousRole = member.role;
     if (role !== undefined) member.role = normalizeText(role);
     if (phone !== undefined) member.phone = phone.trim();
     if (department !== undefined) member.department = normalizeText(department);
 
     await member.save();
+
+    if (req.user.organizationId && role !== undefined && previousRole !== member.role) {
+      eventBus.emit(eventTypes.USER_ROLE_CHANGED, {
+        organizationId: req.user.organizationId,
+        userId: req.user.id,
+        resourceType: 'TeamMember',
+        resourceId: member._id,
+        previousRole,
+        newRole: member.role
+      });
+    }
+
     res.json({ success: true, member, message: 'Team member updated successfully' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -336,8 +384,20 @@ router.put('/:id', async (req, res) => {
 // DELETE - Remove a team member
 router.delete('/:id', async (req, res) => {
   try {
-    const result = await TeamMember.findOneAndDelete({ _id: req.params.id, createdBy: req.user.id });
+    const teamScope = req.user.organizationId ? { organizationId: req.user.organizationId } : { createdBy: req.user.id };
+    const result = await TeamMember.findOneAndDelete({ _id: req.params.id, ...teamScope });
     if (!result) return res.status(404).json({ success: false, message: 'Team member not found' });
+
+    if (req.user.organizationId) {
+      eventBus.emit(eventTypes.USER_REMOVED, {
+        organizationId: req.user.organizationId,
+        userId: req.user.id,
+        resourceType: 'TeamMember',
+        resourceId: result._id,
+        removedEmail: result.email
+      });
+    }
+
     res.json({ success: true, message: 'Team member removed successfully' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

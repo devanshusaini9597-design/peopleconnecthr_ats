@@ -1,16 +1,102 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Edit, Trash2, Search, ArrowUpDown } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, Search, ArrowUpDown, Users2, Link2, Copy, X } from 'lucide-react';
 import Layout from './Layout';
 import BASE_API_URL from '../config';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import ConfirmationModal from './ConfirmationModal';
 import { formatByFieldName, formatNameForInput } from '../utils/textFormatter';
+import { useAuth } from '../context/AuthContext';
+import { planHasFeature } from '../config/planFeatures';
+
+/**
+ * Agency mode (Enterprise): per-client sharing + a read-only client portal
+ * link. Only rendered when this instance of ManageMasterData is managing
+ * Clients (apiEndpoint === '/api/clients') — Positions/Sources don't have
+ * this concept.
+ */
+const ClientSharingModal = ({ client, members, onClose, onSave, saving }) => {
+  const [selected, setSelected] = useState(client.restrictedToUsers || []);
+  const toggle = (id) => setSelected((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+          <h3 className="text-lg font-bold text-slate-900">Sharing: {client.name}</h3>
+          <button onClick={onClose}><X size={18} className="text-slate-400" /></button>
+        </div>
+        <div className="p-5">
+          <p className="text-sm text-slate-500 mb-3">Leave none selected to keep this client visible to your whole team. Select specific teammates to restrict it to just them.</p>
+          <div className="space-y-1.5 max-h-64 overflow-y-auto">
+            {members.map((m) => (
+              <label key={m._id} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg">
+                <input type="checkbox" checked={selected.includes(m._id)} onChange={() => toggle(m._id)} className="rounded border-slate-300" />
+                {m.name || m.email} <span className="text-xs text-slate-400">({m.role})</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="p-5 border-t border-slate-100 flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
+          <button onClick={() => onSave(selected)} disabled={saving} className="px-4 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50">
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ClientPortalModal = ({ client, onClose, onEnable, onDisable, saving }) => {
+  const [copied, setCopied] = useState(false);
+  const portalUrl = client.portal?.token ? `${window.location.origin}/client-portal/${client.portal.token}` : null;
+  const copy = () => { navigator.clipboard?.writeText(portalUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-xl p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-bold text-slate-900">Client Portal: {client.name}</h3>
+          <button onClick={onClose}><X size={18} className="text-slate-400" /></button>
+        </div>
+        {client.portal?.enabled && portalUrl ? (
+          <>
+            <p className="text-sm text-slate-500 mb-3">Share this read-only link with {client.name} to let them view application progress.</p>
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+              <code className="text-xs text-slate-800 break-all flex-1">{portalUrl}</code>
+              <button onClick={copy} className="p-2 hover:bg-slate-200 rounded-lg shrink-0"><Copy className="w-4 h-4 text-slate-600" /></button>
+            </div>
+            {copied && <p className="text-xs text-green-600 mt-2">Copied!</p>}
+            <button onClick={onDisable} disabled={saving} className="mt-4 w-full px-4 py-2 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50">
+              Disable portal
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-slate-500 mb-4">Generate a read-only link {client.name} can use to check on their candidates' pipeline progress, without logging in.</p>
+            <button onClick={onEnable} disabled={saving} className="w-full px-4 py-2.5 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50">
+              {saving ? 'Generating…' : 'Enable client portal'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const ManageMasterData = ({ title, apiEndpoint, navigateBack }) => {
   const navigate = useNavigate();
   const toast = useToast();
+  const { organization } = useAuth();
+  const isClients = apiEndpoint === '/api/clients';
+  const hasClientSharing = isClients && planHasFeature(organization?.plan, 'agency.clientSharing');
+  const hasClientPortal = isClients && planHasFeature(organization?.plan, 'agency.clientPortal');
+  const [members, setMembers] = useState([]);
+  const [sharingClient, setSharingClient] = useState(null);
+  const [portalClient, setPortalClient] = useState(null);
+  const [agencySaving, setAgencySaving] = useState(false);
   const [data, setData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -27,6 +113,60 @@ const ManageMasterData = ({ title, apiEndpoint, navigateBack }) => {
   useEffect(() => {
     fetchData();
   }, [apiEndpoint, viewAllMode]);
+
+  useEffect(() => {
+    if (!hasClientSharing) return;
+    authenticatedFetch(`${BASE_API_URL}/api/organization/members`)
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setMembers(d.data || []); })
+      .catch(() => {});
+  }, [hasClientSharing]);
+
+  const saveSharing = async (userIds) => {
+    setAgencySaving(true);
+    try {
+      const res = await authenticatedFetch(`${BASE_API_URL}/api/clients/${sharingClient._id}/sharing`, { method: 'PUT', body: JSON.stringify({ userIds }) });
+      const updated = await res.json();
+      if (!res.ok) { toast.error(updated.message || 'Failed to update sharing'); return; }
+      toast.success('Sharing updated');
+      setSharingClient(null);
+      fetchData();
+    } catch (err) {
+      toast.error('Failed to update sharing');
+    } finally {
+      setAgencySaving(false);
+    }
+  };
+
+  const enablePortal = async () => {
+    setAgencySaving(true);
+    try {
+      const res = await authenticatedFetch(`${BASE_API_URL}/api/clients/${portalClient._id}/portal/enable`, { method: 'POST', body: JSON.stringify({}) });
+      const updated = await res.json();
+      if (!res.ok) { toast.error(updated.message || 'Failed to enable portal'); return; }
+      setPortalClient(updated);
+      fetchData();
+    } catch (err) {
+      toast.error('Failed to enable portal');
+    } finally {
+      setAgencySaving(false);
+    }
+  };
+
+  const disablePortal = async () => {
+    setAgencySaving(true);
+    try {
+      const res = await authenticatedFetch(`${BASE_API_URL}/api/clients/${portalClient._id}/portal/disable`, { method: 'POST', body: JSON.stringify({}) });
+      const updated = await res.json();
+      if (!res.ok) { toast.error(updated.message || 'Failed to disable portal'); return; }
+      setPortalClient(updated);
+      fetchData();
+    } catch (err) {
+      toast.error('Failed to disable portal');
+    } finally {
+      setAgencySaving(false);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -362,6 +502,24 @@ const ManageMasterData = ({ title, apiEndpoint, navigateBack }) => {
                                   )}
                                 </button>
                               )}
+                              {hasClientSharing && (
+                                <button
+                                  onClick={() => setSharingClient(item)}
+                                  className={`p-2 rounded-lg transition-colors ${(item.restrictedToUsers || []).length > 0 ? 'text-amber-600 hover:bg-amber-50' : 'text-slate-400 hover:bg-slate-50'}`}
+                                  title={(item.restrictedToUsers || []).length > 0 ? `Restricted to ${item.restrictedToUsers.length} teammate(s)` : 'Sharing: visible to whole team'}
+                                >
+                                  <Users2 size={16} />
+                                </button>
+                              )}
+                              {hasClientPortal && (
+                                <button
+                                  onClick={() => setPortalClient(item)}
+                                  className={`p-2 rounded-lg transition-colors ${item.portal?.enabled ? 'text-indigo-600 hover:bg-indigo-50' : 'text-slate-400 hover:bg-slate-50'}`}
+                                  title={item.portal?.enabled ? 'Client portal enabled' : 'Enable client portal'}
+                                >
+                                  <Link2 size={16} />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -436,6 +594,25 @@ const ManageMasterData = ({ title, apiEndpoint, navigateBack }) => {
           type="delete"
           isLoading={isDeleting}
         />
+
+        {sharingClient && (
+          <ClientSharingModal
+            client={sharingClient}
+            members={members}
+            saving={agencySaving}
+            onClose={() => setSharingClient(null)}
+            onSave={saveSharing}
+          />
+        )}
+        {portalClient && (
+          <ClientPortalModal
+            client={portalClient}
+            saving={agencySaving}
+            onClose={() => setPortalClient(null)}
+            onEnable={enablePortal}
+            onDisable={disablePortal}
+          />
+        )}
       </div>
     </Layout>
   );

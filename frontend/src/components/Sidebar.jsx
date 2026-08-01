@@ -18,11 +18,18 @@ import {
   Settings, 
   User, 
   CreditCard,
+  ScrollText,
+  ShieldPlus,
+  KeyRound,
+  Webhook,
+  CalendarClock,
   ChevronLeft,
   X,
   LogOut
 } from 'lucide-react';
 import { handleLogout } from '../utils/authUtils';
+import { useAuth } from '../context/AuthContext';
+import { planHasFeature } from '../config/planFeatures';
 
 const getUserData = () => {
   try {
@@ -75,7 +82,12 @@ const SECTIONS = [
     items: [
       { label: 'Team', path: '/team', icon: UserCog, roles: ['owner', 'admin'] },
       { label: 'Organization', path: '/organization', icon: Building2, roles: ['owner', 'admin'] },
-      { label: 'Integrations', path: '/organization/integrations', icon: Plug, roles: ['owner', 'admin'] },
+      { label: 'Integrations', path: '/organization/integrations', icon: Plug, roles: ['owner', 'admin'], feature: 'integrations.byoEmail' },
+      { label: 'Audit Log', path: '/organization/audit-log', icon: ScrollText, roles: ['owner', 'admin'], feature: 'audit.log' },
+      { label: 'Custom Roles', path: '/organization/custom-roles', icon: ShieldPlus, roles: ['owner', 'admin'], feature: 'team.customRoles' },
+      { label: 'Single Sign-On', path: '/organization/sso', icon: KeyRound, roles: ['owner', 'admin'], feature: 'sso' },
+      { label: 'Webhooks & API', path: '/organization/webhooks-api', icon: Webhook, roles: ['owner', 'admin'], feature: 'integrations.webhooksReadOnly' },
+      { label: 'Scheduled Reports', path: '/organization/scheduled-reports', icon: CalendarClock, roles: ['owner', 'admin'], feature: 'reports.custom' },
     ]
   },
   {
@@ -83,7 +95,7 @@ const SECTIONS = [
     roles: ['owner', 'admin', 'recruiter', 'interviewer', 'readonly'],
     items: [
       { label: 'Email Templates', path: '/email-templates', icon: Mail, roles: ['owner', 'admin', 'recruiter'] },
-      { label: 'Email Settings', path: '/email-settings', icon: Settings, roles: ['owner', 'admin'] },
+      { label: 'Email Settings', path: '/email-settings', icon: Settings, roles: ['owner', 'admin'], feature: 'integrations.byoEmail' },
       { label: 'Profile', path: '/settings', icon: User, roles: ['owner', 'admin', 'recruiter', 'interviewer', 'readonly'] },
     ]
   },
@@ -102,6 +114,8 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
   const userData = getUserData();
   const userRole = userData.role || 'recruiter';
   const orgData = getOrgData();
+  const { organization } = useAuth();
+  const orgPlan = organization?.plan;
 
   const handleCloseMobile = () => {
     if (isOpen && setIsOpen) setIsOpen(false);
@@ -169,7 +183,9 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6 custom-scrollbar">
           {SECTIONS.filter(section => section.roles.includes(userRole)).map((section, idx) => {
-            const sectionItems = section.items.filter(item => item.roles.includes(userRole));
+            const sectionItems = section.items.filter(item =>
+              item.roles.includes(userRole) && (!item.feature || planHasFeature(orgPlan, item.feature))
+            );
             
             if (sectionItems.length === 0) return null;
 

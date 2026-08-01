@@ -13,6 +13,7 @@
  */
 
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 
 const CandidateSchema = new mongoose.Schema({
   // ── Multi-tenancy ──────────────────────────────────────────────────
@@ -22,6 +23,14 @@ const CandidateSchema = new mongoose.Schema({
     index: true,
     // Not required yet — migration will backfill existing records
   },
+
+  // Stable cross-product identity key (see docs/CRM_HRMS_READINESS.md).
+  // Candidate (ATS) -> Contact (CRM) -> Employee (HRMS) are the same human
+  // at different lifecycle stages; this key lets a future merge match them
+  // by identity instead of fuzzy name/email matching across products.
+  // Deterministic hash of organizationId+email so re-imports of the same
+  // person land on the same personId without needing a lookup table.
+  personId: { type: String, index: true },
 
   // ── Core fields ────────────────────────────────────────────────────
   srNo: { type: String },
@@ -106,6 +115,18 @@ CandidateSchema.index({ name: 'text', email: 'text', position: 'text', skills: '
 
 // Sharing queries
 CandidateSchema.index({ 'sharedWith.userId': 1 });
+
+// ── Pre-save hook: Derive personId ────────────────────────────────────
+CandidateSchema.pre('save', function(next) {
+  if (!this.personId && this.email && this.organizationId) {
+    this.personId = crypto
+      .createHash('sha256')
+      .update(`${this.organizationId.toString()}:${this.email.toLowerCase().trim()}`)
+      .digest('hex')
+      .slice(0, 32);
+  }
+  next();
+});
 
 // ── Pre-save hook: Normalize text fields ─────────────────────────────
 CandidateSchema.pre('save', function(next) {

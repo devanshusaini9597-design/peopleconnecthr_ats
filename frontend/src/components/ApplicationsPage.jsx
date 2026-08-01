@@ -8,6 +8,9 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import API_URL from '../config';
+import { useAuth } from '../context/AuthContext';
+import { planHasFeature } from '../config/planFeatures';
+import { ShieldCheck, FileSignature } from 'lucide-react';
 
 const STAGES = [
   { id: 'Applied', label: 'Applied', color: 'bg-blue-50', borderColor: 'border-blue-200', textColor: 'text-blue-700', icon: FileText },
@@ -38,6 +41,10 @@ const formatDate = (dateString) => {
 };
 
 export default function ApplicationsPage() {
+  const { organization } = useAuth();
+  const hasBackgroundCheck = planHasFeature(organization?.plan, 'integrations.backgroundCheck');
+  const hasEsign = planHasFeature(organization?.plan, 'integrations.esign');
+  const [enterpriseActionLoading, setEnterpriseActionLoading] = useState(false);
   const [jobs, setJobs] = useState([]);
   const [selectedJobId, setSelectedJobId] = useState('');
   const [applications, setApplications] = useState([]);
@@ -187,6 +194,61 @@ export default function ApplicationsPage() {
       setApplications(previousApps);
       showToast('Failed to update rating', 'error');
     }
+  };
+
+  // --- Enterprise integrations: background check + e-sign ---
+  const orderBackgroundCheck = async (appId) => {
+    setEnterpriseActionLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_URL}/api/background-check/applications/${appId}/order`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: 'checkr' })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || 'Failed to order background check');
+      showToast('Background check ordered');
+      setSelectedApp((prev) => prev ? { ...prev, backgroundCheck: { status: 'pending', provider: 'checkr' } } : prev);
+    } catch (err) {
+      showToast(err.message || 'Failed to order background check', 'error');
+    } finally {
+      setEnterpriseActionLoading(false);
+    }
+  };
+
+  const sendForEsign = async (appId) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/pdf';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      setEnterpriseActionLoading(true);
+      try {
+        const documentBase64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_URL}/api/esign/applications/${appId}/send`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: 'docusign', documentBase64, documentName: file.name })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.message || 'Failed to send for e-signature');
+        showToast('Offer letter sent for e-signature');
+        setSelectedApp((prev) => prev ? { ...prev, esign: { status: 'sent', provider: 'docusign' } } : prev);
+      } catch (err) {
+        showToast(err.message || 'Failed to send for e-signature', 'error');
+      } finally {
+        setEnterpriseActionLoading(false);
+      }
+    };
+    input.click();
   };
 
   // --- Drag and Drop Handlers ---
@@ -570,6 +632,30 @@ export default function ApplicationsPage() {
                     <Calendar className="w-4 h-4" />
                     Schedule
                   </button>
+
+                  {hasBackgroundCheck && (
+                    <button
+                      onClick={() => orderBackgroundCheck(selectedApp._id)}
+                      disabled={enterpriseActionLoading || selectedApp.backgroundCheck?.status === 'pending'}
+                      title="Requires a Background Check integration configured in Organization → Integrations"
+                      className="px-4 py-2 bg-white border border-emerald-200 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-50 flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <ShieldCheck className="w-4 h-4" />
+                      {selectedApp.backgroundCheck?.status === 'pending' ? 'Check pending…' : 'Background Check'}
+                    </button>
+                  )}
+
+                  {hasEsign && (
+                    <button
+                      onClick={() => sendForEsign(selectedApp._id)}
+                      disabled={enterpriseActionLoading || selectedApp.esign?.status === 'sent'}
+                      title="Requires an E-Sign integration configured in Organization → Integrations"
+                      className="px-4 py-2 bg-white border border-rose-200 text-rose-700 rounded-lg text-sm font-medium hover:bg-rose-50 flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <FileSignature className="w-4 h-4" />
+                      {selectedApp.esign?.status === 'sent' ? 'Sent for signature' : 'Send Offer for e-Sign'}
+                    </button>
+                  )}
 
                   <button 
                     onClick={() => { setIsRejectModalOpen(true); }}

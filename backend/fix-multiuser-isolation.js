@@ -18,7 +18,7 @@
 const mongoose = require('mongoose');
 require('dotenv').config();
 
-const MONGODB_URL = process.env.MONGODB_URL || process.env.MONGODB_URI || 'mongodb://localhost:27017/skillnix-pchr';
+const MONGODB_URL = process.env.MONGODB_URL || process.env.MONGODB_URI || process.env.DATABASE_URL || 'mongodb://localhost:27017/skillnix-pchr';
 
 console.log('🔧 MASTER DATA ISOLATION FIX\n');
 console.log(`📦 Connecting to: ${MONGODB_URL.replace(/:[^:]*@/, ':****@')}`);

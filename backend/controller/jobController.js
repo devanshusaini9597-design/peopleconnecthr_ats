@@ -1,9 +1,15 @@
 const Job = require('../models/Job');
 const { normalizeText } = require('../utils/textNormalize');
 
+// NOTE: this controller is currently NOT mounted in server.js (server.js has
+// its own inline /jobs routes). It's kept scoped/authenticated here so it's
+// safe to wire up later without re-introducing the unscoped-access bug it
+// used to have (no organizationId, no createdBy, no auth check at all).
+
 // 1. Create a New Job
 exports.createJob = async (req, res) => {
     try {
+        if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
         const { role, location, ctc, experience, skills, description, hiringManagers, isTemplate } = req.body;
 
         const newJob = new Job({
@@ -14,7 +20,9 @@ exports.createJob = async (req, res) => {
             skills,
             description,
             hiringManagers,
-            isTemplate: isTemplate || false
+            isTemplate: isTemplate || false,
+            createdBy: req.user.id,
+            organizationId: req.user.organizationId
         });
 
         const savedJob = await newJob.save();
@@ -24,18 +32,17 @@ exports.createJob = async (req, res) => {
     }
 };
 
-// 2. Get All Jobs (With optional filtering)
+// 2. Get All Jobs (With optional filtering, scoped to the caller's organization)
 exports.getJobs = async (req, res) => {
     try {
+        if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
         const { isTemplate, managerEmail } = req.query;
-        let query = {};
+        let query = req.user.organizationId ? { organizationId: req.user.organizationId } : { createdBy: req.user.id };
 
-        // Agar humein sirf active jobs chahiye templates nahi
         if (isTemplate !== undefined) {
             query.isTemplate = isTemplate === 'true';
         }
 
-        // Agar specific Hiring Manager ki jobs dekhni ho
         if (managerEmail) {
             query.hiringManagers = { $in: [managerEmail] };
         }
@@ -47,10 +54,13 @@ exports.getJobs = async (req, res) => {
     }
 };
 
-// 3. Delete Job
+// 3. Delete Job (scoped to the caller's organization)
 exports.deleteJob = async (req, res) => {
     try {
-        await Job.findByIdAndDelete(req.params.id);
+        if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
+        const scope = req.user.organizationId ? { organizationId: req.user.organizationId } : { createdBy: req.user.id };
+        const deleted = await Job.findOneAndDelete({ _id: req.params.id, ...scope });
+        if (!deleted) return res.status(404).json({ message: 'Job not found' });
         res.status(200).json({ message: "Job deleted successfully" });
     } catch (error) {
         res.status(500).json({ message: "Error deleting job", error: error.message });

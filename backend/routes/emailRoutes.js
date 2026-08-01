@@ -10,6 +10,18 @@ const {
   checkUserEmailConfigured,
   canUserSendViaZepto
 } = require('../services/emailService');
+const { checkPlanLimit } = require('../middleware/rbacMiddleware');
+const Organization = require('../models/Organization');
+
+// Best-effort usage counter — never let a metering failure block email delivery.
+const bumpEmailUsage = async (organizationId, count = 1) => {
+  if (!organizationId) return;
+  try {
+    await Organization.findByIdAndUpdate(organizationId, { $inc: { 'usageCurrent.emailsSent': count } });
+  } catch (err) {
+    console.warn('[emailRoutes] Failed to increment emailsSent usage:', err.message);
+  }
+};
 
 /**
  * Sender status for ZeptoMail — only verified-domain users can send
@@ -29,7 +41,7 @@ router.get('/sender-status', async (req, res) => {
  * POST /api/email/send
  * Body: { email, name, position, emailType, customMessage, department, joiningDate, cc, bcc }
  */
-router.post('/send', async (req, res) => {
+router.post('/send', checkPlanLimit('emails'), async (req, res) => {
   try {
     const { email, name, position, emailType, customMessage, department, joiningDate, cc, bcc } = req.body;
 
@@ -101,7 +113,8 @@ router.post('/send', async (req, res) => {
     }
 
     console.log(`✅ Email sent successfully to ${email} (Type: ${emailType})`);
-    
+    await bumpEmailUsage(req.user.organizationId, 1);
+
     res.json({
       success: true,
       message: `Email sent successfully to ${email}`,
@@ -125,7 +138,7 @@ router.post('/send', async (req, res) => {
  * POST /api/email/send-bulk
  * Body: { candidates: [{ email, name, position, department, joiningDate }], emailType, customMessage, cc, bcc }
  */
-router.post('/send-bulk', async (req, res) => {
+router.post('/send-bulk', checkPlanLimit('emails'), async (req, res) => {
   try {
     const { candidates, emailType, customMessage, cc, bcc } = req.body;
 
@@ -166,6 +179,7 @@ router.post('/send-bulk', async (req, res) => {
     console.log(`   Success: ${results.success.length}`);
     console.log(`   Failed: ${results.failed.length}`);
     console.log(`   Success Rate: ${((results.success.length / results.total) * 100).toFixed(2)}%\n`);
+    await bumpEmailUsage(req.user.organizationId, results.success.length);
 
     res.json({
       success: true,

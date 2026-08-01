@@ -4,6 +4,71 @@ const Organization = require('../models/Organization');
 const Job = require('../models/Job');
 const Candidate = require('../models/Candidate');
 const Application = require('../models/Application');
+const { planHasFeature } = require('../config/planFeatures');
+
+const xmlEscape = (str = '') => String(str)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/**
+ * GET /:orgSlug/jobs.xml
+ * Indeed/Google-for-Jobs-compatible XML feed of published jobs — the
+ * pull-based "job board posting" mechanism referenced in adapters/jobBoardAdapter.js.
+ * The org submits this URL once in the board's publisher console; no push
+ * API call is needed after that, so this needs no BYOK credentials.
+ * Gated by 'integrations.jobBoard' (Enterprise) same as the push adapter.
+ */
+router.get('/:orgSlug/jobs.xml', async (req, res) => {
+  try {
+    const org = await Organization.findOne({ slug: req.params.orgSlug }).select('name plan');
+    if (!org) return res.status(404).send('Organization not found');
+    if (!planHasFeature(org.plan, 'integrations.jobBoard')) {
+      return res.status(403).send('Job board feed is not available on this organization\'s current plan.');
+    }
+
+    const jobs = await Job.find({ organizationId: org._id, isPublished: true, status: 'Open' })
+      .select('title department location employmentType description skills salaryRange updatedAt');
+
+    const baseUrl = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+    const items = jobs.map((job) => `
+  <job>
+    <title><![CDATA[${job.title}]]></title>
+    <date>${(job.updatedAt || new Date()).toUTCString()}</date>
+    <referencenumber>${job._id}</referencenumber>
+    <url><![CDATA[${baseUrl}/careers/${req.params.orgSlug}/jobs/${job._id}]]></url>
+    <company><![CDATA[${xmlEscape(org.name)}]]></company>
+    <city><![CDATA[${xmlEscape(job.location)}]]></city>
+    <description><![CDATA[${job.description || ''}]]></description>
+    <jobtype>${xmlEscape(job.employmentType || 'full_time')}</jobtype>
+    ${job.salaryRange?.displayPublicly && job.salaryRange?.min ? `<salary>${job.salaryRange.min}-${job.salaryRange.max || job.salaryRange.min} ${job.salaryRange.currency || 'INR'}</salary>` : ''}
+  </job>`).join('');
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<source>\n  <publisher>${xmlEscape(org.name)}</publisher>${items}\n</source>`;
+    res.set('Content-Type', 'application/xml').send(xml);
+  } catch (error) {
+    res.status(500).send('Failed to generate job feed');
+  }
+});
+
+/**
+ * GET /by-domain/:domain
+ * Resolves a custom careers-page domain (Enterprise, 'careers.customDomain')
+ * to the org's slug, so the frontend can fetch the rest of the careers-page
+ * data via the normal /:orgSlug routes below. The customer must separately
+ * CNAME `domain` to this app's frontend hosting — that DNS step is outside
+ * this repo's scope.
+ */
+router.get('/by-domain/:domain', async (req, res) => {
+  try {
+    const org = await Organization.findOne({ 'atsSettings.careersCustomDomain': req.params.domain.toLowerCase().trim() }).select('slug plan');
+    if (!org) return res.status(404).json({ success: false, message: 'No organization found for this domain' });
+    if (!planHasFeature(org.plan, 'careers.customDomain')) {
+      return res.status(403).json({ success: false, message: 'Custom domain careers pages require the Enterprise plan.' });
+    }
+    res.json({ success: true, data: { slug: org.slug } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 /**
  * GET /:orgSlug

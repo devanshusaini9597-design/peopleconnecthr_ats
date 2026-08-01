@@ -27,7 +27,26 @@ const applicationSchema = new mongoose.Schema({
   appliedAt: { type: Date, default: Date.now },
   lastActivityAt: { type: Date, default: Date.now },
   notes: { type: String, default: '' },
-  metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
+  metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
+
+  // ── Enterprise integrations (BYOK, see backend/adapters/) ────────────
+  backgroundCheck: {
+    provider: { type: String, default: '' },
+    candidateId: { type: String, default: '' },
+    invitationId: { type: String, default: '' },
+    status: { type: String, enum: ['not_started', 'pending', 'complete', 'suspended', ''], default: '' },
+    result: { type: String, default: '' },
+    orderedAt: { type: Date },
+    orderedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+  },
+  esign: {
+    provider: { type: String, default: '' },
+    envelopeId: { type: String, default: '' },
+    status: { type: String, enum: ['not_sent', 'sent', 'completed', 'declined', 'voided', ''], default: '' },
+    sentAt: { type: Date },
+    completedAt: { type: Date },
+    sentBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+  }
 }, { timestamps: true });
 
 // Indexes

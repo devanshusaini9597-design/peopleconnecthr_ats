@@ -47,10 +47,31 @@ const organizationSchema = new mongoose.Schema({
     enableCandidatePortal: { type: Boolean, default: true },
     enableCareersPage: { type: Boolean, default: true },
     careersPageTitle: { type: String, default: '' },
-    careersPageDescription: { type: String, default: '' }
+    careersPageDescription: { type: String, default: '' },
+    // Custom domain for the careers page (Enterprise, 'careers.customDomain').
+    // Code-side this is just "resolve org by domain instead of by slug" —
+    // the customer must additionally CNAME this domain to the frontend's
+    // hosting (Vercel/Render) and the frontend must handle the
+    // hostname-based routing; that DNS/hosting step happens outside this repo.
+    careersCustomDomain: { type: String, default: '', trim: true, lowercase: true }
   },
   billingCustomerId: { type: String, default: '' },
   billingSubscriptionId: { type: String, default: '' },
+
+  // ── Multi-product readiness (see docs/CRM_HRMS_READINESS.md) ─────────
+  // This SaaS ships ATS-only today. `productPlans` lets a future CRM/HRMS
+  // product share this same Organization/billing root without assuming
+  // ATS is the only product forever — e.g. an org could be
+  // { ats: 'professional', hrms: 'starter' } once HRMS ships, billed
+  // and entitled independently per product via the same planFeatures.js
+  // pattern (just namespaced by product).
+  productPlans: {
+    ats: { type: String, enum: ['free_trial', 'starter', 'professional', 'enterprise'], default: 'free_trial' }
+    // crm / hrms keys added here once those products exist — intentionally
+    // absent (not stubbed with a default) so "does this org have CRM?" is
+    // answerable by `'crm' in org.productPlans`, not by a placeholder value.
+  },
+
   isActive: { type: Boolean, default: true },
   deactivatedAt: { type: Date },
   deactivationReason: { type: String }
@@ -62,6 +83,19 @@ organizationSchema.index({ ownerId: 1 });
 organizationSchema.index({ domain: 1 });
 organizationSchema.index({ plan: 1 });
 organizationSchema.index({ isActive: 1 });
+organizationSchema.index({ 'atsSettings.careersCustomDomain': 1 }, { unique: true, sparse: true });
+
+// Keep productPlans.ats mirrored to the legacy top-level `plan` field so the
+// two can never drift — `plan` stays the source of truth every existing
+// requireFeature()/checkPlanLimit() call already reads; productPlans is
+// purely additive for future CRM/HRMS entitlement checks.
+organizationSchema.pre('save', function (next) {
+  if (this.isModified('plan') || (this.isNew && !this.productPlans?.ats)) {
+    this.productPlans = this.productPlans || {};
+    this.productPlans.ats = this.plan;
+  }
+  next();
+});
 
 // Pre-save hook: auto-generate slug from name if not set
 organizationSchema.pre('save', async function (next) {

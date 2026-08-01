@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { BASE_API_URL } from '../config';
+import { getEntitlements } from '../config/planFeatures';
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [organization, setOrganization] = useState(null);
+  const [entitlements, setEntitlements] = useState([]);
   const [token, setToken] = useState(localStorage.getItem('token') || null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -30,6 +32,7 @@ export const AuthProvider = ({ children }) => {
       const data = await response.json();
       setUser(data.user);
       setOrganization(data.organization);
+      setEntitlements(data.entitlements || []);
       setIsAuthenticated(true);
     } catch (error) {
       console.error('Auth verification failed:', error);
@@ -63,6 +66,7 @@ export const AuthProvider = ({ children }) => {
     setToken(data.token);
     setUser(data.user);
     setOrganization(data.organization);
+    setEntitlements(data.entitlements || []);
     setIsAuthenticated(true);
     
     return data;
@@ -92,17 +96,25 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
     setUser(null);
     setOrganization(null);
+    setEntitlements([]);
     setIsAuthenticated(false);
     window.location.href = '/login';
   };
 
   const updateUser = (data) => setUser(prev => ({ ...prev, ...data }));
-  const updateOrganization = (data) => setOrganization(prev => ({ ...prev, ...data }));
+  const updateOrganization = (data) => {
+    setOrganization(prev => {
+      const next = { ...prev, ...data };
+      if (data.plan) setEntitlements(getEntitlements(next.plan));
+      return next;
+    });
+  };
   const refreshProfile = () => fetchProfile();
 
   const value = {
     user,
     organization,
+    entitlements,
     token,
     isAuthenticated,
     isLoading,

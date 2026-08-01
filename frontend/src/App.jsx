@@ -29,13 +29,19 @@ import EmailSettingsPage from './components/EmailSettingsPage'
 import ProfileSettingsPage from './components/ProfileSettingsPage'
 import TeamPage from './components/TeamPage'
 import ProtectedRoute from './components/ProtectedRoute'
-import DashboardLayout from './components/DashboardLayout'
+import Layout from './components/Layout'
 
 const OnboardingPage = React.lazy(() => import('./components/OnboardingPage'))
 const AcceptInvitePage = React.lazy(() => import('./components/AcceptInvitePage'))
 const OrganizationSettingsPage = React.lazy(() => import('./components/OrganizationSettingsPage'))
 const IntegrationSettingsPage = React.lazy(() => import('./components/IntegrationSettingsPage'))
+const AuditLogPage = React.lazy(() => import('./components/AuditLogPage'))
+const CustomRolesPage = React.lazy(() => import('./components/CustomRolesPage'))
+const SSOCallbackPage = React.lazy(() => import('./components/SSOCallbackPage'))
+const SSOSettingsPage = React.lazy(() => import('./components/SSOSettingsPage'))
 const BillingPage = React.lazy(() => import('./components/BillingPage'))
+const WebhooksApiPage = React.lazy(() => import('./components/WebhooksApiPage'))
+const ScheduledReportsPage = React.lazy(() => import('./components/ScheduledReportsPage'))
 const ApplicationsPage = React.lazy(() => import('./components/ApplicationsPage'))
 const InterviewsPage = React.lazy(() => import('./components/InterviewsPage'))
 const CareersPage = React.lazy(() => import('./components/CareersPage'))
@@ -66,31 +72,43 @@ const router = createBrowserRouter([
   { path: '/onboarding/invite', element: <ProtectedRoute><Suspense fallback={<LoadingFallback />}><OnboardingPage /></Suspense></ProtectedRoute> },
 
   // Protected Dashboard Routes
-  { path: '/dashboard', element: <ProtectedRoute><DashboardLayout><DashboardPage /></DashboardLayout></ProtectedRoute> },
-  { path: '/ats', element: <ProtectedRoute><DashboardLayout><ATSPage /></DashboardLayout></ProtectedRoute> },
-  { path: '/add-candidate', element: <ProtectedRoute><DashboardLayout><AddCandidatePage /></DashboardLayout></ProtectedRoute> },
-  { path: '/resume-parsing', element: <ProtectedRoute><DashboardLayout><ResumeParsing /></DashboardLayout></ProtectedRoute> },
-  { path: '/auto-import', element: <ProtectedRoute><DashboardLayout><AutoImportPage /></DashboardLayout></ProtectedRoute> },
-  { path: '/pending-review', element: <ProtectedRoute><DashboardLayout><PendingReviewPage /></DashboardLayout></ProtectedRoute> },
-  { path: '/homeunder', element: <ProtectedRoute><DashboardLayout><Homeunder /></DashboardLayout></ProtectedRoute> },
-  { path: '/jobs', element: <ProtectedRoute><DashboardLayout><Jobs /></DashboardLayout></ProtectedRoute> },
-  { path: '/recruitment', element: <ProtectedRoute><DashboardLayout><Recruitment /></DashboardLayout></ProtectedRoute> },
-  { path: '/analytics', element: <ProtectedRoute><DashboardLayout><AnalyticsDashboard /></DashboardLayout></ProtectedRoute> },
-  { path: '/candidate-search', element: <ProtectedRoute><DashboardLayout><CandidateSearch /></DashboardLayout></ProtectedRoute> },
-  { path: '/manage-positions', element: <ProtectedRoute><DashboardLayout><ManageMasterData key="positions" title="Positions" apiEndpoint="/api/positions" navigateBack="/dashboard" /></DashboardLayout></ProtectedRoute> },
-  { path: '/manage-clients', element: <ProtectedRoute><DashboardLayout><ManageMasterData key="clients" title="Clients" apiEndpoint="/api/clients" navigateBack="/dashboard" /></DashboardLayout></ProtectedRoute> },
-  { path: '/manage-sources', element: <ProtectedRoute><DashboardLayout><ManageMasterData key="sources" title="Sources" apiEndpoint="/api/sources" navigateBack="/dashboard" /></DashboardLayout></ProtectedRoute> },
-  { path: '/email-templates', element: <ProtectedRoute><DashboardLayout><EmailTemplatesPage /></DashboardLayout></ProtectedRoute> },
-  { path: '/email-settings', element: <ProtectedRoute><DashboardLayout><EmailSettingsPage /></DashboardLayout></ProtectedRoute> },
-  { path: '/settings', element: <ProtectedRoute><DashboardLayout><ProfileSettingsPage /></DashboardLayout></ProtectedRoute> },
-  { path: '/team', element: <ProtectedRoute><DashboardLayout><TeamPage /></DashboardLayout></ProtectedRoute> },
-  
+  // Pages below already render their own SkillNix sidebar/header (via <Layout> or
+  // Sidebar+Header directly) internally, so the route just needs the auth gate.
+  { path: '/dashboard', element: <ProtectedRoute><DashboardPage /></ProtectedRoute> },
+  { path: '/ats', element: <ProtectedRoute><ATSPage /></ProtectedRoute> },
+  { path: '/add-candidate', element: <ProtectedRoute><AddCandidatePage /></ProtectedRoute> },
+  { path: '/resume-parsing', element: <ProtectedRoute><ResumeParsing /></ProtectedRoute> },
+  { path: '/auto-import', element: <ProtectedRoute><AutoImportPage /></ProtectedRoute> },
+  { path: '/pending-review', element: <ProtectedRoute><PendingReviewPage /></ProtectedRoute> },
+  { path: '/analytics', element: <ProtectedRoute><AnalyticsDashboard /></ProtectedRoute> },
+  { path: '/manage-positions', element: <ProtectedRoute><ManageMasterData key="positions" title="Positions" apiEndpoint="/api/positions" navigateBack="/dashboard" /></ProtectedRoute> },
+  { path: '/manage-clients', element: <ProtectedRoute><ManageMasterData key="clients" title="Clients" apiEndpoint="/api/clients" navigateBack="/dashboard" /></ProtectedRoute> },
+  { path: '/manage-sources', element: <ProtectedRoute><ManageMasterData key="sources" title="Sources" apiEndpoint="/api/sources" navigateBack="/dashboard" /></ProtectedRoute> },
+  { path: '/email-templates', element: <ProtectedRoute><EmailTemplatesPage /></ProtectedRoute> },
+  { path: '/email-settings', element: <ProtectedRoute><EmailSettingsPage /></ProtectedRoute> },
+  { path: '/settings', element: <ProtectedRoute><ProfileSettingsPage /></ProtectedRoute> },
+  { path: '/team', element: <ProtectedRoute><TeamPage /></ProtectedRoute> },
+
+  // Pages below render bare content and rely on the route to supply the
+  // SkillNix Layout (sidebar/header) — previously this was the leftover
+  // PeopleConnect DashboardLayout, now standardized on the real Layout.
+  { path: '/homeunder', element: <ProtectedRoute><Layout><Homeunder /></Layout></ProtectedRoute> },
+  { path: '/jobs', element: <ProtectedRoute><Layout><Jobs /></Layout></ProtectedRoute> },
+  { path: '/recruitment', element: <ProtectedRoute><Layout><Recruitment /></Layout></ProtectedRoute> },
+  { path: '/candidate-search', element: <ProtectedRoute><Layout><CandidateSearch /></Layout></ProtectedRoute> },
+
   // New SaaS Protected Routes
-  { path: '/applications', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'recruiter']}><DashboardLayout><Suspense fallback={<LoadingFallback />}><ApplicationsPage /></Suspense></DashboardLayout></ProtectedRoute> },
-  { path: '/interviews', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'recruiter', 'interviewer']}><DashboardLayout><Suspense fallback={<LoadingFallback />}><InterviewsPage /></Suspense></DashboardLayout></ProtectedRoute> },
-  { path: '/organization', element: <ProtectedRoute requiredRoles={['owner', 'admin']}><DashboardLayout><Suspense fallback={<LoadingFallback />}><OrganizationSettingsPage /></Suspense></DashboardLayout></ProtectedRoute> },
-  { path: '/organization/integrations', element: <ProtectedRoute requiredRoles={['owner', 'admin']}><DashboardLayout><Suspense fallback={<LoadingFallback />}><IntegrationSettingsPage /></Suspense></DashboardLayout></ProtectedRoute> },
-  { path: '/billing', element: <ProtectedRoute requiredRoles={['owner']}><DashboardLayout><Suspense fallback={<LoadingFallback />}><BillingPage /></Suspense></DashboardLayout></ProtectedRoute> },
+  { path: '/applications', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'recruiter']}><Layout><Suspense fallback={<LoadingFallback />}><ApplicationsPage /></Suspense></Layout></ProtectedRoute> },
+  { path: '/interviews', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'recruiter', 'interviewer']}><Layout><Suspense fallback={<LoadingFallback />}><InterviewsPage /></Suspense></Layout></ProtectedRoute> },
+  { path: '/organization', element: <ProtectedRoute requiredRoles={['owner', 'admin']}><Layout><Suspense fallback={<LoadingFallback />}><OrganizationSettingsPage /></Suspense></Layout></ProtectedRoute> },
+  { path: '/organization/integrations', element: <ProtectedRoute requiredRoles={['owner', 'admin']}><Layout><Suspense fallback={<LoadingFallback />}><IntegrationSettingsPage /></Suspense></Layout></ProtectedRoute> },
+  { path: '/organization/audit-log', element: <ProtectedRoute requiredRoles={['owner', 'admin']}><Layout><Suspense fallback={<LoadingFallback />}><AuditLogPage /></Suspense></Layout></ProtectedRoute> },
+  { path: '/organization/custom-roles', element: <ProtectedRoute requiredRoles={['owner', 'admin']}><Layout><Suspense fallback={<LoadingFallback />}><CustomRolesPage /></Suspense></Layout></ProtectedRoute> },
+  { path: '/organization/sso', element: <ProtectedRoute requiredRoles={['owner', 'admin']}><Layout><Suspense fallback={<LoadingFallback />}><SSOSettingsPage /></Suspense></Layout></ProtectedRoute> },
+  { path: '/sso/callback', element: <Suspense fallback={<LoadingFallback />}><SSOCallbackPage /></Suspense> },
+  { path: '/billing', element: <ProtectedRoute requiredRoles={['owner']}><Layout><Suspense fallback={<LoadingFallback />}><BillingPage /></Suspense></Layout></ProtectedRoute> },
+  { path: '/organization/webhooks-api', element: <ProtectedRoute requiredRoles={['owner', 'admin']}><Layout><Suspense fallback={<LoadingFallback />}><WebhooksApiPage /></Suspense></Layout></ProtectedRoute> },
+  { path: '/organization/scheduled-reports', element: <ProtectedRoute requiredRoles={['owner', 'admin']}><Layout><Suspense fallback={<LoadingFallback />}><ScheduledReportsPage /></Suspense></Layout></ProtectedRoute> },
 ]);
 
 function App() {

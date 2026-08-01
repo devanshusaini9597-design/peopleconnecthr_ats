@@ -1,11 +1,16 @@
 
 import React, { useState, useEffect } from 'react';
-import { Plus, MapPin, BookOpen, UserCheck, X, Briefcase, IndianRupee } from 'lucide-react';
+import { Plus, MapPin, BookOpen, UserCheck, X, Briefcase, IndianRupee, Globe2, Loader2 } from 'lucide-react';
 import JDLibraryModal from '../components/JDLibraryModal';
 import BASE_API_URL from '../config';
+import { useAuth } from '../context/AuthContext';
+import { planHasFeature } from '../config/planFeatures';
 
 const Jobs = () => {
   const API_URL = `${BASE_API_URL}/jobs`;
+  const { organization } = useAuth();
+  const hasJobBoard = planHasFeature(organization?.plan, 'integrations.jobBoard');
+  const [postingJobId, setPostingJobId] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
@@ -45,6 +50,27 @@ const Jobs = () => {
     });
     setShowLibrary(false);
     setShowModal(true);
+  };
+
+  const handlePostToJobBoard = async (job) => {
+    const provider = window.prompt('Post to which job board provider? (indeed_feed / webhook)', 'indeed_feed');
+    if (!provider) return;
+    setPostingJobId(job._id);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${BASE_API_URL}/api/job-board/jobs/${job._id}/post`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || 'Failed to post job');
+      alert('✅ Job posted to job board!');
+    } catch (error) {
+      alert(`❌ ${error.message}`);
+    } finally {
+      setPostingJobId(null);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -112,6 +138,20 @@ const Jobs = () => {
                 )}
               </div>
             </div>
+
+            {hasJobBoard && (
+              <div className="mt-4 pt-3" style={{borderTop: '1px solid var(--border-light)'}}>
+                <button
+                  onClick={() => handlePostToJobBoard(job)}
+                  disabled={postingJobId === job._id}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition disabled:opacity-50"
+                  style={{backgroundColor: 'var(--primary-lighter)', color: 'var(--primary-main)'}}
+                >
+                  {postingJobId === job._id ? <Loader2 size={14} className="animate-spin" /> : <Globe2 size={14} />}
+                  {postingJobId === job._id ? 'Posting…' : 'Post to Job Board'}
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>

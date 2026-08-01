@@ -6,6 +6,8 @@ const { tenantScope, requireOrganization } = require('../middleware/tenantMiddle
 const Interview = require('../models/Interview');
 const Scorecard = require('../models/Scorecard');
 const Application = require('../models/Application');
+const eventBus = require('../events/eventBus');
+const eventTypes = require('../events/eventTypes');
 
 router.use(verifyToken, requireOrganization, tenantScope);
 
@@ -76,7 +78,14 @@ router.post('/', requireRecruiterOrAbove, async (req, res) => {
       status: 'scheduled'
     });
     await interview.save();
-    // STUB: Emit INTERVIEW_SCHEDULED
+    eventBus.emit(eventTypes.INTERVIEW_SCHEDULED, {
+      organizationId: req.user.organizationId,
+      userId: req.user.id,
+      resourceType: 'Interview',
+      resourceId: interview._id,
+      applicationId,
+      scheduledAt
+    });
     res.json({ success: true, data: interview });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -109,7 +118,15 @@ router.put('/:id/cancel', requireRecruiterOrAbove, async (req, res) => {
       { $set: { status: 'cancelled', cancelledAt: new Date(), cancelledBy: req.user.id, cancelReason: req.body.reason } },
       { new: true }
     );
-    // STUB: Emit INTERVIEW_CANCELLED
+    if (interview) {
+      eventBus.emit(eventTypes.INTERVIEW_CANCELLED, {
+        organizationId: req.user.organizationId,
+        userId: req.user.id,
+        resourceType: 'Interview',
+        resourceId: interview._id,
+        reason: req.body.reason
+      });
+    }
     res.json({ success: true, data: interview });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -126,7 +143,14 @@ router.put('/:id/complete', requireRecruiterOrAbove, async (req, res) => {
       { $set: { status: 'completed' } },
       { new: true }
     );
-    // STUB: Emit INTERVIEW_COMPLETED
+    if (interview) {
+      eventBus.emit(eventTypes.INTERVIEW_COMPLETED, {
+        organizationId: req.user.organizationId,
+        userId: req.user.id,
+        resourceType: 'Interview',
+        resourceId: interview._id
+      });
+    }
     res.json({ success: true, data: interview });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -171,7 +195,16 @@ router.post('/:interviewId/scorecard', async (req, res) => {
       isDraft: isDraft || false
     });
     await scorecard.save();
-    // STUB: Emit SCORECARD_SUBMITTED
+    if (!scorecard.isDraft) {
+      eventBus.emit(eventTypes.SCORECARD_SUBMITTED, {
+        organizationId: req.user.organizationId,
+        userId: req.user.id,
+        resourceType: 'Scorecard',
+        resourceId: scorecard._id,
+        interviewId: req.params.interviewId,
+        recommendation
+      });
+    }
     res.json({ success: true, data: scorecard });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

@@ -1,8 +1,8 @@
 // LOCALHOST: npm run dev uses local backend (http://localhost:5000) so you can test fully on localhost.
 // Set VITE_USE_LIVE_BACKEND=true in .env.local to point local frontend at the live Render backend instead.
-// LIVE SITE: Production build uses VITE_API_URL or https://skillnix-backend.onrender.com so the deployed app works.
+// LIVE SITE: Production build uses VITE_API_URL or https://peopleconnecthrats-production.up.railway.app so the deployed app works.
 const defaultDev = 'http://localhost:5000';
-const defaultProd = 'https://skillnix-backend.onrender.com';
+const defaultProd = 'https://peopleconnecthrats-production.up.railway.app';
 const isDev = import.meta.env.DEV;
 const useLiveInDev = import.meta.env.VITE_USE_LIVE_BACKEND === 'true' || import.meta.env.VITE_USE_LIVE_BACKEND === '1';
 const API_URL = (

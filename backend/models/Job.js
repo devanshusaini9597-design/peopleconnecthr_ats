@@ -78,6 +78,15 @@ const jobSchema = new mongoose.Schema({
   isPublished: { type: Boolean, default: false },
   publishedAt: { type: Date },
 
+  // ── External job board postings (Enterprise, see backend/adapters/jobBoardAdapter.js) ──
+  jobBoardPostings: [{
+    provider: { type: String },
+    status: { type: String, enum: ['posted', 'removed', 'failed'], default: 'posted' },
+    externalRef: { type: String, default: '' },
+    postedAt: { type: Date, default: Date.now },
+    postedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+  }],
+
   // ── Counters (denormalized for performance) ────────────────────────
   applicationCount: { type: Number, default: 0 },
   hiredCount: { type: Number, default: 0 },

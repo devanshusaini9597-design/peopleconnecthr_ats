@@ -2114,6 +2114,9 @@ exports.createCandidate = async (req, res) => {
                 ? new mongoose.Types.ObjectId(uid)
                 : uid;
         }
+        if (req.user && req.user.organizationId) {
+            req.body.organizationId = req.user.organizationId;
+        }
 
         const newCandidate = new Candidate(req.body);
         await newCandidate.save();
@@ -2181,6 +2184,7 @@ exports.bulkCreateFromParsed = async (req, res) => {
                     remark: (c.remark || '').trim() || '',
                     status: 'Applied',
                     createdBy: userId,
+                    organizationId: req.user.organizationId || undefined,
                     date: new Date().toISOString().split('T')[0]
                 };
 
@@ -2249,10 +2253,12 @@ exports.updateCandidate = async (req, res) => {
         const textFields = ['name', 'position', 'companyName', 'location', 'client', 'spoc', 'source', 'noticePeriod', 'fls', 'remark'];
         textFields.forEach(f => { if (req.body[f] && typeof req.body[f] === 'string') req.body[f] = normalizeText(req.body[f]); });
 
-        // Enterprise: any authenticated user can update any candidate. Do not allow changing ownership.
-        const { createdBy, _id, __v, ...safeBody } = req.body;
+        // Any authenticated user in the SAME organization can update the candidate.
+        // Do not allow changing ownership or the org a candidate belongs to.
+        const { createdBy, organizationId, _id, __v, ...safeBody } = req.body;
+        const scope = { _id: id, ...(req.user.organizationId ? { organizationId: req.user.organizationId } : { createdBy: req.user.id }) };
         const updatedCandidate = await Candidate.findOneAndUpdate(
-            { _id: id },
+            scope,
             { $set: safeBody },
             { new: true, runValidators: true }
         );

@@ -1,11 +1,17 @@
 // backend/controllers/analyticsController.js
 const Candidate = require('../models/Candidate');
 
+// Tenant scope: prefer organizationId (multi-tenant safe, includes all
+// teammates' candidates) so team analytics actually reflect the whole org,
+// not just the requesting user's own records. Falls back to createdBy only
+// for legacy users somehow without an org.
+const scopeFilter = (req) => (
+  req.user.organizationId ? { organizationId: req.user.organizationId } : { createdBy: req.user.id }
+);
+
 exports.getAnalytics = async (req, res) => {
   try {
-    const mongoose = require('mongoose');
-    const userId = new mongoose.Types.ObjectId(req.user.id);
-    const userFilter = { createdBy: userId };
+    const userFilter = scopeFilter(req);
 
     // 1. Daily CV Submission Tracking (Last 7 days)
     const dailySubmissions = await Candidate.aggregate([
@@ -82,9 +88,7 @@ exports.getAnalytics = async (req, res) => {
 // Dashboard Stats endpoint - returns all data needed for dashboard
 exports.getDashboardStats = async (req, res) => {
   try {
-    const mongoose = require('mongoose');
-    const userId = new mongoose.Types.ObjectId(req.user.id);
-    const userFilter = { createdBy: userId };
+    const userFilter = scopeFilter(req);
 
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);

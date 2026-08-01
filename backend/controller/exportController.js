@@ -4,6 +4,14 @@ const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
 const mongoose = require('mongoose');
 
+// Tenant scope: prefer organizationId (multi-tenant safe, includes all
+// teammates' candidates) so team reports/exports reflect the whole org, not
+// just the requesting user's own records. Falls back to createdBy only for
+// legacy users somehow without an org.
+const scopeFilter = (req) => (
+  req.user.organizationId ? { organizationId: req.user.organizationId } : { createdBy: req.user.id }
+);
+
 // ─── Helper: build date filter ───
 function buildDateFilter(dateRange, customFrom, customTo) {
   if (dateRange === 'custom' && customFrom && customTo) {
@@ -125,8 +133,8 @@ function addPDFFooter(doc) {
 //  REPORT GENERATORS
 // ═══════════════════════════════════════════
 
-async function getRecruitmentData(userId, dateFilter) {
-  const userFilter = { createdBy: userId };
+async function getRecruitmentData(scope, dateFilter) {
+  const userFilter = { ...scope };
   if (dateFilter) userFilter.createdAt = dateFilter;
   const pipelineCounts = await Candidate.aggregate([{ $match: userFilter }, { $group: { _id: '$status', count: { $sum: 1 } } }]);
   const pipeline = {}; pipelineCounts.forEach(p => { pipeline[p._id] = p.count; });
@@ -138,9 +146,9 @@ async function getRecruitmentData(userId, dateFilter) {
 }
 
 // Recruitment Summary - Excel
-async function recruitmentSummaryReport(wb, userId, dateFilter) {
+async function recruitmentSummaryReport(wb, scope, dateFilter) {
   const ws = wb.addWorksheet('Recruitment Summary');
-  const { pipeline, total, hired, rejected, inProgress } = await getRecruitmentData(userId, dateFilter);
+  const { pipeline, total, hired, rejected, inProgress } = await getRecruitmentData(scope, dateFilter);
   ws.columns = [{ header: 'Metric', key: 'metric', width: 30 }, { header: 'Value', key: 'value', width: 18 }, { header: 'Percentage', key: 'percent', width: 16 }];
   const pct = (v) => total ? Math.round((v / total) * 100) + '%' : '0%';
   const rows = [
@@ -160,9 +168,9 @@ async function recruitmentSummaryReport(wb, userId, dateFilter) {
 }
 
 // Recruitment Summary - PDF
-async function recruitmentSummaryPDF(doc, userId, dateFilter, label) {
+async function recruitmentSummaryPDF(doc, scope, dateFilter, label) {
   drawPDFHeader(doc, 'Recruitment Summary Report', label);
-  const { pipeline, total, hired, rejected, inProgress } = await getRecruitmentData(userId, dateFilter);
+  const { pipeline, total, hired, rejected, inProgress } = await getRecruitmentData(scope, dateFilter);
   const conv = total ? Math.round((hired / total) * 100) : 0;
   drawPDFSummaryCards(doc, [{ label: 'Total Candidates', value: total }, { label: 'In Progress', value: inProgress }, { label: 'Hired / Joined', value: hired }, { label: 'Conversion Rate', value: conv + '%' }]);
   doc.fontSize(11).fillColor('#1E293B').font('Helvetica-Bold').text('Pipeline Breakdown', 40); doc.moveDown(0.5);
@@ -174,8 +182,8 @@ async function recruitmentSummaryPDF(doc, userId, dateFilter, label) {
 }
 
 // Source Performance
-async function getSourceData(userId, dateFilter) {
-  const userFilter = { createdBy: userId }; if (dateFilter) userFilter.createdAt = dateFilter;
+async function getSourceData(scope, dateFilter) {
+  const userFilter = { ...scope }; if (dateFilter) userFilter.createdAt = dateFilter;
   return Candidate.aggregate([
     { $match: { ...userFilter, source: { $exists: true, $ne: '' } } },
     { $group: { _id: '$source', total: { $sum: 1 }, applied: { $sum: { $cond: [{ $eq: ['$status', 'Applied'] }, 1, 0] } }, screening: { $sum: { $cond: [{ $eq: ['$status', 'Screening'] }, 1, 0] } }, interview: { $sum: { $cond: [{ $eq: ['$status', 'Interview'] }, 1, 0] } }, offer: { $sum: { $cond: [{ $eq: ['$status', 'Offer'] }, 1, 0] } }, hired: { $sum: { $cond: [{ $in: ['$status', ['Hired', 'Joined']] }, 1, 0] } }, rejected: { $sum: { $cond: [{ $in: ['$status', ['Rejected', 'Dropped']] }, 1, 0] } } } },
@@ -183,17 +191,17 @@ async function getSourceData(userId, dateFilter) {
   ]);
 }
 
-async function sourcePerformanceReport(wb, userId, dateFilter) {
+async function sourcePerformanceReport(wb, scope, dateFilter) {
   const ws = wb.addWorksheet('Source Performance');
-  const sourceData = await getSourceData(userId, dateFilter);
+  const sourceData = await getSourceData(scope, dateFilter);
   ws.columns = [{ header: 'Source', key: 'source', width: 20 }, { header: 'Total', key: 'total', width: 10 }, { header: 'Applied', key: 'applied', width: 10 }, { header: 'Screening', key: 'screening', width: 12 }, { header: 'Interview', key: 'interview', width: 12 }, { header: 'Offer', key: 'offer', width: 10 }, { header: 'Hired/Joined', key: 'hired', width: 14 }, { header: 'Rejected/Dropped', key: 'rejected', width: 16 }, { header: 'Conversion %', key: 'conversion', width: 14 }];
   sourceData.forEach(s => { ws.addRow({ source: s._id, total: s.total, applied: s.applied, screening: s.screening, interview: s.interview, offer: s.offer, hired: s.hired, rejected: s.rejected, conversion: s.total > 0 ? Math.round((s.hired / s.total) * 100) + '%' : '0%' }); });
   styleHeaderRow(ws);
 }
 
-async function sourcePerformancePDF(doc, userId, dateFilter, label) {
+async function sourcePerformancePDF(doc, scope, dateFilter, label) {
   drawPDFHeader(doc, 'Source Performance Report', label);
-  const data = await getSourceData(userId, dateFilter);
+  const data = await getSourceData(scope, dateFilter);
   const totalAll = data.reduce((s, d) => s + d.total, 0);
   drawPDFSummaryCards(doc, [{ label: 'Total Sources', value: data.length }, { label: 'Total Candidates', value: totalAll }, { label: 'Top Source', value: data.length > 0 ? data[0]._id : 'N/A' }, { label: 'Best Conversion', value: data.reduce((b, s) => { const r = s.total > 0 ? (s.hired / s.total) * 100 : 0; return r > b.rate ? { n: s._id, rate: r } : b; }, { n: 'N/A', rate: 0 }).n }]);
   doc.fontSize(11).fillColor('#1E293B').font('Helvetica-Bold').text('Source-wise Breakdown', 40); doc.moveDown(0.5);
@@ -202,8 +210,8 @@ async function sourcePerformancePDF(doc, userId, dateFilter, label) {
 }
 
 // Position-wise Report
-async function getPositionData(userId, dateFilter) {
-  const userFilter = { createdBy: userId }; if (dateFilter) userFilter.createdAt = dateFilter;
+async function getPositionData(scope, dateFilter) {
+  const userFilter = { ...scope }; if (dateFilter) userFilter.createdAt = dateFilter;
   return Candidate.aggregate([
     { $match: { ...userFilter, position: { $exists: true, $ne: '' } } },
     { $group: { _id: '$position', total: { $sum: 1 }, applied: { $sum: { $cond: [{ $eq: ['$status', 'Applied'] }, 1, 0] } }, screening: { $sum: { $cond: [{ $eq: ['$status', 'Screening'] }, 1, 0] } }, interview: { $sum: { $cond: [{ $eq: ['$status', 'Interview'] }, 1, 0] } }, offer: { $sum: { $cond: [{ $eq: ['$status', 'Offer'] }, 1, 0] } }, hired: { $sum: { $cond: [{ $in: ['$status', ['Hired', 'Joined']] }, 1, 0] } }, rejected: { $sum: { $cond: [{ $in: ['$status', ['Rejected', 'Dropped']] }, 1, 0] } } } },
@@ -211,17 +219,17 @@ async function getPositionData(userId, dateFilter) {
   ]);
 }
 
-async function positionWiseReport(wb, userId, dateFilter) {
+async function positionWiseReport(wb, scope, dateFilter) {
   const ws = wb.addWorksheet('Position Report');
-  const data = await getPositionData(userId, dateFilter);
+  const data = await getPositionData(scope, dateFilter);
   ws.columns = [{ header: 'Position', key: 'position', width: 26 }, { header: 'Total', key: 'total', width: 10 }, { header: 'Applied', key: 'applied', width: 10 }, { header: 'Screening', key: 'screening', width: 12 }, { header: 'Interview', key: 'interview', width: 12 }, { header: 'Offer', key: 'offer', width: 10 }, { header: 'Hired/Joined', key: 'hired', width: 14 }, { header: 'Rejected/Dropped', key: 'rejected', width: 16 }, { header: 'Fill Rate %', key: 'fillRate', width: 12 }];
   data.forEach(p => { ws.addRow({ position: p._id, total: p.total, applied: p.applied, screening: p.screening, interview: p.interview, offer: p.offer, hired: p.hired, rejected: p.rejected, fillRate: p.total > 0 ? Math.round((p.hired / p.total) * 100) + '%' : '0%' }); });
   styleHeaderRow(ws);
 }
 
-async function positionWisePDF(doc, userId, dateFilter, label) {
+async function positionWisePDF(doc, scope, dateFilter, label) {
   drawPDFHeader(doc, 'Position-wise Report', label);
-  const data = await getPositionData(userId, dateFilter);
+  const data = await getPositionData(scope, dateFilter);
   const totalAll = data.reduce((s, d) => s + d.total, 0);
   drawPDFSummaryCards(doc, [{ label: 'Total Positions', value: data.length }, { label: 'Total Candidates', value: totalAll }, { label: 'Avg per Position', value: data.length > 0 ? Math.round(totalAll / data.length) : 0 }, { label: 'Active Positions', value: data.filter(p => p.total > 0).length }]);
   doc.fontSize(11).fillColor('#1E293B').font('Helvetica-Bold').text('Position-wise Breakdown', 40); doc.moveDown(0.5);
@@ -230,8 +238,8 @@ async function positionWisePDF(doc, userId, dateFilter, label) {
 }
 
 // Client Report
-async function getClientData(userId, dateFilter) {
-  const userFilter = { createdBy: userId }; if (dateFilter) userFilter.createdAt = dateFilter;
+async function getClientData(scope, dateFilter) {
+  const userFilter = { ...scope }; if (dateFilter) userFilter.createdAt = dateFilter;
   return Candidate.aggregate([
     { $match: { ...userFilter, client: { $exists: true, $ne: '' } } },
     { $group: { _id: '$client', total: { $sum: 1 }, hired: { $sum: { $cond: [{ $in: ['$status', ['Hired', 'Joined']] }, 1, 0] } }, interview: { $sum: { $cond: [{ $eq: ['$status', 'Interview'] }, 1, 0] } }, offer: { $sum: { $cond: [{ $eq: ['$status', 'Offer'] }, 1, 0] } }, rejected: { $sum: { $cond: [{ $in: ['$status', ['Rejected', 'Dropped']] }, 1, 0] } } } },
@@ -239,17 +247,17 @@ async function getClientData(userId, dateFilter) {
   ]);
 }
 
-async function clientReport(wb, userId, dateFilter) {
+async function clientReport(wb, scope, dateFilter) {
   const ws = wb.addWorksheet('Client Report');
-  const data = await getClientData(userId, dateFilter);
+  const data = await getClientData(scope, dateFilter);
   ws.columns = [{ header: 'Client', key: 'client', width: 26 }, { header: 'Total Candidates', key: 'total', width: 16 }, { header: 'In Interview', key: 'interview', width: 14 }, { header: 'Offer', key: 'offer', width: 10 }, { header: 'Hired/Joined', key: 'hired', width: 14 }, { header: 'Rejected/Dropped', key: 'rejected', width: 16 }, { header: 'Success Rate %', key: 'successRate', width: 16 }];
   data.forEach(c => { ws.addRow({ client: c._id, total: c.total, interview: c.interview, offer: c.offer, hired: c.hired, rejected: c.rejected, successRate: c.total > 0 ? Math.round((c.hired / c.total) * 100) + '%' : '0%' }); });
   styleHeaderRow(ws);
 }
 
-async function clientReportPDF(doc, userId, dateFilter, label) {
+async function clientReportPDF(doc, scope, dateFilter, label) {
   drawPDFHeader(doc, 'Client Report', label);
-  const data = await getClientData(userId, dateFilter);
+  const data = await getClientData(scope, dateFilter);
   const totalAll = data.reduce((s, d) => s + d.total, 0);
   const totalHired = data.reduce((s, d) => s + d.hired, 0);
   drawPDFSummaryCards(doc, [{ label: 'Total Clients', value: data.length }, { label: 'Total Candidates', value: totalAll }, { label: 'Total Hired', value: totalHired }, { label: 'Avg Success', value: totalAll > 0 ? Math.round((totalHired / totalAll) * 100) + '%' : '0%' }]);
@@ -259,9 +267,9 @@ async function clientReportPDF(doc, userId, dateFilter, label) {
 }
 
 // Pipeline Status - PDF
-async function pipelineStatusPDF(doc, userId, dateFilter, label) {
+async function pipelineStatusPDF(doc, scope, dateFilter, label) {
   drawPDFHeader(doc, 'Pipeline Status Report', label);
-  const userFilter = { createdBy: userId }; if (dateFilter) userFilter.createdAt = dateFilter;
+  const userFilter = { ...scope }; if (dateFilter) userFilter.createdAt = dateFilter;
   const candidates = await Candidate.find(userFilter).sort({ status: 1, createdAt: -1 }).lean();
   const statusCounts = {}; candidates.forEach(c => { statusCounts[c.status] = (statusCounts[c.status] || 0) + 1; });
   const cards = Object.entries(statusCounts).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([s, c]) => ({ label: s, value: c }));
@@ -278,21 +286,83 @@ async function pipelineStatusPDF(doc, userId, dateFilter, label) {
 }
 
 // ═══════════════════════════════════════════
+//  BUFFER GENERATOR (for scheduled reports — see services/reportScheduler.js)
+//  Same report builders as exportReport() below, but returns a Buffer
+//  instead of streaming straight to an HTTP response, since there's no
+//  `res` object when a cron-style job generates this unattended.
+// ═══════════════════════════════════════════
+async function generateReportBuffer({ reportType, format, organizationId, dateRange, customFrom, customTo }) {
+  const scope = { organizationId };
+  const dateFilter = buildDateFilter(dateRange, customFrom, customTo);
+  const dateRangeLabel = getDateRangeLabel(dateRange, customFrom, customTo);
+  const userFilter = { ...scope }; if (dateFilter) userFilter.createdAt = dateFilter;
+
+  const filenames = {
+    'recruitment-summary': 'Recruitment_Summary',
+    'source-performance': 'Source_Performance',
+    'position-report': 'Position_Report',
+    'client-report': 'Client_Report',
+    'pipeline-status': 'Pipeline_Status'
+  };
+  const filename = filenames[reportType];
+  if (!filename) throw new Error(`Invalid report type: ${reportType}`);
+
+  if (format === 'pdf') {
+    const doc = createPDFDoc();
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    const done = new Promise((resolve) => doc.on('end', resolve));
+
+    switch (reportType) {
+      case 'recruitment-summary': await recruitmentSummaryPDF(doc, scope, dateFilter, dateRangeLabel); break;
+      case 'source-performance': await sourcePerformancePDF(doc, scope, dateFilter, dateRangeLabel); break;
+      case 'position-report': await positionWisePDF(doc, scope, dateFilter, dateRangeLabel); break;
+      case 'client-report': await clientReportPDF(doc, scope, dateFilter, dateRangeLabel); break;
+      case 'pipeline-status': await pipelineStatusPDF(doc, scope, dateFilter, dateRangeLabel); break;
+    }
+    addPDFFooter(doc);
+    doc.end();
+    await done;
+    return { buffer: Buffer.concat(chunks), filename: `${filename}.pdf`, contentType: 'application/pdf' };
+  }
+
+  const wb = new ExcelJS.Workbook(); wb.creator = 'SkillNix'; wb.created = new Date();
+  switch (reportType) {
+    case 'recruitment-summary': await recruitmentSummaryReport(wb, scope, dateFilter); break;
+    case 'source-performance': await sourcePerformanceReport(wb, scope, dateFilter); break;
+    case 'position-report': await positionWiseReport(wb, scope, dateFilter); break;
+    case 'client-report': await clientReport(wb, scope, dateFilter); break;
+    case 'pipeline-status': {
+      const candidates = await Candidate.find(userFilter).sort({ status: 1, createdAt: -1 }).lean();
+      const ws = wb.addWorksheet('Pipeline Status');
+      ws.columns = [{ header: 'Name', key: 'name', width: 22 }, { header: 'Position', key: 'position', width: 22 }, { header: 'Status', key: 'status', width: 14 }, { header: 'Source', key: 'source', width: 14 }, { header: 'Client', key: 'client', width: 18 }, { header: 'Location', key: 'location', width: 16 }, { header: 'Experience', key: 'experience', width: 12 }, { header: 'CTC', key: 'ctc', width: 12 }, { header: 'Added On', key: 'createdAt', width: 14 }];
+      candidates.forEach(c => { ws.addRow({ name: c.name, position: c.position, status: c.status, source: c.source, client: c.client, location: c.location, experience: c.experience, ctc: c.ctc, createdAt: c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-IN') : '' }); });
+      styleHeaderRow(ws);
+      break;
+    }
+  }
+
+  const buffer = await wb.xlsx.writeBuffer();
+  return { buffer: Buffer.from(buffer), filename: `${filename}.xlsx`, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+}
+exports.generateReportBuffer = generateReportBuffer;
+
+// ═══════════════════════════════════════════
 //  PREVIEW ENDPOINT
 // ═══════════════════════════════════════════
 exports.previewReport = async (req, res) => {
   try {
-    const userId = new mongoose.Types.ObjectId(req.user.id);
+    const scope = scopeFilter(req);
     const { reportType, dateRange, customFrom, customTo } = req.body;
     if (!reportType) return res.status(400).json({ message: 'Report type is required' });
     const dateFilter = buildDateFilter(dateRange, customFrom, customTo);
-    const userFilter = { createdBy: userId }; if (dateFilter) userFilter.createdAt = dateFilter;
+    const userFilter = { ...scope }; if (dateFilter) userFilter.createdAt = dateFilter;
     let preview = { title: '', headers: [], rows: [], summary: [] };
 
     switch (reportType) {
       case 'recruitment-summary': {
         preview.title = 'Recruitment Summary';
-        const { pipeline, total, hired, rejected } = await getRecruitmentData(userId, dateFilter);
+        const { pipeline, total, hired, rejected } = await getRecruitmentData(scope, dateFilter);
         preview.summary = [{ label: 'Total', value: total }, { label: 'Hired', value: hired }, { label: 'Rejected', value: rejected }, { label: 'Conversion', value: total ? Math.round((hired / total) * 100) + '%' : '0%' }];
         preview.headers = ['Stage', 'Count', 'Percentage'];
         preview.rows = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Joined', 'Rejected', 'Dropped'].filter(s => pipeline[s]).map(s => [s, pipeline[s] || 0, total ? Math.round(((pipeline[s] || 0) / total) * 100) + '%' : '0%']);
@@ -300,7 +370,7 @@ exports.previewReport = async (req, res) => {
       }
       case 'source-performance': {
         preview.title = 'Source Performance';
-        const data = await getSourceData(userId, dateFilter);
+        const data = await getSourceData(scope, dateFilter);
         preview.summary = [{ label: 'Sources', value: data.length }, { label: 'Total', value: data.reduce((s, d) => s + d.total, 0) }];
         preview.headers = ['Source', 'Total', 'Hired', 'Conversion'];
         preview.rows = data.map(s => [s._id, s.total, s.hired, s.total > 0 ? Math.round((s.hired / s.total) * 100) + '%' : '0%']);
@@ -308,7 +378,7 @@ exports.previewReport = async (req, res) => {
       }
       case 'position-report': {
         preview.title = 'Position-wise Report';
-        const data = await getPositionData(userId, dateFilter);
+        const data = await getPositionData(scope, dateFilter);
         preview.summary = [{ label: 'Positions', value: data.length }, { label: 'Total', value: data.reduce((s, d) => s + d.total, 0) }];
         preview.headers = ['Position', 'Total', 'Hired', 'Fill Rate'];
         preview.rows = data.map(p => [p._id, p.total, p.hired, p.total > 0 ? Math.round((p.hired / p.total) * 100) + '%' : '0%']);
@@ -316,7 +386,7 @@ exports.previewReport = async (req, res) => {
       }
       case 'client-report': {
         preview.title = 'Client Report';
-        const data = await getClientData(userId, dateFilter);
+        const data = await getClientData(scope, dateFilter);
         preview.summary = [{ label: 'Clients', value: data.length }, { label: 'Total', value: data.reduce((s, d) => s + d.total, 0) }];
         preview.headers = ['Client', 'Total', 'Hired', 'Success Rate'];
         preview.rows = data.map(c => [c._id, c.total, c.hired, c.total > 0 ? Math.round((c.hired / c.total) * 100) + '%' : '0%']);
@@ -343,13 +413,13 @@ exports.previewReport = async (req, res) => {
 // ═══════════════════════════════════════════
 exports.exportReport = async (req, res) => {
   try {
-    const userId = new mongoose.Types.ObjectId(req.user.id);
+    const scope = scopeFilter(req);
     const { reportType, format, dateRange, customFrom, customTo } = req.body;
     if (!reportType) return res.status(400).json({ message: 'Report type is required' });
 
     const dateFilter = buildDateFilter(dateRange, customFrom, customTo);
     const dateRangeLabel = getDateRangeLabel(dateRange, customFrom, customTo);
-    const userFilter = { createdBy: userId }; if (dateFilter) userFilter.createdAt = dateFilter;
+    const userFilter = { ...scope }; if (dateFilter) userFilter.createdAt = dateFilter;
     const dateSuffix = new Date().toISOString().split('T')[0];
 
     // ═══════ PDF FORMAT ═══════
@@ -357,11 +427,11 @@ exports.exportReport = async (req, res) => {
       const doc = createPDFDoc();
       let filename = 'report';
       switch (reportType) {
-        case 'recruitment-summary': filename = 'Recruitment_Summary'; await recruitmentSummaryPDF(doc, userId, dateFilter, dateRangeLabel); break;
-        case 'source-performance': filename = 'Source_Performance'; await sourcePerformancePDF(doc, userId, dateFilter, dateRangeLabel); break;
-        case 'position-report': filename = 'Position_Report'; await positionWisePDF(doc, userId, dateFilter, dateRangeLabel); break;
-        case 'client-report': filename = 'Client_Report'; await clientReportPDF(doc, userId, dateFilter, dateRangeLabel); break;
-        case 'pipeline-status': filename = 'Pipeline_Status'; await pipelineStatusPDF(doc, userId, dateFilter, dateRangeLabel); break;
+        case 'recruitment-summary': filename = 'Recruitment_Summary'; await recruitmentSummaryPDF(doc, scope, dateFilter, dateRangeLabel); break;
+        case 'source-performance': filename = 'Source_Performance'; await sourcePerformancePDF(doc, scope, dateFilter, dateRangeLabel); break;
+        case 'position-report': filename = 'Position_Report'; await positionWisePDF(doc, scope, dateFilter, dateRangeLabel); break;
+        case 'client-report': filename = 'Client_Report'; await clientReportPDF(doc, scope, dateFilter, dateRangeLabel); break;
+        case 'pipeline-status': filename = 'Pipeline_Status'; await pipelineStatusPDF(doc, scope, dateFilter, dateRangeLabel); break;
         default: return res.status(400).json({ message: 'Invalid report type' });
       }
       addPDFFooter(doc);
@@ -376,10 +446,10 @@ exports.exportReport = async (req, res) => {
     const wb = new ExcelJS.Workbook(); wb.creator = 'SkillNix PCHR'; wb.created = new Date();
     let filename = 'report';
     switch (reportType) {
-      case 'recruitment-summary': filename = 'Recruitment_Summary'; await recruitmentSummaryReport(wb, userId, dateFilter); break;
-      case 'source-performance': filename = 'Source_Performance'; await sourcePerformanceReport(wb, userId, dateFilter); break;
-      case 'position-report': filename = 'Position_Report'; await positionWiseReport(wb, userId, dateFilter); break;
-      case 'client-report': filename = 'Client_Report'; await clientReport(wb, userId, dateFilter); break;
+      case 'recruitment-summary': filename = 'Recruitment_Summary'; await recruitmentSummaryReport(wb, scope, dateFilter); break;
+      case 'source-performance': filename = 'Source_Performance'; await sourcePerformanceReport(wb, scope, dateFilter); break;
+      case 'position-report': filename = 'Position_Report'; await positionWiseReport(wb, scope, dateFilter); break;
+      case 'client-report': filename = 'Client_Report'; await clientReport(wb, scope, dateFilter); break;
       case 'pipeline-status': {
         filename = 'Pipeline_Status';
         const candidates = await Candidate.find(userFilter).sort({ status: 1, createdAt: -1 }).lean();
@@ -427,7 +497,7 @@ exports.shareReport = async (req, res) => {
 
     // Build date filter and get candidate count for the report
     const dateFilter = buildDateFilter(dateRange, customFrom, customTo);
-    const candidateFilter = { createdBy: userId };
+    const candidateFilter = scopeFilter(req);
     if (dateFilter) candidateFilter.createdAt = dateFilter;
     const candidateCount = await Candidate.countDocuments(candidateFilter);
 

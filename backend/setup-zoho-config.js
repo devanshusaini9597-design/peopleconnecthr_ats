@@ -33,7 +33,7 @@ async function setupZoho() {
   try {
     // Connect to MongoDB
     console.log('🔌 Connecting to database...');
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/skillnix-pchr');
+    await mongoose.connect(process.env.MONGODB_URI || process.env.MONGODB_URL || process.env.DATABASE_URL || 'mongodb://localhost:27017/skillnix-pchr');
     console.log('✅ Database connected\n');
 
     // Get Zoho credentials from user

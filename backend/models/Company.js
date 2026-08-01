@@ -16,11 +16,14 @@ const CompanySchema = new mongoose.Schema({
     lowercase: true
   }],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
+  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', index: true },
 }, { timestamps: true });
 
 CompanySchema.index({ createdBy: 1, name: 1 }, { unique: true });
+CompanySchema.index({ organizationId: 1, name: 1 });
 CompanySchema.index({ domain: 1 });
 CompanySchema.index({ createdBy: 1, domain: 1 });
+CompanySchema.index({ organizationId: 1, domain: 1 });
 
 // Helper method to check if an email belongs to company domain
 CompanySchema.methods.isCompanyEmail = function(email) {

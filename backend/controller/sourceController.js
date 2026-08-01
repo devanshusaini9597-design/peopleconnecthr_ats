@@ -1,10 +1,16 @@
 const Source = require('../models/Source');
 const { normalizeText, escapeRegex } = require('../utils/textNormalize');
 
-// Get all sources (user's own)
+// Tenant scope: prefer organizationId (multi-tenant safe); fall back to
+// createdBy only for legacy users somehow without an org.
+const scopeFilter = (req) => (
+  req.user.organizationId ? { organizationId: req.user.organizationId } : { createdBy: req.user.id }
+);
+
+// Get all sources (scoped to the caller's organization)
 const getSources = async (req, res) => {
   try {
-    const sources = await Source.find({ createdBy: req.user.id, isActive: true }).sort({ name: 1 });
+    const sources = await Source.find({ ...scopeFilter(req), isActive: true }).sort({ name: 1 });
     res.json(sources);
   } catch (error) {
     console.error('Error fetching sources:', error);
@@ -12,10 +18,10 @@ const getSources = async (req, res) => {
   }
 };
 
-// Get all sources across company (all users)
+// Get all sources across the organization (kept for backward-compatible route/response shape)
 const getAllSources = async (req, res) => {
   try {
-    const sources = await Source.find({ isActive: true }).sort({ name: 1 }).lean();
+    const sources = await Source.find({ ...scopeFilter(req), isActive: true }).sort({ name: 1 }).lean();
     const userIdStr = req.user?.id?.toString();
     const withOwner = sources.map(s => ({ ...s, isMine: s.createdBy?.toString() === userIdStr }));
     res.json(withOwner);
@@ -29,17 +35,18 @@ const getAllSources = async (req, res) => {
 const createSource = async (req, res) => {
   try {
     const { name, description } = req.body;
+    const scope = scopeFilter(req);
 
     if (!name) {
       return res.status(400).json({ message: 'Source name is required' });
     }
 
-    const existingActive = await Source.findOne({ createdBy: req.user.id, name: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') }, isActive: true });
+    const existingActive = await Source.findOne({ ...scope, name: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') }, isActive: true });
     if (existingActive) {
       return res.status(400).json({ message: 'Source already exists' });
     }
 
-    const existingInactive = await Source.findOne({ createdBy: req.user.id, name: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') }, isActive: false });
+    const existingInactive = await Source.findOne({ ...scope, name: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') }, isActive: false });
     if (existingInactive) {
       existingInactive.isActive = true;
       existingInactive.description = description?.trim() ?? existingInactive.description;
@@ -51,7 +58,8 @@ const createSource = async (req, res) => {
     const source = new Source({
       name: normalizeText(name),
       description: description?.trim(),
-      createdBy: req.user.id
+      createdBy: req.user.id,
+      organizationId: req.user.organizationId
     });
 
     await source.save();
@@ -65,20 +73,22 @@ const createSource = async (req, res) => {
   }
 };
 
-// Update a source (any authenticated user can edit any source)
+// Update a source (any authenticated user in the same organization can edit)
 const updateSource = async (req, res) => {
   try {
     if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
     const { id } = req.params;
     const { name, description, isActive } = req.body;
+    const scope = scopeFilter(req);
 
-    const source = await Source.findOne({ _id: id });
+    const source = await Source.findOne({ _id: id, ...scope });
     if (!source) {
       return res.status(404).json({ message: 'Source not found' });
     }
 
     if (name) {
       const existingSource = await Source.findOne({
+        ...scope,
         name: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') },
         _id: { $ne: id },
         isActive: true
@@ -110,13 +120,13 @@ const updateSource = async (req, res) => {
   }
 };
 
-// Delete a source (any authenticated user can delete any source)
+// Delete a source (any authenticated user in the same organization can delete)
 const deleteSource = async (req, res) => {
   try {
     if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
     const { id } = req.params;
 
-    const result = await Source.deleteOne({ _id: id });
+    const result = await Source.deleteOne({ _id: id, ...scopeFilter(req) });
     if (result.deletedCount === 0) {
       return res.status(404).json({ message: 'Source not found' });
     }

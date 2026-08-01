@@ -5,10 +5,12 @@ const sourceSchema = new mongoose.Schema({
   description: { type: String },
   isActive: { type: Boolean, default: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
+  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', index: true },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
 
 sourceSchema.index({ createdBy: 1, name: 1 }, { unique: true });
+sourceSchema.index({ organizationId: 1, name: 1 });
 
 module.exports = mongoose.model('Source', sourceSchema);

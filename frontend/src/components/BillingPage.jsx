@@ -1,13 +1,16 @@
-import React from 'react';
-import { 
-  CreditCard, Check, Zap, Users, Briefcase, Mail, Download, 
-  ArrowRight, ShieldCheck
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  CreditCard, Check, Zap, Users, Briefcase, Mail, ArrowRight, ShieldCheck, Loader2
 } from 'lucide-react';
+import { authenticatedFetch, handleUnauthorized } from '../utils/fetchUtils';
+import { useToast } from './Toast';
 
 const MetricRing = ({ label, current, max, color, icon: Icon }) => {
-  const percentage = Math.min((current / max) * 100, 100);
+  const safeMax = max && max > 0 ? max : 1;
+  const unlimited = !max || max <= 0 || max >= 999999;
+  const percentage = unlimited ? 0 : Math.min((current / safeMax) * 100, 100);
   const strokeColor = percentage > 85 ? 'text-red-500' : percentage > 60 ? 'text-amber-500' : color;
-  
+
   return (
     <div className="bg-white p-5 rounded-xl border border-gray-200 flex items-center justify-between shadow-sm">
       <div className="space-y-1">
@@ -16,7 +19,7 @@ const MetricRing = ({ label, current, max, color, icon: Icon }) => {
           {label}
         </div>
         <div className="text-2xl font-bold text-gray-900">
-          {current.toLocaleString()} <span className="text-sm font-normal text-gray-400">/ {max.toLocaleString()}</span>
+          {(current || 0).toLocaleString()} <span className="text-sm font-normal text-gray-400">/ {unlimited ? '∞' : max.toLocaleString()}</span>
         </div>
       </div>
       <div className="relative w-16 h-16">
@@ -29,11 +32,105 @@ const MetricRing = ({ label, current, max, color, icon: Icon }) => {
   );
 };
 
+const PLAN_ICONS = { starter: Briefcase, professional: Zap, enterprise: ShieldCheck };
+
 export default function BillingPage() {
+  const toast = useToast();
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState(null);
+  const [plans, setPlans] = useState([]);
+  const [busyPlan, setBusyPlan] = useState(null);
+  const [portalLoading, setPortalLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const [statusRes, plansRes] = await Promise.all([
+        authenticatedFetch('/api/billing/status'),
+        authenticatedFetch('/api/billing/plans')
+      ]);
+      if (statusRes.status === 401 || plansRes.status === 401) return handleUnauthorized();
+
+      const statusData = await statusRes.json();
+      const plansData = await plansRes.json();
+      if (statusData.success) setStatus(statusData.data);
+      if (plansData.success) setPlans(plansData.data);
+    } catch (err) {
+      toast?.error?.('Failed to load billing info');
+    } finally {
+      setLoading(false);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { load(); }, [load]);
+
+  // Reflect Stripe Checkout redirect result back to the user.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkout = params.get('checkout');
+    if (checkout === 'success') {
+      toast?.success?.('Subscription updated! It may take a few seconds to reflect.');
+      window.history.replaceState({}, '', '/billing');
+      setTimeout(load, 2000);
+    } else if (checkout === 'cancelled') {
+      toast?.info?.('Checkout cancelled.');
+      window.history.replaceState({}, '', '/billing');
+    }
+  }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleUpgrade = async (planId) => {
+    setBusyPlan(planId);
+    try {
+      const res = await authenticatedFetch('/api/billing/create-checkout', {
+        method: 'POST',
+        body: JSON.stringify({ planId })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast?.error?.(data.message || 'Could not start checkout');
+        return;
+      }
+      window.location.href = data.url;
+    } catch (err) {
+      toast?.error?.('Could not start checkout');
+    } finally {
+      setBusyPlan(null);
+    }
+  };
+
+  const handlePortal = async () => {
+    setPortalLoading(true);
+    try {
+      const res = await authenticatedFetch('/api/billing/portal');
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast?.error?.(data.message || 'Could not open billing portal');
+        return;
+      }
+      window.location.href = data.url;
+    } catch (err) {
+      toast?.error?.('Could not open billing portal');
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
+      </div>
+    );
+  }
+
+  const currentPlan = status?.plan || 'free_trial';
+  const usage = status?.usage || {};
+  const limits = status?.limits || {};
+  const currentPlanMeta = plans.find((p) => p.id === currentPlan);
+
   return (
     <div className="min-h-screen bg-gray-50/50 p-6 pb-20">
       <div className="max-w-6xl mx-auto space-y-8">
-        
+
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Billing & Plans</h1>
@@ -44,31 +141,47 @@ export default function BillingPage() {
           </div>
         </div>
 
+        {!status?.stripeConfigured && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-4 text-sm">
+            Billing isn't fully configured yet on the server (missing Stripe keys). Plan changes and checkout will be unavailable until an admin sets <code>STRIPE_SECRET_KEY</code> etc. in the backend environment.
+          </div>
+        )}
+
         {/* Current Plan Alert */}
         <div className="bg-gradient-to-r from-gray-900 to-slate-800 rounded-2xl p-6 md:p-8 text-white shadow-xl relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/3 blur-3xl"></div>
-          
+
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2.5 py-1 rounded text-xs font-semibold uppercase tracking-wider">
                   Current Plan
                 </span>
-                <span className="text-yellow-400 text-sm font-medium flex items-center gap-1">
-                  12 Days left in Trial
-                </span>
+                {status?.planExpiresAt && (
+                  <span className="text-yellow-400 text-sm font-medium flex items-center gap-1">
+                    Trial ends {new Date(status.planExpiresAt).toLocaleDateString()}
+                  </span>
+                )}
               </div>
-              <h2 className="text-3xl font-bold mb-1">Starter Tier</h2>
-              <p className="text-gray-400 text-sm">Perfect for small teams starting to scale their hiring.</p>
+              <h2 className="text-3xl font-bold mb-1 capitalize">{currentPlanMeta?.name || currentPlan.replace('_', ' ')}</h2>
+              <p className="text-gray-400 text-sm">
+                {status?.subscription?.subscriptionId ? 'Active subscription' : 'No active paid subscription'}
+              </p>
             </div>
-            
+
             <div className="flex items-center gap-4">
-              <div className="text-right hidden md:block">
-                <div className="text-2xl font-bold">$49 <span className="text-sm font-normal text-gray-400">/mo</span></div>
-                <div className="text-xs text-gray-400">Billed annually</div>
-              </div>
-              <button className="px-6 py-3 bg-white text-gray-900 rounded-lg font-semibold hover:bg-gray-100 transition-colors shadow-sm flex items-center gap-2">
-                <CreditCard className="w-4 h-4" /> Manage Subscription
+              {currentPlanMeta?.price != null && (
+                <div className="text-right hidden md:block">
+                  <div className="text-2xl font-bold">${currentPlanMeta.price} <span className="text-sm font-normal text-gray-400">/mo</span></div>
+                </div>
+              )}
+              <button
+                onClick={handlePortal}
+                disabled={portalLoading || !status?.subscription?.customerId}
+                className="px-6 py-3 bg-white text-gray-900 rounded-lg font-semibold hover:bg-gray-100 transition-colors shadow-sm flex items-center gap-2 disabled:opacity-50"
+                title={!status?.subscription?.customerId ? 'Subscribe to a paid plan first' : ''}
+              >
+                <CreditCard className="w-4 h-4" /> {portalLoading ? 'Opening…' : 'Manage Subscription'}
               </button>
             </div>
           </div>
@@ -76,12 +189,12 @@ export default function BillingPage() {
 
         {/* Usage Stats */}
         <div>
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">Current Usage (This billing cycle)</h3>
+          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">Current Usage</h3>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <MetricRing label="Active Jobs" current={3} max={5} color="text-blue-500" icon={Briefcase} />
-            <MetricRing label="Team Members" current={4} max={5} color="text-indigo-500" icon={Users} />
-            <MetricRing label="Candidates" current={450} max={1000} color="text-emerald-500" icon={Users} />
-            <MetricRing label="Emails Sent" current={1850} max={2000} color="text-amber-500" icon={Mail} />
+            <MetricRing label="Active Jobs" current={usage.jobs || 0} max={limits.maxJobs} color="text-blue-500" icon={Briefcase} />
+            <MetricRing label="Team Members" current={usage.users || 0} max={limits.maxUsers} color="text-indigo-500" icon={Users} />
+            <MetricRing label="Candidates" current={usage.candidates || 0} max={limits.maxCandidates} color="text-emerald-500" icon={Users} />
+            <MetricRing label="Emails Sent" current={usage.emailsSent || 0} max={limits.maxEmailsPerMonth} color="text-amber-500" icon={Mail} />
           </div>
         </div>
 
@@ -89,93 +202,63 @@ export default function BillingPage() {
         <div className="pt-8">
           <h3 className="text-2xl font-bold text-center text-gray-900 mb-8">Ready to grow? Upgrade your plan.</h3>
           <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {/* Starter */}
-            <div className="bg-white border-2 border-blue-500 rounded-2xl p-6 shadow-md relative">
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">
-                Current Plan
-              </div>
-              <h4 className="text-lg font-bold text-gray-900">Starter</h4>
-              <div className="mt-2 text-3xl font-bold text-gray-900">$49<span className="text-lg font-normal text-gray-500">/mo</span></div>
-              <p className="text-sm text-gray-500 mt-2">Essential features for small teams.</p>
-              
-              <ul className="mt-6 space-y-3 mb-8">
-                {['Up to 5 active jobs', '5 team members', '1,000 candidates/mo', 'Basic reporting', 'Email support'].map((feature, i) => (
-                  <li key={i} className="flex items-center gap-2 text-sm text-gray-600">
-                    <Check className="w-4 h-4 text-green-500 shrink-0" /> {feature}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Pro */}
-            <div className="bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-xl transition-shadow relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                <Zap className="w-24 h-24 text-indigo-500" />
-              </div>
-              <h4 className="text-lg font-bold text-gray-900">Professional</h4>
-              <div className="mt-2 text-3xl font-bold text-gray-900">$149<span className="text-lg font-normal text-gray-500">/mo</span></div>
-              <p className="text-sm text-gray-500 mt-2">Advanced tools for growing companies.</p>
-              
-              <ul className="mt-6 space-y-3 mb-8 relative z-10">
-                {['Unlimited active jobs', '25 team members', 'Unlimited candidates', 'Custom pipelines', 'Advanced analytics', 'Priority support'].map((feature, i) => (
-                  <li key={i} className="flex items-center gap-2 text-sm text-gray-600">
-                    <Check className="w-4 h-4 text-green-500 shrink-0" /> {feature}
-                  </li>
-                ))}
-              </ul>
-              <button className="w-full py-2.5 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
-                Upgrade to Pro <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Enterprise */}
-            <div className="bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-lg transition-shadow">
-              <h4 className="text-lg font-bold text-gray-900">Enterprise</h4>
-              <div className="mt-2 text-3xl font-bold text-gray-900">Custom</div>
-              <p className="text-sm text-gray-500 mt-2">Bespoke solutions for large organizations.</p>
-              
-              <ul className="mt-6 space-y-3 mb-8">
-                {['Unlimited everything', 'Custom integrations', 'Dedicated account manager', 'SAML SSO', 'Custom contracts', '24/7 phone support'].map((feature, i) => (
-                  <li key={i} className="flex items-center gap-2 text-sm text-gray-600">
-                    <Check className="w-4 h-4 text-green-500 shrink-0" /> {feature}
-                  </li>
-                ))}
-              </ul>
-              <button className="w-full py-2.5 bg-white border-2 border-gray-200 text-gray-900 rounded-lg font-medium hover:bg-gray-50 transition-colors">
-                Contact Sales
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Invoice History */}
-        <div className="pt-8">
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">Billing History</h3>
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden text-sm">
-            <table className="w-full text-left">
-              <thead className="bg-gray-50 text-gray-500 font-medium">
-                <tr>
-                  <th className="px-6 py-3">Date</th>
-                  <th className="px-6 py-3">Description</th>
-                  <th className="px-6 py-3">Amount</th>
-                  <th className="px-6 py-3">Status</th>
-                  <th className="px-6 py-3 text-right">Invoice</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                <tr>
-                  <td colSpan="5" className="px-6 py-8 text-center text-gray-500">
-                    <div className="flex flex-col items-center">
-                      <CreditCard className="w-8 h-8 text-gray-300 mb-2" />
-                      <p>No billing history yet.</p>
-                      <p className="text-xs text-gray-400 mt-1">Invoices will appear here once you upgrade to a paid plan.</p>
+            {plans.filter((p) => p.id !== 'free_trial').map((plan) => {
+              const Icon = PLAN_ICONS[plan.id] || Zap;
+              const isCurrent = plan.id === currentPlan;
+              const isEnterprise = plan.id === 'enterprise';
+              return (
+                <div
+                  key={plan.id}
+                  className={`bg-white rounded-2xl p-6 relative ${isCurrent ? 'border-2 border-blue-500 shadow-md' : 'border border-gray-200 hover:shadow-xl transition-shadow'}`}
+                >
+                  {isCurrent && (
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">
+                      Current Plan
                     </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                  )}
+                  <div className="absolute top-4 right-4 opacity-10">
+                    <Icon className="w-16 h-16" />
+                  </div>
+                  <h4 className="text-lg font-bold text-gray-900">{plan.name}</h4>
+                  <div className="mt-2 text-3xl font-bold text-gray-900">
+                    {plan.price != null ? <>${plan.price}<span className="text-lg font-normal text-gray-500">/mo</span></> : 'Custom'}
+                  </div>
+
+                  {!isCurrent && !isEnterprise && (
+                    <button
+                      onClick={() => handleUpgrade(plan.id)}
+                      disabled={busyPlan === plan.id || !plan.checkoutEnabled}
+                      className="w-full mt-6 py-2.5 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                      title={!plan.checkoutEnabled ? 'This plan is not configured for self-serve checkout yet' : ''}
+                    >
+                      {busyPlan === plan.id ? 'Redirecting…' : <>Upgrade to {plan.name} <ArrowRight className="w-4 h-4" /></>}
+                    </button>
+                  )}
+
+                  {!isCurrent && isEnterprise && (
+                    <a
+                      href="mailto:sales@skillnix.example?subject=Enterprise%20plan%20inquiry"
+                      className="w-full mt-6 py-2.5 bg-white border-2 border-gray-200 text-gray-900 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center"
+                    >
+                      Contact Sales
+                    </a>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
+
+        {status?.subscription?.subscriptionId && (
+          <div className="text-center">
+            <button
+              onClick={handlePortal}
+              className="text-sm text-gray-500 hover:text-gray-700 underline"
+            >
+              Cancel subscription (via billing portal)
+            </button>
+          </div>
+        )}
 
       </div>
     </div>

@@ -2,9 +2,12 @@ const express = require('express');
 const router = express.Router();
 const { verifyToken } = require('../middleware/authMiddleware');
 const { requireRole, requireOwner, requireAdmin, requireRecruiterOrAbove, checkPlanLimit } = require('../middleware/rbacMiddleware');
+const { requireFeature } = require('../middleware/featureMiddleware');
 const { tenantScope, requireOrganization } = require('../middleware/tenantMiddleware');
+const { getEntitlements } = require('../config/planFeatures');
 const Organization = require('../models/Organization');
 const User = require('../models/User');
+const AuditLog = require('../models/AuditLog');
 
 // Apply middleware to all routes in this file
 router.use(verifyToken, requireOrganization, tenantScope);
@@ -30,6 +33,25 @@ router.get('/', async (req, res) => {
 router.put('/', requireAdmin, async (req, res) => {
   try {
     const { name, logo, settings, atsSettings } = req.body;
+
+    // Guard: atsSettings is a free-form blob accepted wholesale above, so a
+    // plan-gated sub-field (careersCustomDomain) could otherwise be set by
+    // any admin regardless of plan — a hidden-paywall bypass of exactly the
+    // kind this app's plan-gating middleware exists to prevent everywhere
+    // else. Strip it back out here unless the org's plan actually includes it.
+    if (atsSettings && Object.prototype.hasOwnProperty.call(atsSettings, 'careersCustomDomain') && atsSettings.careersCustomDomain) {
+      const { planHasFeature } = require('../config/planFeatures');
+      const currentOrg = await Organization.findById(req.user.organizationId).select('plan');
+      if (!currentOrg || !planHasFeature(currentOrg.plan, 'careers.customDomain')) {
+        return res.status(403).json({
+          success: false,
+          code: 'UPGRADE_REQUIRED',
+          message: 'Custom domain careers pages require the Enterprise plan.',
+          feature: 'careers.customDomain'
+        });
+      }
+    }
+
     const org = await Organization.findByIdAndUpdate(
       req.user.organizationId,
       { $set: { name, logo, settings, atsSettings } },
@@ -111,13 +133,123 @@ router.get('/usage', async (req, res) => {
 });
 
 /**
- * GET /audit-log
- * Get audit log entries
+ * GET /entitlements
+ * Feature flags this org's current plan is entitled to (source of truth
+ * for the frontend's <FeatureGate> and Sidebar plan filtering).
  */
-router.get('/audit-log', requireAdmin, async (req, res) => {
+router.get('/entitlements', async (req, res) => {
   try {
-    // STUB: Replace with actual AuditLog model query
-    res.json({ success: true, data: [] });
+    const org = await Organization.findById(req.user.organizationId).select('plan');
+    if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
+    res.json({ success: true, plan: org.plan, entitlements: getEntitlements(org.plan) });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Builds a Mongo filter for AuditLog queries from common query-string params.
+ * Shared by the paginated list endpoint and the CSV export endpoint so they
+ * stay in sync.
+ */
+const buildAuditLogFilter = (req) => {
+  const filter = { organizationId: req.user.organizationId };
+  if (req.query.action) filter.action = req.query.action;
+  if (req.query.resource) filter.resource = req.query.resource;
+  if (req.query.userId) filter.userId = req.query.userId;
+  if (req.query.startDate || req.query.endDate) {
+    filter.timestamp = {};
+    if (req.query.startDate) filter.timestamp.$gte = new Date(req.query.startDate);
+    if (req.query.endDate) filter.timestamp.$lte = new Date(req.query.endDate);
+  }
+  return filter;
+};
+
+/**
+ * GET /audit-log
+ * Paginated, filterable audit trail for this organization.
+ * Query: page, limit (max 200), action, resource, userId, startDate, endDate
+ */
+router.get('/audit-log', requireAdmin, requireFeature('audit.log'), async (req, res) => {
+  try {
+    const filter = buildAuditLogFilter(req);
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+
+    const [entries, total] = await Promise.all([
+      AuditLog.find(filter)
+        .sort({ timestamp: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate('userId', 'name email')
+        .lean(),
+      AuditLog.countDocuments(filter)
+    ]);
+
+    res.json({
+      success: true,
+      data: entries,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * GET /audit-log/distinct
+ * Lightweight lists to populate the frontend's action/resource filter dropdowns.
+ */
+router.get('/audit-log/distinct', requireAdmin, requireFeature('audit.log'), async (req, res) => {
+  try {
+    const organizationId = req.user.organizationId;
+    const [actions, resources] = await Promise.all([
+      AuditLog.distinct('action', { organizationId }),
+      AuditLog.distinct('resource', { organizationId })
+    ]);
+    res.json({ success: true, actions: actions.sort(), resources: resources.sort() });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * GET /audit-log/export
+ * CSV export of the (filtered) audit trail — Enterprise-only, per the blueprint.
+ * Capped at 10,000 rows per export to keep this endpoint from hanging.
+ */
+router.get('/audit-log/export', requireAdmin, requireFeature('audit.export'), async (req, res) => {
+  try {
+    const filter = buildAuditLogFilter(req);
+    const entries = await AuditLog.find(filter)
+      .sort({ timestamp: -1 })
+      .limit(10000)
+      .populate('userId', 'name email')
+      .lean();
+
+    const escapeCsv = (value) => {
+      if (value === null || value === undefined) return '';
+      const str = typeof value === 'string' ? value : JSON.stringify(value);
+      return `"${str.replace(/"/g, '""')}"`;
+    };
+
+    const header = ['Timestamp', 'Action', 'Resource', 'Resource ID', 'User', 'Email', 'IP Address', 'Details'];
+    const rows = entries.map((e) => [
+      e.timestamp?.toISOString?.() || '',
+      e.action,
+      e.resource,
+      e.resourceId || '',
+      e.userId?.name || '',
+      e.userId?.email || '',
+      e.ipAddress || '',
+      e.details
+    ].map(escapeCsv).join(','));
+
+    const csv = [header.map(escapeCsv).join(','), ...rows].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="audit-log-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

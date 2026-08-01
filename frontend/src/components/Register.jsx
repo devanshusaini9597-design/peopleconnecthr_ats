@@ -84,7 +84,8 @@ const Register = () => {
                 setIsRegistered(true);
             }
         } catch (err) {
-            setApiError('Network error. Please try again later.');
+            console.error('[Register] fetch error:', err);
+            setApiError(err.message ? `Network error: ${err.message}` : 'Network error. Please try again later.');
         } finally {
             setLoading(false);
         }

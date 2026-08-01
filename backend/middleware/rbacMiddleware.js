@@ -35,6 +35,20 @@ const requireRecruiterOrAbove = requireRole('owner', 'admin', 'recruiter');
 const requireInterviewerOrAbove = requireRole('owner', 'admin', 'recruiter', 'interviewer');
 
 /**
+ * Maps a logical resource name (used throughout routes/checkPlanLimit calls)
+ * to the actual field names on Organization.usageLimits / Organization.usageCurrent.
+ * These do NOT match 1:1 (e.g. usageLimits.maxUsers vs usageCurrent.users,
+ * and usageCurrent.emailsSent instead of "emails") — this mapping is the
+ * single source of truth so the two schemas never drift out of sync again.
+ */
+const RESOURCE_FIELD_MAP = {
+  users: { limitField: 'maxUsers', currentField: 'users' },
+  jobs: { limitField: 'maxJobs', currentField: 'jobs' },
+  candidates: { limitField: 'maxCandidates', currentField: 'candidates' },
+  emails: { limitField: 'maxEmailsPerMonth', currentField: 'emailsSent' }
+};
+
+/**
  * Middleware that checks if the organization is within plan limits for the given resource.
  * @param {string} resource One of: 'users', 'jobs', 'candidates', 'emails'
  */
@@ -45,9 +59,8 @@ const checkPlanLimit = (resource) => {
         return res.status(401).json({ success: false, message: 'Organization context required' });
       }
 
-      // Check valid resources
-      const validResources = ['users', 'jobs', 'candidates', 'emails'];
-      if (!validResources.includes(resource)) {
+      const fields = RESOURCE_FIELD_MAP[resource];
+      if (!fields) {
         return res.status(500).json({ success: false, message: `Invalid resource check: ${resource}` });
       }
 
@@ -58,8 +71,8 @@ const checkPlanLimit = (resource) => {
         return res.status(404).json({ success: false, message: 'Organization not found' });
       }
 
-      const limit = org.usageLimits && org.usageLimits[resource];
-      const current = org.usageCurrent && org.usageCurrent[resource] || 0;
+      const limit = org.usageLimits && org.usageLimits[fields.limitField];
+      const current = (org.usageCurrent && org.usageCurrent[fields.currentField]) || 0;
 
       // If limit is 0 or undefined, we assume unlimited, or depending on business logic. 
       // Typically -1 means unlimited, or missing limit means unlimited. Let's assume undefined = unlimited, 0 = no access.

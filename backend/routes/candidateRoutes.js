@@ -7,6 +7,8 @@ const multer = require('multer');
 const path = require('path');
 const candidateController = require('../controller/candidateController');
 const Candidate = require('../models/Candidate'); // Baar-baar require karne se achha hai ek baar upar kar lein
+const { requireRecruiterOrAbove, requireAdmin } = require('../middleware/rbacMiddleware');
+const { requireFeature } = require('../middleware/featureMiddleware');
 
 // ✅ VALIDATION AND AUTO-FIX HELPERS
 const validateAndFixEmail = (email) => {
@@ -155,9 +157,12 @@ router.get('/', async (req, res) => {
                 : { 'sharedWith.userId': userIdStr };
 
             if (viewMode === 'all') {
-                // All users can see all candidates (no filter by creator)
-                filter = {};
-                Candidate.countDocuments({}).then(n => console.log('📊 Backend Query - view=all, total in DB:', n, '(req.query.view=', req.query.view + ')')).catch(() => {});
+                // All users in the SAME organization can see all candidates in
+                // that org — but never across organizations. Without this
+                // scope, view=all previously returned every candidate in the
+                // entire database regardless of tenant.
+                filter = req.user.organizationId ? { organizationId: req.user.organizationId } : createdByClause;
+                Candidate.countDocuments(filter).then(n => console.log('📊 Backend Query - view=all, org-scoped total:', n)).catch(() => {});
             } else if (viewMode === 'shared') {
                 filter = sharedClause;
             } else {
@@ -409,10 +414,10 @@ router.get('/', async (req, res) => {
 
 // --- 2. CREATE SINGLE CANDIDATE (Manual Add) ---
 // Frontend se jab aap single candidate add karengi, toh wo isi route pe aayega
-router.post('/', diskUpload.single('resume'), candidateController.createCandidate);
+router.post('/', requireRecruiterOrAbove, diskUpload.single('resume'), candidateController.createCandidate);
 
 // --- 2b. BULK CREATE FROM PARSED RESUMES (JSON body, no file) ---
-router.post('/bulk-from-parsed', candidateController.bulkCreateFromParsed);
+router.post('/bulk-from-parsed', requireRecruiterOrAbove, candidateController.bulkCreateFromParsed);
 
 // --- 3. EXTRACT HEADERS (for column mapping) ---
 router.post('/extract-headers', diskUpload.single('file'), async (req, res) => {
@@ -515,10 +520,10 @@ router.post('/extract-headers', diskUpload.single('file'), async (req, res) => {
 });
 
 // --- 4A. AUTO BULK UPLOAD (No column mapping needed!) ---
-router.post('/bulk-upload-auto', diskUpload.single('file'), candidateController.bulkUploadCandidates);
+router.post('/bulk-upload-auto', requireRecruiterOrAbove, requireFeature('jobs.bulkImport'), diskUpload.single('file'), candidateController.bulkUploadCandidates);
 
 // --- 4B. MANUAL BULK UPLOAD (With column mapping) ---
-router.post('/bulk-upload', diskUpload.single('file'), (req, res, next) => {
+router.post('/bulk-upload', requireRecruiterOrAbove, requireFeature('jobs.bulkImport'), diskUpload.single('file'), (req, res, next) => {
     try {
         console.log('--- 📥 BULK UPLOAD REQUEST RECEIVED ---');
         console.log('--- 📦 req.body keys:', Object.keys(req.body || {}));
@@ -602,6 +607,14 @@ router.post('/parse-logic', memoryUpload.single('resume'), async (req, res) => {
     }
 });
 
+// Tenant boundary: any user within the SAME organization may access/edit/
+// delete a candidate (matches this app's intra-org collaboration model), but
+// never across organizations. Falls back to createdBy-only for legacy
+// accounts with no organizationId.
+const orgOrOwnerScope = (req) => (
+    req.user.organizationId ? { organizationId: req.user.organizationId } : { createdBy: req.user.id }
+);
+
 // --- 6. EMAIL CHECK ---
 router.get('/check-email/:email', async (req, res) => {
     try {
@@ -612,11 +625,11 @@ router.get('/check-email/:email', async (req, res) => {
     }
 });
 
-// --- 6.4 GET CANDIDATE RESUME FILE (any user can view/download any candidate's resume) ---
+// --- 6.4 GET CANDIDATE RESUME FILE (any user in the same org can view/download) ---
 router.get('/:id/resume', async (req, res) => {
     try {
         if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
-        const candidate = await Candidate.findOne({ _id: req.params.id }).select('resume').lean();
+        const candidate = await Candidate.findOne({ _id: req.params.id, ...orgOrOwnerScope(req) }).select('resume').lean();
         if (!candidate || !candidate.resume) {
             return res.status(404).json({ message: 'Resume not found' });
         }
@@ -697,11 +710,11 @@ router.get('/:id/resume', async (req, res) => {
     }
 });
 
-// --- 6.5 GET SINGLE CANDIDATE BY ID (any user can view any candidate) ---
+// --- 6.5 GET SINGLE CANDIDATE BY ID (any user in the same org can view) ---
 router.get('/:id', async (req, res) => {
     try {
         if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
-        const candidate = await Candidate.findOne({ _id: req.params.id });
+        const candidate = await Candidate.findOne({ _id: req.params.id, ...orgOrOwnerScope(req) });
         if (!candidate) {
             return res.status(404).json({ message: 'Candidate not found' });
         }
@@ -713,14 +726,14 @@ router.get('/:id', async (req, res) => {
 });
 
 // --- 7. UPDATE CANDIDATE ---
-router.put('/:id', diskUpload.single('resume'), candidateController.updateCandidate);
+router.put('/:id', requireRecruiterOrAbove, diskUpload.single('resume'), candidateController.updateCandidate);
 
-// --- 8. DELETE CANDIDATE (any user can delete any candidate) ---
-router.delete('/:id', async (req, res) => {
+// --- 8. DELETE CANDIDATE (any recruiter+ in the same org can delete) ---
+router.delete('/:id', requireRecruiterOrAbove, async (req, res) => {
     try {
         if (!req.user?.id) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const { id } = req.params;
-        const deletedCandidate = await Candidate.findOneAndDelete({ _id: id });
+        const deletedCandidate = await Candidate.findOneAndDelete({ _id: id, ...orgOrOwnerScope(req) });
 
         if (!deletedCandidate) {
             return res.status(404).json({ success: false, message: "Candidate not found" });
@@ -732,8 +745,8 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
-// --- 8A2. BULK DELETE CANDIDATES (any user can delete any candidates) ---
-router.post('/bulk-delete', async (req, res) => {
+// --- 8A2. BULK DELETE CANDIDATES (any recruiter+ in the same org can delete) ---
+router.post('/bulk-delete', requireRecruiterOrAbove, async (req, res) => {
     try {
         if (!req.user?.id) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const { ids } = req.body;
@@ -741,7 +754,7 @@ router.post('/bulk-delete', async (req, res) => {
             return res.status(400).json({ success: false, message: 'No candidate IDs provided' });
         }
 
-        const result = await Candidate.deleteMany({ _id: { $in: ids } });
+        const result = await Candidate.deleteMany({ _id: { $in: ids }, ...orgOrOwnerScope(req) });
 
         res.json({
             success: true,
@@ -753,8 +766,8 @@ router.post('/bulk-delete', async (req, res) => {
     }
 });
 
-// --- 8B. CLEAR ALL CANDIDATES (DANGER: Deletes entire database) ---
-router.delete('/clear-all/now', async (req, res) => {
+// --- 8B. CLEAR ALL CANDIDATES (DANGER: deletes all of the caller's own candidates) ---
+router.delete('/clear-all/now', requireAdmin, async (req, res) => {
     try {
         console.log('⚠️  Clearing all candidates for user:', req.user.id);
         const result = await Candidate.deleteMany({ createdBy: req.user.id });
@@ -882,25 +895,25 @@ router.get('/analytics/data-quality', async (req, res) => {
 
 // Review & Fix Workflow
 // Re-validate a single record after user manual edits
-router.post('/revalidate-record', candidateController.revalidateRecord);
+router.post('/revalidate-record', requireRecruiterOrAbove, candidateController.revalidateRecord);
 
 // Import reviewed and fixed candidates to database
-router.post('/import-reviewed', candidateController.importReviewedCandidates);
+router.post('/import-reviewed', requireRecruiterOrAbove, candidateController.importReviewedCandidates);
 
 // ✅ Share candidate with team members
-router.post('/share', candidateController.shareCandidate);
+router.post('/share', requireRecruiterOrAbove, candidateController.shareCandidate);
 
 // Import shared candidates into current user's database (copy as own)
-router.post('/import-shared', candidateController.importSharedCandidates);
+router.post('/import-shared', requireRecruiterOrAbove, candidateController.importSharedCandidates);
 
 // Import all candidates from database into current user's list (copy as own). Skips already-owned.
-router.post('/import-all-to-mine', candidateController.importAllToMine);
+router.post('/import-all-to-mine', requireRecruiterOrAbove, candidateController.importAllToMine);
 
 // ================= PENDING CANDIDATES (Review / Blocked) =================
 const PendingCandidate = require('../models/PendingCandidate');
 
 // Save review/blocked records from auto import
-router.post('/pending/save', async (req, res) => {
+router.post('/pending/save', requireRecruiterOrAbove, async (req, res) => {
     try {
         const { records, fileName } = req.body;
         if (!records || !Array.isArray(records) || records.length === 0) {
@@ -999,7 +1012,7 @@ router.get('/pending', async (req, res) => {
 });
 
 // Update a pending candidate (edit fields)
-router.put('/pending/:id', async (req, res) => {
+router.put('/pending/:id', requireRecruiterOrAbove, async (req, res) => {
     try {
         const updated = await PendingCandidate.findOneAndUpdate(
             { _id: req.params.id, createdBy: req.user.id },
@@ -1014,7 +1027,7 @@ router.put('/pending/:id', async (req, res) => {
 });
 
 // Delete pending candidate(s)
-router.post('/pending/delete', async (req, res) => {
+router.post('/pending/delete', requireRecruiterOrAbove, async (req, res) => {
     try {
         const { ids } = req.body;
         if (!ids || !Array.isArray(ids)) return res.status(400).json({ success: false, message: 'No IDs provided' });
@@ -1029,7 +1042,7 @@ router.post('/pending/delete', async (req, res) => {
 });
 
 // Clear all pending records for the current user (enterprise-style cleanup)
-router.post('/pending/clear-all', async (req, res) => {
+router.post('/pending/clear-all', requireRecruiterOrAbove, async (req, res) => {
     try {
         const userId = req.user.id;
         const userIdObj = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
@@ -1041,7 +1054,7 @@ router.post('/pending/clear-all', async (req, res) => {
 });
 
 // Import pending candidates to main database (move from pending to candidates)
-router.post('/pending/import', async (req, res) => {
+router.post('/pending/import', requireRecruiterOrAbove, async (req, res) => {
     try {
         const { ids } = req.body;
         if (!ids || !Array.isArray(ids) || ids.length === 0) {

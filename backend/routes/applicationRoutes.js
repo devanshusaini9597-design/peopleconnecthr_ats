@@ -5,6 +5,8 @@ const { requireRole, requireOwner, requireAdmin, requireRecruiterOrAbove, checkP
 const { tenantScope, requireOrganization } = require('../middleware/tenantMiddleware');
 const Application = require('../models/Application');
 const Candidate = require('../models/Candidate');
+const eventBus = require('../events/eventBus');
+const eventTypes = require('../events/eventTypes');
 
 router.use(verifyToken, requireOrganization, tenantScope);
 
@@ -94,17 +96,45 @@ router.put('/:id/stage', requireRecruiterOrAbove, async (req, res) => {
     const application = await Application.findOne({ _id: req.params.id, organizationId: req.user.organizationId });
     if (!application) return res.status(404).json({ success: false, message: 'Not found' });
 
+    const previousStage = application.stage;
     application.stage = stage;
     application.stageHistory.push({ stage, changedAt: new Date(), changedBy: req.user.id, remark });
 
     if (stage === 'Hired') {
       application.isHired = true;
       application.hiredAt = new Date();
-      // STUB: Emit CANDIDATE_HIRED
     }
 
     await application.save();
-    // STUB: Emit APPLICATION_STAGE_CHANGED
+
+    eventBus.emit(eventTypes.APPLICATION_STAGE_CHANGED, {
+      organizationId: req.user.organizationId,
+      userId: req.user.id,
+      resourceType: 'Application',
+      resourceId: application._id,
+      candidateId: application.candidateId,
+      jobId: application.jobId,
+      previousStage,
+      newStage: stage
+    });
+
+    // This is the natural cross-product handoff point called out in the
+    // productization blueprint: a future HRMS/CRM listener can subscribe to
+    // CANDIDATE_HIRED to auto-create an employee/contact record without any
+    // changes needed here.
+    if (stage === 'Hired') {
+      eventBus.emit(eventTypes.CANDIDATE_HIRED, {
+        organizationId: req.user.organizationId,
+        userId: req.user.id,
+        resourceType: 'Application',
+        resourceId: application._id,
+        candidateId: application.candidateId,
+        jobId: application.jobId,
+        applicationId: application._id,
+        hiredAt: application.hiredAt
+      });
+    }
+
     res.json({ success: true, data: application });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -138,7 +168,17 @@ router.put('/:id/reject', requireRecruiterOrAbove, async (req, res) => {
       { $set: { isRejected: true, rejectedAt: new Date(), rejectedBy: req.user.id, rejectionReason: reason } },
       { new: true }
     );
-    // STUB: Emit APPLICATION_REJECTED
+    if (application) {
+      eventBus.emit(eventTypes.APPLICATION_REJECTED, {
+        organizationId: req.user.organizationId,
+        userId: req.user.id,
+        resourceType: 'Application',
+        resourceId: application._id,
+        candidateId: application.candidateId,
+        jobId: application.jobId,
+        reason
+      });
+    }
     res.json({ success: true, data: application });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

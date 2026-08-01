@@ -26,6 +26,9 @@ const userSchema = new mongoose.Schema({
     enum: ['owner', 'admin', 'recruiter', 'interviewer', 'readonly'],
     default: 'recruiter'
   },
+  // Enterprise-only: overrides DEFAULT_ROLE_PERMISSIONS[role] with a custom
+  // permission set. Null/unset = use the fixed role's default permissions.
+  customRoleId: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomRole', default: null },
   isEmailVerified: { type: Boolean, default: false },
   emailVerificationToken: { type: String },
   emailVerificationExpires: { type: Date },

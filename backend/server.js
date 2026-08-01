@@ -48,6 +48,7 @@ const JDTemplate = require('./models/JDTemplate');
 const { verifyToken, generateToken, optionalAuth, JWT_SECRET } = require('./middleware/authMiddleware');
 const { requireRole, requireOwner, requireAdmin, requireRecruiterOrAbove, checkPlanLimit } = require('./middleware/rbacMiddleware');
 const { tenantScope, requireOrganization } = require('./middleware/tenantMiddleware');
+const { getEntitlements } = require('./config/planFeatures');
 
 // ── Event Bus ────────────────────────────────────────────────────────
 const eventBus = require('./events/eventBus');
@@ -72,6 +73,7 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const teamRoutes = require('./routes/teamRoutes');
 const publicSubscribeRoutes = require('./routes/publicSubscribeRoutes');
 const zohoOAuthRoutes = require('./routes/zohoOAuthRoutes');
+const calendarOAuthRoutes = require('./routes/calendarOAuthRoutes');
 
 // New SaaS routes
 const organizationRoutes = require('./routes/organizationRoutes');
@@ -81,11 +83,24 @@ const interviewRoutes = require('./routes/interviewRoutes');
 const billingRoutes = require('./routes/billingRoutes');
 const careersRoutes = require('./routes/careersRoutes');
 const portalRoutes = require('./routes/portalRoutes');
+const integrationRoutes = require('./routes/integrationRoutes');
+const customRoleRoutes = require('./routes/customRoleRoutes');
+const ssoRoutes = require('./routes/ssoRoutes');
+const webhookRoutes = require('./routes/webhookRoutes');
+const apiKeyRoutes = require('./routes/apiKeyRoutes');
+const publicApiRoutes = require('./routes/publicApiRoutes');
+const jobBoardRoutes = require('./routes/jobBoardRoutes');
+const backgroundCheckRoutes = require('./routes/backgroundCheckRoutes');
+const esignRoutes = require('./routes/esignRoutes');
+const reportScheduleRoutes = require('./routes/reportScheduleRoutes');
+const clientPortalRoutes = require('./routes/clientPortalRoutes');
 
 // ── Services ─────────────────────────────────────────────────────────
 const { startNotificationScheduler } = require('./services/notificationService');
 const { normalizeText } = require('./utils/textNormalize');
 const { sendEmail } = require('./services/emailService');
+const { initWebhookDispatcher } = require('./services/webhookDispatcher');
+const { startReportScheduler } = require('./services/reportScheduler');
 
 // ── App Setup ────────────────────────────────────────────────────────
 const app = express();
@@ -106,7 +121,13 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-const ENABLE_DEMO_LOGIN = process.env.ENABLE_DEMO_LOGIN === 'true' || process.env.NODE_ENV !== 'production';
+// SECURITY: demo login creates/logs into a known-credential account, so it's
+// off by default everywhere (including production) unless explicitly opted
+// into via ENABLE_DEMO_LOGIN=true. This is intentionally the opposite of the
+// old default (which was "on unless explicitly disabled", including in
+// production — that was the backdoor). Explicit opt-in only.
+const ENABLE_DEMO_LOGIN = process.env.ENABLE_DEMO_LOGIN === 'true';
+const APP_FRONTEND_URL = process.env.FRONTEND_URL || 'https://frontend-self-one-14.vercel.app';
 const DEMO_EMAIL = (process.env.DEMO_EMAIL || 'demo@skillnix.app').toLowerCase().trim();
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD || 'Demo1234!';
 const DEMO_ORG_NAME = process.env.DEMO_ORG_NAME || 'SkillNix Demo';
@@ -147,7 +168,10 @@ const createDemoAccount = async () => {
       name: DEMO_ORG_NAME,
       slug,
       ownerId: user._id,
-      plan: 'free_trial',
+      // Enterprise so the demo account showcases every plan-gated feature
+      // (Custom Roles, SSO, audit export, etc.) — this is a sales demo
+      // account, not a real customer subject to real plan limits.
+      plan: 'enterprise',
       usageCurrent: { users: 1, jobs: 0, candidates: 0, emailsSent: 0 },
       settings: { timezone: 'Asia/Kolkata', currency: 'INR', dateFormat: 'DD/MM/YYYY' },
       atsSettings: {
@@ -164,6 +188,13 @@ const createDemoAccount = async () => {
 
   if (user.organizationId && !organization.ownerId) {
     organization.ownerId = user._id;
+    await organization.save();
+  }
+
+  // Pin the demo org to Enterprise on every login too, in case it was
+  // created before this was the default, or a webhook/downgrade touched it.
+  if (organization.plan !== 'enterprise') {
+    organization.plan = 'enterprise';
     await organization.save();
   }
 
@@ -193,15 +224,21 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── Stripe webhook (must be mounted BEFORE express.json(), needs raw body
+//    + no auth — Stripe calls this directly, not a logged-in user) ────
+const stripeWebhookRoutes = require('./routes/stripeWebhookRoutes');
+app.use('/api/billing/webhook', stripeWebhookRoutes);
+
 // ── CORS ─────────────────────────────────────────────────────────────
 const allowedOriginList = [
   "https://skillnix-ats-frontend.onrender.com",
+  "https://frontend-self-one-14.vercel.app",
   "http://localhost:5173",
   "http://localhost:5174",
   "http://localhost:3000",
   "http://127.0.0.1:5173",
   "http://127.0.0.1:3000",
-  process.env.FRONTEND_URL
+  APP_FRONTEND_URL
 ].filter(Boolean);
 
 function corsOrigin(origin, cb) {
@@ -210,7 +247,8 @@ function corsOrigin(origin, cb) {
   if (/^https?:\/\/localhost(:\d+)?$/i.test(origin) || /^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(origin)) return cb(null, origin);
   return cb(null, false);
 }
-app.use(cors({ origin: corsOrigin, credentials: true }));
+app.use(cors({ origin: corsOrigin, credentials: true, optionsSuccessStatus: 200 }));
+app.options('*', cors({ origin: corsOrigin, credentials: true, optionsSuccessStatus: 200 }));
 
 // ── Body Parsing ─────────────────────────────────────────────────────
 app.use(express.json({ limit: '100mb' }));
@@ -224,8 +262,12 @@ app.use(express.urlencoded({ limit: '100mb', extended: true }));
 app.use('/api', homeRoutes);
 app.use('/api/public', publicSubscribeRoutes);
 app.use('/oauth/zoho', zohoOAuthRoutes);
+app.use('/oauth/google-calendar', calendarOAuthRoutes); // public callback (Google redirects here directly)
+app.use('/api/integrations/oauth/google-calendar', calendarOAuthRoutes); // authenticated auth-url endpoint
+app.use('/sso', ssoRoutes.publicRouter); // public SAML SP endpoints (login/acs/metadata) — IdP and browser call these directly
 app.use('/api/careers', careersRoutes);
 app.use('/api/portal', portalRoutes);
+app.use('/client-portal', clientPortalRoutes); // public, token-gated — see routes/clientPortalRoutes.js
 
 // ── Auth routes (rate limited) ───────────────────────────────────────
 app.use('/api/onboarding', onboardingRoutes);
@@ -234,7 +276,17 @@ app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/organization', verifyToken, organizationRoutes);
 app.use('/api/applications', verifyToken, applicationRoutes);
 app.use('/api/interviews', verifyToken, interviewRoutes);
-app.use('/api/billing', verifyToken, billingRoutes);
+app.use('/api/billing', billingRoutes); // webhook is mounted separately above; this router applies verifyToken internally
+app.use('/api/integrations', integrationRoutes);
+app.use('/api/custom-roles', verifyToken, customRoleRoutes);
+app.use('/api/sso', ssoRoutes); // internally applies verifyToken per-route (config CRUD) except /exchange which is public by design
+app.use('/api/webhooks', webhookRoutes); // internally applies verifyToken + requireFeature
+app.use('/api/api-keys', apiKeyRoutes); // internally applies verifyToken + requireFeature
+app.use('/api/v1/public', publicApiRoutes); // API-key auth (not session JWT) — see apiKeyMiddleware.js
+app.use('/api/job-board', jobBoardRoutes);
+app.use('/api/background-check', backgroundCheckRoutes);
+app.use('/api/esign', esignRoutes);
+app.use('/api/report-schedules', reportScheduleRoutes);
 
 app.use('/api/analytics', verifyToken, analyticsRoutes);
 app.use('/api/companies', companyRoutes);
@@ -368,10 +420,14 @@ app.post('/api/login', authLimiter, async (req, res) => {
     
     // Load organization info if user has one
     let organization = null;
+    let entitlements = [];
     if (user.organizationId) {
       organization = await Organization.findById(user.organizationId)
         .select('name slug logo plan planExpiresAt atsSettings settings')
         .lean();
+      if (organization) {
+        entitlements = getEntitlements(organization.plan);
+      }
     }
     
     res.json({ 
@@ -387,7 +443,8 @@ app.post('/api/login', authLimiter, async (req, res) => {
         onboardingCompleted: user.onboardingCompleted,
         profilePicture: user.profilePicture || ''
       },
-      organization
+      organization,
+      entitlements
     });
   } catch (err) { 
     console.error('[LOGIN] ERROR:', err.message);
@@ -416,7 +473,8 @@ app.post('/api/demo-login', authLimiter, async (req, res) => {
         onboardingCompleted: user.onboardingCompleted,
         profilePicture: user.profilePicture || ''
       },
-      organization
+      organization,
+      entitlements: getEntitlements(organization.plan)
     });
   } catch (err) {
     console.error('[DEMO LOGIN] ERROR:', err);
@@ -461,10 +519,14 @@ app.get('/api/profile', verifyToken, async (req, res) => {
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     
     let organization = null;
+    let entitlements = [];
     if (user.organizationId) {
       organization = await Organization.findById(user.organizationId)
         .select('name slug logo plan planExpiresAt atsSettings settings usageCurrent usageLimits')
         .lean();
+      if (organization) {
+        entitlements = getEntitlements(organization.plan);
+      }
     }
     
     res.json({ 
@@ -479,7 +541,8 @@ app.get('/api/profile', verifyToken, async (req, res) => {
         isEmailVerified: user.isEmailVerified,
         onboardingCompleted: user.onboardingCompleted
       },
-      organization
+      organization,
+      entitlements
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -765,7 +828,7 @@ app.get('/jobs', verifyToken, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-app.post('/jobs', verifyToken, async (req, res) => {
+app.post('/jobs', verifyToken, requireRecruiterOrAbove, checkPlanLimit('jobs'), async (req, res) => {
   try {
     const jobData = { ...req.body };
     
@@ -820,6 +883,8 @@ const startServer = () => {
       ? `[Resume storage] S3 — bucket: ${process.env.S3_BUCKET_NAME}`
       : '[Resume storage] Local (uploads/)');
     startNotificationScheduler();
+    initWebhookDispatcher();
+    startReportScheduler();
     console.log('[Event Bus] Initialized with listeners:', eventBus.eventNames().join(', '));
   });
 
@@ -837,8 +902,7 @@ mongoose.connect(mongoUrl, {
   minPoolSize: 2,
   retryWrites: true,
   retryReads: true,
-  bufferCommands: false,
-  bufferMaxEntries: 0
+  bufferCommands: false
 })
   .then(() => {
     console.log('✅ MongoDB Connected');
@@ -946,6 +1010,67 @@ mongoose.connection.once('open', async () => {
     }
   }
 
+  // ── Backfill organizationId on Candidate records that are missing it.
+  // This is business-critical PII data — candidateRoutes.js/candidateController.js
+  // now use organizationId as the multi-tenant boundary, so any record missing
+  // it needs to be assigned before that boundary is fully effective.
+  try {
+    const orphanCandidates = await Candidate.find({ organizationId: { $exists: false }, createdBy: { $exists: true, $ne: null } }).select('_id createdBy').lean();
+    let migratedCandidates = 0;
+    const ownerOrgCache = new Map();
+    for (const doc of orphanCandidates) {
+      try {
+        const ownerId = String(doc.createdBy);
+        if (!ownerOrgCache.has(ownerId)) {
+          const owner = await User.findById(doc.createdBy).select('organizationId');
+          ownerOrgCache.set(ownerId, owner?.organizationId || null);
+        }
+        const orgId = ownerOrgCache.get(ownerId);
+        if (orgId) {
+          await Candidate.updateOne({ _id: doc._id }, { $set: { organizationId: orgId } });
+          migratedCandidates++;
+        }
+      } catch (docErr) {
+        console.warn(`⚠️ Could not backfill organizationId on candidate/${doc._id}:`, docErr.message);
+      }
+    }
+    if (migratedCandidates > 0) {
+      console.log(`✅ MIGRATION: Backfilled organizationId on ${migratedCandidates} candidate record(s)`);
+    }
+  } catch (err) {
+    console.warn('⚠️ Candidate organizationId backfill error:', err.message);
+  }
+
+  // ── Backfill organizationId on Client/Position/Source (previously scoped
+  // only by createdBy, which let any authenticated user edit/delete any
+  // other org's records via update/delete-by-_id routes). ──
+  const tenantScopedMasterCollections = ['clients', 'positions', 'sources', 'teammembers', 'companies'];
+  for (const collName of tenantScopedMasterCollections) {
+    try {
+      const coll = mongoose.connection.db.collection(collName);
+      const orphans = await coll.find({ organizationId: { $exists: false }, createdBy: { $exists: true } }).toArray();
+      let migrated = 0;
+      for (const doc of orphans) {
+        try {
+          const owner = await User.findById(doc.createdBy).select('organizationId');
+          if (owner && owner.organizationId) {
+            await coll.updateOne({ _id: doc._id }, { $set: { organizationId: owner.organizationId } });
+            migrated++;
+          }
+        } catch (docErr) {
+          // e.g. duplicate organizationId+email under the new unique index —
+          // skip this one record rather than aborting the whole backfill.
+          console.warn(`⚠️ Could not backfill organizationId on ${collName}/${doc._id}:`, docErr.message);
+        }
+      }
+      if (migrated > 0) {
+        console.log(`✅ MIGRATION: Backfilled organizationId on ${migrated} ${collName} record(s)`);
+      }
+    } catch (err) {
+      console.warn(`⚠️ organizationId backfill error for ${collName}:`, err.message);
+    }
+  }
+
   // ── NEW: Create default organization for existing users without one ──
   try {
     const usersWithoutOrg = await User.find({ organizationId: { $exists: false } }).limit(100);
@@ -989,23 +1114,6 @@ mongoose.connection.once('open', async () => {
     console.warn('⚠️ Org migration error:', err.message);
   }
 });
-
-// ══════════════════════════════════════════════════════════════════════
-// START SERVER
-// ══════════════════════════════════════════════════════════════════════
-
-const server = app.listen(PORT, () => {
-  console.log(`🚀 SkillNix SaaS ATS v3 running on port ${PORT}`);
-  const s3Resume = require('./services/s3Service').isS3Configured();
-  console.log(s3Resume
-    ? `[Resume storage] S3 — bucket: ${process.env.S3_BUCKET_NAME}`
-    : '[Resume storage] Local (uploads/)');
-  startNotificationScheduler();
-  console.log('[Event Bus] Initialized with listeners:', eventBus.eventNames().join(', '));
-});
-
-server.timeout = 600000;
-server.keepAliveTimeout = 61000;
 
 // ══════════════════════════════════════════════════════════════════════
 // DIAGNOSTICS (protected in production, useful for dev)
