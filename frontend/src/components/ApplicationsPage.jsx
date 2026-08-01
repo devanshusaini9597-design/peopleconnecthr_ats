@@ -539,15 +539,16 @@ export default function ApplicationsPage() {
               allowClear
             />
 
-            <div className="relative w-full sm:flex-1 sm:min-w-[10rem] sm:max-w-sm">
+            <div className="relative w-full sm:flex-1 sm:min-w-[12rem] sm:max-w-md min-w-0">
               <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="search"
-                placeholder={selectedJobId ? 'Search name, email, stage…' : 'Select a job to search'}
+                placeholder={selectedJobId ? 'Search candidates…' : 'Pick a job first…'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="input-ats !pl-10 w-full"
+                className="input-ats !pl-10 !pr-9 w-full"
                 disabled={!selectedJobId}
+                title={selectedJobId ? 'Search by name, email, phone, or stage' : 'Select a job to enable search'}
               />
               {searchQuery && (
                 <button
@@ -1034,9 +1035,9 @@ export default function ApplicationsPage() {
               <label className="label-ats">Source</label>
               <PremiumSelect
                 value={addForm.source}
-                onChange={(v) => setAddForm({ ...addForm, source: v })}
+                onChange={(v) => setAddForm({ ...addForm, source: v || 'Direct' })}
                 options={sourceOptions}
-                placeholder="Source"
+                placeholder="Select source"
                 icon={User}
               />
             </div>
