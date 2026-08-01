@@ -472,7 +472,7 @@ const TalentPoolsPage = () => {
             subtitle="Keep strong candidates warm for future roles — independent of any single requisition."
             gradientTitle
           >
-            <button type="button" onClick={() => setShowCreate(true)} className="btn-primary" disabled={!!loadError}>
+            <button type="button" onClick={() => setShowCreate(true)} className="btn-primary">
               <Plus className="w-4 h-4" /> New Pool
             </button>
           </PageHeader>
@@ -484,9 +484,14 @@ const TalentPoolsPage = () => {
                 message="Couldn’t load talent pools"
                 subMessage={loadError}
                 action={
-                  <button type="button" onClick={load} className="btn-primary">
-                    <RefreshCw className="w-4 h-4" /> Retry
-                  </button>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <button type="button" onClick={load} className="btn-secondary">
+                      <RefreshCw className="w-4 h-4" /> Retry
+                    </button>
+                    <button type="button" onClick={() => setShowCreate(true)} className="btn-primary">
+                      <Plus className="w-4 h-4" /> New Pool
+                    </button>
+                  </div>
                 }
               />
             </div>

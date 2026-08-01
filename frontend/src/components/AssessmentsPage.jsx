@@ -616,7 +616,7 @@ const AssessmentsPage = () => {
             subtitle="Build skills tests and invite candidates to complete them. Code answers are graded by your team."
             gradientTitle
           >
-            <button type="button" onClick={() => setShowBuilder(true)} className="btn-primary" disabled={!!loadError}>
+            <button type="button" onClick={() => setShowBuilder(true)} className="btn-primary">
               <Plus className="w-4 h-4" /> New Assessment
             </button>
           </PageHeader>
@@ -628,9 +628,14 @@ const AssessmentsPage = () => {
                 message="Couldn’t load assessments"
                 subMessage={loadError}
                 action={
-                  <button type="button" onClick={load} className="btn-primary">
-                    <RefreshCw className="w-4 h-4" /> Retry
-                  </button>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <button type="button" onClick={load} className="btn-secondary">
+                      <RefreshCw className="w-4 h-4" /> Retry
+                    </button>
+                    <button type="button" onClick={() => setShowBuilder(true)} className="btn-primary">
+                      <Plus className="w-4 h-4" /> New Assessment
+                    </button>
+                  </div>
                 }
               />
             </div>

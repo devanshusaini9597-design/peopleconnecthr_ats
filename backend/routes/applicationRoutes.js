@@ -291,11 +291,11 @@ router.put('/:id/notes', requireRecruiterOrAbove, async (req, res) => {
 });
 
 /**
- * PUT /:id/schedule — store interview schedule in metadata + notes stamp
+ * PUT /:id/schedule — store interview schedule in metadata + notes stamp + Interview doc
  */
 router.put('/:id/schedule', requireRecruiterOrAbove, async (req, res) => {
   try {
-    const { scheduledAt, mode = 'Video', location = '', remark = '' } = req.body;
+    const { scheduledAt, mode = 'Video', location = '', remark = '', meetingLink = '', duration = 60 } = req.body;
     if (!scheduledAt) {
       return res.status(400).json({ success: false, message: 'scheduledAt is required' });
     }
@@ -306,7 +306,7 @@ router.put('/:id/schedule', requireRecruiterOrAbove, async (req, res) => {
     const when = new Date(scheduledAt);
     application.metadata = {
       ...(application.metadata || {}),
-      interview: { scheduledAt: when, mode, location, remark, updatedAt: new Date(), updatedBy: req.user.id }
+      interview: { scheduledAt: when, mode, location, meetingLink, remark, updatedAt: new Date(), updatedBy: req.user.id }
     };
     application.lastActivityAt = new Date();
 
@@ -326,6 +326,57 @@ router.put('/:id/schedule', requireRecruiterOrAbove, async (req, res) => {
     }
 
     await application.save();
+
+    // Keep Interview collection in sync so /interviews page stays accurate
+    try {
+      const Interview = require('../models/Interview');
+      const typeMap = {
+        Video: 'video',
+        Phone: 'phone_screen',
+        Onsite: 'in_person',
+        video: 'video',
+        phone_screen: 'phone_screen',
+        in_person: 'in_person',
+        panel: 'panel',
+        technical: 'technical',
+        hr: 'hr'
+      };
+      const interviewType = typeMap[mode] || 'video';
+      let interview = await Interview.findOne({
+        organizationId: req.user.organizationId,
+        applicationId: application._id,
+        status: { $in: ['scheduled', 'rescheduled', 'in_progress'] }
+      });
+      if (interview) {
+        interview.scheduledAt = when;
+        interview.type = interviewType;
+        interview.location = location || '';
+        interview.meetingLink = meetingLink || location || '';
+        interview.duration = duration || 60;
+        interview.status = 'scheduled';
+        await interview.save();
+      } else {
+        interview = await Interview.create({
+          organizationId: req.user.organizationId,
+          applicationId: application._id,
+          candidateId: application.candidateId,
+          jobId: application.jobId,
+          interviewers: [{ userId: req.user.id, name: req.user.name || '', email: req.user.email || '' }],
+          scheduledAt: when,
+          duration: duration || 60,
+          type: interviewType,
+          location: location || '',
+          meetingLink: meetingLink || (mode === 'Video' ? location : '') || '',
+          status: 'scheduled',
+          createdBy: req.user.id
+        });
+      }
+      application.metadata.interview.interviewId = interview._id;
+      await application.save();
+    } catch (syncErr) {
+      console.warn('Interview sync skipped:', syncErr.message);
+    }
+
     await application.populate('candidateId jobId assignedTo');
     res.json({ success: true, data: application });
   } catch (error) {

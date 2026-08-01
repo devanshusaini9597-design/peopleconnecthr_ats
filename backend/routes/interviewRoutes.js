@@ -14,6 +14,11 @@ router.use(verifyToken, requireOrganization, tenantScope);
 /**
  * GET /
  */
+const populateInterview = {
+  path: 'applicationId',
+  populate: [{ path: 'candidateId', select: 'name email phone' }, { path: 'jobId', select: 'title role' }]
+};
+
 router.get('/', async (req, res) => {
   try {
     const { status, interviewer } = req.query;
@@ -21,7 +26,7 @@ router.get('/', async (req, res) => {
     if (status) filter.status = status;
     if (interviewer) filter.interviewers = { $elemMatch: { userId: interviewer } };
     
-    const interviews = await Interview.find(filter).populate('applicationId');
+    const interviews = await Interview.find(filter).sort({ scheduledAt: 1 }).populate(populateInterview);
     res.json({ success: true, data: interviews });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -36,7 +41,7 @@ router.get('/my', async (req, res) => {
     const interviews = await Interview.find({ 
       organizationId: req.user.organizationId,
       'interviewers.userId': req.user.id 
-    }).populate('applicationId');
+    }).sort({ scheduledAt: 1 }).populate(populateInterview);
     res.json({ success: true, data: interviews });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -62,6 +67,9 @@ router.get('/:id', async (req, res) => {
 router.post('/', requireRecruiterOrAbove, async (req, res) => {
   try {
     const { applicationId, interviewers, scheduledAt, duration, type, location, meetingLink } = req.body;
+    if (!applicationId || !scheduledAt) {
+      return res.status(400).json({ success: false, message: 'applicationId and scheduledAt are required' });
+    }
     
     const app = await Application.findOne({ _id: applicationId, organizationId: req.user.organizationId });
     if (!app) return res.status(404).json({ success: false, message: 'Application not found' });
@@ -69,15 +77,21 @@ router.post('/', requireRecruiterOrAbove, async (req, res) => {
     const interview = new Interview({
       organizationId: req.user.organizationId,
       applicationId,
-      interviewers,
+      candidateId: app.candidateId,
+      jobId: app.jobId,
+      interviewers: Array.isArray(interviewers) && interviewers.length
+        ? interviewers
+        : [{ userId: req.user.id, name: req.user.name || '', email: req.user.email || '' }],
       scheduledAt,
-      duration,
-      type,
-      location,
-      meetingLink,
-      status: 'scheduled'
+      duration: duration || 60,
+      type: type || 'video',
+      location: location || '',
+      meetingLink: meetingLink || '',
+      status: 'scheduled',
+      createdBy: req.user.id
     });
     await interview.save();
+    await interview.populate(populateInterview);
     eventBus.emit(eventTypes.INTERVIEW_SCHEDULED, {
       organizationId: req.user.organizationId,
       userId: req.user.id,
@@ -185,6 +199,7 @@ router.post('/:interviewId/scorecard', async (req, res) => {
     const scorecard = new Scorecard({
       organizationId: req.user.organizationId,
       interviewId: req.params.interviewId,
+      applicationId: interview.applicationId,
       interviewerId: req.user.id,
       criteria,
       overallRating,
