@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ScrollText, Download, Filter, RefreshCw, Lock, ChevronLeft, ChevronRight, User as UserIcon } from 'lucide-react';
+import { ScrollText, Download, Filter, RefreshCw, Lock, ChevronLeft, ChevronRight, User as UserIcon, Loader2 } from 'lucide-react';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
 import { authenticatedFetch, handleUnauthorized } from '../utils/fetchUtils';
@@ -107,13 +107,13 @@ const AuditLogPage = () => {
   if (upgradeRequired) {
     return (
       <div className="page-shell-ats">
-        <div className="min-h-[60vh] flex items-center justify-center">
-          <div className="max-w-md w-full text-center card-ats-bordered border-amber-200/80 bg-amber-50/30 p-10">
-            <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto mb-4">
+        <div className="min-h-[60vh] flex items-center justify-center px-4">
+          <div className="max-w-md w-full text-center card-ats-bordered border-amber-200/80 bg-amber-50/40 p-8 sm:p-10 animate-slide-up">
+            <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto mb-4 ring-4 ring-amber-100/60">
               <Lock className="w-7 h-7 text-amber-600" />
             </div>
-            <h2 className="text-xl font-bold text-stone-900">Audit Log requires an upgrade</h2>
-            <p className="text-stone-500 mt-2 text-sm">
+            <h2 className="text-xl font-bold text-stone-900 tracking-tight">Audit Log requires an upgrade</h2>
+            <p className="text-stone-500 mt-2 text-sm leading-relaxed">
               The Audit Log is available on Professional and Enterprise plans. Upgrade your plan to see who did what, and when.
             </p>
             <a href="/billing" className="btn-primary inline-flex mt-6">View Plans</a>
@@ -124,134 +124,151 @@ const AuditLogPage = () => {
   }
 
   return (
-      <div className="page-shell-ats">
-          <PageHeader
-            icon={ScrollText}
-            title="Audit Log"
-            subtitle="A record of security-relevant actions taken across your organization."
+    <div className="page-shell-ats">
+      <PageHeader
+        icon={ScrollText}
+        title="Audit Log"
+        subtitle="A record of security-relevant actions taken across your organization."
+        gradientTitle
+      >
+        <button type="button" onClick={() => fetchLogs(pagination.page)} className="btn-secondary">
+          <RefreshCw className="w-4 h-4" /> Refresh
+        </button>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={exporting}
+          className="btn-primary"
+          title={exportLocked ? 'CSV export requires the Enterprise plan' : 'Export as CSV'}
+        >
+          {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+          {exporting ? 'Exporting…' : 'Export CSV'}
+        </button>
+      </PageHeader>
+
+      <div className="card-ats-bordered p-4 flex flex-wrap items-center gap-3">
+        <Filter className="w-4 h-4 text-stone-400 shrink-0" />
+        <select
+          value={filters.action}
+          onChange={(e) => setFilters((f) => ({ ...f, action: e.target.value }))}
+          className="input-ats !w-full sm:!w-auto !py-1.5 !px-3"
+        >
+          <option value="">All actions</option>
+          {filterOptions.actions.map((a) => <option key={a} value={a}>{formatAction(a)}</option>)}
+        </select>
+        <select
+          value={filters.resource}
+          onChange={(e) => setFilters((f) => ({ ...f, resource: e.target.value }))}
+          className="input-ats !w-full sm:!w-auto !py-1.5 !px-3"
+        >
+          <option value="">All resources</option>
+          {filterOptions.resources.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <input
+          type="date"
+          value={filters.startDate}
+          onChange={(e) => setFilters((f) => ({ ...f, startDate: e.target.value }))}
+          className="input-ats !w-full sm:!w-auto !py-1.5 !px-3"
+        />
+        <span className="text-stone-400 text-sm hidden sm:inline">to</span>
+        <input
+          type="date"
+          value={filters.endDate}
+          onChange={(e) => setFilters((f) => ({ ...f, endDate: e.target.value }))}
+          className="input-ats !w-full sm:!w-auto !py-1.5 !px-3"
+        />
+        {(filters.action || filters.resource || filters.startDate || filters.endDate) && (
+          <button
+            type="button"
+            onClick={() => setFilters({ action: '', resource: '', startDate: '', endDate: '' })}
+            className="text-sm text-brand-600 hover:underline font-medium"
           >
-            <button type="button" onClick={() => fetchLogs(pagination.page)} className="btn-secondary">
-              <RefreshCw className="w-4 h-4" /> Refresh
+            Clear filters
+          </button>
+        )}
+      </div>
+
+      <div className="table-shell-ats overflow-x-auto">
+        <table className="w-full text-left text-sm min-w-[640px]">
+          <thead className="bg-stone-50/80 text-stone-500 font-medium">
+            <tr>
+              <th className="px-4 sm:px-6 py-3">Timestamp</th>
+              <th className="px-4 sm:px-6 py-3">Action</th>
+              <th className="px-4 sm:px-6 py-3">Resource</th>
+              <th className="px-4 sm:px-6 py-3">User</th>
+              <th className="px-4 sm:px-6 py-3">IP</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-stone-100">
+            {loading ? (
+              <tr>
+                <td colSpan="5" className="px-6 py-12">
+                  <div className="flex flex-col items-center justify-center gap-3">
+                    <Loader2 className="w-6 h-6 text-brand-600 animate-spin" />
+                    <p className="text-sm text-stone-400">Loading audit log…</p>
+                  </div>
+                </td>
+              </tr>
+            ) : entries.length === 0 ? (
+              <tr>
+                <td colSpan="5">
+                  <EmptyState
+                    icon={ScrollText}
+                    message="No audit log entries yet."
+                    subMessage="Actions like team changes and integration updates will show up here."
+                  />
+                </td>
+              </tr>
+            ) : entries.map((entry) => (
+              <tr key={entry._id} className="hover:bg-brand-50/20 transition-colors">
+                <td className="px-4 sm:px-6 py-3 text-stone-500 whitespace-nowrap">
+                  {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : '—'}
+                </td>
+                <td className="px-4 sm:px-6 py-3">
+                  <span className="badge-neutral capitalize">{formatAction(entry.action)}</span>
+                </td>
+                <td className="px-4 sm:px-6 py-3 text-stone-600">
+                  <span className="badge-info">
+                    {entry.resource}{entry.resourceId ? ` #${String(entry.resourceId).slice(-6)}` : ''}
+                  </span>
+                </td>
+                <td className="px-4 sm:px-6 py-3 text-stone-600">
+                  <span className="inline-flex items-center gap-1.5">
+                    <UserIcon className="w-3.5 h-3.5 text-stone-400" />
+                    {entry.userId?.name || entry.userId?.email || 'System'}
+                  </span>
+                </td>
+                <td className="px-4 sm:px-6 py-3 text-stone-400 font-mono text-xs">{entry.ipAddress || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {pagination.pages > 1 && (
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-sm text-stone-500">
+          <span>Page {pagination.page} of {pagination.pages} ({pagination.total} entries)</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={pagination.page <= 1}
+              onClick={() => fetchLogs(pagination.page - 1)}
+              className="btn-secondary !px-3 !py-2"
+            >
+              <ChevronLeft className="w-4 h-4" /> Prev
             </button>
             <button
               type="button"
-              onClick={handleExport}
-              disabled={exporting}
-              className="btn-primary"
-              title={exportLocked ? 'CSV export requires the Enterprise plan' : 'Export as CSV'}
+              disabled={pagination.page >= pagination.pages}
+              onClick={() => fetchLogs(pagination.page + 1)}
+              className="btn-secondary !px-3 !py-2"
             >
-              <Download className="w-4 h-4" /> {exporting ? 'Exporting…' : 'Export CSV'}
+              Next <ChevronRight className="w-4 h-4" />
             </button>
-          </PageHeader>
-
-          {/* Filters */}
-          <div className="card-ats-bordered p-4 flex flex-wrap items-center gap-3">
-            <Filter className="w-4 h-4 text-stone-400 shrink-0" />
-            <select
-              value={filters.action}
-              onChange={(e) => setFilters((f) => ({ ...f, action: e.target.value }))}
-              className="input-ats !w-auto !py-1.5 !px-3"
-            >
-              <option value="">All actions</option>
-              {filterOptions.actions.map((a) => <option key={a} value={a}>{formatAction(a)}</option>)}
-            </select>
-            <select
-              value={filters.resource}
-              onChange={(e) => setFilters((f) => ({ ...f, resource: e.target.value }))}
-              className="input-ats !w-auto !py-1.5 !px-3"
-            >
-              <option value="">All resources</option>
-              {filterOptions.resources.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
-            <input
-              type="date"
-              value={filters.startDate}
-              onChange={(e) => setFilters((f) => ({ ...f, startDate: e.target.value }))}
-              className="input-ats !w-auto !py-1.5 !px-3"
-            />
-            <span className="text-stone-400 text-sm">to</span>
-            <input
-              type="date"
-              value={filters.endDate}
-              onChange={(e) => setFilters((f) => ({ ...f, endDate: e.target.value }))}
-              className="input-ats !w-auto !py-1.5 !px-3"
-            />
-            {(filters.action || filters.resource || filters.startDate || filters.endDate) && (
-              <button
-                onClick={() => setFilters({ action: '', resource: '', startDate: '', endDate: '' })}
-                className="text-sm text-brand-600 hover:underline font-medium"
-              >
-                Clear filters
-              </button>
-            )}
           </div>
-
-          {/* Table */}
-          <div className="card-ats-bordered overflow-hidden">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-stone-50/80 text-stone-500 font-medium">
-                <tr>
-                  <th className="px-6 py-3">Timestamp</th>
-                  <th className="px-6 py-3">Action</th>
-                  <th className="px-6 py-3">Resource</th>
-                  <th className="px-6 py-3">User</th>
-                  <th className="px-6 py-3">IP</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                {loading ? (
-                  <tr><td colSpan="5" className="px-6 py-10 text-center text-stone-400">Loading…</td></tr>
-                ) : entries.length === 0 ? (
-                  <tr>
-                    <td colSpan="5">
-                      <EmptyState
-                        icon={ScrollText}
-                        message="No audit log entries yet."
-                        subMessage="Actions like team changes and integration updates will show up here."
-                      />
-                    </td>
-                  </tr>
-                ) : entries.map((entry) => (
-                  <tr key={entry._id} className="hover:bg-stone-50">
-                    <td className="px-6 py-3 text-stone-500 whitespace-nowrap">{entry.timestamp ? new Date(entry.timestamp).toLocaleString() : '—'}</td>
-                    <td className="px-6 py-3 font-medium text-stone-900 capitalize">{formatAction(entry.action)}</td>
-                    <td className="px-6 py-3 text-stone-600">{entry.resource}{entry.resourceId ? ` #${String(entry.resourceId).slice(-6)}` : ''}</td>
-                    <td className="px-6 py-3 text-stone-600">
-                      <span className="inline-flex items-center gap-1.5">
-                        <UserIcon className="w-3.5 h-3.5 text-stone-400" />
-                        {entry.userId?.name || entry.userId?.email || 'System'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-3 text-stone-400">{entry.ipAddress || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {pagination.pages > 1 && (
-            <div className="flex items-center justify-between text-sm text-stone-500">
-              <span>Page {pagination.page} of {pagination.pages} ({pagination.total} entries)</span>
-              <div className="flex items-center gap-2">
-                <button
-                  disabled={pagination.page <= 1}
-                  onClick={() => fetchLogs(pagination.page - 1)}
-                  className="p-2 border border-stone-200 rounded-xl disabled:opacity-40 hover:bg-stone-50"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <button
-                  disabled={pagination.page >= pagination.pages}
-                  onClick={() => fetchLogs(pagination.page + 1)}
-                  className="p-2 border border-stone-200 rounded-xl disabled:opacity-40 hover:bg-stone-50"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
-      </div>
+        </div>
+      )}
+    </div>
   );
 };
 

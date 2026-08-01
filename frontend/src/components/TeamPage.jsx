@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, Edit2, Trash2, Mail, Phone, Briefcase, X, Save, Loader2, Search, Building2, ChevronDown, Shield, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { Users, Plus, Edit2, Trash2, Mail, Phone, Briefcase, X, Save, Loader2, Search, Building2, ChevronDown, CheckCircle, Clock, UsersRound, Handshake, BarChart3, Target } from 'lucide-react';
 import API_URL from '../config';
 import { authenticatedFetch, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import ConfirmationModal from './ConfirmationModal';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
+import Modal from './ui/Modal';
 
 const BASE = API_URL;
 
@@ -234,7 +235,7 @@ const TeamPage = () => {
     'VP / Head': 'bg-teal-100 text-teal-800',
     'Hiring Manager': 'bg-teal-100 text-teal-700',
     'SPOC': 'bg-orange-100 text-orange-700',
-    'External': 'bg-slate-100 text-slate-600',
+    'External': 'bg-stone-100 text-stone-600',
   };
 
   return (
@@ -243,7 +244,8 @@ const TeamPage = () => {
         <PageHeader
           icon={Users}
           title="Team Directory"
-          subtitle="Add your colleagues, managers & stakeholders — quickly CC/BCC them in emails"
+          subtitle="Add colleagues, managers & stakeholders — quickly CC/BCC them in emails."
+          gradientTitle
         >
           <button
             type="button"
@@ -256,25 +258,27 @@ const TeamPage = () => {
 
         {/* Tabs */}
         {members.length > 0 && (
-          <div className="flex gap-1 p-1 bg-stone-100 rounded-2xl mb-4 overflow-x-auto">
+          <div className="flex gap-1 p-1 bg-stone-100 rounded-2xl mb-4 overflow-x-auto scrollbar-hide">
             {[
-              { key: 'all', label: 'All', icon: '👥' },
-              { key: 'myTeam', label: 'My Team', icon: '🤝' },
-              { key: 'reporting', label: 'Reporting / Senior', icon: '📊' },
-              { key: 'stakeholders', label: 'Stakeholders', icon: '🎯' },
+              { key: 'all', label: 'All', icon: UsersRound },
+              { key: 'myTeam', label: 'My Team', icon: Handshake },
+              { key: 'reporting', label: 'Reporting / Senior', icon: BarChart3 },
+              { key: 'stakeholders', label: 'Stakeholders', icon: Target },
             ].map(tab => {
               const count = getTabCount(tab.key);
+              const Icon = tab.icon;
               return (
                 <button
                   key={tab.key}
+                  type="button"
                   onClick={() => setActiveTab(tab.key)}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
                     activeTab === tab.key
                       ? 'bg-white shadow-sm text-stone-900'
                       : 'text-stone-500 hover:text-stone-700 hover:bg-stone-50'
                   }`}
                 >
-                  <span className="text-sm">{tab.icon}</span>
+                  <Icon size={15} className={activeTab === tab.key ? 'text-brand-600' : ''} />
                   {tab.label}
                   {count > 0 && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === tab.key ? 'bg-brand-100 text-brand-700' : 'bg-stone-200 text-stone-500'}`}>{count}</span>}
                 </button>
@@ -319,14 +323,16 @@ const TeamPage = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     <button
+                      type="button"
                       onClick={() => handleAcceptInvitation(inv._id)}
                       disabled={processingInvitation === inv._id}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg text-xs font-semibold hover:bg-green-700 transition-colors disabled:opacity-50"
+                      className="btn-primary !text-xs !px-4 !py-2 !from-emerald-600 !via-emerald-600 !to-emerald-700"
                     >
                       {processingInvitation === inv._id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
                       Accept
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleDeclineInvitation(inv._id)}
                       disabled={processingInvitation === inv._id}
                       className="btn-secondary !text-xs !px-4 !py-2"
@@ -341,107 +347,119 @@ const TeamPage = () => {
           </div>
         )}
 
-        {/* Add/Edit Form Modal */}
-        {showForm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/55 backdrop-blur-sm" onClick={resetForm}>
-            <div className="relative bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-lg mx-4 border border-stone-200/60 modal-panel-ats overflow-hidden" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200">
-                <h2 className="text-lg font-semibold text-stone-900">{editingId ? 'Edit Team Member' : 'Add Team Member'}</h2>
-                <button onClick={resetForm} className="p-1.5 hover:bg-stone-100 rounded-lg transition-colors"><X size={18} className="text-stone-500" /></button>
-              </div>
-              <div className="p-6 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-stone-700 mb-1">Full Name *</label>
-                    <div className="relative">
-                      <Users size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-                      <input type="text" value={formData.name} onChange={e => setFormData(p => ({ ...p, name: e.target.value.replace(/^\s+/, '').replace(/\s{2,}/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) }))}
-                        onBlur={() => setFormData(p => ({ ...p, name: p.name.trim() }))}
-                        className="input-ats pl-9" placeholder="John Doe" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-stone-700 mb-1">Email Address *</label>
-                    <div className="relative">
-                      <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-                      <input
-                        type="email"
-                        value={formData.email}
-                        onChange={e => {
-                          setFormData(p => ({ ...p, email: e.target.value.trim().toLowerCase() }));
-                          if (emailError) setEmailError('');
-                        }}
-                        onBlur={() => formData.email && checkEmailDomain(formData.email)}
-                        className={`w-full pl-9 pr-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none ${emailError ? 'border-red-400 bg-red-50/50' : 'border-stone-300'}`}
-                        placeholder={companyDomain?.domain ? `xyz@${companyDomain.domain}` : 'xyz@skillnixrecruitment.com'}
-                      />
-                    </div>
-                    {emailError && (
-                      <p className="mt-1 text-xs text-red-600 text-left">
-                        {emailError}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-stone-700 mb-1">Role</label>
-                    <div className="relative">
-                      <Briefcase size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-                      <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
-                      <select value={formData.role} onChange={e => setFormData(p => ({ ...p, role: e.target.value }))}
-                        className="input-ats pl-9 pr-9 appearance-none cursor-pointer">
-                        <optgroup label="My Team">
-                          <option value="Team Member">Team Member</option>
-                          <option value="Team Lead">Team Lead</option>
-                          <option value="Recruiter">Recruiter</option>
-                          <option value="HR Executive">HR Executive</option>
-                        </optgroup>
-                        <optgroup label="Reporting / Senior">
-                          <option value="Reporting Manager">Reporting Manager</option>
-                          <option value="HR Manager">HR Manager</option>
-                          <option value="Director">Director</option>
-                          <option value="VP / Head">VP / Head</option>
-                        </optgroup>
-                        <optgroup label="Stakeholders">
-                          <option value="Hiring Manager">Hiring Manager</option>
-                          <option value="SPOC">SPOC</option>
-                          <option value="Admin">Admin</option>
-                          <option value="External">External</option>
-                        </optgroup>
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-stone-700 mb-1">Department</label>
-                    <div className="relative">
-                      <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-                      <input type="text" value={formData.department} onChange={e => setFormData(p => ({ ...p, department: e.target.value.replace(/^\s+/, '').replace(/\s{2,}/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) }))}
-                        onBlur={() => setFormData(p => ({ ...p, department: p.department.trim() }))}
-                        className="input-ats pl-9" placeholder="e.g. Engineering" />
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Phone (Optional)</label>
-                  <div className="relative">
-                    <Phone size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-                    <input type="tel" value={formData.phone} onChange={e => setFormData(p => ({ ...p, phone: e.target.value }))}
-                      className="input-ats pl-9" placeholder="+91-XXXXXXXXXX" />
-                  </div>
+        <Modal
+          open={showForm}
+          onClose={resetForm}
+          title={editingId ? 'Edit Team Member' : 'Add Team Member'}
+          description="They’ll appear as CC/BCC suggestions when you send emails."
+          size="lg"
+          footer={
+            <>
+              <button type="button" onClick={resetForm} className="btn-secondary">Cancel</button>
+              <button type="button" onClick={handleSave} disabled={isSaving} className="btn-primary">
+                {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                {isSaving ? 'Saving…' : editingId ? 'Update' : 'Add Member'}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label-ats">Full Name *</label>
+                <div className="relative">
+                  <Users size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value.replace(/^\s+/, '').replace(/\s{2,}/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }))}
+                    onBlur={() => setFormData((p) => ({ ...p, name: p.name.trim() }))}
+                    className="input-ats !pl-9"
+                    placeholder="John Doe"
+                  />
                 </div>
               </div>
-              <div className="flex gap-3 px-6 py-4 border-t border-stone-200 bg-stone-50 rounded-b-2xl">
-                <button onClick={resetForm} className="flex-1 btn-secondary">Cancel</button>
-                <button onClick={handleSave} disabled={isSaving}
-                  className="flex-1 btn-primary">
-                  {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                  {isSaving ? 'Saving...' : editingId ? 'Update' : 'Add Member'}
-                </button>
+              <div>
+                <label className="label-ats">Email Address *</label>
+                <div className="relative">
+                  <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => {
+                      setFormData((p) => ({ ...p, email: e.target.value.trim().toLowerCase() }));
+                      if (emailError) setEmailError('');
+                    }}
+                    onBlur={() => formData.email && checkEmailDomain(formData.email)}
+                    className={`input-ats !pl-9 ${emailError ? 'input-ats-error' : ''}`}
+                    placeholder={companyDomain?.domain ? `xyz@${companyDomain.domain}` : 'xyz@skillnixrecruitment.com'}
+                  />
+                </div>
+                {emailError && <p className="field-error">{emailError}</p>}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label-ats">Role</label>
+                <div className="relative">
+                  <Briefcase size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                  <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                  <select
+                    value={formData.role}
+                    onChange={(e) => setFormData((p) => ({ ...p, role: e.target.value }))}
+                    className="input-ats !pl-9 !pr-9 appearance-none cursor-pointer"
+                  >
+                    <optgroup label="My Team">
+                      <option value="Team Member">Team Member</option>
+                      <option value="Team Lead">Team Lead</option>
+                      <option value="Recruiter">Recruiter</option>
+                      <option value="HR Executive">HR Executive</option>
+                    </optgroup>
+                    <optgroup label="Reporting / Senior">
+                      <option value="Reporting Manager">Reporting Manager</option>
+                      <option value="HR Manager">HR Manager</option>
+                      <option value="Director">Director</option>
+                      <option value="VP / Head">VP / Head</option>
+                    </optgroup>
+                    <optgroup label="Stakeholders">
+                      <option value="Hiring Manager">Hiring Manager</option>
+                      <option value="SPOC">SPOC</option>
+                      <option value="Admin">Admin</option>
+                      <option value="External">External</option>
+                    </optgroup>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="label-ats">Department</label>
+                <div className="relative">
+                  <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                  <input
+                    type="text"
+                    value={formData.department}
+                    onChange={(e) => setFormData((p) => ({ ...p, department: e.target.value.replace(/^\s+/, '').replace(/\s{2,}/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }))}
+                    onBlur={() => setFormData((p) => ({ ...p, department: p.department.trim() }))}
+                    className="input-ats !pl-9"
+                    placeholder="e.g. Engineering"
+                  />
+                </div>
+              </div>
+            </div>
+            <div>
+              <label className="label-ats">Phone (Optional)</label>
+              <div className="relative">
+                <Phone size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                <input
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
+                  className="input-ats !pl-9"
+                  placeholder="+91-XXXXXXXXXX"
+                />
               </div>
             </div>
           </div>
-        )}
+        </Modal>
 
         {/* Content */}
         {isLoading ? (
@@ -500,7 +518,7 @@ const TeamPage = () => {
 
                     {/* Actions - only for members I invited (not "invited me") */}
                     {!member.invitedMe && (
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         <button onClick={() => handleEdit(member)} className="p-2 hover:bg-brand-50 rounded-lg transition-colors" title="Edit">
                           <Edit2 size={15} className="text-brand-600" />
                         </button>

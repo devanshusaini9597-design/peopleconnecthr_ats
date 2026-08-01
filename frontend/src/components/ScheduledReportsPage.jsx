@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { CalendarClock, Plus, Trash2, Lock, Loader2, Power } from 'lucide-react';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
+import Modal from './ui/Modal';
+import ConfirmationModal from './ConfirmationModal';
 import { authenticatedFetch, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 
@@ -15,69 +17,90 @@ const REPORT_TYPES = [
 
 const emptyForm = { name: '', reportType: 'recruitment-summary', format: 'xlsx', dateRange: 'month', frequency: 'weekly', recipients: '' };
 
-const ScheduleModal = ({ onClose, onSave, saving }) => {
+const ScheduleModal = ({ open, onClose, onSave, saving }) => {
   const [form, setForm] = useState(emptyForm);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  useEffect(() => {
+    if (open) setForm(emptyForm);
+  }, [open]);
+
   return (
-    <div className="fixed inset-0 bg-stone-900/55 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="relative bg-white rounded-2xl sm:rounded-3xl w-full max-w-lg max-h-[85vh] flex flex-col border border-stone-200/60 shadow-2xl modal-panel-ats overflow-hidden">
-        <div className="p-5 border-b border-stone-100"><h3 className="text-lg font-bold text-stone-900">New Scheduled Report</h3></div>
-        <div className="p-5 space-y-4 overflow-y-auto">
-          <div>
-            <label className="text-sm font-medium text-stone-700">Schedule name</label>
-            <input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Weekly recruiter summary" className="mt-1 input-ats" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm font-medium text-stone-700">Report</label>
-              <select value={form.reportType} onChange={(e) => set('reportType', e.target.value)} className="mt-1 input-ats">
-                {REPORT_TYPES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-stone-700">Format</label>
-              <select value={form.format} onChange={(e) => set('format', e.target.value)} className="mt-1 input-ats">
-                <option value="xlsx">Excel (.xlsx)</option>
-                <option value="pdf">PDF</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-stone-700">Date range</label>
-              <select value={form.dateRange} onChange={(e) => set('dateRange', e.target.value)} className="mt-1 input-ats">
-                <option value="week">Last 7 days</option>
-                <option value="month">This month</option>
-                <option value="quarter">This quarter</option>
-                <option value="year">This year</option>
-                <option value="all">All time</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-stone-700">Frequency</label>
-              <select value={form.frequency} onChange={(e) => set('frequency', e.target.value)} className="mt-1 input-ats">
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="text-sm font-medium text-stone-700">Recipients (comma-separated emails)</label>
-            <input value={form.recipients} onChange={(e) => set('recipients', e.target.value)} placeholder="hr@company.com, cfo@company.com" className="mt-1 input-ats" />
-          </div>
-        </div>
-        <div className="p-5 border-t border-stone-100 flex justify-end gap-2">
-          <button onClick={onClose} className="btn-secondary">Cancel</button>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="New Scheduled Report"
+      description="Email a report to your team on a recurring cadence."
+      size="md"
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
           <button
+            type="button"
             onClick={() => onSave({ ...form, recipients: form.recipients.split(',').map((r) => r.trim()).filter(Boolean) })}
             disabled={saving || !form.name.trim()}
             className="btn-primary"
           >
-            {saving ? 'Creating…' : 'Create Schedule'}
+            {saving ? <><Loader2 size={16} className="animate-spin" /> Creating…</> : 'Create Schedule'}
           </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div>
+          <label className="label-ats">Schedule name</label>
+          <input
+            value={form.name}
+            onChange={(e) => set('name', e.target.value)}
+            placeholder="e.g. Weekly recruiter summary"
+            className="input-ats"
+            autoFocus
+          />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="label-ats">Report</label>
+            <select value={form.reportType} onChange={(e) => set('reportType', e.target.value)} className="input-ats">
+              {REPORT_TYPES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label-ats">Format</label>
+            <select value={form.format} onChange={(e) => set('format', e.target.value)} className="input-ats">
+              <option value="xlsx">Excel (.xlsx)</option>
+              <option value="pdf">PDF</option>
+            </select>
+          </div>
+          <div>
+            <label className="label-ats">Date range</label>
+            <select value={form.dateRange} onChange={(e) => set('dateRange', e.target.value)} className="input-ats">
+              <option value="week">Last 7 days</option>
+              <option value="month">This month</option>
+              <option value="quarter">This quarter</option>
+              <option value="year">This year</option>
+              <option value="all">All time</option>
+            </select>
+          </div>
+          <div>
+            <label className="label-ats">Frequency</label>
+            <select value={form.frequency} onChange={(e) => set('frequency', e.target.value)} className="input-ats">
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="label-ats">Recipients (comma-separated emails)</label>
+          <input
+            value={form.recipients}
+            onChange={(e) => set('recipients', e.target.value)}
+            placeholder="hr@company.com, cfo@company.com"
+            className="input-ats"
+          />
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };
 
@@ -88,6 +111,8 @@ export default function ScheduledReportsPage() {
   const [schedules, setSchedules] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -128,23 +153,47 @@ export default function ScheduledReportsPage() {
     if (data.success) load(); else toast?.error?.(data.message);
   };
 
-  const remove = async (schedule) => {
-    if (!window.confirm(`Delete the "${schedule.name}" schedule?`)) return;
-    const res = await authenticatedFetch(`/api/report-schedules/${schedule._id}`, { method: 'DELETE' });
-    const data = await res.json();
-    if (data.success) { toast?.success?.('Deleted'); load(); } else toast?.error?.(data.message);
+  const remove = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await authenticatedFetch(`/api/report-schedules/${deleteTarget._id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        toast?.success?.('Deleted');
+        setDeleteTarget(null);
+        load();
+      } else {
+        toast?.error?.(data.message);
+      }
+    } finally {
+      setDeleting(false);
+    }
   };
 
-  if (loading) return <div className="page-shell-ats"><div className="min-h-[60vh] flex items-center justify-center"><Loader2 className="w-8 h-8 text-brand-600 animate-spin" /></div></div>;
+  if (loading) {
+    return (
+      <div className="page-shell-ats">
+        <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3">
+          <Loader2 className="w-8 h-8 text-brand-600 animate-spin" />
+          <p className="text-sm text-stone-500 font-medium">Loading scheduled reports…</p>
+        </div>
+      </div>
+    );
+  }
 
   if (upgradeRequired) {
     return (
       <div className="page-shell-ats">
-        <div className="min-h-[60vh] flex items-center justify-center">
-          <div className="max-w-md w-full text-center card-ats-bordered border-amber-200/80 bg-amber-50/30 p-10">
-            <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto mb-4"><Lock className="w-7 h-7 text-amber-600" /></div>
-            <h2 className="text-xl font-bold text-stone-900">Scheduled Reports is an Enterprise feature</h2>
-            <p className="text-stone-500 mt-2 text-sm">Upgrade to Enterprise to automatically email reports on a recurring cadence.</p>
+        <div className="min-h-[60vh] flex items-center justify-center px-4">
+          <div className="max-w-md w-full text-center card-ats-bordered border-amber-200/80 bg-amber-50/40 p-8 sm:p-10 animate-slide-up">
+            <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto mb-4 ring-4 ring-amber-100/60">
+              <Lock className="w-7 h-7 text-amber-600" />
+            </div>
+            <h2 className="text-xl font-bold text-stone-900 tracking-tight">Scheduled Reports is an Enterprise feature</h2>
+            <p className="text-stone-500 mt-2 text-sm leading-relaxed">
+              Upgrade to Enterprise to automatically email reports on a recurring cadence.
+            </p>
             <a href="/billing" className="btn-primary inline-flex mt-6">View Plans</a>
           </div>
         </div>
@@ -154,51 +203,77 @@ export default function ScheduledReportsPage() {
 
   return (
     <div className="page-shell-ats max-w-4xl">
-        <PageHeader
-          icon={CalendarClock}
-          title="Scheduled Reports"
-          subtitle="Automatically email reports to your team or stakeholders on a recurring cadence."
-        >
-          <button type="button" onClick={() => setShowModal(true)} className="btn-primary">
-            <Plus className="w-4 h-4" /> New Schedule
-          </button>
-        </PageHeader>
+      <PageHeader
+        icon={CalendarClock}
+        title="Scheduled Reports"
+        subtitle="Automatically email reports to your team or stakeholders on a recurring cadence."
+        gradientTitle
+      >
+        <button type="button" onClick={() => setShowModal(true)} className="btn-primary">
+          <Plus className="w-4 h-4" /> New Schedule
+        </button>
+      </PageHeader>
 
-        <div className="card-ats-bordered divide-y divide-stone-100 overflow-hidden">
-          {schedules.length === 0 ? (
-            <EmptyState
-              icon={CalendarClock}
-              message="No scheduled reports yet."
-              subMessage="Create a schedule to automatically email reports on a recurring cadence."
-              action={
-                <button type="button" onClick={() => setShowModal(true)} className="btn-primary">
-                  <Plus className="w-4 h-4" /> New Schedule
-                </button>
-              }
-            />
-          ) : schedules.map((s) => (
-            <div key={s._id} className="p-4 flex items-center justify-between">
-              <div>
-                <div className="font-medium text-stone-900">{s.name}</div>
-                <div className="text-xs text-stone-400 mt-0.5">
-                  {REPORT_TYPES.find((r) => r.id === s.reportType)?.label || s.reportType} · {s.frequency} · {s.recipients.join(', ')}
+      <div className="card-ats-bordered divide-y divide-stone-100 overflow-hidden">
+        {schedules.length === 0 ? (
+          <EmptyState
+            icon={CalendarClock}
+            message="No scheduled reports yet."
+            subMessage="Create a schedule to automatically email reports on a recurring cadence."
+            action={
+              <button type="button" onClick={() => setShowModal(true)} className="btn-primary">
+                <Plus className="w-4 h-4" /> New Schedule
+              </button>
+            }
+          />
+        ) : schedules.map((s) => (
+          <div key={s._id} className="p-4 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-brand-50/20 transition-colors">
+            <div className="min-w-0">
+              <div className="font-semibold text-stone-900">{s.name}</div>
+              <div className="text-xs text-stone-400 mt-0.5 leading-relaxed">
+                {REPORT_TYPES.find((r) => r.id === s.reportType)?.label || s.reportType} · {s.frequency} · {s.recipients.join(', ')}
+              </div>
+              {s.lastRunAt && (
+                <div className={`text-xs mt-1.5 ${s.lastRunStatus === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
+                  Last run: {s.lastRunStatus} ({new Date(s.lastRunAt).toLocaleString()})
                 </div>
-                {s.lastRunAt && (
-                  <div className={`text-xs mt-1 ${s.lastRunStatus === 'success' ? 'text-green-600' : 'text-red-600'}`}>
-                    Last run: {s.lastRunStatus} ({new Date(s.lastRunAt).toLocaleString()})
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-1">
-                <span className={`text-xs px-2 py-0.5 rounded-full mr-2 ${s.isActive ? 'bg-green-50 text-green-700' : 'bg-stone-100 text-stone-500'}`}>{s.isActive ? 'Active' : 'Paused'}</span>
-                <button onClick={() => toggle(s)} className="p-2 hover:bg-stone-100 rounded-lg text-stone-500" title={s.isActive ? 'Pause' : 'Resume'}><Power className="w-4 h-4" /></button>
-                <button onClick={() => remove(s)} className="p-2 hover:bg-red-50 rounded-lg text-red-500"><Trash2 className="w-4 h-4" /></button>
-              </div>
+              )}
             </div>
-          ))}
-        </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <span className={`mr-2 ${s.isActive ? 'badge-success' : 'badge-neutral'}`}>
+                {s.isActive ? 'Active' : 'Paused'}
+              </span>
+              <button
+                type="button"
+                onClick={() => toggle(s)}
+                className="p-2.5 hover:bg-stone-100 rounded-xl text-stone-500 transition-colors touch-target"
+                title={s.isActive ? 'Pause' : 'Resume'}
+              >
+                <Power className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(s)}
+                className="p-2.5 hover:bg-red-50 rounded-xl text-stone-400 hover:text-red-500 transition-colors touch-target"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
 
-      {showModal && <ScheduleModal onClose={() => setShowModal(false)} onSave={create} saving={saving} />}
+      <ScheduleModal open={showModal} onClose={() => setShowModal(false)} onSave={create} saving={saving} />
+      <ConfirmationModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={remove}
+        title="Delete schedule?"
+        message={`Delete the "${deleteTarget?.name}" schedule?`}
+        confirmText="Delete"
+        type="delete"
+        isLoading={deleting}
+      />
     </div>
   );
 }

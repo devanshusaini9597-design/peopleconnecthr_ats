@@ -879,6 +879,60 @@ app.post('/jobs', verifyToken, requireRecruiterOrAbove, checkPlanLimit('jobs'), 
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
+app.put('/jobs/:id', verifyToken, requireRecruiterOrAbove, async (req, res) => {
+  try {
+    const scope = req.user.organizationId
+      ? { organizationId: req.user.organizationId }
+      : { createdBy: req.user.id };
+
+    const updates = { ...req.body };
+    delete updates._id;
+    delete updates.organizationId;
+    delete updates.createdBy;
+
+    if (updates.role && !updates.title) updates.title = updates.role;
+    if (updates.title && !updates.role) updates.role = updates.title;
+
+    if (updates.status === 'Closed' && !updates.closedAt) {
+      updates.closedAt = new Date();
+      updates.isPublished = false;
+    }
+
+    const job = await Job.findOneAndUpdate(
+      { _id: req.params.id, ...scope },
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+
+    if (!job) return res.status(404).json({ message: 'Job not found' });
+    res.json(job);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/jobs/:id', verifyToken, requireRecruiterOrAbove, async (req, res) => {
+  try {
+    const scope = req.user.organizationId
+      ? { organizationId: req.user.organizationId }
+      : { createdBy: req.user.id };
+
+    const deleted = await Job.findOneAndDelete({ _id: req.params.id, ...scope });
+    if (!deleted) return res.status(404).json({ message: 'Job not found' });
+
+    if (req.user.organizationId) {
+      await Organization.findByIdAndUpdate(
+        req.user.organizationId,
+        { $inc: { 'usageCurrent.jobs': -1 } }
+      );
+    }
+
+    res.json({ message: 'Job deleted successfully', id: req.params.id });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // ══════════════════════════════════════════════════════════════════════
 // DATABASE CONNECTION
 // ══════════════════════════════════════════════════════════════════════

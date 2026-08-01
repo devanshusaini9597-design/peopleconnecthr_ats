@@ -7,6 +7,7 @@ import API_URL from '../config';
 import { useAuth } from '../context/AuthContext';
 import { planHasFeature } from '../config/planFeatures';
 import PageHeader from './ui/PageHeader';
+import ConfirmationModal from './ConfirmationModal';
 
 // Only providers with a real, working adapter appear here (see backend/adapters/).
 // Calendar/SMS/AI push-posting-to-LinkedIn stay in "Coming Soon" until a
@@ -48,6 +49,40 @@ const FIELD_LABELS = {
   accountSid: 'Twilio Account SID', authToken: 'Twilio Auth Token', fromNumber: 'WhatsApp Sender Number (e.g. whatsapp:+14155238886)'
 };
 
+const Section = ({ title, children }) => (
+  <section>
+    <h2 className="text-sm font-semibold text-stone-900 uppercase tracking-wider mb-4 border-b border-stone-200 pb-2 flex items-center gap-2">
+      {title}
+    </h2>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+      {children}
+    </div>
+  </section>
+);
+
+const LoadingSkeleton = () => (
+  <div className="space-y-8 animate-fade-in">
+    {[1, 2, 3].map((section) => (
+      <div key={section}>
+        <div className="h-4 w-40 skeleton-ats mb-4" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+          {[1, 2, 3].map((card) => (
+            <div key={card} className="card-ats-bordered p-5 space-y-4">
+              <div className="flex justify-between items-start">
+                <div className="w-12 h-12 skeleton-ats rounded-xl" />
+                <div className="h-6 w-24 skeleton-ats rounded-full" />
+              </div>
+              <div className="h-4 w-2/3 skeleton-ats" />
+              <div className="h-3 w-full skeleton-ats" />
+              <div className="h-3 w-4/5 skeleton-ats" />
+            </div>
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
 export default function IntegrationSettingsPage() {
   const { organization, token } = useAuth();
   const [configs, setConfigs] = useState([]); // saved IntegrationConfig docs (no credentials)
@@ -57,6 +92,8 @@ export default function IntegrationSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [feedback, setFeedback] = useState(null); // { type: 'success'|'error', message }
+  const [disconnectTarget, setDisconnectTarget] = useState(null);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   const authHeaders = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 
@@ -132,18 +169,23 @@ export default function IntegrationSettingsPage() {
     }
   };
 
-  const handleDisconnect = async (provider) => {
+  const handleDisconnect = async () => {
+    const provider = disconnectTarget;
+    if (!provider) return;
     const config = getConfigFor(provider.id);
     if (!config) return;
-    if (!window.confirm(`Disconnect ${provider.name}?`)) return;
+    setDisconnecting(true);
     try {
       const res = await fetch(`${API_URL}/api/integrations/${config._id}`, { method: 'DELETE', headers: authHeaders });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message || 'Failed to disconnect');
       setActiveConfig(null);
+      setDisconnectTarget(null);
       await loadConfigs();
     } catch (err) {
       setFeedback({ type: 'error', message: err.message });
+    } finally {
+      setDisconnecting(false);
     }
   };
 
@@ -157,7 +199,7 @@ export default function IntegrationSettingsPage() {
     return (
       <div key={provider.id} className="card-ats-bordered overflow-hidden flex flex-col">
         <div className="p-5 flex-1">
-          <div className="flex justify-between items-start mb-4">
+          <div className="flex justify-between items-start mb-4 gap-2">
             <div className={`p-3 rounded-xl ${provider.bg || 'bg-stone-100'} ${provider.color || 'text-stone-500'}`}>
               <Icon className="w-6 h-6" />
             </div>
@@ -171,13 +213,13 @@ export default function IntegrationSettingsPage() {
                   ? (validated ? 'badge-success' : 'badge-warning')
                   : 'badge-neutral'
               }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${connected ? (validated ? 'bg-emerald-500' : 'bg-amber-500') : 'bg-stone-400'}`}></span>
+                <span className={`w-1.5 h-1.5 rounded-full ${connected ? (validated ? 'bg-emerald-500' : 'bg-amber-500') : 'bg-stone-400'}`} />
                 {connected ? (validated ? 'Connected' : 'Unverified') : 'Not Configured'}
               </span>
             )}
           </div>
-          <h3 className="text-base font-semibold text-stone-900">{provider.name}</h3>
-          <p className="text-sm text-stone-500 mt-1">{provider.desc}</p>
+          <h3 className="text-base font-semibold text-stone-900 tracking-tight">{provider.name}</h3>
+          <p className="text-sm text-stone-500 mt-1 leading-relaxed">{provider.desc}</p>
         </div>
 
         <div className="px-5 py-3 bg-stone-50/50 border-t border-stone-100 mt-auto flex justify-end">
@@ -185,7 +227,7 @@ export default function IntegrationSettingsPage() {
             type="button"
             onClick={() => entitled && openConfigure(provider)}
             disabled={!entitled}
-            className="text-sm font-medium text-brand-600 hover:text-brand-700 flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="text-sm font-medium text-brand-600 hover:text-brand-700 flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] sm:min-h-0"
           >
             <Settings className="w-4 h-4" />
             {entitled ? 'Configure' : 'Upgrade to unlock'}
@@ -193,13 +235,13 @@ export default function IntegrationSettingsPage() {
         </div>
 
         {activeConfig === provider.id && entitled && (
-          <div className="border-t border-stone-100 bg-stone-50 p-5">
+          <div className="border-t border-stone-100 bg-stone-50/80 p-5">
             <div className="space-y-4">
               {provider.fields.map((field) => (
                 <div key={field}>
-                  <label className="block text-xs font-medium text-stone-700 mb-1.5">{FIELD_LABELS[field] || field}</label>
+                  <label className="label-ats !text-xs">{FIELD_LABELS[field] || field}</label>
                   <input
-                    type={field === 'password' || field === 'apiKey' ? 'password' : 'text'}
+                    type={field === 'password' || field === 'apiKey' || field === 'authToken' || field === 'accessToken' ? 'password' : 'text'}
                     value={formValues[field] || ''}
                     onChange={(e) => setFormValues(prev => ({ ...prev, [field]: e.target.value }))}
                     placeholder={config?.hasCredentials ? '•••••••••••• (leave blank to keep current)' : ''}
@@ -209,9 +251,13 @@ export default function IntegrationSettingsPage() {
               ))}
             </div>
 
-            <div className="mt-5 flex items-center justify-between pt-4 border-t border-stone-200">
+            <div className="mt-5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4 border-t border-stone-200">
               {config ? (
-                <button type="button" onClick={() => handleDisconnect(provider)} className="text-xs font-medium text-red-600 hover:text-red-700 flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setDisconnectTarget(provider)}
+                  className="text-xs font-medium text-red-600 hover:text-red-700 flex items-center gap-1.5 min-h-[44px] sm:min-h-0"
+                >
                   <Unlink className="w-3.5 h-3.5" /> Disconnect
                 </button>
               ) : <span />}
@@ -220,7 +266,7 @@ export default function IntegrationSettingsPage() {
                   type="button"
                   onClick={() => handleTest(provider)}
                   disabled={testing || !config}
-                  className="btn-secondary !px-3 !py-1.5 !text-sm"
+                  className="btn-secondary !px-3 !py-1.5 !text-sm flex-1 sm:flex-none"
                 >
                   {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Test'}
                 </button>
@@ -228,7 +274,7 @@ export default function IntegrationSettingsPage() {
                   type="button"
                   onClick={() => handleSave(provider)}
                   disabled={saving}
-                  className="btn-primary !px-3 !py-1.5 !text-sm"
+                  className="btn-primary !px-3 !py-1.5 !text-sm flex-1 sm:flex-none"
                 >
                   {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save'}
                 </button>
@@ -236,8 +282,8 @@ export default function IntegrationSettingsPage() {
             </div>
 
             {feedback && (
-              <div className={`mt-3 text-xs flex items-center gap-1.5 p-2 rounded-xl ${feedback.type === 'success' ? 'text-emerald-700 bg-emerald-50' : 'text-red-600 bg-red-50'}`}>
-                {feedback.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+              <div className={`mt-3 text-xs flex items-center gap-1.5 p-2.5 rounded-xl ${feedback.type === 'success' ? 'text-emerald-700 bg-emerald-50' : 'text-red-600 bg-red-50'}`}>
+                {feedback.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
                 {feedback.message}
               </div>
             )}
@@ -253,52 +299,38 @@ export default function IntegrationSettingsPage() {
         icon={Plug}
         title="Integrations"
         subtitle="Connect your ATS with external tools and services."
+        gradientTitle
       />
 
       {loading ? (
-        <div className="flex items-center gap-2 text-stone-500 text-sm">
-          <Loader2 className="w-4 h-4 animate-spin text-brand-600" /> Loading integrations...
-        </div>
+        <LoadingSkeleton />
       ) : (
         <>
-          <section>
-            <h2 className="text-sm font-semibold text-stone-900 uppercase tracking-wider mb-4 border-b border-stone-200 pb-2">Email Providers</h2>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {EMAIL_PROVIDERS.map(renderCard)}
-            </div>
-          </section>
+          <Section title="Email Providers">
+            {EMAIL_PROVIDERS.map(renderCard)}
+          </Section>
+
+          <Section title="Job Board (Enterprise)">
+            {JOB_BOARD_PROVIDERS.map(renderCard)}
+          </Section>
+
+          <Section title="Background Checks (Enterprise)">
+            {BACKGROUND_CHECK_PROVIDERS.map(renderCard)}
+          </Section>
+
+          <Section title="E-Signature (Enterprise)">
+            {ESIGN_PROVIDERS.map(renderCard)}
+          </Section>
+
+          <Section title="WhatsApp Messaging (Enterprise)">
+            {WHATSAPP_PROVIDERS.map(renderCard)}
+          </Section>
 
           <section>
-            <h2 className="text-sm font-semibold text-stone-900 uppercase tracking-wider mb-4 border-b border-stone-200 pb-2">Job Board (Enterprise)</h2>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {JOB_BOARD_PROVIDERS.map(renderCard)}
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-sm font-semibold text-stone-900 uppercase tracking-wider mb-4 border-b border-stone-200 pb-2">Background Checks (Enterprise)</h2>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {BACKGROUND_CHECK_PROVIDERS.map(renderCard)}
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-sm font-semibold text-stone-900 uppercase tracking-wider mb-4 border-b border-stone-200 pb-2">E-Signature (Enterprise)</h2>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {ESIGN_PROVIDERS.map(renderCard)}
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-sm font-semibold text-stone-900 uppercase tracking-wider mb-4 border-b border-stone-200 pb-2">WhatsApp Messaging (Enterprise)</h2>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {WHATSAPP_PROVIDERS.map(renderCard)}
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-4 border-b border-stone-100 pb-2">Coming Soon</h2>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-4 border-b border-stone-100 pb-2">
+              Coming Soon
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
               {COMING_SOON.map((integration) => {
                 const Icon = integration.icon;
                 return (
@@ -308,12 +340,10 @@ export default function IntegrationSettingsPage() {
                         <div className="p-3 rounded-xl bg-stone-100 text-stone-500">
                           <Icon className="w-6 h-6" />
                         </div>
-                        <span className="badge-neutral">
-                          Coming Soon
-                        </span>
+                        <span className="badge-neutral">Coming Soon</span>
                       </div>
-                      <h3 className="text-base font-semibold text-stone-900">{integration.name}</h3>
-                      <p className="text-sm text-stone-500 mt-1">{integration.desc}</p>
+                      <h3 className="text-base font-semibold text-stone-900 tracking-tight">{integration.name}</h3>
+                      <p className="text-sm text-stone-500 mt-1 leading-relaxed">{integration.desc}</p>
                     </div>
                   </div>
                 );
@@ -322,6 +352,17 @@ export default function IntegrationSettingsPage() {
           </section>
         </>
       )}
+
+      <ConfirmationModal
+        isOpen={!!disconnectTarget}
+        onClose={() => setDisconnectTarget(null)}
+        onConfirm={handleDisconnect}
+        title="Disconnect integration?"
+        message={`Disconnect ${disconnectTarget?.name}? Saved credentials will be removed.`}
+        confirmText="Disconnect"
+        type="delete"
+        isLoading={disconnecting}
+      />
     </div>
   );
 }

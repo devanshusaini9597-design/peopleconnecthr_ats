@@ -16,16 +16,18 @@ router.use(verifyToken, requireOrganization, tenantScope);
  */
 router.get('/', async (req, res) => {
   try {
-    const { jobId, stage, assignedTo, isRejected, page = 1, limit = 20 } = req.query;
+    const { jobId, stage, assignedTo, isRejected, page = 1, limit = 200 } = req.query;
     const filter = { organizationId: req.user.organizationId };
     if (jobId) filter.jobId = jobId;
     if (stage) filter.stage = stage;
     if (assignedTo) filter.assignedTo = assignedTo;
     if (isRejected !== undefined) filter.isRejected = isRejected === 'true';
+    else filter.isRejected = { $ne: true };
 
     const applications = await Application.find(filter)
       .skip((page - 1) * limit)
       .limit(Number(limit))
+      .sort({ updatedAt: -1 })
       .populate('candidateId jobId assignedTo');
     
     res.json({ success: true, data: applications });
@@ -39,8 +41,34 @@ router.get('/', async (req, res) => {
  */
 router.get('/stats', async (req, res) => {
   try {
-    // STUB: Aggregation for pipeline stats
-    res.json({ success: true, data: {} });
+    const { jobId } = req.query;
+    const filter = { organizationId: req.user.organizationId, isRejected: { $ne: true } };
+    if (jobId) filter.jobId = jobId;
+
+    const applications = await Application.find(filter).select('stage createdAt hiredAt isHired').lean();
+    const byStage = {};
+    let hiredDurations = [];
+
+    for (const app of applications) {
+      byStage[app.stage] = (byStage[app.stage] || 0) + 1;
+      if (app.isHired && app.hiredAt && app.createdAt) {
+        const days = Math.max(0, Math.round((new Date(app.hiredAt) - new Date(app.createdAt)) / (1000 * 60 * 60 * 24)));
+        hiredDurations.push(days);
+      }
+    }
+
+    const avgTime = hiredDurations.length
+      ? `${Math.round(hiredDurations.reduce((a, b) => a + b, 0) / hiredDurations.length)}d`
+      : 'N/A';
+
+    res.json({
+      success: true,
+      data: {
+        total: applications.length,
+        byStage,
+        avgTime
+      }
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -62,11 +90,46 @@ router.get('/:id', async (req, res) => {
 
 /**
  * POST /
+ * Accepts candidateId, or inline candidate { name, email, contact/phone, ctc? }
  */
 router.post('/', requireRecruiterOrAbove, checkPlanLimit('candidates'), async (req, res) => {
   try {
-    const { jobId, candidateId, stage = 'Applied', source, assignedTo } = req.body;
-    
+    let { jobId, candidateId, stage = 'Applied', source = 'Direct', assignedTo, candidate } = req.body;
+
+    if (!jobId) return res.status(400).json({ success: false, message: 'jobId is required' });
+
+    if (!candidateId && candidate) {
+      const name = (candidate.name || '').trim();
+      const email = (candidate.email || '').trim().toLowerCase();
+      const contact = (candidate.contact || candidate.phone || '').trim();
+      if (!name || !email) {
+        return res.status(400).json({ success: false, message: 'Candidate name and email are required' });
+      }
+
+      let existingCandidate = await Candidate.findOne({
+        email,
+        organizationId: req.user.organizationId
+      });
+
+      if (!existingCandidate) {
+        existingCandidate = new Candidate({
+          name,
+          email,
+          contact: contact || '0000000000',
+          ctc: candidate.ctc || 'N/A',
+          organizationId: req.user.organizationId,
+          createdBy: req.user.id,
+          source: source || 'Direct'
+        });
+        await existingCandidate.save();
+      }
+      candidateId = existingCandidate._id;
+    }
+
+    if (!candidateId) {
+      return res.status(400).json({ success: false, message: 'candidateId or candidate details required' });
+    }
+
     const existing = await Application.findOne({ jobId, candidateId, organizationId: req.user.organizationId });
     if (existing) return res.status(400).json({ success: false, message: 'Candidate already applied to this job' });
 
@@ -81,7 +144,15 @@ router.post('/', requireRecruiterOrAbove, checkPlanLimit('candidates'), async (r
     });
 
     await application.save();
-    res.json({ success: true, data: application });
+    await application.populate('candidateId jobId assignedTo');
+
+    // Keep job application counter in sync when possible
+    try {
+      const Job = require('../models/Job');
+      await Job.findByIdAndUpdate(jobId, { $inc: { applicationCount: 1 } });
+    } catch (_) { /* non-blocking */ }
+
+    res.status(201).json({ success: true, data: application });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -192,7 +263,7 @@ router.put('/:id/rating', requireRecruiterOrAbove, async (req, res) => {
   try {
     const application = await Application.findOneAndUpdate(
       { _id: req.params.id, organizationId: req.user.organizationId },
-      { $set: { rating: req.body.rating } },
+      { $set: { rating: req.body.rating, lastActivityAt: new Date() } },
       { new: true }
     );
     res.json({ success: true, data: application });
@@ -202,11 +273,73 @@ router.put('/:id/rating', requireRecruiterOrAbove, async (req, res) => {
 });
 
 /**
+ * PUT /:id/notes
+ */
+router.put('/:id/notes', requireRecruiterOrAbove, async (req, res) => {
+  try {
+    const notes = typeof req.body.notes === 'string' ? req.body.notes : '';
+    const application = await Application.findOneAndUpdate(
+      { _id: req.params.id, organizationId: req.user.organizationId },
+      { $set: { notes, lastActivityAt: new Date() } },
+      { new: true }
+    );
+    if (!application) return res.status(404).json({ success: false, message: 'Not found' });
+    res.json({ success: true, data: application });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * PUT /:id/schedule — store interview schedule in metadata + notes stamp
+ */
+router.put('/:id/schedule', requireRecruiterOrAbove, async (req, res) => {
+  try {
+    const { scheduledAt, mode = 'Video', location = '', remark = '' } = req.body;
+    if (!scheduledAt) {
+      return res.status(400).json({ success: false, message: 'scheduledAt is required' });
+    }
+
+    const application = await Application.findOne({ _id: req.params.id, organizationId: req.user.organizationId });
+    if (!application) return res.status(404).json({ success: false, message: 'Not found' });
+
+    const when = new Date(scheduledAt);
+    application.metadata = {
+      ...(application.metadata || {}),
+      interview: { scheduledAt: when, mode, location, remark, updatedAt: new Date(), updatedBy: req.user.id }
+    };
+    application.lastActivityAt = new Date();
+
+    const stamp = `\n[Interview scheduled] ${when.toLocaleString()} · ${mode}${location ? ` · ${location}` : ''}${remark ? ` — ${remark}` : ''}`;
+    application.notes = `${application.notes || ''}${stamp}`.trim();
+
+    // Auto-advance to Interview if still earlier in pipeline
+    const earlyStages = ['Applied', 'Screening'];
+    if (earlyStages.includes(application.stage)) {
+      application.stage = 'Interview';
+      application.stageHistory.push({
+        stage: 'Interview',
+        changedAt: new Date(),
+        changedBy: req.user.id,
+        remark: 'Auto-moved on schedule'
+      });
+    }
+
+    await application.save();
+    await application.populate('candidateId jobId assignedTo');
+    res.json({ success: true, data: application });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
  * DELETE /:id
  */
-router.delete('/:id', requireAdmin, async (req, res) => {
+router.delete('/:id', requireRecruiterOrAbove, async (req, res) => {
   try {
-    await Application.findOneAndDelete({ _id: req.params.id, organizationId: req.user.organizationId });
+    const deleted = await Application.findOneAndDelete({ _id: req.params.id, organizationId: req.user.organizationId });
+    if (!deleted) return res.status(404).json({ success: false, message: 'Application not found' });
     res.json({ success: true, message: 'Application deleted' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
