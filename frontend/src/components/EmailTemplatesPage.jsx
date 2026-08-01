@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Mail, Plus, Edit3, Trash2, Eye, Copy, Search, X, Save, FileText, Send, ChevronDown, Briefcase, Phone, XCircle, UserCheck, FileCheck, Sparkles, Check, AlertCircle, Megaphone } from 'lucide-react';
-import Layout from './Layout';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import { formatByFieldName } from '../utils/textFormatter';
+import PageHeader from './ui/PageHeader';
+import EmptyState from './ui/EmptyState';
 
 import API_URL from '../config';
 const BASE = API_URL;
 
 const CATEGORY_META = {
-  hiring:     { label: 'Hiring Drive',   icon: Briefcase, color: 'indigo', bg: 'bg-indigo-50',  text: 'text-indigo-700', ring: 'ring-indigo-400', badge: 'bg-indigo-100 text-indigo-700' },
+  hiring:     { label: 'Hiring Drive',   icon: Briefcase, color: 'brand', bg: 'bg-brand-50',  text: 'text-brand-700', ring: 'ring-brand-400', badge: 'bg-brand-100 text-brand-700' },
   interview:  { label: 'Interview',      icon: Phone,     color: 'cyan',   bg: 'bg-cyan-50',    text: 'text-cyan-700',   ring: 'ring-cyan-400',   badge: 'bg-cyan-100 text-cyan-700' },
   rejection:  { label: 'Rejection',      icon: XCircle,   color: 'red',    bg: 'bg-red-50',     text: 'text-red-700',    ring: 'ring-red-400',    badge: 'bg-red-100 text-red-700' },
   onboarding: { label: 'Onboarding',     icon: UserCheck,  color: 'green',  bg: 'bg-green-50',   text: 'text-green-700',  ring: 'ring-green-400',  badge: 'bg-green-100 text-green-700' },
@@ -208,63 +209,55 @@ const EmailTemplatesPage = () => {
   // ─── Render ───
   if (loading) {
     return (
-      <Layout>
-        <div className="flex items-center justify-center h-96">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-10 w-10 border-2 border-indigo-600 border-t-transparent mx-auto mb-3"></div>
-            <p className="text-sm text-gray-500 font-medium">Loading templates...</p>
+      <>
+        <div className="page-shell-ats">
+          <div className="flex items-center justify-center h-96">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-10 w-10 border-2 border-brand-600 border-t-transparent mx-auto mb-3"></div>
+              <p className="text-sm text-stone-500 font-medium">Loading templates...</p>
+            </div>
           </div>
         </div>
-      </Layout>
+      </>
     );
   }
 
   return (
-    <Layout>
-      <div className="max-w-7xl mx-auto space-y-5">
-
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center">
-              <Mail size={20} className="text-indigo-600" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">Email Templates</h1>
-              <p className="text-xs text-gray-500">Create, manage and send professional email templates</p>
-            </div>
-          </div>
-          <button
-            onClick={openNewTemplate}
-            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-all"
-          >
+    <>
+      <div className="page-shell-ats">
+        <PageHeader
+          icon={Mail}
+          title="Email Templates"
+          subtitle="Create, manage and send professional email templates"
+        >
+          <button type="button" onClick={openNewTemplate} className="btn-primary">
             <Plus size={16} />
             Create Template
           </button>
-        </div>
+        </PageHeader>
 
         {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1 max-w-sm">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
             <input
               type="text"
               placeholder="Search templates..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+              className="input-ats pl-9"
             />
           </div>
           <div className="flex flex-wrap gap-1.5">
             <button
               onClick={() => setFilterCategory('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${filterCategory === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${filterCategory === 'all' ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
             >All</button>
             {Object.entries(CATEGORY_META).map(([key, meta]) => (
               <button
                 key={key}
                 onClick={() => setFilterCategory(key)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${filterCategory === key ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${filterCategory === key ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
               >{meta.label}</button>
             ))}
           </div>
@@ -272,13 +265,17 @@ const EmailTemplatesPage = () => {
 
         {/* Templates Grid */}
         {filtered.length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-xl border border-gray-200">
-            <Mail size={40} className="text-gray-300 mx-auto mb-3" />
-            <p className="text-sm font-semibold text-gray-600">No templates found</p>
-            <p className="text-xs text-gray-400 mt-1">Create your first email template to get started</p>
-            <button onClick={openNewTemplate} className="mt-4 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-all">
-              <Plus size={14} className="inline mr-1" /> Create Template
-            </button>
+          <div className="card-ats-bordered">
+            <EmptyState
+              icon={Mail}
+              message="No templates found"
+              subMessage="Create your first email template to get started"
+              action={
+                <button type="button" onClick={openNewTemplate} className="btn-primary">
+                  <Plus size={14} /> Create Template
+                </button>
+              }
+            />
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -288,7 +285,7 @@ const EmailTemplatesPage = () => {
               return (
                 <div
                   key={t._id}
-                  className="bg-white rounded-xl border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all flex flex-col"
+                  className="card-ats-bordered hover:border-stone-300 flex flex-col"
                 >
                   {/* Card Header */}
                   <div className="p-4 pb-3 flex items-start gap-3">
@@ -297,19 +294,19 @@ const EmailTemplatesPage = () => {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 mb-0.5">
-                        <h3 className="text-sm font-bold text-gray-900 truncate">{t.name}</h3>
+                        <h3 className="text-sm font-bold text-stone-900 truncate">{t.name}</h3>
                         {t.isDefault && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">DEFAULT</span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 bg-stone-100 text-stone-500 rounded">DEFAULT</span>
                         )}
                       </div>
-                      <p className="text-[11px] text-gray-500 truncate">{t.subject}</p>
+                      <p className="text-[11px] text-stone-500 truncate">{t.subject}</p>
                     </div>
                   </div>
 
                   {/* Body preview */}
                   <div className="px-4 pb-3 flex-1">
-                    <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                      <p className="text-[11px] text-gray-500 line-clamp-4 leading-relaxed whitespace-pre-line">{t.body.substring(0, 200)}{t.body.length > 200 ? '...' : ''}</p>
+                    <div className="bg-stone-50 rounded-lg p-3 border border-stone-100">
+                      <p className="text-[11px] text-stone-500 line-clamp-4 leading-relaxed whitespace-pre-line">{t.body.substring(0, 200)}{t.body.length > 200 ? '...' : ''}</p>
                     </div>
                   </div>
 
@@ -318,32 +315,32 @@ const EmailTemplatesPage = () => {
                     <div className="px-4 pb-3">
                       <div className="flex flex-wrap gap-1">
                         {t.variables.slice(0, 5).map(v => (
-                          <span key={v} className="text-[9px] font-semibold px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded">{`{{${v}}}`}</span>
+                          <span key={v} className="text-[9px] font-semibold px-1.5 py-0.5 bg-brand-50 text-brand-600 rounded">{`{{${v}}}`}</span>
                         ))}
                         {t.variables.length > 5 && (
-                          <span className="text-[9px] text-gray-400">+{t.variables.length - 5} more</span>
+                          <span className="text-[9px] text-stone-400">+{t.variables.length - 5} more</span>
                         )}
                       </div>
                     </div>
                   )}
 
                   {/* Actions */}
-                  <div className="px-4 py-3 border-t border-gray-100 flex items-center gap-1.5">
+                  <div className="px-4 py-3 border-t border-stone-100 flex items-center gap-1.5">
                     <button
                       onClick={() => openPreview(t)}
-                      className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-stone-600 hover:bg-stone-100 rounded-lg transition-all"
                     >
                       <Eye size={12} /> Preview
                     </button>
                     <button
                       onClick={() => openEditTemplate(t)}
-                      className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-brand-600 hover:bg-brand-50 rounded-lg transition-all"
                     >
                       <Edit3 size={12} /> Edit
                     </button>
                     <button
                       onClick={() => duplicateTemplate(t)}
-                      className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-stone-600 hover:bg-stone-100 rounded-lg transition-all"
                     >
                       <Copy size={12} /> Duplicate
                     </button>
@@ -362,7 +359,7 @@ const EmailTemplatesPage = () => {
                     <div className="px-4 py-2.5 bg-red-50 border-t border-red-200 flex items-center justify-between">
                       <p className="text-xs text-red-700 font-medium">Delete this template?</p>
                       <div className="flex gap-2">
-                        <button onClick={() => setDeleteConfirm(null)} className="text-xs text-gray-500 hover:text-gray-700 font-medium">Cancel</button>
+                        <button onClick={() => setDeleteConfirm(null)} className="text-xs text-stone-500 hover:text-stone-700 font-medium">Cancel</button>
                         <button onClick={() => handleDelete(t._id)} className="text-xs text-red-600 hover:text-red-800 font-bold">Delete</button>
                       </div>
                     </div>
@@ -376,21 +373,21 @@ const EmailTemplatesPage = () => {
 
       {/* ═══════ TEMPLATE EDITOR MODAL ═══════ */}
       {showEditor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/55 backdrop-blur-sm p-4">
+          <div className="relative bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-stone-200/60 modal-panel-ats">
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50/80 flex-shrink-0">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50/80 flex-shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-indigo-100 flex items-center justify-center">
-                  <FileText size={18} className="text-indigo-600" />
+                <div className="w-9 h-9 rounded-lg bg-brand-100 flex items-center justify-center">
+                  <FileText size={18} className="text-brand-600" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-gray-900">{editingTemplate ? 'Edit Template' : 'Create New Template'}</h3>
-                  <p className="text-xs text-gray-500">Use {'{{variableName}}'} placeholders for dynamic content</p>
+                  <h3 className="text-base font-bold text-stone-900">{editingTemplate ? 'Edit Template' : 'Create New Template'}</h3>
+                  <p className="text-xs text-stone-500">Use {'{{variableName}}'} placeholders for dynamic content</p>
                 </div>
               </div>
-              <button onClick={() => setShowEditor(false)} className="p-2 hover:bg-gray-200 rounded-lg transition-colors">
-                <X size={18} className="text-gray-500" />
+              <button onClick={() => setShowEditor(false)} className="p-2 hover:bg-stone-200 rounded-lg transition-colors">
+                <X size={18} className="text-stone-500" />
               </button>
             </div>
 
@@ -399,21 +396,21 @@ const EmailTemplatesPage = () => {
               {/* Row 1: Name + Category */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Template Name *</label>
+                  <label className="block text-xs font-semibold text-stone-600 mb-1.5">Template Name *</label>
                   <input
                     type="text"
                     value={form.name}
                     onChange={(e) => setForm(prev => ({ ...prev, name: formatByFieldName('templateName', e.target.value) }))}
                     placeholder="e.g. Hiring Drive Invitation"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                    className="input-ats"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Category</label>
+                  <label className="block text-xs font-semibold text-stone-600 mb-1.5">Category</label>
                   <select
                     value={form.category}
                     onChange={(e) => setForm(prev => ({ ...prev, category: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                    className="input-ats"
                   >
                     {Object.entries(CATEGORY_META).map(([key, meta]) => (
                       <option key={key} value={key}>{meta.label}</option>
@@ -424,29 +421,29 @@ const EmailTemplatesPage = () => {
 
               {/* Subject */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Email Subject *</label>
+                <label className="block text-xs font-semibold text-stone-600 mb-1.5">Email Subject *</label>
                 <input
                   type="text"
                   value={form.subject}
                   onChange={(e) => setForm(prev => ({ ...prev, subject: e.target.value }))}
                   placeholder="e.g. Hiring Drive – {{position}} | {{company}}"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                  className="input-ats"
                 />
               </div>
 
               {/* Variables quick-insert */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Insert Variable (click to add to body)</label>
+                <label className="block text-xs font-semibold text-stone-600 mb-1.5">Insert Variable (click to add to body)</label>
                 <div className="flex flex-wrap gap-1.5">
                   {VARIABLE_OPTIONS.map(v => (
                     <button
                       key={v.key}
                       type="button"
                       onClick={() => insertVariable(v.key)}
-                      className="px-2.5 py-1 text-[11px] font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg transition-all border border-indigo-100"
+                      className="px-2.5 py-1 text-[11px] font-semibold bg-brand-50 text-brand-700 hover:bg-brand-100 rounded-lg transition-all border border-brand-100"
                       title={`Example: ${v.example}`}
                     >
-                      {`{{${v.key}}}`} <span className="text-indigo-400 ml-1">{v.label}</span>
+                      {`{{${v.key}}}`} <span className="text-brand-400 ml-1">{v.label}</span>
                     </button>
                   ))}
                 </div>
@@ -454,13 +451,13 @@ const EmailTemplatesPage = () => {
 
               {/* Body */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Email Body *</label>
+                <label className="block text-xs font-semibold text-stone-600 mb-1.5">Email Body *</label>
                 <textarea
                   value={form.body}
                   onChange={(e) => setForm(prev => ({ ...prev, body: e.target.value }))}
                   placeholder={`Dear {{candidateName}},\n\nGreetings!\n\nWe are hiring for the profile of {{position}} with {{company}}.\n\nCTC: {{ctc}}\nLocation: {{location}}\n\nBest regards,\nHR Team`}
                   rows={14}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none font-mono leading-relaxed"
+                  className="input-ats resize-none font-mono leading-relaxed"
                 />
               </div>
 
@@ -482,14 +479,14 @@ const EmailTemplatesPage = () => {
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50/80 flex-shrink-0">
-              <button onClick={() => setShowEditor(false)} className="px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-200 rounded-lg transition-all">
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-stone-200 bg-stone-50/80 flex-shrink-0">
+              <button onClick={() => setShowEditor(false)} className="btn-secondary">
                 Cancel
               </button>
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-all disabled:opacity-50"
+                className="btn-primary"
               >
                 {saving ? (
                   <><div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" /> Saving...</>
@@ -504,21 +501,21 @@ const EmailTemplatesPage = () => {
 
       {/* ═══════ PREVIEW MODAL ═══════ */}
       {showPreview && previewTemplate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/55 backdrop-blur-sm p-4">
+          <div className="relative bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden border border-stone-200/60 modal-panel-ats">
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50/80 flex-shrink-0">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50/80 flex-shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-indigo-100 flex items-center justify-center">
-                  <Eye size={18} className="text-indigo-600" />
+                <div className="w-9 h-9 rounded-lg bg-brand-100 flex items-center justify-center">
+                  <Eye size={18} className="text-brand-600" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-gray-900">Template Preview</h3>
-                  <p className="text-xs text-gray-500">Fill sample values to see how the email will look</p>
+                  <h3 className="text-base font-bold text-stone-900">Template Preview</h3>
+                  <p className="text-xs text-stone-500">Fill sample values to see how the email will look</p>
                 </div>
               </div>
-              <button onClick={() => setShowPreview(false)} className="p-2 hover:bg-gray-200 rounded-lg transition-colors">
-                <X size={18} className="text-gray-500" />
+              <button onClick={() => setShowPreview(false)} className="p-2 hover:bg-stone-200 rounded-lg transition-colors">
+                <X size={18} className="text-stone-500" />
               </button>
             </div>
 
@@ -526,13 +523,13 @@ const EmailTemplatesPage = () => {
               {/* Variable inputs */}
               {previewTemplate.variables && previewTemplate.variables.length > 0 && (
                 <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-2">Sample Variable Values</label>
+                  <label className="block text-xs font-bold text-stone-600 mb-2">Sample Variable Values</label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {previewTemplate.variables.map(v => {
                       const opt = VARIABLE_OPTIONS.find(o => o.key === v);
                       return (
                         <div key={v}>
-                          <label className="block text-[10px] font-semibold text-gray-500 mb-1">{opt?.label || v}</label>
+                          <label className="block text-[10px] font-semibold text-stone-500 mb-1">{opt?.label || v}</label>
                           {opt?.isTime ? (
                             <div className="flex gap-2">
                               <select
@@ -547,7 +544,7 @@ const EmailTemplatesPage = () => {
                                     setPreviewVars(prev => ({ ...prev, [v]: `${hr12}:${m} ${ampm}` }));
                                   }
                                 }}
-                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+                                className="input-ats !py-1.5"
                               >
                                 <option value="">Select time</option>
                                 {Array.from({ length: 48 }, (_, i) => { const h = Math.floor(i / 2); const m = i % 2 === 0 ? '00' : '30'; const ampm = h >= 12 ? 'PM' : 'AM'; const h12 = h % 12 || 12; return <option key={i} value={`${String(h).padStart(2,'0')}:${m}`}>{`${h12}:${m} ${ampm}`}</option>; })}
@@ -559,7 +556,7 @@ const EmailTemplatesPage = () => {
                               value={previewVars[v] || ''}
                               onChange={(e) => setPreviewVars(prev => ({ ...prev, [v]: e.target.value }))}
                               placeholder={opt?.example || ''}
-                              className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-400"
+                              className="input-ats !py-1.5"
                             />
                           )}
                         </div>
@@ -570,14 +567,14 @@ const EmailTemplatesPage = () => {
               )}
 
               {/* Email preview */}
-              <div className="border border-gray-200 rounded-xl overflow-hidden">
+              <div className="border border-stone-200 rounded-xl overflow-hidden">
                 {/* Subject bar */}
-                <div className="bg-indigo-600 px-5 py-3">
+                <div className="bg-brand-600 px-5 py-3">
                   <p className="text-white text-sm font-semibold">{renderPreviewText(previewTemplate.subject)}</p>
                 </div>
                 {/* Body */}
                 <div className="p-6 bg-white">
-                  <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+                  <div className="text-sm text-stone-700 leading-relaxed whitespace-pre-line">
                     {previewTemplate.name === 'Subscribe for Updates' && previewTemplate.category === 'marketing'
                       ? renderPreviewText(previewTemplate.body.replace(/\n?Subscribe now:\s*\{\{subscribeLink\}\}\s*\n?/gi, '\n'))
                       : renderPreviewText(previewTemplate.body)}
@@ -588,7 +585,7 @@ const EmailTemplatesPage = () => {
                         href={previewVars.subscribeLink && previewVars.subscribeLink.startsWith('http') ? previewVars.subscribeLink : '#'}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-block px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
+                        className="inline-block px-6 py-3 bg-gradient-to-r from-brand-600 to-teal-600 text-white text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
                       >
                         Subscribe for updates
                       </a>
@@ -596,25 +593,25 @@ const EmailTemplatesPage = () => {
                   )}
                 </div>
                 {/* Footer */}
-                <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 text-center">
-                  <p className="text-[10px] text-gray-400">Skillnix Recruitment Services</p>
+                <div className="px-5 py-3 bg-stone-50 border-t border-stone-100 text-center">
+                  <p className="text-[10px] text-stone-400">Skillnix Recruitment Services</p>
                 </div>
               </div>
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50/80 flex-shrink-0">
-              <button onClick={() => { setShowPreview(false); openEditTemplate(previewTemplate); }} className="px-4 py-2.5 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all flex items-center gap-1.5">
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-stone-200 bg-stone-50/80 flex-shrink-0">
+              <button onClick={() => { setShowPreview(false); openEditTemplate(previewTemplate); }} className="px-4 py-2.5 text-sm font-semibold text-brand-600 hover:bg-brand-50 rounded-lg transition-all flex items-center gap-1.5">
                 <Edit3 size={14} /> Edit Template
               </button>
-              <button onClick={() => setShowPreview(false)} className="px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-200 rounded-lg transition-all">
+              <button onClick={() => setShowPreview(false)} className="btn-secondary">
                 Close
               </button>
             </div>
           </div>
         </div>
       )}
-    </Layout>
+    </>
   );
 };
 

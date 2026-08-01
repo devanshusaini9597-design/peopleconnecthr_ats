@@ -20,7 +20,6 @@ import AutoImportPage from './components/AutoImportPage'
 import PendingReviewPage from './components/PendingReviewPage'
 import Homeunder from './components/Homeunder'
 import Jobs from './pages/Jobs'
-import Recruitment from './components/Recruitment'
 import AnalyticsDashboard from './components/AnalyticsDashboard'
 import CandidateSearch from './components/CandidateSearch'
 import ManageMasterData from './components/ManageMasterData'
@@ -37,6 +36,7 @@ const OrganizationSettingsPage = React.lazy(() => import('./components/Organizat
 const IntegrationSettingsPage = React.lazy(() => import('./components/IntegrationSettingsPage'))
 const AuditLogPage = React.lazy(() => import('./components/AuditLogPage'))
 const CustomRolesPage = React.lazy(() => import('./components/CustomRolesPage'))
+const TalentPoolsPage = React.lazy(() => import('./components/TalentPoolsPage'))
 const SSOCallbackPage = React.lazy(() => import('./components/SSOCallbackPage'))
 const SSOSettingsPage = React.lazy(() => import('./components/SSOSettingsPage'))
 const BillingPage = React.lazy(() => import('./components/BillingPage'))
@@ -47,8 +47,26 @@ const InterviewsPage = React.lazy(() => import('./components/InterviewsPage'))
 const CareersPage = React.lazy(() => import('./components/CareersPage'))
 const JobDetailPublic = React.lazy(() => import('./components/JobDetailPublic'))
 const CandidatePortal = React.lazy(() => import('./components/CandidatePortal'))
+const AssessmentsPage = React.lazy(() => import('./components/AssessmentsPage'))
+const AssessmentTakePage = React.lazy(() => import('./components/AssessmentTakePage'))
+const WhiteLabelSettingsPage = React.lazy(() => import('./components/WhiteLabelSettingsPage'))
+const ChromeExtensionSettingsPage = React.lazy(() => import('./components/ChromeExtensionSettingsPage'))
 
-const LoadingFallback = () => <div className="p-8 text-center flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div></div>;
+const LoadingFallback = () => (
+  <div className="flex items-center justify-center min-h-[50vh] p-8">
+    <div className="text-center">
+      <div className="mx-auto mb-3 h-9 w-9 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+      <p className="text-sm font-medium text-stone-500">Loading…</p>
+    </div>
+  </div>
+);
+
+/** Persistent shell — sidebar/header stay mounted; only Outlet content swaps (AJAX feel). */
+const AppShell = ({ requiredRoles }) => (
+  <ProtectedRoute requiredRoles={requiredRoles}>
+    <Layout />
+  </ProtectedRoute>
+);
 
 const router = createBrowserRouter([
   { path: '/', element: <Home /> },
@@ -59,56 +77,61 @@ const router = createBrowserRouter([
   { path: '/subscribe/thank-you', element: <SubscribeThankYouPage /> },
   { path: '/unsubscribe', element: <UnsubscribePage /> },
   { path: '/unsubscribe/thank-you', element: <UnsubscribeThankYouPage /> },
-  
-  // Public SaaS Routes
+
   { path: '/accept-invite', element: <Suspense fallback={<LoadingFallback />}><AcceptInvitePage /></Suspense> },
   { path: '/careers/:orgSlug', element: <Suspense fallback={<LoadingFallback />}><CareersPage /></Suspense> },
   { path: '/careers/:orgSlug/jobs/:jobId', element: <Suspense fallback={<LoadingFallback />}><JobDetailPublic /></Suspense> },
   { path: '/portal', element: <Suspense fallback={<LoadingFallback />}><CandidatePortal /></Suspense> },
+  { path: '/assessment/:token', element: <Suspense fallback={<LoadingFallback />}><AssessmentTakePage /></Suspense> },
 
-  // Protected Onboarding Routes (no org required)
   { path: '/onboarding', element: <ProtectedRoute><Suspense fallback={<LoadingFallback />}><OnboardingPage /></Suspense></ProtectedRoute> },
   { path: '/onboarding/create-org', element: <ProtectedRoute><Suspense fallback={<LoadingFallback />}><OnboardingPage /></Suspense></ProtectedRoute> },
   { path: '/onboarding/invite', element: <ProtectedRoute><Suspense fallback={<LoadingFallback />}><OnboardingPage /></Suspense></ProtectedRoute> },
-
-  // Protected Dashboard Routes
-  // Pages below already render their own SkillNix sidebar/header (via <Layout> or
-  // Sidebar+Header directly) internally, so the route just needs the auth gate.
-  { path: '/dashboard', element: <ProtectedRoute><DashboardPage /></ProtectedRoute> },
-  { path: '/ats', element: <ProtectedRoute><ATSPage /></ProtectedRoute> },
-  { path: '/add-candidate', element: <ProtectedRoute><AddCandidatePage /></ProtectedRoute> },
-  { path: '/resume-parsing', element: <ProtectedRoute><ResumeParsing /></ProtectedRoute> },
-  { path: '/auto-import', element: <ProtectedRoute><AutoImportPage /></ProtectedRoute> },
-  { path: '/pending-review', element: <ProtectedRoute><PendingReviewPage /></ProtectedRoute> },
-  { path: '/analytics', element: <ProtectedRoute><AnalyticsDashboard /></ProtectedRoute> },
-  { path: '/manage-positions', element: <ProtectedRoute><ManageMasterData key="positions" title="Positions" apiEndpoint="/api/positions" navigateBack="/dashboard" /></ProtectedRoute> },
-  { path: '/manage-clients', element: <ProtectedRoute><ManageMasterData key="clients" title="Clients" apiEndpoint="/api/clients" navigateBack="/dashboard" /></ProtectedRoute> },
-  { path: '/manage-sources', element: <ProtectedRoute><ManageMasterData key="sources" title="Sources" apiEndpoint="/api/sources" navigateBack="/dashboard" /></ProtectedRoute> },
-  { path: '/email-templates', element: <ProtectedRoute><EmailTemplatesPage /></ProtectedRoute> },
-  { path: '/email-settings', element: <ProtectedRoute><EmailSettingsPage /></ProtectedRoute> },
-  { path: '/settings', element: <ProtectedRoute><ProfileSettingsPage /></ProtectedRoute> },
-  { path: '/team', element: <ProtectedRoute><TeamPage /></ProtectedRoute> },
-
-  // Pages below render bare content and rely on the route to supply the
-  // SkillNix Layout (sidebar/header) — previously this was the leftover
-  // PeopleConnect DashboardLayout, now standardized on the real Layout.
-  { path: '/homeunder', element: <ProtectedRoute><Layout><Homeunder /></Layout></ProtectedRoute> },
-  { path: '/jobs', element: <ProtectedRoute><Layout><Jobs /></Layout></ProtectedRoute> },
-  { path: '/recruitment', element: <ProtectedRoute><Layout><Recruitment /></Layout></ProtectedRoute> },
-  { path: '/candidate-search', element: <ProtectedRoute><Layout><CandidateSearch /></Layout></ProtectedRoute> },
-
-  // New SaaS Protected Routes
-  { path: '/applications', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'recruiter']}><Layout><Suspense fallback={<LoadingFallback />}><ApplicationsPage /></Suspense></Layout></ProtectedRoute> },
-  { path: '/interviews', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'recruiter', 'interviewer']}><Layout><Suspense fallback={<LoadingFallback />}><InterviewsPage /></Suspense></Layout></ProtectedRoute> },
-  { path: '/organization', element: <ProtectedRoute requiredRoles={['owner', 'admin']}><Layout><Suspense fallback={<LoadingFallback />}><OrganizationSettingsPage /></Suspense></Layout></ProtectedRoute> },
-  { path: '/organization/integrations', element: <ProtectedRoute requiredRoles={['owner', 'admin']}><Layout><Suspense fallback={<LoadingFallback />}><IntegrationSettingsPage /></Suspense></Layout></ProtectedRoute> },
-  { path: '/organization/audit-log', element: <ProtectedRoute requiredRoles={['owner', 'admin']}><Layout><Suspense fallback={<LoadingFallback />}><AuditLogPage /></Suspense></Layout></ProtectedRoute> },
-  { path: '/organization/custom-roles', element: <ProtectedRoute requiredRoles={['owner', 'admin']}><Layout><Suspense fallback={<LoadingFallback />}><CustomRolesPage /></Suspense></Layout></ProtectedRoute> },
-  { path: '/organization/sso', element: <ProtectedRoute requiredRoles={['owner', 'admin']}><Layout><Suspense fallback={<LoadingFallback />}><SSOSettingsPage /></Suspense></Layout></ProtectedRoute> },
   { path: '/sso/callback', element: <Suspense fallback={<LoadingFallback />}><SSOCallbackPage /></Suspense> },
-  { path: '/billing', element: <ProtectedRoute requiredRoles={['owner']}><Layout><Suspense fallback={<LoadingFallback />}><BillingPage /></Suspense></Layout></ProtectedRoute> },
-  { path: '/organization/webhooks-api', element: <ProtectedRoute requiredRoles={['owner', 'admin']}><Layout><Suspense fallback={<LoadingFallback />}><WebhooksApiPage /></Suspense></Layout></ProtectedRoute> },
-  { path: '/organization/scheduled-reports', element: <ProtectedRoute requiredRoles={['owner', 'admin']}><Layout><Suspense fallback={<LoadingFallback />}><ScheduledReportsPage /></Suspense></Layout></ProtectedRoute> },
+
+  // ── Authenticated app shell (content-only navigation) ──────────────
+  {
+    element: <AppShell />,
+    children: [
+      // Main
+      { path: '/dashboard', element: <DashboardPage /> },
+      { path: '/analytics', element: <AnalyticsDashboard /> },
+
+      // Recruitment
+      { path: '/jobs', element: <Jobs /> },
+      { path: '/applications', element: <Suspense fallback={<LoadingFallback />}><ApplicationsPage /></Suspense> },
+      { path: '/recruitment', element: <Suspense fallback={<LoadingFallback />}><ApplicationsPage /></Suspense> },
+      { path: '/ats', element: <ATSPage /> },
+      { path: '/add-candidate', element: <AddCandidatePage /> },
+      { path: '/resume-parsing', element: <ResumeParsing /> },
+      { path: '/candidate-search', element: <CandidateSearch /> },
+      { path: '/talent-pools', element: <Suspense fallback={<LoadingFallback />}><TalentPoolsPage /></Suspense> },
+      { path: '/assessments', element: <Suspense fallback={<LoadingFallback />}><AssessmentsPage /></Suspense> },
+
+      // Related / shared
+      { path: '/auto-import', element: <AutoImportPage /> },
+      { path: '/pending-review', element: <PendingReviewPage /> },
+      { path: '/homeunder', element: <Homeunder /> },
+      { path: '/manage-positions', element: <ManageMasterData key="positions" title="Positions" apiEndpoint="/api/positions" navigateBack="/dashboard" /> },
+      { path: '/manage-clients', element: <ManageMasterData key="clients" title="Clients" apiEndpoint="/api/clients" navigateBack="/dashboard" /> },
+      { path: '/manage-sources', element: <ManageMasterData key="sources" title="Sources" apiEndpoint="/api/sources" navigateBack="/dashboard" /> },
+      { path: '/email-templates', element: <EmailTemplatesPage /> },
+      { path: '/email-settings', element: <EmailSettingsPage /> },
+      { path: '/settings', element: <ProfileSettingsPage /> },
+      { path: '/team', element: <TeamPage /> },
+      { path: '/interviews', element: <Suspense fallback={<LoadingFallback />}><InterviewsPage /></Suspense> },
+      { path: '/organization', element: <Suspense fallback={<LoadingFallback />}><OrganizationSettingsPage /></Suspense> },
+      { path: '/organization/integrations', element: <Suspense fallback={<LoadingFallback />}><IntegrationSettingsPage /></Suspense> },
+      { path: '/organization/audit-log', element: <Suspense fallback={<LoadingFallback />}><AuditLogPage /></Suspense> },
+      { path: '/organization/custom-roles', element: <Suspense fallback={<LoadingFallback />}><CustomRolesPage /></Suspense> },
+      { path: '/organization/white-label', element: <Suspense fallback={<LoadingFallback />}><WhiteLabelSettingsPage /></Suspense> },
+      { path: '/organization/chrome-extension', element: <Suspense fallback={<LoadingFallback />}><ChromeExtensionSettingsPage /></Suspense> },
+      { path: '/organization/sso', element: <Suspense fallback={<LoadingFallback />}><SSOSettingsPage /></Suspense> },
+      { path: '/organization/webhooks-api', element: <Suspense fallback={<LoadingFallback />}><WebhooksApiPage /></Suspense> },
+      { path: '/organization/scheduled-reports', element: <Suspense fallback={<LoadingFallback />}><ScheduledReportsPage /></Suspense> },
+      { path: '/billing', element: <Suspense fallback={<LoadingFallback />}><BillingPage /></Suspense> },
+    ],
+  },
 ]);
 
 function App() {
@@ -116,7 +139,7 @@ function App() {
     <AuthProvider>
       <GlobalLoaderProvider>
         <GlobalLoader />
-        <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+        <div className="min-h-dvh bg-stone-50">
           <RouterProvider router={router} />
         </div>
       </GlobalLoaderProvider>

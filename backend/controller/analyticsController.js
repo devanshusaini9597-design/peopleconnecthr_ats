@@ -85,6 +85,57 @@ exports.getAnalytics = async (req, res) => {
   }    
 };
 
+// DEI funnel analytics — Add-on (feature: analytics.dei, Enterprise).
+// Breaks down the pipeline by optional, self-reported demographic fields
+// so an org can spot drop-off skew across the hiring funnel. Never returns
+// per-candidate rows — only aggregate counts — since these fields are
+// sensitive and this endpoint's whole purpose is to keep them that way.
+exports.getDEIAnalytics = async (req, res) => {
+  try {
+    const userFilter = scopeFilter(req);
+
+    const buildBreakdown = async (field) => {
+      const rows = await Candidate.aggregate([
+        { $match: { ...userFilter, [field]: { $exists: true, $ne: '' } } },
+        { $group: { _id: `$${field}`, total: { $sum: 1 }, hired: { $sum: { $cond: [{ $in: ['$status', ['Hired', 'Joined']] }, 1, 0] } } } },
+        { $sort: { total: -1 } }
+      ]);
+      return rows.map(r => ({ label: r._id, total: r.total, hired: r.hired }));
+    };
+
+    const [genderIdentity, ethnicity, veteranStatus, disabilityStatus] = await Promise.all([
+      buildBreakdown('demographics.genderIdentity'),
+      buildBreakdown('demographics.ethnicity'),
+      buildBreakdown('demographics.veteranStatus'),
+      buildBreakdown('demographics.disabilityStatus')
+    ]);
+
+    const totalCandidates = await Candidate.countDocuments(userFilter);
+    const selfReportedCount = await Candidate.countDocuments({
+      ...userFilter,
+      $or: [
+        { 'demographics.genderIdentity': { $exists: true, $ne: '' } },
+        { 'demographics.ethnicity': { $exists: true, $ne: '' } },
+        { 'demographics.veteranStatus': { $exists: true, $ne: '' } },
+        { 'demographics.disabilityStatus': { $exists: true, $ne: '' } }
+      ]
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        totalCandidates,
+        selfReportedCount,
+        selfReportRate: totalCandidates > 0 ? Math.round((selfReportedCount / totalCandidates) * 100) : 0,
+        breakdowns: { genderIdentity, ethnicity, veteranStatus, disabilityStatus }
+      }
+    });
+  } catch (err) {
+    console.error('DEI analytics error:', err);
+    res.status(500).json({ success: false, message: 'Error fetching DEI analytics', error: err.message });
+  }
+};
+
 // Dashboard Stats endpoint - returns all data needed for dashboard
 exports.getDashboardStats = async (req, res) => {
   try {

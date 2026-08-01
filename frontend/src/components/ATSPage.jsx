@@ -1,5 +1,4 @@
 import React, { useRef, useEffect } from 'react';
-import Layout from './Layout';
 import ATS from './ATS';
 
 const ATSPage = () => {
@@ -24,11 +23,11 @@ const ATSPage = () => {
   }, []);
 
   return (
-    <Layout sidebarActions={sidebarActions}>
+    <>
       <div className="w-full">
         <ATS ref={atsRef} />
       </div>
-    </Layout>
+    </>
   );
 };
 

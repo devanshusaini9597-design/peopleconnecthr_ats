@@ -52,6 +52,22 @@ router.put('/', requireAdmin, async (req, res) => {
       }
     }
 
+    // Same bypass guard for the White-Label Kit add-on — see routes/whiteLabelRoutes.js
+    // for the dedicated CRUD, this only stops this wholesale endpoint from
+    // being used to flip it on for an unentitled plan.
+    if (atsSettings?.whiteLabel?.enabled) {
+      const { planHasFeature } = require('../config/planFeatures');
+      const currentOrg = await Organization.findById(req.user.organizationId).select('plan');
+      if (!currentOrg || !planHasFeature(currentOrg.plan, 'whiteLabel')) {
+        return res.status(403).json({
+          success: false,
+          code: 'UPGRADE_REQUIRED',
+          message: 'The White-Label Kit requires the Enterprise plan.',
+          feature: 'whiteLabel'
+        });
+      }
+    }
+
     const org = await Organization.findByIdAndUpdate(
       req.user.organizationId,
       { $set: { name, logo, settings, atsSettings } },

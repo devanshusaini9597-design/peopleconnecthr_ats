@@ -27,7 +27,8 @@ const CATEGORY_FEATURE = {
   job_board: 'integrations.jobBoard',
   background_check: 'integrations.backgroundCheck',
   ai: 'integrations.aiScoring',
-  esign: 'integrations.esign'
+  esign: 'integrations.esign',
+  whatsapp: 'integrations.whatsapp'
 };
 
 /**
@@ -81,6 +82,9 @@ const getAdapter = async (organizationId, category) => {
         return backgroundCheckAdapter.createBackgroundCheckAdapter(resolvedConfig);
       case 'esign':
         return esignAdapter.createEsignAdapter(resolvedConfig);
+      case 'whatsapp':
+        // Same Twilio adapter class as SMS — sendWhatsApp() prefixes numbers.
+        return smsAdapter.createSmsAdapter(resolvedConfig);
       default:
         console.warn(`Unknown adapter category requested: ${category}`);
         return null;

@@ -4,8 +4,8 @@ import { User, Mail, Phone, Lock, Shield, Save, Eye, EyeOff, AlertCircle, CheckC
 import API_URL from '../config';
 import { authenticatedFetch, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
-import Layout from './Layout';
 import { formatNameForInput } from '../utils/textFormatter';
+import PageHeader from './ui/PageHeader';
 
 const BASE = API_URL;
 
@@ -269,33 +269,35 @@ const ProfileSettingsPage = () => {
 
   if (isLoadingProfile) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 size={36} className="text-blue-600 animate-spin" />
-          <p className="text-gray-500 font-medium">Loading profile...</p>
+      <div className="page-shell-ats">
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 size={36} className="text-brand-600 animate-spin" />
+            <p className="text-stone-500 font-medium">Loading profile...</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <Layout>
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Page Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage your account settings and preferences</p>
-        </div>
+    <>
+      <div className="page-shell-ats max-w-6xl">
+        <PageHeader
+          icon={Settings}
+          title="Settings"
+          subtitle="Manage your account settings and preferences"
+        />
 
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Left Sidebar Navigation */}
           <div className="lg:w-64 flex-shrink-0">
             {/* Profile Card */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
+            <div className="card-ats-bordered p-6 mb-4">
               <div className="flex flex-col items-center text-center">
                 <div className="relative group mb-3">
                   {pendingPhotoPreview ? (
-                    <img src={pendingPhotoPreview} alt="New profile" className="w-20 h-20 rounded-full object-cover shadow-lg border-2 border-blue-300" />
+                    <img src={pendingPhotoPreview} alt="New profile" className="w-20 h-20 rounded-full object-cover shadow-lg border-2 border-brand-300" />
                   ) : profilePicture ? (
                     <img
                       src={`${BASE}${profilePicture}`}
@@ -303,14 +305,14 @@ const ProfileSettingsPage = () => {
                       className="w-20 h-20 rounded-full object-cover shadow-lg border-2 border-white"
                     />
                   ) : (
-                    <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-700 text-white rounded-full flex items-center justify-center font-bold text-2xl shadow-lg">
+                    <div className="w-20 h-20 bg-gradient-to-br from-brand-500 to-brand-700 text-white rounded-full flex items-center justify-center font-bold text-2xl shadow-lg">
                       {(profile.name ? profile.name.split(' ').map(w => w[0]).join('').slice(0, 2) : profile.email.slice(0, 2)).toUpperCase()}
                     </div>
                   )}
                   <button
                     onClick={() => profilePicRef.current?.click()}
                     disabled={isUploadingPic}
-                    className="absolute bottom-0 right-0 w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-md hover:bg-blue-700 transition-colors border-2 border-white"
+                    className="absolute bottom-0 right-0 w-7 h-7 bg-brand-600 text-white rounded-full flex items-center justify-center shadow-md hover:bg-brand-700 transition-colors border-2 border-white"
                     title="Choose photo"
                   >
                     {isUploadingPic ? <Loader2 size={12} className="animate-spin" /> : <Camera size={12} />}
@@ -338,16 +340,16 @@ const ProfileSettingsPage = () => {
                     </button>
                     <button
                       onClick={() => { setPendingPhotoFile(null); setPendingPhotoPreview(null); }}
-                      className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50"
+                      className="btn-secondary !px-3 !py-1.5 !text-sm"
                     >
                       Cancel
                     </button>
                   </div>
                 )}
-                <h3 className="text-base font-semibold text-gray-900">{profile.name || 'No Name'}</h3>
-                <p className="text-xs text-gray-500 mt-0.5">{profile.email}</p>
+                <h3 className="text-base font-semibold text-stone-900">{profile.name || 'No Name'}</h3>
+                <p className="text-xs text-stone-500 mt-0.5">{profile.email}</p>
                 {stats.memberSince && (
-                  <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+                  <p className="text-xs text-stone-400 mt-2 flex items-center gap-1">
                     <Calendar size={12} />
                     Member since {new Date(stats.memberSince).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
                   </p>
@@ -356,7 +358,7 @@ const ProfileSettingsPage = () => {
             </div>
 
             {/* Section Navigation */}
-            <nav className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <nav className="card-ats-bordered overflow-hidden">
               {sectionNav.map((item) => {
                 const Icon = item.icon;
                 return (
@@ -365,31 +367,31 @@ const ProfileSettingsPage = () => {
                     onClick={() => setActiveSection(item.id)}
                     className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors border-l-3 ${
                       activeSection === item.id
-                        ? 'bg-blue-50 border-l-blue-600 text-blue-700'
-                        : 'border-l-transparent text-gray-600 hover:bg-gray-50'
+                        ? 'bg-brand-50 border-l-brand-600 text-brand-700'
+                        : 'border-l-transparent text-stone-600 hover:bg-stone-50'
                     }`}
                   >
-                    <Icon size={18} className={activeSection === item.id ? 'text-blue-600' : 'text-gray-400'} />
+                    <Icon size={18} className={activeSection === item.id ? 'text-brand-600' : 'text-stone-400'} />
                     <div>
                       <p className="text-sm font-medium">{item.label}</p>
-                      <p className="text-xs text-gray-400">{item.description}</p>
+                      <p className="text-xs text-stone-400">{item.description}</p>
                     </div>
-                    <ChevronRight size={16} className="ml-auto text-gray-300" />
+                    <ChevronRight size={16} className="ml-auto text-stone-300" />
                   </button>
                 );
               })}
             </nav>
 
             {/* Quick Stats */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mt-4">
-              <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Quick Stats</h4>
+            <div className="card-ats-bordered p-4 mt-4">
+              <h4 className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-3">Quick Stats</h4>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600 flex items-center gap-2"><Database size={14} className="text-gray-400" /> Candidates</span>
-                  <span className="text-sm font-bold text-gray-900">{stats.totalCandidates}</span>
+                  <span className="text-sm text-stone-600 flex items-center gap-2"><Database size={14} className="text-stone-400" /> Candidates</span>
+                  <span className="text-sm font-bold text-stone-900">{stats.totalCandidates}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600 flex items-center gap-2"><Mail size={14} className="text-gray-400" /> Email Setup</span>
+                  <span className="text-sm text-stone-600 flex items-center gap-2"><Mail size={14} className="text-stone-400" /> Email Setup</span>
                   <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${stats.emailConfigured ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
                     {stats.emailConfigured ? 'Configured' : 'Not Set'}
                   </span>
@@ -403,20 +405,20 @@ const ProfileSettingsPage = () => {
             {/* Profile Section */}
             {activeSection === 'profile' && (
               <div className="space-y-6">
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-                  <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
+                <div className="card-ats-bordered">
+                  <div className="px-6 py-4 border-b border-stone-100 flex items-center justify-between flex-wrap gap-3">
                     <div>
-                      <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                        <User size={20} className="text-blue-600" />
+                      <h2 className="text-lg font-semibold text-stone-900 flex items-center gap-2">
+                        <User size={20} className="text-brand-600" />
                         Personal Information
                       </h2>
-                      <p className="text-sm text-gray-500 mt-1">Update your personal details</p>
+                      <p className="text-sm text-stone-500 mt-1">Update your personal details</p>
                     </div>
                     {!isEditingProfile ? (
                       <button
                         type="button"
                         onClick={() => setIsEditingProfile(true)}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-colors"
+                        className="btn-primary"
                       >
                         <User size={16} />
                         Edit Profile
@@ -426,20 +428,20 @@ const ProfileSettingsPage = () => {
                   <div className="p-6 space-y-5">
                     {/* Full Name */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Full Name</label>
+                      <label className="block text-sm font-medium text-stone-700 mb-1.5">Full Name</label>
                       <div className="relative">
-                        <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
                         {isEditingProfile ? (
                           <input
                             type="text"
                             value={profile.name}
                             onChange={(e) => setProfile(prev => ({ ...prev, name: formatNameForInput(e.target.value) }))}
                             onBlur={() => setProfile(prev => ({ ...prev, name: prev.name.trim() }))}
-                            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors text-sm"
+                            className="input-ats pl-10"
                             placeholder="Enter your full name"
                           />
                         ) : (
-                          <div className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg bg-gray-50 text-gray-700 text-sm">
+                          <div className="w-full pl-10 pr-4 py-2.5 border border-stone-200 rounded-lg bg-stone-50 text-stone-700 text-sm">
                             {profile.name || '—'}
                           </div>
                         )}
@@ -448,16 +450,16 @@ const ProfileSettingsPage = () => {
 
                     {/* Email (read-only) */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Email Address</label>
+                      <label className="block text-sm font-medium text-stone-700 mb-1.5">Email Address</label>
                       <div className="relative">
-                        <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
                         <input
                           type="email"
                           value={profile.email}
                           disabled
-                          className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 text-sm cursor-not-allowed"
+                          className="input-ats pl-10 !bg-stone-50 text-stone-500 cursor-not-allowed"
                         />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 flex items-center gap-1">
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-stone-400 flex items-center gap-1">
                           <Lock size={12} /> Cannot change
                         </span>
                       </div>
@@ -465,19 +467,19 @@ const ProfileSettingsPage = () => {
 
                     {/* Phone */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone Number</label>
+                      <label className="block text-sm font-medium text-stone-700 mb-1.5">Phone Number</label>
                       <div className="relative">
-                        <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
                         {isEditingProfile ? (
                           <input
                             type="tel"
                             value={profile.phone}
                             onChange={(e) => setProfile(prev => ({ ...prev, phone: e.target.value.replace(/\D/g, '') }))}
-                            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors text-sm"
+                            className="input-ats pl-10"
                             placeholder="Enter your phone number"
                           />
                         ) : (
-                          <div className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg bg-gray-50 text-gray-700 text-sm">
+                          <div className="w-full pl-10 pr-4 py-2.5 border border-stone-200 rounded-lg bg-stone-50 text-stone-700 text-sm">
                             {profile.phone || '—'}
                           </div>
                         )}
@@ -486,7 +488,7 @@ const ProfileSettingsPage = () => {
 
                     {/* Edit mode actions */}
                     {isEditingProfile && (
-                      <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                      <div className="flex items-center justify-between pt-2 border-t border-stone-100">
                         {hasProfileChanges && (
                           <p className="text-sm text-amber-600 flex items-center gap-1">
                             <AlertCircle size={14} /> You have unsaved changes
@@ -496,18 +498,14 @@ const ProfileSettingsPage = () => {
                           <button
                             type="button"
                             onClick={handleCancelEditProfile}
-                            className="px-4 py-2.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                            className="btn-secondary"
                           >
                             Cancel
                           </button>
                           <button
                             onClick={() => hasProfileChanges && setShowSaveConfirmModal(true)}
                             disabled={!hasProfileChanges || isSavingProfile}
-                            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                              hasProfileChanges
-                                ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow'
-                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                            }`}
+                            className={`btn-primary ${!hasProfileChanges ? 'opacity-40 cursor-not-allowed' : ''}`}
                           >
                             {isSavingProfile ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                             {isSavingProfile ? 'Saving...' : 'Save Changes'}
@@ -523,31 +521,31 @@ const ProfileSettingsPage = () => {
             {/* Security Section */}
             {activeSection === 'security' && (
               <div className="space-y-6">
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-                  <div className="px-6 py-4 border-b border-gray-100">
-                    <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                      <Lock size={20} className="text-blue-600" />
+                <div className="card-ats-bordered">
+                  <div className="px-6 py-4 border-b border-stone-100">
+                    <h2 className="text-lg font-semibold text-stone-900 flex items-center gap-2">
+                      <Lock size={20} className="text-brand-600" />
                       Change Password
                     </h2>
-                    <p className="text-sm text-gray-500 mt-1">Ensure your account stays secure</p>
+                    <p className="text-sm text-stone-500 mt-1">Ensure your account stays secure</p>
                   </div>
                   <div className="p-6 space-y-5">
                     {/* Current Password */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Current Password</label>
+                      <label className="block text-sm font-medium text-stone-700 mb-1.5">Current Password</label>
                       <div className="relative">
-                        <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
                         <input
                           type={showCurrentPassword ? 'text' : 'password'}
                           value={passwordData.currentPassword}
                           onChange={(e) => setPasswordData(prev => ({ ...prev, currentPassword: e.target.value }))}
-                          className="w-full pl-10 pr-12 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors text-sm"
+                          className="input-ats pl-10 pr-12"
                           placeholder="Enter current password"
                         />
                         <button
                           type="button"
                           onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 transition-colors"
                         >
                           {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>
@@ -556,20 +554,20 @@ const ProfileSettingsPage = () => {
 
                     {/* New Password */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">New Password</label>
+                      <label className="block text-sm font-medium text-stone-700 mb-1.5">New Password</label>
                       <div className="relative">
-                        <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
                         <input
                           type={showNewPassword ? 'text' : 'password'}
                           value={passwordData.newPassword}
                           onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.target.value }))}
-                          className="w-full pl-10 pr-12 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors text-sm"
+                          className="input-ats pl-10 pr-12"
                           placeholder="Enter new password"
                         />
                         <button
                           type="button"
                           onClick={() => setShowNewPassword(!showNewPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 transition-colors"
                         >
                           {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>
@@ -579,7 +577,7 @@ const ProfileSettingsPage = () => {
                         <div className="mt-2">
                           <div className="flex gap-1 mb-1">
                             {[1, 2, 3].map((i) => (
-                              <div key={i} className={`h-1.5 flex-1 rounded-full transition-colors ${i <= passwordStrength.level ? passwordStrength.color : 'bg-gray-200'}`} />
+                              <div key={i} className={`h-1.5 flex-1 rounded-full transition-colors ${i <= passwordStrength.level ? passwordStrength.color : 'bg-stone-200'}`} />
                             ))}
                           </div>
                           <p className={`text-xs ${passwordStrength.level === 1 ? 'text-red-500' : passwordStrength.level === 2 ? 'text-yellow-600' : 'text-green-600'}`}>
@@ -587,25 +585,25 @@ const ProfileSettingsPage = () => {
                           </p>
                         </div>
                       )}
-                      <p className="text-xs text-gray-400 mt-1">Min 8 chars with uppercase, lowercase, number, and special character</p>
+                      <p className="text-xs text-stone-400 mt-1">Min 8 chars with uppercase, lowercase, number, and special character</p>
                     </div>
 
                     {/* Confirm Password */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Confirm New Password</label>
+                      <label className="block text-sm font-medium text-stone-700 mb-1.5">Confirm New Password</label>
                       <div className="relative">
-                        <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
                         <input
                           type={showConfirmPassword ? 'text' : 'password'}
                           value={passwordData.confirmPassword}
                           onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                          className="w-full pl-10 pr-12 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors text-sm"
+                          className="input-ats pl-10 pr-12"
                           placeholder="Confirm new password"
                         />
                         <button
                           type="button"
                           onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 transition-colors"
                         >
                           {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>
@@ -627,11 +625,7 @@ const ProfileSettingsPage = () => {
                       <button
                         onClick={handleChangePassword}
                         disabled={isChangingPassword || !passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword}
-                        className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                          passwordData.currentPassword && passwordData.newPassword && passwordData.confirmPassword
-                            ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow'
-                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        }`}
+                        className={`btn-primary ${!(passwordData.currentPassword && passwordData.newPassword && passwordData.confirmPassword) ? 'opacity-40 cursor-not-allowed' : ''}`}
                       >
                         {isChangingPassword ? <Loader2 size={16} className="animate-spin" /> : <Shield size={16} />}
                         {isChangingPassword ? 'Changing...' : 'Change Password'}
@@ -639,10 +633,10 @@ const ProfileSettingsPage = () => {
                     </div>
 
                     {/* Forgot Password Link */}
-                    <div className="pt-3 border-t border-gray-100">
+                    <div className="pt-3 border-t border-stone-100">
                       <button
                         onClick={() => setShowRecoveryModal(true)}
-                        className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                        className="text-sm text-brand-600 hover:text-brand-800 hover:underline flex items-center gap-1"
                       >
                         <Lock size={14} />
                         Forgot password? Reset it without current password
@@ -652,11 +646,11 @@ const ProfileSettingsPage = () => {
                 </div>
 
                 {/* Security Tips */}
-                <div className="bg-blue-50 rounded-xl border border-blue-200 p-5">
-                  <h3 className="text-sm font-semibold text-blue-800 flex items-center gap-2 mb-3">
+                <div className="bg-brand-50 rounded-xl border border-brand-200 p-5">
+                  <h3 className="text-sm font-semibold text-brand-800 flex items-center gap-2 mb-3">
                     <Shield size={16} /> Security Tips
                   </h3>
-                  <ul className="space-y-2 text-sm text-blue-700">
+                  <ul className="space-y-2 text-sm text-brand-700">
                     <li className="flex items-start gap-2">
                       <CheckCircle size={14} className="mt-0.5 flex-shrink-0" />
                       Use a unique password you don't use on other sites
@@ -678,24 +672,24 @@ const ProfileSettingsPage = () => {
             {activeSection === 'account' && (
               <div className="space-y-6">
                 {/* Account Overview */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-                  <div className="px-6 py-4 border-b border-gray-100">
-                    <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                      <Settings size={20} className="text-blue-600" />
+                <div className="card-ats-bordered">
+                  <div className="px-6 py-4 border-b border-stone-100">
+                    <h2 className="text-lg font-semibold text-stone-900 flex items-center gap-2">
+                      <Settings size={20} className="text-brand-600" />
                       Account Overview
                     </h2>
-                    <p className="text-sm text-gray-500 mt-1">View your account details and usage</p>
+                    <p className="text-sm text-stone-500 mt-1">View your account details and usage</p>
                   </div>
                   <div className="p-6">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
+                      <div className="bg-gradient-to-br from-brand-50 to-brand-100 rounded-xl p-4 border border-brand-200">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                          <div className="w-10 h-10 bg-brand-600 rounded-lg flex items-center justify-center">
                             <Database size={20} className="text-white" />
                           </div>
                           <div>
-                            <p className="text-sm font-bold text-blue-900">{stats.totalCandidates}</p>
-                            <p className="text-xs text-blue-600">Total Candidates</p>
+                            <p className="text-sm font-bold text-brand-900">{stats.totalCandidates}</p>
+                            <p className="text-xs text-brand-600">Total Candidates</p>
                           </div>
                         </div>
                       </div>
@@ -712,16 +706,16 @@ const ProfileSettingsPage = () => {
                           </div>
                         </div>
                       </div>
-                      <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
+                      <div className="bg-gradient-to-br from-teal-50 to-teal-100 rounded-xl p-4 border border-teal-200">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
+                          <div className="w-10 h-10 bg-teal-600 rounded-lg flex items-center justify-center">
                             <Calendar size={20} className="text-white" />
                           </div>
                           <div>
-                            <p className="text-sm font-bold text-purple-900">
+                            <p className="text-sm font-bold text-teal-900">
                               {stats.memberSince ? new Date(stats.memberSince).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                             </p>
-                            <p className="text-xs text-purple-600">Member Since</p>
+                            <p className="text-xs text-teal-600">Member Since</p>
                           </div>
                         </div>
                       </div>
@@ -730,67 +724,67 @@ const ProfileSettingsPage = () => {
                 </div>
 
                 {/* Quick Links */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-                  <div className="px-6 py-4 border-b border-gray-100">
-                    <h2 className="text-lg font-semibold text-gray-900">Quick Links</h2>
+                <div className="card-ats-bordered">
+                  <div className="px-6 py-4 border-b border-stone-100">
+                    <h2 className="text-lg font-semibold text-stone-900">Quick Links</h2>
                   </div>
-                  <div className="divide-y divide-gray-100">
-                    <button onClick={() => navigate('/email-settings')} className="w-full flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors text-left">
+                  <div className="divide-y divide-stone-100">
+                    <button onClick={() => navigate('/email-settings')} className="w-full flex items-center justify-between px-6 py-4 hover:bg-stone-50 transition-colors text-left">
                       <div className="flex items-center gap-3">
-                        <Mail size={18} className="text-gray-400" />
+                        <Mail size={18} className="text-stone-400" />
                         <div>
-                          <p className="text-sm font-medium text-gray-900">Email Settings</p>
-                          <p className="text-xs text-gray-500">Configure SMTP for sending emails</p>
+                          <p className="text-sm font-medium text-stone-900">Email Settings</p>
+                          <p className="text-xs text-stone-500">Configure SMTP for sending emails</p>
                         </div>
                       </div>
-                      <ChevronRight size={16} className="text-gray-300" />
+                      <ChevronRight size={16} className="text-stone-300" />
                     </button>
-                    <button onClick={() => navigate('/email-templates')} className="w-full flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors text-left">
+                    <button onClick={() => navigate('/email-templates')} className="w-full flex items-center justify-between px-6 py-4 hover:bg-stone-50 transition-colors text-left">
                       <div className="flex items-center gap-3">
-                        <Mail size={18} className="text-gray-400" />
+                        <Mail size={18} className="text-stone-400" />
                         <div>
-                          <p className="text-sm font-medium text-gray-900">Email Templates</p>
-                          <p className="text-xs text-gray-500">Create and manage email templates</p>
+                          <p className="text-sm font-medium text-stone-900">Email Templates</p>
+                          <p className="text-xs text-stone-500">Create and manage email templates</p>
                         </div>
                       </div>
-                      <ChevronRight size={16} className="text-gray-300" />
+                      <ChevronRight size={16} className="text-stone-300" />
                     </button>
-                    <button onClick={() => navigate('/manage-positions')} className="w-full flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors text-left">
+                    <button onClick={() => navigate('/manage-positions')} className="w-full flex items-center justify-between px-6 py-4 hover:bg-stone-50 transition-colors text-left">
                       <div className="flex items-center gap-3">
-                        <Database size={18} className="text-gray-400" />
+                        <Database size={18} className="text-stone-400" />
                         <div>
-                          <p className="text-sm font-medium text-gray-900">Manage Positions</p>
-                          <p className="text-xs text-gray-500">Add or edit positions / job roles</p>
+                          <p className="text-sm font-medium text-stone-900">Manage Positions</p>
+                          <p className="text-xs text-stone-500">Add or edit positions / job roles</p>
                         </div>
                       </div>
-                      <ChevronRight size={16} className="text-gray-300" />
+                      <ChevronRight size={16} className="text-stone-300" />
                     </button>
-                    <button onClick={() => navigate('/manage-clients')} className="w-full flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors text-left">
+                    <button onClick={() => navigate('/manage-clients')} className="w-full flex items-center justify-between px-6 py-4 hover:bg-stone-50 transition-colors text-left">
                       <div className="flex items-center gap-3">
-                        <User size={18} className="text-gray-400" />
+                        <User size={18} className="text-stone-400" />
                         <div>
-                          <p className="text-sm font-medium text-gray-900">Manage Clients</p>
-                          <p className="text-xs text-gray-500">Add or edit client companies</p>
+                          <p className="text-sm font-medium text-stone-900">Manage Clients</p>
+                          <p className="text-xs text-stone-500">Add or edit client companies</p>
                         </div>
                       </div>
-                      <ChevronRight size={16} className="text-gray-300" />
+                      <ChevronRight size={16} className="text-stone-300" />
                     </button>
                   </div>
                 </div>
 
                 {/* Session Management */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-                  <div className="px-6 py-4 border-b border-gray-100">
-                    <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                      <Shield size={20} className="text-blue-600" />
+                <div className="card-ats-bordered">
+                  <div className="px-6 py-4 border-b border-stone-100">
+                    <h2 className="text-lg font-semibold text-stone-900 flex items-center gap-2">
+                      <Shield size={20} className="text-brand-600" />
                       Session
                     </h2>
                   </div>
                   <div className="p-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-gray-900">Log Out</p>
-                        <p className="text-xs text-gray-500">Sign out of your account on this device</p>
+                        <p className="text-sm font-medium text-stone-900">Log Out</p>
+                        <p className="text-xs text-stone-500">Sign out of your account on this device</p>
                       </div>
                       <button
                         onClick={handleLogoutAllDevices}
@@ -810,23 +804,23 @@ const ProfileSettingsPage = () => {
 
       {/* Save Profile Confirmation Modal */}
       {showSaveConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/55 backdrop-blur-sm p-4">
+          <div className="relative bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-stone-200/60 modal-panel-ats">
             <div className="p-6">
               <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                  <Save size={24} className="text-blue-600" />
+                <div className="w-12 h-12 rounded-full bg-brand-100 flex items-center justify-center flex-shrink-0">
+                  <Save size={24} className="text-brand-600" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Save changes?</h3>
-                  <p className="text-sm text-gray-500 mt-1">Your name and phone number will be updated.</p>
+                  <h3 className="text-lg font-semibold text-stone-900">Save changes?</h3>
+                  <p className="text-sm text-stone-500 mt-1">Your name and phone number will be updated.</p>
                 </div>
               </div>
               <div className="flex items-center justify-end gap-3 mt-6">
                 <button
                   type="button"
                   onClick={() => setShowSaveConfirmModal(false)}
-                  className="px-4 py-2.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="btn-secondary"
                 >
                   Cancel
                 </button>
@@ -834,7 +828,7 @@ const ProfileSettingsPage = () => {
                   type="button"
                   onClick={handleSaveProfile}
                   disabled={isSavingProfile}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  className="btn-primary"
                 >
                   {isSavingProfile ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                   Save changes
@@ -847,21 +841,21 @@ const ProfileSettingsPage = () => {
 
       {/* Password Recovery Modal */}
       {showRecoveryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/55 backdrop-blur-sm p-4">
+          <div className="relative bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden border border-stone-200/60 modal-panel-ats">
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50/80 flex-shrink-0">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50/80 flex-shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center">
-                  <Lock size={18} className="text-blue-600" />
+                <div className="w-9 h-9 rounded-lg bg-brand-100 flex items-center justify-center">
+                  <Lock size={18} className="text-brand-600" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-gray-900">Reset Password</h3>
-                  <p className="text-xs text-gray-500">Recover your account without current password</p>
+                  <h3 className="text-base font-bold text-stone-900">Reset Password</h3>
+                  <p className="text-xs text-stone-500">Recover your account without current password</p>
                 </div>
               </div>
-              <button onClick={() => setShowRecoveryModal(false)} className="p-2 hover:bg-gray-200 rounded-lg transition-colors">
-                <X size={18} className="text-gray-500" />
+              <button onClick={() => setShowRecoveryModal(false)} className="p-2 hover:bg-stone-200 rounded-lg transition-colors">
+                <X size={18} className="text-stone-500" />
               </button>
             </div>
 
@@ -872,27 +866,27 @@ const ProfileSettingsPage = () => {
                   <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <CheckCircle size={32} className="text-green-600" />
                   </div>
-                  <h4 className="text-lg font-semibold text-gray-900 mb-2">Email Sent!</h4>
-                  <p className="text-sm text-gray-600">Check your email for password reset instructions</p>
+                  <h4 className="text-lg font-semibold text-stone-900 mb-2">Email Sent!</h4>
+                  <p className="text-sm text-stone-600">Check your email for password reset instructions</p>
                 </div>
               ) : (
                 <>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p className="text-sm text-blue-800">
+                  <div className="bg-brand-50 border border-brand-200 rounded-lg p-4">
+                    <p className="text-sm text-brand-800">
                       Enter your email address and we'll send you a link to reset your password. This works even if you've forgotten your current password.
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Email Address</label>
+                    <label className="block text-sm font-semibold text-stone-700 mb-2">Email Address</label>
                     <div className="relative">
-                      <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
                       <input
                         type="email"
                         value={recoveryEmail}
                         onChange={(e) => setRecoveryEmail(e.target.value)}
                         placeholder="Enter your registered email"
-                        className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-sm"
+                        className="input-ats pl-10"
                       />
                     </div>
                   </div>
@@ -900,11 +894,7 @@ const ProfileSettingsPage = () => {
                   <button
                     onClick={handlePasswordRecovery}
                     disabled={isRecovering || !recoveryEmail}
-                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold transition-all ${
-                      recoveryEmail
-                        ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
-                        : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    }`}
+                    className={`btn-primary w-full ${!recoveryEmail ? 'opacity-40 cursor-not-allowed' : ''}`}
                   >
                     {isRecovering ? (
                       <>
@@ -923,10 +913,10 @@ const ProfileSettingsPage = () => {
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50/80 flex-shrink-0">
+            <div className="px-6 py-4 border-t border-stone-200 bg-stone-50/80 flex-shrink-0">
               <button
                 onClick={() => setShowRecoveryModal(false)}
-                className="w-full px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-200 rounded-lg transition-all"
+                className="w-full btn-secondary"
               >
                 {recoverySuccess ? 'Close' : 'Cancel'}
               </button>
@@ -934,7 +924,7 @@ const ProfileSettingsPage = () => {
           </div>
         </div>
       )}
-    </Layout>
+    </>
   );
 };
 

@@ -77,13 +77,28 @@ router.get('/by-domain/:domain', async (req, res) => {
 router.get('/:orgSlug', async (req, res) => {
   try {
     const org = await Organization.findOne({ slug: req.params.orgSlug })
-      .select('name logo settings.careersPageTitle settings.careersPageDescription');
+      .select('name logo plan settings.careersPageTitle settings.careersPageDescription atsSettings.brandColor atsSettings.whiteLabel');
     if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
-    
+
     const jobs = await Job.find({ organizationId: org._id, isPublished: true, status: 'Open' })
       .select('title department location employmentType');
-    
-    res.json({ success: true, data: { organization: org, jobs } });
+
+    // White-Label Kit (Enterprise) — only honor the toggle if the org's
+    // *current* plan is actually entitled, never trust the stored flag
+    // alone (a downgraded org shouldn't keep the perk just because the
+    // field is still `true` in the database).
+    const whiteLabelActive = !!org.atsSettings?.whiteLabel?.enabled && planHasFeature(org.plan, 'whiteLabel');
+    const orgPublic = {
+      _id: org._id,
+      name: org.name,
+      logo: org.logo,
+      settings: org.settings,
+      brandColor: org.atsSettings?.brandColor || '#4F46E5',
+      whiteLabelActive,
+      hidePoweredBy: whiteLabelActive && !!org.atsSettings?.whiteLabel?.hidePoweredBy
+    };
+
+    res.json({ success: true, data: { organization: orgPublic, jobs } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

@@ -1,7 +1,108 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Mail, CheckCircle, ChevronDown, ChevronUp, Clock, AlertCircle, Briefcase, Building, LogOut, ArrowRight, FileText } from 'lucide-react';
+import { Mail, CheckCircle, ChevronDown, ChevronUp, Clock, AlertCircle, Briefcase, Building, LogOut, ArrowRight, FileText, Download, ShieldAlert, X } from 'lucide-react';
 import API_URL from '../config';
+
+/**
+ * GDPR self-service widget (Art. 15/17/20) — always available, no plan gate.
+ * Lets the candidate download everything the org holds on them, or
+ * permanently anonymize their own record.
+ */
+const PrivacyPanel = ({ token, onErased }) => {
+  const [eraseOpen, setEraseOpen] = useState(false);
+  const [erasing, setErasing] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleExport = () => {
+    window.open(`${API_URL}/api/portal/gdpr/export?token=${token}`, '_blank');
+  };
+
+  const handleErase = async () => {
+    setErasing(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_URL}/api/portal/gdpr/erase?token=${token}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || 'Failed to erase data');
+      setEraseOpen(false);
+      onErased?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setErasing(false);
+    }
+  };
+
+  return (
+    <div className="mt-8 bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+      <div className="flex items-start gap-3">
+        <div className="h-10 w-10 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
+          <ShieldAlert className="h-5 w-5 text-indigo-600" />
+        </div>
+        <div className="flex-1">
+          <h3 className="font-semibold text-gray-900">Your data & privacy</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            You can download everything we hold about you, or permanently erase your personal information.
+          </p>
+          <div className="flex flex-wrap gap-3 mt-4">
+            <button
+              onClick={handleExport}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors"
+            >
+              <Download className="h-4 w-4" /> Download my data
+            </button>
+            <button
+              onClick={() => setEraseOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-red-50 text-red-700 hover:bg-red-100 transition-colors"
+            >
+              Erase my data
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {eraseOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => !erasing && setEraseOpen(false)}>
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900">Erase my data?</h3>
+              <button onClick={() => setEraseOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+            </div>
+            <p className="text-sm text-gray-600">
+              This permanently removes your name, email, phone, resume, and any self-reported demographics from every application
+              on file with this company. <strong>This cannot be undone.</strong>
+            </p>
+            {error && (
+              <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md mt-3 flex items-start">
+                <AlertCircle className="h-5 w-5 mr-2 shrink-0" /> {error}
+              </div>
+            )}
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setEraseOpen(false)}
+                disabled={erasing}
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleErase}
+                disabled={erasing}
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-70"
+              >
+                {erasing ? 'Erasing…' : 'Yes, erase permanently'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const ApplicationCard = ({ app }) => {
   const [expanded, setExpanded] = useState(false);
@@ -295,6 +396,8 @@ const CandidatePortal = () => {
             <p className="text-gray-500 max-w-sm mx-auto">It looks like you haven't applied to any open roles yet using this email address.</p>
           </div>
         )}
+
+        {token && <PrivacyPanel token={token} onErased={handleLogout} />}
       </main>
     </div>
   );

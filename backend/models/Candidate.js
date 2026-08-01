@@ -86,6 +86,27 @@ const CandidateSchema = new mongoose.Schema({
   tags: [{ type: String, trim: true }],
   customFields: { type: mongoose.Schema.Types.Mixed, default: {} },
 
+  // ── Talent Pools add-on (candidates.talentPools) ───────────────────
+  // Many-to-many: a candidate can sit in several pools (e.g. "Frontend
+  // Bench", "Referrals 2026") independent of any specific job requisition.
+  talentPoolIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'TalentPool', index: true }],
+
+  // ── DEI analytics add-on (analytics.dei) — optional, self-reported ──
+  // Never required at intake; candidates choose to disclose via the
+  // careers application form or the candidate portal. Used only in
+  // aggregate funnel analytics, never shown next to an individual name
+  // in recruiter-facing candidate lists.
+  demographics: {
+    genderIdentity: { type: String, default: '' },
+    ethnicity: { type: String, default: '' },
+    veteranStatus: { type: String, default: '' },
+    disabilityStatus: { type: String, default: '' },
+    declinedToSelfIdentify: { type: Boolean, default: false }
+  },
+
+  // ── GDPR self-service (always available, no plan gate) ─────────────
+  gdprErasedAt: { type: Date },
+
   // ── Ownership & sharing ────────────────────────────────────────────
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
   sharedWith: [{

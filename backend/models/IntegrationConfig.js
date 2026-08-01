@@ -23,7 +23,7 @@ const integrationConfigSchema = new mongoose.Schema({
   category: {
     type: String,
     required: true,
-    enum: ['email', 'calendar', 'sms', 'ai', 'job_board', 'background_check', 'esign']
+    enum: ['email', 'calendar', 'sms', 'ai', 'job_board', 'background_check', 'esign', 'whatsapp']
   },
   displayName: { type: String },
   credentials: { type: mongoose.Schema.Types.Mixed },

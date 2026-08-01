@@ -63,8 +63,32 @@ const FEATURES = {
   'agency.clientPortal': 'enterprise',
 
   // Enterprise-only table stakes
-  'sso': 'enterprise'
+  'sso': 'enterprise',
+
+  // ── Add-ons (see docs comparing against market ATS reference products) ──
+  // Talent Pools: silver-medalist / passive-candidate database, independent
+  // of any single job requisition.
+  'candidates.talentPools': 'professional',
+  // Diversity & Inclusion funnel analytics (self-reported, optional fields).
+  'analytics.dei': 'enterprise',
+  // WhatsApp Business messaging as its own channel (distinct from the
+  // always-free "wa.me" manual click-to-chat link) — BYOK via Twilio.
+  'integrations.whatsapp': 'enterprise',
+  // Coding / skills assessments — recruiter builds a test, candidate
+  // submits via portal link, recruiter grades manually (no auto-run
+  // sandbox by default — see routes/assessmentRoutes.js).
+  'assessments': 'professional',
+  // White-Label Kit: hide "Powered by SkillNix" branding + fully custom
+  // sender name across candidate-facing surfaces (careers page, portal,
+  // transactional email, exported PDFs).
+  'whiteLabel': 'enterprise'
 };
+
+// NOTE: Candidate GDPR self-service (export/erase own data at the portal)
+// and the Chrome LinkedIn-import extension are intentionally NOT in this
+// map — both are always available on every plan, matching the
+// "always available" pattern used for the candidate portal itself.
+// See routes/portalRoutes.js and routes/chromeExtensionRoutes.js.
 
 const rankOf = (plan) => {
   const resolved = PLAN_ALIASES[plan] || plan;

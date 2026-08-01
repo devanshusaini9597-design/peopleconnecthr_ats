@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Edit, Trash2, Search, ArrowUpDown, Users2, Link2, Copy, X } from 'lucide-react';
-import Layout from './Layout';
 import BASE_API_URL from '../config';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -335,7 +334,7 @@ const ManageMasterData = ({ title, apiEndpoint, navigateBack }) => {
   };
 
   return (
-    <Layout>
+    <>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
         {/* Header */}
         <div className="mb-8">
@@ -614,7 +613,7 @@ const ManageMasterData = ({ title, apiEndpoint, navigateBack }) => {
           />
         )}
       </div>
-    </Layout>
+    </>
   );
 };
 

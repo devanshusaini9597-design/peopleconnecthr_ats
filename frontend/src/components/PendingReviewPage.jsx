@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, CheckCircle, Trash2, Edit2, RefreshCw, Save, X, Search, ChevronLeft, ChevronRight, Upload, Loader2, AlertTriangle, Eye, EyeOff } from 'lucide-react';
-import Layout from './Layout';
 import BASE_API_URL from '../config';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -295,7 +294,7 @@ const PendingReviewPage = () => {
   ];
 
   return (
-    <Layout>
+    <>
       <div className="min-h-screen bg-[var(--bg-secondary)] p-4 sm:p-6">
         <div className="max-w-full mx-auto">
           {/* Page header - enterprise style */}
@@ -786,7 +785,7 @@ const PendingReviewPage = () => {
           />
         )}
       </div>
-    </Layout>
+    </>
   );
 };
 

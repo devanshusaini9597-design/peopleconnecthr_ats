@@ -50,7 +50,14 @@ const FEATURES = {
   'agency.clientSharing': 'enterprise',
   'agency.clientPortal': 'enterprise',
 
-  'sso': 'enterprise'
+  'sso': 'enterprise',
+
+  // ── Add-ons ──
+  'candidates.talentPools': 'professional',
+  'analytics.dei': 'enterprise',
+  'integrations.whatsapp': 'enterprise',
+  'assessments': 'professional',
+  'whiteLabel': 'enterprise'
 };
 
 const rankOf = (plan) => {

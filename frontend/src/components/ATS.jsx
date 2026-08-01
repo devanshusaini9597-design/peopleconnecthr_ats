@@ -5,7 +5,7 @@ import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { 
   Plus, Search, Mail, MessageCircle, Upload, 
-  Filter, CheckSquare, Square, FileText, Cpu, Trash2, Edit, X, Briefcase, BarChart3, AlertCircle, RefreshCw, Download, Eye, Info, Share2, Megaphone
+  Filter, CheckSquare, Square, FileText, Cpu, Trash2, Edit, X, Briefcase, BarChart3, AlertCircle, RefreshCw, Download, Eye, Info, Share2, Megaphone, Users
 } from 'lucide-react';
 import { useParsing } from '../hooks/useParsing';
 import PhoneInput from 'react-phone-input-2';
@@ -17,6 +17,9 @@ import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils
 import useCountries from '../utils/useCountries';
 import { useToast } from './Toast';
 import ConfirmationModal from './ConfirmationModal';
+import SendWhatsAppButton from './SendWhatsAppButton';
+import PageHeader from './ui/PageHeader';
+import EmptyState from './ui/EmptyState';
 import { ctcRanges, ctcLpaBreakpoints, expectedCtcOptions, noticePeriodOptions } from '../utils/ctcRanges';
 import { dedupeByName } from '../utils/dedupeMasterData';
 
@@ -2206,46 +2209,47 @@ const handleAddCandidate = async (e) => {
       key: 'actions',
       label: 'Actions',
       render: (candidate) => (
-        <div className="flex gap-2">
-          <button onClick={() => handleEdit(candidate)} className="p-1.5 rounded" title="Edit" style={{color: 'var(--info-main)'}} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--info-bg)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}><Edit size={16} /></button>
-          <button onClick={() => handleDelete(candidate._id)} className="p-1.5 rounded" title="Delete" style={{color: 'var(--error-main)'}} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--error-bg)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}><Trash2 size={16} /></button>
-          <button onClick={() => handleSendEmail(candidate)} className="p-1.5 rounded" title="Send Email" style={{color: 'var(--primary-main)'}} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-lighter)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}><Mail size={16} /></button>
-          <button onClick={() => handleShareClick(candidate)} className="p-1.5 rounded" title="Share with team" style={{color: '#10b981'}} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#d1fae5'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}><Share2 size={16} /></button>
+        <div className="flex gap-1">
+          <button onClick={() => handleEdit(candidate)} className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 transition-colors" title="Edit"><Edit size={16} /></button>
+          <button onClick={() => handleDelete(candidate._id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors" title="Delete"><Trash2 size={16} /></button>
+          <button onClick={() => handleSendEmail(candidate)} className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 transition-colors" title="Send Email"><Mail size={16} /></button>
+          <button onClick={() => handleShareClick(candidate)} className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors" title="Share with team"><Share2 size={16} /></button>
         </div>
       )
     },
-    { key: 'srNo', label: 'Sr No.', render: (_, index) => <span className="text-sm font-mono text-gray-500">{(currentPage - 1) * PAGE_SIZE + index + 1}</span> },
+    { key: 'srNo', label: 'Sr No.', render: (_, index) => <span className="text-sm font-mono text-stone-500">{(currentPage - 1) * PAGE_SIZE + index + 1}</span> },
     {
       key: 'resume',
       label: 'Resume',
       render: (candidate) => candidate.resume ? (
         <div className="flex items-center gap-1">
-          <button onClick={() => handleResumePreview(candidate)} title="Preview Resume" className="p-1.5 rounded-lg cursor-pointer" style={{backgroundColor: 'var(--info-bg)', color: 'var(--info-main)'}} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--info-light)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--info-bg)'; }}><Eye size={15} /></button>
-          <button onClick={() => handleResumeDownload(candidate)} title="Download Resume" className="p-1.5 rounded-lg" style={{backgroundColor: 'var(--success-bg)', color: 'var(--success-main)'}} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--success-light)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--success-bg)'; }}><Download size={15} /></button>
+          <button onClick={() => handleResumePreview(candidate)} title="Preview Resume" className="p-1.5 rounded-lg cursor-pointer bg-brand-50 text-brand-700 hover:bg-brand-100 transition-colors"><Eye size={15} /></button>
+          <button onClick={() => handleResumeDownload(candidate)} title="Download Resume" className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"><Download size={15} /></button>
         </div>
-      ) : <span className="text-gray-300">—</span>
+      ) : <span className="text-stone-300">—</span>
     },
     {
       key: 'tools',
       label: 'Contact Tools',
       render: (candidate) => (
         <div className="flex gap-1.5">
-          <button onClick={() => handleSendEmail(candidate)} className="w-8 h-8 flex items-center justify-center rounded-full transition-all hover:scale-110" title="Send Email" style={{backgroundColor: '#dbeafe', color: '#2563eb'}} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#bfdbfe'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#dbeafe'; }}>
+          <button onClick={() => handleSendEmail(candidate)} className="w-8 h-8 flex items-center justify-center rounded-full transition-all hover:scale-110 bg-brand-50 text-brand-700 hover:bg-brand-100" title="Send Email">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
           </button>
           <button onClick={() => sendWhatsApp(candidate.contact)} className="w-8 h-8 flex items-center justify-center rounded-full transition-all hover:scale-110" title="WhatsApp Message" style={{backgroundColor: '#dcfce7', color: '#16a34a'}} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#bbf7d0'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#dcfce7'; }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
           </button>
+          <SendWhatsAppButton candidate={candidate} />
         </div>
       )
     },
-    { key: 'date', label: 'Date', render: (candidate) => <span className="text-sm text-gray-600 whitespace-nowrap">{candidate.date ? new Date(candidate.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span> },
-    { key: 'location', label: 'Location', render: (candidate) => <span className="text-sm text-gray-700 whitespace-nowrap">{candidate.location || '—'}</span> },
-    { key: 'position', label: 'Position', render: (candidate) => candidate.position ? <span className="text-sm font-semibold text-indigo-700 whitespace-nowrap">{candidate.position}</span> : <span className="text-gray-300">—</span> },
-    { key: 'fls', label: 'FLS', render: (candidate) => candidate.fls ? <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${candidate.fls === 'FLS' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{candidate.fls}</span> : <span className="text-gray-300">—</span> },
+    { key: 'date', label: 'Date', render: (candidate) => <span className="text-sm text-stone-600 whitespace-nowrap">{candidate.date ? new Date(candidate.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span> },
+    { key: 'location', label: 'Location', render: (candidate) => <span className="text-sm text-stone-700 whitespace-nowrap">{candidate.location || '—'}</span> },
+    { key: 'position', label: 'Position', render: (candidate) => candidate.position ? <span className="text-sm font-semibold text-brand-700 whitespace-nowrap">{candidate.position}</span> : <span className="text-stone-300">—</span> },
+    { key: 'fls', label: 'FLS', render: (candidate) => candidate.fls ? <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${candidate.fls === 'FLS' ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-100 text-stone-600'}`}>{candidate.fls}</span> : <span className="text-stone-300">—</span> },
     { key: 'name', label: 'Name', render: (candidate) => (
       <div className="flex items-center gap-1.5">
-        <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">{candidate.name}</span>
+        <span className="text-sm font-semibold text-stone-900 whitespace-nowrap">{candidate.name}</span>
         {candidate._isShared && (
           <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 whitespace-nowrap" title={`Shared by ${candidate._sharedByOwner || 'team member'}`}>
             Shared
@@ -2253,24 +2257,24 @@ const handleAddCandidate = async (e) => {
         )}
       </div>
     )},
-    { key: 'contact', label: 'Contact', render: (candidate) => <span className="text-sm font-mono text-gray-600 whitespace-nowrap">{candidate.contact || '—'}</span> },
-    { key: 'email', label: 'Email', render: (candidate) => <span className="text-sm text-gray-600 whitespace-nowrap">{candidate.email || '—'}</span> },
-    { key: 'companyName', label: 'Company', render: (candidate) => <span className="text-sm text-gray-700 whitespace-nowrap">{candidate.companyName || '—'}</span> },
-    { key: 'experience', label: 'Experience', render: (candidate) => candidate.experience ? <span className="text-sm">{candidate.experience} </span> : <span className="text-gray-300">—</span> },
+    { key: 'contact', label: 'Contact', render: (candidate) => <span className="text-sm font-mono text-stone-600 whitespace-nowrap">{candidate.contact || '—'}</span> },
+    { key: 'email', label: 'Email', render: (candidate) => <span className="text-sm text-stone-600 whitespace-nowrap">{candidate.email || '—'}</span> },
+    { key: 'companyName', label: 'Company', render: (candidate) => <span className="text-sm text-stone-700 whitespace-nowrap">{candidate.companyName || '—'}</span> },
+    { key: 'experience', label: 'Experience', render: (candidate) => candidate.experience ? <span className="text-sm">{candidate.experience} </span> : <span className="text-stone-300">—</span> },
     {
       key: 'ctc',
       label: 'CTC',
-      render: (candidate) => candidate.ctc ? <span className="text-sm whitespace-nowrap">{candidate.ctc}</span> : <span className="text-gray-300">—</span>
+      render: (candidate) => candidate.ctc ? <span className="text-sm whitespace-nowrap">{candidate.ctc}</span> : <span className="text-stone-300">—</span>
     },
     {
       key: 'expectedCtc',
       label: 'Expected CTC',
-      render: (candidate) => candidate.expectedCtc ? <span className="text-sm whitespace-nowrap">{candidate.expectedCtc}</span> : <span className="text-gray-300">—</span>
+      render: (candidate) => candidate.expectedCtc ? <span className="text-sm whitespace-nowrap">{candidate.expectedCtc}</span> : <span className="text-stone-300">—</span>
     },
     {
       key: 'noticePeriod',
       label: 'Notice Period',
-      render: (candidate) => candidate.noticePeriod ? <span className="text-sm whitespace-nowrap">{candidate.noticePeriod}</span> : <span className="text-gray-300">—</span>
+      render: (candidate) => candidate.noticePeriod ? <span className="text-sm whitespace-nowrap">{candidate.noticePeriod}</span> : <span className="text-stone-300">—</span>
     },
     {
       key: 'status',
@@ -2284,15 +2288,15 @@ const handleAddCandidate = async (e) => {
               `px-3 py-1 rounded-full text-xs font-bold ` +
               (candidate.status === 'Hired' ? 'bg-green-100 text-green-700' :
                 candidate.status === 'Rejected' ? 'bg-red-100 text-red-700' :
-                candidate.status === 'Interview' ? 'bg-blue-100 text-blue-700' :
-                'bg-blue-50 text-blue-700')
+                candidate.status === 'Interview' ? 'bg-brand-100 text-brand-700' :
+                'bg-brand-50 text-brand-700')
             }>
               {candidate.status}
             </span>
             {hasTooltip && (
               <button
                 type="button"
-                className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+                className="p-1 rounded-full hover:bg-stone-100 transition-colors"
                 title="View remark"
                 onMouseEnter={(e) => {
                   if (remarkPopoverTimeoutRef.current) clearTimeout(remarkPopoverTimeoutRef.current);
@@ -2306,19 +2310,19 @@ const handleAddCandidate = async (e) => {
                   remarkPopoverTimeoutRef.current = setTimeout(() => setRemarkPopover(null), 150);
                 }}
               >
-                <Info size={16} className="text-gray-400 hover:text-gray-600" />
+                <Info size={16} className="text-stone-400 hover:text-stone-600" />
               </button>
             )}
           </div>
         );
       }
     },
-    { key: 'client', label: 'Client', render: (candidate) => <span className="text-sm text-gray-700 whitespace-nowrap">{candidate.client || '—'}</span> },
-    { key: 'spoc', label: 'SPOC', render: (candidate) => <span className="text-sm text-gray-700 whitespace-nowrap">{candidate.spoc || '—'}</span> },
+    { key: 'client', label: 'Client', render: (candidate) => <span className="text-sm text-stone-700 whitespace-nowrap">{candidate.client || '—'}</span> },
+    { key: 'spoc', label: 'SPOC', render: (candidate) => <span className="text-sm text-stone-700 whitespace-nowrap">{candidate.spoc || '—'}</span> },
     {
       key: 'source',
       label: 'Source',
-      render: (candidate) => candidate.source ? <span className="text-sm px-2.5 py-0.5 bg-gray-100 text-gray-600 rounded-full whitespace-nowrap">{candidate.source}</span> : <span className="text-gray-300">—</span>
+      render: (candidate) => candidate.source ? <span className="text-sm px-2.5 py-0.5 bg-stone-100 text-stone-600 rounded-full whitespace-nowrap">{candidate.source}</span> : <span className="text-stone-300">—</span>
     },
     ...(candidates.some(c => c._isShared) ? [{
       key: 'sharedBy',
@@ -2327,7 +2331,7 @@ const handleAddCandidate = async (e) => {
         <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full whitespace-nowrap">
           {candidate._sharedByOwner || 'Team'}
         </span>
-      ) : <span className="text-gray-300">—</span>
+      ) : <span className="text-stone-300">—</span>
     }] : [])
   ];
 
@@ -2540,7 +2544,7 @@ const handleAddCandidate = async (e) => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 px-8 py-6 font-sans text-gray-900">
+    <div className="page-shell-ats font-sans text-stone-900">
       
       {/* COLUMN MAPPER MODAL */}
       {showColumnMapper && (
@@ -2555,39 +2559,39 @@ const handleAddCandidate = async (e) => {
       )}
 
       {isUploading && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/55">
           <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm text-center">
             <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
-            <h3 className="text-lg font-bold text-gray-800">Uploading candidates…</h3>
-            <p className="mt-2 text-sm text-gray-500">Please wait. This can take a few minutes for large files.</p>
+            <h3 className="text-lg font-bold text-stone-800">Uploading candidates…</h3>
+            <p className="mt-2 text-sm text-stone-500">Please wait. This can take a few minutes for large files.</p>
           </div>
         </div>
       )}
 
       {showVerifiedEmailRequiredModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/55 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 bg-amber-50">
+            <div className="px-6 py-4 border-b border-stone-100 bg-amber-50">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
                   <Mail className="text-amber-600" size={20} />
                 </div>
-                <h3 className="text-base font-bold text-gray-900">Use company email to send</h3>
+                <h3 className="text-base font-bold text-stone-900">Use company email to send</h3>
               </div>
             </div>
             <div className="px-6 py-5">
-              <p className="text-sm text-gray-600 leading-relaxed">
+              <p className="text-sm text-stone-600 leading-relaxed">
                 {verifiedEmailRequiredMessage}
               </p>
-              <p className="mt-3 text-xs text-gray-500">
+              <p className="mt-3 text-xs text-stone-500">
                 Emails can only be sent from verified company addresses (e.g. yourname@yourcompany.com). Log in with that account to send emails to candidates.
               </p>
             </div>
-            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end">
+            <div className="px-6 py-4 border-t border-stone-100 bg-stone-50 flex justify-end">
               <button
                 type="button"
                 onClick={() => { setShowVerifiedEmailRequiredModal(false); setVerifiedEmailRequiredMessage(''); }}
-                className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition"
+                className="btn-primary"
               >
                 OK
               </button>
@@ -2596,10 +2600,33 @@ const handleAddCandidate = async (e) => {
         </div>
       )}
 
+      <PageHeader
+        icon={Users}
+        title="Candidates"
+        subtitle={`${filteredCandidates.length.toLocaleString()} records in your pipeline${searchQuery ? ` · “${searchQuery}”` : ''}.`}
+        gradientTitle
+      >
+        <button type="button" onClick={() => fileInputRef.current?.click()} className="btn-secondary">
+          <Upload size={16} /> Import
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setEditId(null);
+            setFormData(initialFormState);
+            setFormErrors({});
+            setShowModal(true);
+          }}
+          className="btn-primary"
+        >
+          <Plus size={16} /> Add Candidate
+        </button>
+      </PageHeader>
+
       {/* Loading bar only — thin top bar when initial load, no skeleton */}
       {isLoadingInitial && candidates.length === 0 && (
-        <div className="h-1 w-full bg-gray-100 rounded overflow-hidden mb-5">
-          <div className="h-full w-1/3 bg-indigo-500 rounded animate-shimmer" />
+        <div className="h-1 w-full bg-stone-100 rounded-full overflow-hidden">
+          <div className="h-full w-1/3 bg-gradient-to-r from-brand-500 to-teal-400 rounded-full animate-shimmer" />
         </div>
       )}
       
@@ -2608,36 +2635,35 @@ const handleAddCandidate = async (e) => {
       <input type="file" accept=".csv, .xlsx, .xls" ref={autoUploadInputRef} onChange={handleAutoUpload} className="hidden" />
 
       {/* HEADER + TOOLBAR — single card, enterprise layout */}
-      <div className="mb-5 rounded-xl border border-gray-200/80 bg-white shadow shadow-gray-200/50 overflow-hidden">
-        {/* Row 1: Title, view toggle, count, import actions */}
-        <div className="flex flex-wrap items-center gap-4 px-5 py-4 border-b border-gray-100">
-          <h1 className="text-xl font-semibold text-gray-900 tracking-tight">All Candidates</h1>
-          <div className="inline-flex rounded-lg bg-gray-100 p-1 border border-gray-200/80">
+      <div className="card-ats-bordered overflow-hidden">
+        {/* Row 1: View toggle, count, import actions */}
+        <div className="flex flex-wrap items-center gap-4 px-5 py-4 border-b border-stone-100">
+          <div className="inline-flex rounded-xl bg-stone-100 p-1 border border-stone-200/80">
             <button
               type="button"
               onClick={() => setCandidatesViewMode('mine')}
-              className={`px-3.5 py-2 text-sm font-medium rounded-md transition-all duration-150 ${candidatesViewMode === 'mine' ? 'bg-white text-gray-900 shadow-sm border border-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-all duration-150 ${candidatesViewMode === 'mine' ? 'bg-white text-brand-700 shadow-sm border border-brand-200' : 'text-stone-500 hover:text-stone-700'}`}
             >
               Show only mine
             </button>
             <button
               type="button"
               onClick={() => setCandidatesViewMode('all')}
-              className={`px-3.5 py-2 text-sm font-medium rounded-md transition-all duration-150 ${candidatesViewMode === 'all' ? 'bg-white text-gray-900 shadow-sm border border-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-all duration-150 ${candidatesViewMode === 'all' ? 'bg-white text-brand-700 shadow-sm border border-brand-200' : 'text-stone-500 hover:text-stone-700'}`}
             >
               View all
             </button>
           </div>
-          <span className="text-sm font-medium text-gray-600 tabular-nums">
+          <span className="text-sm font-medium text-stone-600 tabular-nums">
             {filteredCandidates.length.toLocaleString()} records
-            {searchQuery && <span className="font-normal text-gray-500"> · &ldquo;{searchQuery}&rdquo;</span>}
+            {searchQuery && <span className="font-normal text-stone-500"> · &ldquo;{searchQuery}&rdquo;</span>}
           </span>
           {candidatesViewMode === 'all' && (
             <div className="flex items-center gap-2 ml-auto">
               <button
                 onClick={handleImportAllToMineClick}
                 disabled={isImportingShared || isImportingAll}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium shadow-sm hover:bg-indigo-700 hover:shadow disabled:opacity-50 transition-all duration-150"
+                className="btn-primary !py-2"
                 title="Copy every candidate in the database into your list"
               >
                 {isImportingAll ? <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Plus size={14} />}
@@ -2659,13 +2685,13 @@ const handleAddCandidate = async (e) => {
         </div>
 
         {/* Row 2: Search + Filters + Export + Sort — one toolbar */}
-        <div className="flex flex-wrap items-center gap-3 px-5 py-3 bg-gray-50/80 border-t border-gray-100">
-          <div className="flex items-center gap-2 flex-1 min-w-[280px] max-w-xl bg-white rounded-lg border border-gray-200 px-3 py-2 shadow-sm focus-within:ring-2 focus-within:ring-indigo-500/25 focus-within:border-indigo-400 transition-all">
-            <Search className="text-gray-400 flex-shrink-0" size={18} />
+        <div className="flex flex-wrap items-center gap-3 px-5 py-3 bg-stone-50/80 border-t border-stone-100">
+          <div className="flex items-center gap-2 flex-1 min-w-[280px] max-w-xl bg-white rounded-xl border border-stone-200 px-3 py-2.5 shadow-sm focus-within:ring-2 focus-within:ring-brand-500/20 focus-within:border-brand-500 transition-all">
+            <Search className="text-stone-400 flex-shrink-0" size={18} />
             <select
               value={searchScope}
               onChange={(e) => setSearchScope(e.target.value)}
-              className="text-sm border-0 bg-transparent text-gray-600 font-medium outline-none cursor-pointer py-0"
+              className="text-sm border-0 bg-transparent text-stone-600 font-medium outline-none cursor-pointer py-0"
               title="Search in"
             >
               <option value="all">All fields</option>
@@ -2680,34 +2706,34 @@ const handleAddCandidate = async (e) => {
             <input
               type="text"
               placeholder={searchScope === 'all' ? 'Search candidates...' : `Search ${searchScope}...`}
-              className="flex-1 min-w-0 text-sm outline-none text-gray-800 placeholder-gray-400 bg-transparent"
+              className="flex-1 min-w-0 text-sm outline-none text-stone-800 placeholder-stone-400 bg-transparent"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
             {(searchScope !== 'all' || searchQuery.trim()) && (
-              <button type="button" onClick={() => { setSearchScope('all'); setSearchQuery(''); setCurrentPage(1); }} className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" title="Clear">
+              <button type="button" onClick={() => { setSearchScope('all'); setSearchQuery(''); setCurrentPage(1); }} className="p-1 rounded-md text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors" title="Clear">
                 <X size={16} />
               </button>
             )}
           </div>
           <button
             onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium border transition-all duration-150 ${showAdvancedSearch ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:border-gray-300 shadow-sm'}`}
+            className={showAdvancedSearch ? 'btn-primary !py-2' : 'btn-secondary !py-2'}
           >
             <Filter size={16} /> {showAdvancedSearch ? 'Close' : 'Filters'}
           </button>
           <button
             onClick={() => { if (filteredCandidates.length === 0) toast.warning('No candidates to download.'); else setShowDownloadModal(true); }}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300 shadow-sm transition-all duration-150"
+            className="btn-secondary !py-2"
           >
             <Download size={16} /> Export{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
           </button>
-          <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-2 py-1.5 shadow-sm">
-            <span className="text-sm text-gray-500 font-medium">Sort</span>
+          <div className="flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-2 py-1.5 shadow-sm">
+            <span className="text-sm text-stone-500 font-medium">Sort</span>
             <select
               value={sortField}
               onChange={(e) => { setSortField(e.target.value); setCurrentPage(1); }}
-              className="text-sm py-1 pr-6 border-0 bg-transparent text-gray-700 font-medium outline-none cursor-pointer focus:ring-0"
+              className="text-sm py-1 pr-6 border-0 bg-transparent text-stone-700 font-medium outline-none cursor-pointer focus:ring-0"
             >
               <option value="date">Date Added</option>
               <option value="name">Name</option>
@@ -2720,7 +2746,7 @@ const handleAddCandidate = async (e) => {
             </select>
             <button
               onClick={() => { setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc'); setCurrentPage(1); }}
-              className="p-1.5 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              className="p-1.5 rounded-md text-stone-500 hover:text-stone-700 hover:bg-stone-100 transition-colors"
               title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
             >
               {sortOrder === 'asc' ? '↑' : '↓'}
@@ -2731,9 +2757,9 @@ const handleAddCandidate = async (e) => {
 
       {/* ADVANCED SEARCH PANEL - ABOVE TABLE */}
       {showAdvancedSearch && (
-        <div className="mb-6 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <div className="card-ats-bordered p-6 animate-fade-in">
           <div className="flex justify-between items-center mb-5">
-            <h3 className="text-base font-bold text-gray-800">Advanced Search Filters</h3>
+            <h3 className="text-base font-bold text-stone-900">Advanced Search Filters</h3>
             <button
               onClick={() => {
                 setAdvancedSearchFilters({
@@ -2750,7 +2776,7 @@ const handleAddCandidate = async (e) => {
                 });
                 setSearchQuery('');
               }}
-              className="flex items-center gap-2 px-3 py-1.5 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg text-sm font-medium transition hover:bg-gray-50"
+              className="btn-secondary !py-1.5 !px-3 !text-sm"
             >
               <RefreshCw size={14} /> Reset
             </button>
@@ -2759,11 +2785,11 @@ const handleAddCandidate = async (e) => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Position - Dropdown */}
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1.5">Position</label>
+              <label className="block text-sm font-bold text-stone-700 mb-1.5">Position</label>
               <select
                 value={advancedSearchFilters.position}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, position: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm bg-white"
+                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm bg-white"
               >
                 <option value="">All Positions</option>
                 {masterPositions.map(pos => (
@@ -2774,35 +2800,35 @@ const handleAddCandidate = async (e) => {
 
             {/* Company - Text Input */}
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1.5">Company</label>
+              <label className="block text-sm font-bold text-stone-700 mb-1.5">Company</label>
               <input
                 type="text"
                 value={advancedSearchFilters.companyName}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, companyName: e.target.value }))}
                 placeholder="Search company"
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm"
               />
             </div>
 
             {/* Location - Text input */}
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1.5">Location</label>
+              <label className="block text-sm font-bold text-stone-700 mb-1.5">Location</label>
               <input
                 type="text"
                 value={advancedSearchFilters.location}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, location: e.target.value }))}
                 placeholder="City or location"
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm"
               />
             </div>
 
             {/* Experience Min - Number Dropdown */}
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1.5">Min Experience (Yrs)</label>
+              <label className="block text-sm font-bold text-stone-700 mb-1.5">Min Experience (Yrs)</label>
               <select
                 value={advancedSearchFilters.expMin}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, expMin: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm bg-white"
+                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm bg-white"
               >
                 <option value="">Any</option>
                 {[...Array(31).keys()].map(num => (
@@ -2813,11 +2839,11 @@ const handleAddCandidate = async (e) => {
 
             {/* Experience Max - Number Dropdown */}
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1.5">Max Experience (Yrs)</label>
+              <label className="block text-sm font-bold text-stone-700 mb-1.5">Max Experience (Yrs)</label>
               <select
                 value={advancedSearchFilters.expMax}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, expMax: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm bg-white"
+                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm bg-white"
               >
                 <option value="">Any</option>
                 {[...Array(31).keys()].map(num => (
@@ -2828,11 +2854,11 @@ const handleAddCandidate = async (e) => {
 
             {/* CTC Min - Range Dropdown */}
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1.5">Min CTC</label>
+              <label className="block text-sm font-bold text-stone-700 mb-1.5">Min CTC</label>
               <select
                 value={advancedSearchFilters.ctcMin}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, ctcMin: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm bg-white"
+                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm bg-white"
               >
                 <option value="">Any</option>
                 {ctcRanges.map(range => (
@@ -2843,11 +2869,11 @@ const handleAddCandidate = async (e) => {
 
             {/* CTC Max - Range Dropdown */}
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1.5">Max CTC</label>
+              <label className="block text-sm font-bold text-stone-700 mb-1.5">Max CTC</label>
               <select
                 value={advancedSearchFilters.ctcMax}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, ctcMax: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm bg-white"
+                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm bg-white"
               >
                 <option value="">Any</option>
                 {ctcRanges.map(range => (
@@ -2858,11 +2884,11 @@ const handleAddCandidate = async (e) => {
 
             {/* Expected CTC Min - Range Dropdown */}
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1.5">Min Expected CTC</label>
+              <label className="block text-sm font-bold text-stone-700 mb-1.5">Min Expected CTC</label>
               <select
                 value={advancedSearchFilters.expectedCtcMin}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, expectedCtcMin: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm bg-white"
+                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm bg-white"
               >
                 <option value="">Any</option>
                 {ctcRanges.map(range => (
@@ -2873,11 +2899,11 @@ const handleAddCandidate = async (e) => {
 
             {/* Expected CTC Max - Range Dropdown */}
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1.5">Max Expected CTC</label>
+              <label className="block text-sm font-bold text-stone-700 mb-1.5">Max Expected CTC</label>
               <select
                 value={advancedSearchFilters.expectedCtcMax}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, expectedCtcMax: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm bg-white"
+                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm bg-white"
               >
                 <option value="">Any</option>
                 {ctcRanges.map(range => (
@@ -2888,31 +2914,31 @@ const handleAddCandidate = async (e) => {
 
             {/* Date */}
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1.5">Date</label>
+              <label className="block text-sm font-bold text-stone-700 mb-1.5">Date</label>
               <input
                 type="date"
                 value={advancedSearchFilters.date}
                 onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, date: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                className="w-full px-3 py-2.5 border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm"
               />
             </div>
           </div>
 
-          <p className="text-xs text-gray-400 mt-4">Filters apply instantly to the candidate list below</p>
+          <p className="text-xs text-stone-400 mt-4">Filters apply instantly to the candidate list below</p>
         </div>
       )}
 
       {/* PARSING PREVIEW MODAL */}
       {showPreview && (
-        <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-stone-900/55 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden">
-            <div className="p-4 bg-indigo-600 text-white flex justify-between items-center">
+            <div className="p-4 bg-brand-600 text-white flex justify-between items-center">
               <h3 className="font-bold flex items-center gap-2"><Cpu size={20}/> Parsed Results</h3>
               <button onClick={() => setShowPreview(false)}><X size={24}/></button>
             </div>
             <div className="p-6 overflow-auto max-h-[60vh]">
               <table className="w-full text-sm">
-                <thead><tr className="border-b text-left text-gray-500 font-bold"><th>Name</th><th>Email</th><th>Contact</th></tr></thead>
+                <thead><tr className="border-b text-left text-stone-500 font-bold"><th>Name</th><th>Email</th><th>Contact</th></tr></thead>
                 <tbody>
                   {parsedResults.map(p => (
                     <tr key={p._id} className="border-b">
@@ -2925,7 +2951,7 @@ const handleAddCandidate = async (e) => {
               </table>
             </div>
             <div className="p-4 border-t flex justify-end">
-              <button onClick={() => setShowPreview(false)} className="bg-gray-800 text-white px-6 py-2 rounded-lg font-bold">Close</button>
+              <button onClick={() => setShowPreview(false)} className="bg-stone-800 text-white px-6 py-2 rounded-lg font-bold">Close</button>
             </div>
           </div>
         </div>
@@ -2933,7 +2959,7 @@ const handleAddCandidate = async (e) => {
 
       {/* BULK ACTIONS BAR */}
       {selectedIds.length > 0 && (
-        <div className="sticky top-0 z-30 bg-indigo-600 text-white rounded-xl shadow-lg px-5 py-3 flex items-center justify-between gap-4 mb-4 animate-in">
+        <div className="sticky top-0 z-30 bg-gradient-to-r from-brand-600 via-teal-600 to-brand-700 text-white rounded-2xl shadow-lg shadow-brand-500/25 px-5 py-3 flex items-center justify-between gap-4 animate-fade-in">
           <div className="flex items-center gap-3">
             <div className="bg-white/20 px-3 py-1 rounded-lg text-sm font-bold">
               {selectedIds.length} selected
@@ -2967,12 +2993,12 @@ const handleAddCandidate = async (e) => {
               >
                 <RefreshCw size={15} /> Status
               </button>
-              <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-1 hidden group-hover:block z-50">
+              <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-xl border border-stone-200 py-1 hidden group-hover:block z-50">
                 {['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Joined', 'Rejected', 'Dropped'].map(s => (
                   <button
                     key={s}
                     onClick={() => handleBulkStatusUpdate(s)}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
+                    className="w-full text-left px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 cursor-pointer"
                   >
                     {s}
                   </button>
@@ -2998,37 +3024,37 @@ const handleAddCandidate = async (e) => {
       )}
 
       {/* MAIN TABLE */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
+      <div className="table-shell-ats overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="bg-gray-900 border-b border-gray-300">
-              <th className="px-4 py-4 w-[50px] text-center">
+            <tr className="bg-stone-900 border-b border-stone-800">
+              <th className="px-4 py-3.5 w-[50px] text-center">
                 <div onClick={() => selectAll(filteredCandidates.map(c => c._id))} className="cursor-pointer flex justify-center">
-                  {isAllSelected ? <CheckSquare size={18} className="text-white" /> : <Square size={18} className="text-gray-400" />}
+                  {isAllSelected ? <CheckSquare size={18} className="text-brand-300" /> : <Square size={18} className="text-stone-400" />}
                 </div>
               </th>
               {tableColumns.map((column) => (
                 <th
                   key={column.key}
-                  className="px-4 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap border-r border-gray-700"
+                  className="px-4 py-3.5 text-xs font-bold text-stone-200 uppercase tracking-wider whitespace-nowrap border-r border-stone-700/80"
                 >
                   {column.label}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200">
+          <tbody className="divide-y divide-stone-100">
             {visibleCandidates.map((candidate, index) => (
-              <tr key={candidate._id} className={`transition-colors ${selectedIds.includes(candidate._id) ? 'bg-indigo-50/60' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-indigo-50/40`}>
+              <tr key={candidate._id} className={`transition-colors duration-150 ${selectedIds.includes(candidate._id) ? 'bg-brand-50/70' : index % 2 === 0 ? 'bg-white' : 'bg-stone-50/40'} hover:bg-brand-50/50`}>
                 <td className="px-4 py-3 text-center w-[50px]">
                   <div onClick={() => toggleSelection(candidate._id)} className="cursor-pointer flex justify-center">
-                    {selectedIds.includes(candidate._id) ? <CheckSquare className="text-indigo-600" size={17} /> : <Square className="text-gray-300 hover:text-gray-400" size={17} />}
+                    {selectedIds.includes(candidate._id) ? <CheckSquare className="text-brand-600" size={17} /> : <Square className="text-stone-300 hover:text-stone-400" size={17} />}
                   </div>
                 </td>
                 {tableColumns.map((column) => (
                   <td
                     key={`${candidate._id}-${column.key}`}
-                    className="px-4 py-3 text-sm text-gray-700 border-r border-gray-200 font-medium"
+                    className="px-4 py-3 text-sm text-stone-700 border-r border-stone-200 font-medium"
                   >
                     {column.render(candidate, index)}
                   </td>
@@ -3037,28 +3063,32 @@ const handleAddCandidate = async (e) => {
             ))}
             {visibleCandidates.length === 0 && !isLoadingInitial && (
               <tr>
-                <td colSpan={tableColumns.length + 1} className="text-center py-16 text-gray-400">
-                  <div className="flex flex-col items-center gap-3">
-                    {viewMode === 'shared' ? (
-                      <>
-                        <Share2 size={36} className="text-gray-300" />
-                        <p className="text-sm font-medium text-gray-500">No shared candidates yet</p>
-                        <p className="text-xs text-gray-400">When team members share candidates with you, they will appear here.</p>
-                      </>
-                    ) : searchQuery ? (
-                      <>
-                        <Search size={36} className="text-gray-300" />
-                        <p className="text-sm font-medium text-gray-500">No candidates match your search</p>
-                        <p className="text-xs text-gray-400">Try different keywords or clear the search filter</p>
-                      </>
-                    ) : (
-                      <>
-                        <Briefcase size={36} className="text-gray-300" />
-                        <p className="text-sm font-medium text-gray-500">No candidates yet</p>
-                        <p className="text-xs text-gray-400">Add candidates manually or use Auto Import to bring data from Excel</p>
-                      </>
-                    )}
-                  </div>
+                <td colSpan={tableColumns.length + 1}>
+                  {viewMode === 'shared' ? (
+                    <EmptyState icon={Share2} message="No shared candidates yet" subMessage="When team members share candidates with you, they will appear here." />
+                  ) : searchQuery ? (
+                    <EmptyState icon={Search} message="No candidates match your search" subMessage="Try different keywords or clear the search filter." />
+                  ) : (
+                    <EmptyState
+                      icon={Users}
+                      message="No candidates yet"
+                      subMessage="Add candidates manually or import from Excel to get started."
+                      action={
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditId(null);
+                            setFormData(initialFormState);
+                            setFormErrors({});
+                            setShowModal(true);
+                          }}
+                          className="btn-primary"
+                        >
+                          <Plus size={16} /> Add Candidate
+                        </button>
+                      }
+                    />
+                  )}
                 </td>
               </tr>
             )}
@@ -3069,7 +3099,7 @@ const handleAddCandidate = async (e) => {
       {/* Remark popover via portal so it is not cut off by table overflow */}
       {remarkPopover && createPortal(
         <div
-          className="fixed z-[9999] w-64 max-w-[90vw] p-3 bg-white text-gray-800 text-xs rounded-lg shadow-xl border border-gray-200 whitespace-normal"
+          className="fixed z-[9999] w-64 max-w-[90vw] p-3 bg-white text-stone-800 text-xs rounded-lg shadow-xl border border-stone-200 whitespace-normal"
           style={{
             left: Math.max(8, Math.min(remarkPopover.left - 128, typeof window !== 'undefined' ? window.innerWidth - 264 : 0)),
             ...(remarkPopover.showAbove
@@ -3084,7 +3114,7 @@ const handleAddCandidate = async (e) => {
           ) : (
             <div className="absolute bottom-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-white" />
           )}
-          <div className="font-semibold text-gray-500 mb-1">Remark</div>
+          <div className="font-semibold text-stone-500 mb-1">Remark</div>
           <div className="leading-relaxed">{remarkPopover.remark}</div>
         </div>,
         document.body
@@ -3095,14 +3125,14 @@ const handleAddCandidate = async (e) => {
       
       {/* PAGINATION */}
       <div className="flex items-center justify-between py-4 px-1">
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-stone-500">
           Showing {visibleCandidates.length > 0 ? (currentPage - 1) * PAGE_SIZE + 1 : 0}–{Math.min(currentPage * PAGE_SIZE, filteredCandidates.length)} of {filteredCandidates.length.toLocaleString()} candidates
         </p>
         <div className="flex items-center gap-2">
             <button
               onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
               disabled={currentPage === 1}
-              className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              className="btn-secondary !py-2 disabled:opacity-40"
             >
               Previous
             </button>
@@ -3117,7 +3147,7 @@ const handleAddCandidate = async (e) => {
                   <button
                     key={page}
                     onClick={() => setCurrentPage(page)}
-                    className={`w-9 h-9 rounded-lg text-sm font-medium transition ${page === currentPage ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}
+                    className={`w-9 h-9 rounded-xl text-sm font-semibold transition ${page === currentPage ? 'bg-gradient-to-br from-brand-600 to-teal-600 text-white shadow-md shadow-brand-500/25' : 'text-stone-600 hover:bg-stone-100'}`}
                   >
                     {page}
                   </button>
@@ -3127,7 +3157,7 @@ const handleAddCandidate = async (e) => {
             {currentPage < totalFilteredPages && (
               <button 
                 onClick={() => setCurrentPage(currentPage + 1)}
-                className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition"
+                className="btn-secondary !py-2"
               >
                 Next
               </button>
@@ -3136,23 +3166,27 @@ const handleAddCandidate = async (e) => {
       </div>
 
 {showModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-8 shadow-2xl">
+        <div className="fixed inset-0 bg-stone-900/55 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl sm:rounded-3xl border border-stone-200/60 w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 sm:p-8 shadow-2xl modal-panel-ats">
+            <div className="h-px -mt-6 sm:-mt-8 mb-6 bg-gradient-to-r from-transparent via-brand-500/40 to-transparent" />
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-800">{editId ? '📝 Edit Profile' : '👤 Add New Candidate'}</h2>
-              <button type="button" onClick={() => setShowModal(false)} className="text-gray-400 hover:text-red-500 text-2xl font-bold transition-colors p-1 rounded-lg hover:bg-red-50">&times;</button>
+              <div>
+                <h2 className="text-2xl font-bold text-stone-900 tracking-tight">{editId ? 'Edit Candidate' : 'Add New Candidate'}</h2>
+                <p className="text-sm text-stone-500 mt-1">{editId ? 'Update profile details and save changes.' : 'Fill in the candidate profile or upload a resume to auto-fill.'}</p>
+              </div>
+              <button type="button" onClick={() => setShowModal(false)} className="p-2 rounded-lg hover:bg-stone-100 text-stone-400 hover:text-stone-600 transition-colors" aria-label="Close">&times;</button>
             </div>
             <form onSubmit={handleAddCandidate} className="space-y-6">
               
               {/* Resume Upload */}
-              <div className="border-2 border-dashed border-blue-300 rounded-xl p-8 bg-blue-50 text-center hover:bg-blue-100 transition-colors cursor-pointer relative">
+              <div className="border-2 border-dashed border-brand-300 rounded-2xl p-8 bg-brand-50/50 text-center hover:bg-brand-50 transition-colors cursor-pointer relative">
                 <input type="file" name="resume" accept=".pdf,.doc,.docx" onChange={handleInputChange} className="absolute inset-0 opacity-0 cursor-pointer" />
                 <div className="flex flex-col items-center gap-3">
-                  <Upload size={32} className="text-blue-600" />
-                  <p className="font-semibold text-gray-800 text-sm">Click to upload resume (PDF, DOC, DOCX)</p>
+                  <Upload size={32} className="text-brand-600" />
+                  <p className="font-semibold text-stone-800 text-sm">Click to upload resume (PDF, DOC, DOCX)</p>
                   {isAutoParsing && (
-                    <div className="flex items-center gap-2 text-blue-600 font-semibold text-sm">
-                      <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <div className="flex items-center gap-2 text-brand-600 font-semibold text-sm">
+                      <div className="w-4 h-4 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
                       Parsing resume...
                     </div>
                   )}
@@ -3164,25 +3198,25 @@ const handleAddCandidate = async (e) => {
 
               {/* 📋 Basic Information */}
               <div>
-                <h3 className="text-lg font-bold text-gray-900 mb-4 pb-3 border-b-2 border-indigo-500">📋 Basic Information</h3>
+                <h3 className="text-lg font-bold text-stone-900 mb-4 pb-3 border-b-2 border-brand-500">📋 Basic Information</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">Name <span className="text-red-500">*</span></label>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Name <span className="text-red-500">*</span></label>
                     <input ref={fieldRefs.name} type="text" name="name" value={formData.name || ''} onChange={handleInputChange} placeholder="Full Name"
-                      className={`w-full px-4 py-2.5 border-2 rounded-lg focus:ring-2 focus:outline-none transition-all text-sm font-medium ${formErrors.name ? 'border-red-400 focus:border-red-500 focus:ring-red-200 bg-red-50' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-100'}`} />
+                      className={`w-full px-4 py-2.5 border-2 rounded-lg focus:ring-2 focus:outline-none transition-all text-sm font-medium ${formErrors.name ? 'border-red-400 focus:border-red-500 focus:ring-red-200 bg-red-50' : 'border-stone-300 focus:border-brand-500 focus:ring-brand-100'}`} />
                     {formErrors.name && <p className="text-xs text-red-500 mt-1 font-medium">{formErrors.name}</p>}
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">Email <span className="text-red-500">*</span></label>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Email <span className="text-red-500">*</span></label>
                     <input ref={fieldRefs.email} type="email" name="email" value={formData.email || ''} onChange={handleInputChange} placeholder="email@example.com"
-                      className={`w-full px-4 py-2.5 border-2 rounded-lg focus:ring-2 focus:outline-none transition-all text-sm font-medium ${formErrors.email ? 'border-red-400 focus:border-red-500 focus:ring-red-200 bg-red-50' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-100'}`} />
+                      className={`w-full px-4 py-2.5 border-2 rounded-lg focus:ring-2 focus:outline-none transition-all text-sm font-medium ${formErrors.email ? 'border-red-400 focus:border-red-500 focus:ring-red-200 bg-red-50' : 'border-stone-300 focus:border-brand-500 focus:ring-brand-100'}`} />
                     {formErrors.email && <p className="text-xs text-red-500 mt-1 font-medium">{formErrors.email}</p>}
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">Contact <span className="text-red-500">*</span></label>
-                    <div className={`flex w-full items-stretch border-2 rounded-lg focus-within:ring-2 focus-within:outline-none transition-all bg-white overflow-hidden ${formErrors.contact ? 'border-red-400 focus-within:border-red-500 focus-within:ring-red-200 bg-red-50' : 'border-gray-300 focus-within:border-indigo-500 focus-within:ring-indigo-100'}`}>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Contact <span className="text-red-500">*</span></label>
+                    <div className={`flex w-full items-stretch border-2 rounded-lg focus-within:ring-2 focus-within:outline-none transition-all bg-white overflow-hidden ${formErrors.contact ? 'border-red-400 focus-within:border-red-500 focus-within:ring-red-200 bg-red-50' : 'border-stone-300 focus-within:border-brand-500 focus-within:ring-brand-100'}`}>
                       <select
-                        className="px-3 py-2.5 bg-white text-sm font-semibold min-w-[92px] border-r border-gray-300 outline-none"
+                        className="px-3 py-2.5 bg-white text-sm font-semibold min-w-[92px] border-r border-stone-300 outline-none"
                         value={countryCode}
                         onChange={(e) => {
                           setCountryCode(e.target.value);
@@ -3203,77 +3237,77 @@ const handleAddCandidate = async (e) => {
                     {formErrors.contact && <p className="text-xs text-red-500 mt-1 font-medium">{formErrors.contact}</p>}
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">Position</label>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Position</label>
                     <select name="position" value={formData.position || ''} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none transition-all text-sm font-medium">
+                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium">
                       <option value="">Select Position</option>
                       {masterPositions.map(pos => <option key={pos._id} value={pos.name}>{pos.name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">Company</label>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Company</label>
                     <input type="text" name="companyName" value={formData.companyName || ''} onChange={handleInputChange} placeholder="Company Name"
-                      className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none transition-all text-sm font-medium" />
+                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">Location</label>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Location</label>
                     <input ref={fieldRefs.location} type="text" name="location" value={formData.location || ''} onChange={handleInputChange} placeholder="City/Region"
-                      className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none transition-all text-sm font-medium" />
+                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium" />
                   </div>
                 </div>
               </div>
 
               {/* 💼 Experience & Compensation */}
               <div>
-                <h3 className="text-lg font-bold text-gray-900 mb-4 pb-3 border-b-2 border-indigo-500">💼 Experience & Compensation</h3>
+                <h3 className="text-lg font-bold text-stone-900 mb-4 pb-3 border-b-2 border-brand-500">💼 Experience & Compensation</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">Experience (Years)</label>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Experience (Years)</label>
                     <select name="experience" value={formData.experience || ''} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none transition-all text-sm font-medium">
+                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium">
                       <option value="">Select</option>
                       <option value="Fresher">Fresher</option>
                       {[...Array(31).keys()].slice(1).map(num => <option key={num} value={num}>{num}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">Current CTC (LPA) <span className="text-red-500">*</span></label>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Current CTC (LPA) <span className="text-red-500">*</span></label>
                     <select ref={fieldRefs.ctc} name="ctc" value={formData.ctc || ''} onChange={handleInputChange}
-                      className={`w-full px-4 py-2.5 border-2 rounded-lg focus:ring-2 focus:outline-none transition-all text-sm font-medium max-h-52 ${formErrors.ctc ? 'border-red-400 focus:border-red-500 focus:ring-red-200 bg-red-50' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-100'}`}>
+                      className={`w-full px-4 py-2.5 border-2 rounded-lg focus:ring-2 focus:outline-none transition-all text-sm font-medium max-h-52 ${formErrors.ctc ? 'border-red-400 focus:border-red-500 focus:ring-red-200 bg-red-50' : 'border-stone-300 focus:border-brand-500 focus:ring-brand-100'}`}>
                       <option value="">Select CTC</option>
                       {ctcRanges.map(range => <option key={range} value={range}>{range}</option>)}
                     </select>
                     {formErrors.ctc && <p className="text-xs text-red-500 mt-1 font-medium">{formErrors.ctc}</p>}
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">Expected CTC (LPA)</label>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Expected CTC (LPA)</label>
                     <select name="expectedCtc" value={formData.expectedCtc || ''} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none transition-all text-sm font-medium max-h-52">
+                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium max-h-52">
                       <option value="">Select Expected CTC</option>
                       {expectedCtcOptions.map(range => <option key={range} value={range}>{range}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">Notice Period</label>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Notice Period</label>
                     <select name="noticePeriod" value={formData.noticePeriod || ''} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none transition-all text-sm font-medium">
+                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium">
                       <option value="">Select Notice Period</option>
                       {noticePeriodOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">FLS/Non FLS</label>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">FLS/Non FLS</label>
                     <select name="fls" value={formData.fls || ''} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none transition-all text-sm font-medium">
+                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium">
                       <option value="">Select</option>
                       <option value="FLS">FLS</option>
                       <option value="Non-FLS">Non-FLS</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">Status</label>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Status</label>
                     <select name="status" value={formData.status || 'Applied'} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none transition-all text-sm font-medium">
+                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium">
                       <option value="Applied">Applied</option>
                       <option value="Screening">Screening</option>
                       <option value="Interview">Interview</option>
@@ -3291,56 +3325,54 @@ const handleAddCandidate = async (e) => {
 
               {/* 📝 Additional Information */}
               <div>
-                <h3 className="text-lg font-bold text-gray-900 mb-4 pb-3 border-b-2 border-indigo-500">📝 Additional Information</h3>
+                <h3 className="text-lg font-bold text-stone-900 mb-4 pb-3 border-b-2 border-brand-500">📝 Additional Information</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">Client</label>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Client</label>
                     <select name="client" value={formData.client || ''} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none transition-all text-sm font-medium">
+                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium">
                       <option value="">Select Client</option>
                       {masterClients.map(client => <option key={client._id} value={client.name}>{client.name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">SPOC</label>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">SPOC</label>
                     <input ref={fieldRefs.spoc} type="text" name="spoc" value={formData.spoc || ''} onChange={handleInputChange} placeholder="SPOC Name"
-                      className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none transition-all text-sm font-medium" />
+                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">Source of CV</label>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Source of CV</label>
                     <select name="source" value={formData.source || ''} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none transition-all text-sm font-medium">
+                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium">
                       <option value="">Select Source</option>
                       {masterSources.map(source => <option key={source._id} value={source.name}>{source.name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">Date</label>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Date</label>
                     <input type="date" name="date" value={formData.date || new Date().toISOString().split('T')[0]} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none transition-all text-sm font-medium" />
+                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">Call Back Date</label>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Call Back Date</label>
                     <input type="date" name="callBackDate" value={formData.callBackDate || ''} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none transition-all text-sm font-medium" />
+                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium" />
                   </div>
 
                   <div className="md:col-span-2 lg:col-span-3">
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2.5">Remark</label>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Remark</label>
                     <textarea name="remark" value={formData.remark || ''} onChange={handleInputChange} placeholder="e.g. Rejected due to salary mismatch, Not reachable, etc."
-                      rows="2" className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 focus:outline-none transition-all text-sm font-medium resize-none" />
+                      rows="2" className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium resize-none" />
                   </div>
                 </div>
               </div>
 
               {/* Footer Buttons */}
-              <div className="flex gap-3 pt-6 border-t-2 border-gray-200 justify-center">
-                <button type="button" onClick={() => setShowModal(false)}
-                  className="px-8 py-2.5 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-all text-sm min-w-[120px]">
+              <div className="flex gap-3 pt-6 border-t border-stone-200 justify-end">
+                <button type="button" onClick={() => setShowModal(false)} className="btn-secondary min-w-[120px]">
                   Cancel
                 </button>
-                <button type="submit"
-                  className="px-8 py-2.5 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-all text-sm min-w-[160px]">
+                <button type="submit" className="btn-primary min-w-[160px]">
                   {editId ? 'Save Changes' : 'Add Candidate'}
                 </button>
               </div>
@@ -3351,19 +3383,19 @@ const handleAddCandidate = async (e) => {
 
       {/* 📧 EMAIL MODAL — Template-Powered */}
       {showEmailModal && emailRecipient && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] shadow-2xl flex flex-col">
+        <div className="fixed inset-0 bg-stone-900/55 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl sm:rounded-3xl border border-stone-200/60 w-full max-w-3xl max-h-[90vh] shadow-2xl flex flex-col modal-panel-ats">
             {/* Header */}
-            <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200 bg-gray-50/80 flex-shrink-0">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-stone-100 flex-shrink-0">
               <div className="flex items-center gap-3 flex-1">
-                <div className="w-9 h-9 rounded-lg bg-indigo-100 flex items-center justify-center">
-                  <Mail className="text-indigo-600" size={18} />
+                <div className="w-9 h-9 rounded-xl bg-brand-100 flex items-center justify-center">
+                  <Mail className="text-brand-600" size={18} />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-gray-900">
-                    {bulkEmailRecipients.length > 0 ? `📧 Bulk Email (${bulkEmailRecipients.length} recipients)` : 'Send Email'}
+                  <h2 className="text-base font-bold text-stone-900 tracking-tight">
+                    {bulkEmailRecipients.length > 0 ? `Bulk Email (${bulkEmailRecipients.length} recipients)` : 'Send Email'}
                   </h2>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-stone-500">
                     {bulkEmailRecipients.length > 0 
                       ? `To: ${bulkEmailRecipients.map(c => c.name).join(', ')}`
                       : `To: ${emailRecipient.name} (${emailRecipient.email})`
@@ -3375,8 +3407,8 @@ const handleAddCandidate = async (e) => {
                 setShowEmailModal(false);
                 setBulkEmailRecipients([]);
                 setSelectedIds([]);
-              }} className="p-2 hover:bg-gray-200 rounded-lg transition">
-                <X size={18} className="text-gray-500" />
+              }} className="p-2 hover:bg-stone-200 rounded-lg transition">
+                <X size={18} className="text-stone-500" />
               </button>
             </div>
 
@@ -3385,36 +3417,36 @@ const handleAddCandidate = async (e) => {
 
                 {/* Channel Selector */}
                 <div className="flex items-center gap-3">
-                  <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+                  <div className="flex gap-1 p-1 bg-stone-100 rounded-lg">
                     <button
                       onClick={() => setEmailChannel('transactional')}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${emailChannel === 'transactional' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${emailChannel === 'transactional' ? 'bg-brand-600 text-white shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
                     >
                       <Mail size={12} /> Transactional
                     </button>
                     <button
                       onClick={() => setEmailChannel('marketing')}
                       disabled={!channelsAvailable.marketing}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${emailChannel === 'marketing' ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'} ${!channelsAvailable.marketing ? 'opacity-40 cursor-not-allowed' : ''}`}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${emailChannel === 'marketing' ? 'bg-purple-600 text-white shadow-sm' : 'text-stone-500 hover:text-stone-700'} ${!channelsAvailable.marketing ? 'opacity-40 cursor-not-allowed' : ''}`}
                       title={!channelsAvailable.marketing ? 'Zoho Campaigns not configured' : 'Send via Zoho Campaigns (marketing)'}
                     >
                       <Megaphone size={12} /> Marketing
                     </button>
                   </div>
-                  <span className="text-[10px] text-gray-400">
+                  <span className="text-[10px] text-stone-400">
                     via {emailChannel === 'marketing' ? 'Zoho Campaigns' : 'ZeptoMail'}
                   </span>
                 </div>
 
                 {/* Mode Toggle */}
-                <div className="flex gap-2 p-1 bg-gray-100 rounded-lg w-fit">
+                <div className="flex gap-2 p-1 bg-stone-100 rounded-lg w-fit">
                   <button
                     onClick={() => { setEmailMode('template'); setSelectedTemplate(null); }}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${emailMode === 'template' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${emailMode === 'template' ? 'bg-white shadow-sm text-stone-900' : 'text-stone-500 hover:text-stone-700'}`}
                   >Use Template</button>
                   <button
                     onClick={() => setEmailMode('quick')}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${emailMode === 'quick' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${emailMode === 'quick' ? 'bg-white shadow-sm text-stone-900' : 'text-stone-500 hover:text-stone-700'}`}
                   >Quick Send</button>
                 </div>
 
@@ -3422,14 +3454,14 @@ const handleAddCandidate = async (e) => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" onClick={e => e.stopPropagation()}>
                   {/* CC Field */}
                   <div className="relative">
-                    <label className="block text-[10px] font-semibold text-gray-500 mb-1">CC (Optional)</label>
-                    <div className="min-h-[38px] flex flex-wrap items-center gap-1 px-2 py-1.5 border border-gray-200 rounded-lg focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 bg-white cursor-text"
+                    <label className="block text-[10px] font-semibold text-stone-500 mb-1">CC (Optional)</label>
+                    <div className="min-h-[38px] flex flex-wrap items-center gap-1 px-2 py-1.5 border border-stone-200 rounded-lg focus-within:ring-2 focus-within:ring-brand-500 focus-within:border-brand-500 bg-white cursor-text"
                       onClick={() => document.getElementById('cc-input')?.focus()}>
                       {emailCC.map((email, i) => (
-                        <span key={i} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 pl-2 pr-1 py-0.5 rounded-md text-[11px] font-medium max-w-[180px]">
+                        <span key={i} className="inline-flex items-center gap-1 bg-brand-50 text-brand-700 pl-2 pr-1 py-0.5 rounded-md text-[11px] font-medium max-w-[180px]">
                           <span className="truncate">{teamMembers.find(m => m.email === email)?.name || email}</span>
                           <button type="button" onClick={(e) => { e.stopPropagation(); setEmailCC(prev => prev.filter((_, idx) => idx !== i)); }}
-                            className="hover:bg-indigo-200 rounded p-0.5 flex-shrink-0"><X size={10} /></button>
+                            className="hover:bg-brand-200 rounded p-0.5 flex-shrink-0"><X size={10} /></button>
                         </span>
                       ))}
                       <input id="cc-input" type="text" value={ccInput}
@@ -3459,19 +3491,19 @@ const handleAddCandidate = async (e) => {
                         (q === '' || m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q))
                       );
                       return filtered.length > 0 ? (
-                        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-36 overflow-y-auto">
+                        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-stone-200 rounded-lg shadow-xl max-h-36 overflow-y-auto">
                           {filtered.map(m => (
                             <button key={m._id} type="button"
                               onMouseDown={(e) => { e.preventDefault(); setEmailCC(prev => [...prev, m.email]); setCcInput(''); setShowCCPicker(false); }}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-indigo-50 transition-colors">
-                              <div className="w-6 h-6 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                <span className="text-[9px] font-bold text-indigo-700">{m.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</span>
+                              className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-brand-50 transition-colors">
+                              <div className="w-6 h-6 bg-brand-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <span className="text-[9px] font-bold text-brand-700">{m.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</span>
                               </div>
                               <div className="min-w-0 flex-1">
-                                <p className="text-xs font-medium text-gray-800 truncate">{m.name}</p>
-                                <p className="text-[10px] text-gray-400 truncate">{m.email}</p>
+                                <p className="text-xs font-medium text-stone-800 truncate">{m.name}</p>
+                                <p className="text-[10px] text-stone-400 truncate">{m.email}</p>
                               </div>
-                              {m.role && m.role !== 'Team Member' && <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{m.role}</span>}
+                              {m.role && m.role !== 'Team Member' && <span className="text-[9px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded">{m.role}</span>}
                             </button>
                           ))}
                         </div>
@@ -3481,8 +3513,8 @@ const handleAddCandidate = async (e) => {
 
                   {/* BCC Field */}
                   <div className="relative">
-                    <label className="block text-[10px] font-semibold text-gray-500 mb-1">BCC (Optional)</label>
-                    <div className="min-h-[38px] flex flex-wrap items-center gap-1 px-2 py-1.5 border border-gray-200 rounded-lg focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 bg-white cursor-text"
+                    <label className="block text-[10px] font-semibold text-stone-500 mb-1">BCC (Optional)</label>
+                    <div className="min-h-[38px] flex flex-wrap items-center gap-1 px-2 py-1.5 border border-stone-200 rounded-lg focus-within:ring-2 focus-within:ring-brand-500 focus-within:border-brand-500 bg-white cursor-text"
                       onClick={() => document.getElementById('bcc-input')?.focus()}>
                       {emailBCC.map((email, i) => (
                         <span key={i} className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 pl-2 pr-1 py-0.5 rounded-md text-[11px] font-medium max-w-[180px]">
@@ -3518,7 +3550,7 @@ const handleAddCandidate = async (e) => {
                         (q === '' || m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q))
                       );
                       return filtered.length > 0 ? (
-                        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-36 overflow-y-auto">
+                        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-stone-200 rounded-lg shadow-xl max-h-36 overflow-y-auto">
                           {filtered.map(m => (
                             <button key={m._id} type="button"
                               onMouseDown={(e) => { e.preventDefault(); setEmailBCC(prev => [...prev, m.email]); setBccInput(''); setShowBCCPicker(false); }}
@@ -3527,10 +3559,10 @@ const handleAddCandidate = async (e) => {
                                 <span className="text-[9px] font-bold text-amber-700">{m.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</span>
                               </div>
                               <div className="min-w-0 flex-1">
-                                <p className="text-xs font-medium text-gray-800 truncate">{m.name}</p>
-                                <p className="text-[10px] text-gray-400 truncate">{m.email}</p>
+                                <p className="text-xs font-medium text-stone-800 truncate">{m.name}</p>
+                                <p className="text-[10px] text-stone-400 truncate">{m.email}</p>
                               </div>
-                              {m.role && m.role !== 'Team Member' && <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{m.role}</span>}
+                              {m.role && m.role !== 'Team Member' && <span className="text-[9px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded">{m.role}</span>}
                             </button>
                           ))}
                         </div>
@@ -3545,17 +3577,17 @@ const handleAddCandidate = async (e) => {
                     {/* Template Selection */}
                     {!selectedTemplate ? (
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Choose a Template</label>
+                        <label className="block text-xs font-semibold text-stone-600 mb-2">Choose a Template</label>
                         {emailTemplates.length === 0 ? (
-                          <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
-                            <Mail size={24} className="text-gray-300 mx-auto mb-2" />
-                            <p className="text-xs text-gray-500">Loading templates...</p>
+                          <div className="text-center py-8 bg-stone-50 rounded-lg border border-stone-200">
+                            <Mail size={24} className="text-stone-300 mx-auto mb-2" />
+                            <p className="text-xs text-stone-500">Loading templates...</p>
                           </div>
                         ) : (
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto">
                             {emailTemplates.map(t => {
                               const catColors = {
-                                hiring: 'border-indigo-200 bg-indigo-50/50', interview: 'border-cyan-200 bg-cyan-50/50',
+                                hiring: 'border-brand-200 bg-brand-50/50', interview: 'border-cyan-200 bg-cyan-50/50',
                                 rejection: 'border-red-200 bg-red-50/50', onboarding: 'border-green-200 bg-green-50/50',
                                 document: 'border-amber-200 bg-amber-50/50', custom: 'border-purple-200 bg-purple-50/50'
                               };
@@ -3568,9 +3600,9 @@ const handleAddCandidate = async (e) => {
                                 >
                                   <div className="flex items-center gap-2 mb-1">
                                     <span className="text-sm">{catIcons[t.category] || '✏️'}</span>
-                                    <h4 className="text-xs font-bold text-gray-900 truncate">{t.name}</h4>
+                                    <h4 className="text-xs font-bold text-stone-900 truncate">{t.name}</h4>
                                   </div>
-                                  <p className="text-[10px] text-gray-500 line-clamp-2">{t.subject}</p>
+                                  <p className="text-[10px] text-stone-500 line-clamp-2">{t.subject}</p>
                                 </button>
                               );
                             })}
@@ -3580,12 +3612,12 @@ const handleAddCandidate = async (e) => {
                     ) : (
                       <>
                         {/* Selected template header */}
-                        <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2.5">
+                        <div className="flex items-center justify-between bg-brand-50 border border-brand-200 rounded-lg px-4 py-2.5">
                           <div>
-                            <p className="text-xs font-bold text-indigo-700">{selectedTemplate.name}</p>
-                            <p className="text-[10px] text-indigo-500">{selectedTemplate.subject}</p>
+                            <p className="text-xs font-bold text-brand-700">{selectedTemplate.name}</p>
+                            <p className="text-[10px] text-brand-500">{selectedTemplate.subject}</p>
                           </div>
-                          <button onClick={() => setSelectedTemplate(null)} className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 px-2 py-1 hover:bg-indigo-100 rounded">
+                          <button onClick={() => setSelectedTemplate(null)} className="text-[10px] font-semibold text-brand-600 hover:text-brand-800 px-2 py-1 hover:bg-brand-100 rounded">
                             Change
                           </button>
                         </div>
@@ -3593,7 +3625,7 @@ const handleAddCandidate = async (e) => {
                         {/* Variable Inputs */}
                         {selectedTemplate.variables && selectedTemplate.variables.length > 0 && (
                           <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-2">Fill Template Details</label>
+                            <label className="block text-xs font-semibold text-stone-600 mb-2">Fill Template Details</label>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               {selectedTemplate.variables.map(v => {
                                 const labels = {
@@ -3603,7 +3635,7 @@ const handleAddCandidate = async (e) => {
                                 };
                                 return (
                                   <div key={v}>
-                                    <label className="block text-[10px] font-semibold text-gray-500 mb-1">{labels[v] || v}</label>
+                                    <label className="block text-[10px] font-semibold text-stone-500 mb-1">{labels[v] || v}</label>
                                     {v === 'time' ? (
                                       <select
                                         value={(() => { const t = templateVars[v]; if (!t) return ''; const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i); if (!m) return ''; let h = parseInt(m[1]); const ampm = m[3].toUpperCase(); if (ampm === 'PM' && h !== 12) h += 12; if (ampm === 'AM' && h === 12) h = 0; return `${String(h).padStart(2,'0')}:${m[2]}`; })()}
@@ -3619,7 +3651,7 @@ const handleAddCandidate = async (e) => {
                                             setTemplateVars(prev => ({ ...prev, [v]: '' }));
                                           }
                                         }}
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
+                                        className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none bg-white"
                                       >
                                         <option value="">Select time</option>
                                         {Array.from({ length: 48 }, (_, i) => { const h = Math.floor(i / 2); const m = i % 2 === 0 ? '00' : '30'; const ampm = h >= 12 ? 'PM' : 'AM'; const h12 = h % 12 || 12; return <option key={i} value={`${String(h).padStart(2,'0')}:${m}`}>{`${h12}:${m} ${ampm}`}</option>; })}
@@ -3630,7 +3662,7 @@ const handleAddCandidate = async (e) => {
                                         value={templateVars[v] || ''}
                                         onChange={(e) => setTemplateVars(prev => ({ ...prev, [v]: e.target.value }))}
                                         placeholder={labels[v] || v}
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                        className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
                                       />
                                     )}
                                   </div>
@@ -3642,9 +3674,9 @@ const handleAddCandidate = async (e) => {
 
                         {/* Live Preview */}
                         <div>
-                          <label className="block text-xs font-semibold text-gray-600 mb-2">Email Preview</label>
-                          <div className="border border-gray-200 rounded-xl overflow-hidden">
-                            <div className="bg-indigo-600 px-4 py-2.5">
+                          <label className="block text-xs font-semibold text-stone-600 mb-2">Email Preview</label>
+                          <div className="border border-stone-200 rounded-xl overflow-hidden">
+                            <div className="bg-brand-600 px-4 py-2.5">
                               <p className="text-white text-xs font-semibold">
                                 {(() => {
                                   let subj = selectedTemplate.subject;
@@ -3654,7 +3686,7 @@ const handleAddCandidate = async (e) => {
                               </p>
                             </div>
                             <div className="p-4 bg-white max-h-48 overflow-y-auto">
-                              <div className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">
+                              <div className="text-xs text-stone-700 leading-relaxed whitespace-pre-line">
                                 {(() => {
                                   let body = selectedTemplate.body;
                                   Object.entries(templateVars).forEach(([k, v]) => { body = body.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v || `{{${k}}}`); });
@@ -3662,8 +3694,8 @@ const handleAddCandidate = async (e) => {
                                 })()}
                               </div>
                             </div>
-                            <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 text-center">
-                              <p className="text-[9px] text-gray-400">Sent via SkillNix PCHR</p>
+                            <div className="px-4 py-2 bg-stone-50 border-t border-stone-100 text-center">
+                              <p className="text-[9px] text-stone-400">Sent via SkillNix PCHR</p>
                             </div>
                           </div>
                         </div>
@@ -3677,11 +3709,11 @@ const handleAddCandidate = async (e) => {
                   <>
                     {/* Email Type */}
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">Email Type</label>
+                      <label className="block text-xs font-semibold text-stone-600 mb-1.5">Email Type</label>
                       <select
                         value={emailType}
                         onChange={(e) => { setEmailType(e.target.value); setShowQuickPreview(false); }}
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
+                        className="w-full px-3 py-2.5 border border-stone-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none bg-white"
                       >
                         <option value="interview">📞 Interview Invitation</option>
                         <option value="rejection">❌ Rejection Letter</option>
@@ -3694,23 +3726,23 @@ const handleAddCandidate = async (e) => {
                     {/* Editable Candidate Fields */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[10px] font-semibold text-gray-500 mb-1">Candidate Name</label>
+                        <label className="block text-[10px] font-semibold text-stone-500 mb-1">Candidate Name</label>
                         <input
                           type="text"
                           value={quickName}
                           onChange={(e) => { setQuickName(e.target.value); setShowQuickPreview(false); }}
                           placeholder="Candidate name"
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                          className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-semibold text-gray-500 mb-1">Position / Role</label>
+                        <label className="block text-[10px] font-semibold text-stone-500 mb-1">Position / Role</label>
                         <input
                           type="text"
                           value={quickPosition}
                           onChange={(e) => { setQuickPosition(e.target.value); setShowQuickPreview(false); }}
                           placeholder="Position applied for"
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                          className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
                         />
                       </div>
                     </div>
@@ -3719,22 +3751,22 @@ const handleAddCandidate = async (e) => {
                     {emailType === 'onboarding' && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-[10px] font-semibold text-gray-500 mb-1">Department</label>
+                          <label className="block text-[10px] font-semibold text-stone-500 mb-1">Department</label>
                           <input
                             type="text"
                             value={quickDepartment}
                             onChange={(e) => { setQuickDepartment(e.target.value); setShowQuickPreview(false); }}
                             placeholder="e.g. Engineering, HR, Sales"
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                            className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-semibold text-gray-500 mb-1">Joining Date</label>
+                          <label className="block text-[10px] font-semibold text-stone-500 mb-1">Joining Date</label>
                           <input
                             type="date"
                             value={quickJoiningDate}
                             onChange={(e) => { setQuickJoiningDate(e.target.value); setShowQuickPreview(false); }}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                            className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
                           />
                         </div>
                       </div>
@@ -3743,13 +3775,13 @@ const handleAddCandidate = async (e) => {
                     {/* Custom Message */}
                     {emailType === 'custom' && (
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Custom Message</label>
+                        <label className="block text-xs font-semibold text-stone-600 mb-1.5">Custom Message</label>
                         <textarea
                           value={customMessage}
                           onChange={(e) => { setCustomMessage(e.target.value); setShowQuickPreview(false); }}
                           placeholder="Enter your custom message here..."
                           rows={4}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none"
+                          className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none resize-none"
                         />
                       </div>
                     )}
@@ -3793,11 +3825,11 @@ const handleAddCandidate = async (e) => {
                           }
                         }}
                         className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg border transition-all
-                          ${showQuickPreview ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'}"
+                          ${showQuickPreview ? 'bg-brand-50 border-brand-300 text-brand-700' : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'}"
                         disabled={loadingPreview}
                       >
                         {loadingPreview ? (
-                          <><div className="animate-spin h-3.5 w-3.5 border-2 border-indigo-500 border-t-transparent rounded-full" /> Generating...</>
+                          <><div className="animate-spin h-3.5 w-3.5 border-2 border-brand-500 border-t-transparent rounded-full" /> Generating...</>
                         ) : (
                           <><Eye size={14} /> {showQuickPreview ? 'Hide Preview' : 'Preview Email'}</>
                         )}
@@ -3806,8 +3838,8 @@ const handleAddCandidate = async (e) => {
 
                     {/* Live Preview Panel */}
                     {showQuickPreview && quickPreviewHtml && (
-                      <div className="border border-gray-200 rounded-xl overflow-hidden">
-                        <div className="bg-indigo-600 px-4 py-2.5 flex items-center justify-between">
+                      <div className="border border-stone-200 rounded-xl overflow-hidden">
+                        <div className="bg-brand-600 px-4 py-2.5 flex items-center justify-between">
                           <p className="text-white text-xs font-semibold">{quickPreviewSubject}</p>
                           <span className="text-[9px] bg-white/20 text-white px-2 py-0.5 rounded-full">Preview</span>
                         </div>
@@ -3820,9 +3852,9 @@ const handleAddCandidate = async (e) => {
                             sandbox=""
                           />
                         </div>
-                        <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-                          <p className="text-[9px] text-gray-400">Sent via SkillNix PCHR</p>
-                          <p className="text-[9px] text-gray-400">To: {emailRecipient?.email}</p>
+                        <div className="px-4 py-2 bg-stone-50 border-t border-stone-100 flex items-center justify-between">
+                          <p className="text-[9px] text-stone-400">Sent via SkillNix PCHR</p>
+                          <p className="text-[9px] text-stone-400">To: {emailRecipient?.email}</p>
                         </div>
                       </div>
                     )}
@@ -3832,11 +3864,11 @@ const handleAddCandidate = async (e) => {
             </div>
 
             {/* Action Buttons */}
-            <div className="flex gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50/80 flex-shrink-0">
+            <div className="flex gap-3 px-6 py-4 border-t border-stone-100 bg-stone-50/80 flex-shrink-0">
               <button
                 type="button"
                 onClick={() => setShowEmailModal(false)}
-                className="flex-1 py-2.5 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition text-sm"
+                className="btn-secondary flex-1 justify-center"
                 disabled={isSendingEmail}
               >
                 Cancel
@@ -3845,7 +3877,7 @@ const handleAddCandidate = async (e) => {
                 type="button"
                 onClick={emailMode === 'template' ? sendTemplateEmail : sendSingleEmail}
                 disabled={isSendingEmail || (emailMode === 'template' && !selectedTemplate) || (emailMode === 'quick' && emailType === 'custom' && !customMessage.trim())}
-                className="flex-1 py-2.5 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                className="btn-primary flex-1 justify-center disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSendingEmail ? (
                   <>
@@ -3866,20 +3898,20 @@ const handleAddCandidate = async (e) => {
       
       {/* ===================== DUPLICATES MODAL ===================== */}
       {showDuplicatesModal && duplicateRecords.length > 0 && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm overflow-y-auto">
+        <div className="fixed inset-0 bg-stone-900/55 backdrop-blur-sm flex items-center justify-center z-50 p-4 backdrop-blur-sm overflow-y-auto">
           <div className="bg-white rounded-2xl w-full max-w-6xl p-8 shadow-2xl my-8">
             <div className="flex justify-between items-center mb-6 sticky top-0 bg-white z-10">
-              <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-stone-800 flex items-center gap-2">
                 <AlertCircle className="text-red-600" size={28} />
                 Duplicate Records ({duplicateRecords.length})
               </h2>
-              <button onClick={() => setShowDuplicatesModal(false)} className="p-2 hover:bg-gray-100 rounded-lg transition">
+              <button onClick={() => setShowDuplicatesModal(false)} className="p-2 hover:bg-stone-100 rounded-lg transition">
                 <X size={24} />
               </button>
             </div>
 
             <div className="space-y-2">
-              <p className="text-sm text-gray-600 mb-4">These records were detected as duplicates and were not imported:</p>
+              <p className="text-sm text-stone-600 mb-4">These records were detected as duplicates and were not imported:</p>
               
               {/* Duplicates Table */}
               <div className="overflow-x-auto border-2 border-red-200 rounded-lg">
@@ -3898,12 +3930,12 @@ const handleAddCandidate = async (e) => {
                   <tbody>
                     {duplicateRecords.map((record, idx) => (
                       <tr key={idx} className="border-b border-red-100 hover:bg-red-50 transition">
-                        <td className="px-4 py-3 font-semibold text-gray-700">{record.row}</td>
-                        <td className="px-4 py-3 text-gray-700">{record.name}</td>
-                        <td className="px-4 py-3 text-gray-700 font-mono text-xs">{record.email}</td>
-                        <td className="px-4 py-3 text-gray-700 font-mono text-xs">{record.contact}</td>
-                        <td className="px-4 py-3 text-gray-700">{record.position}</td>
-                        <td className="px-4 py-3 text-gray-700">{record.company}</td>
+                        <td className="px-4 py-3 font-semibold text-stone-700">{record.row}</td>
+                        <td className="px-4 py-3 text-stone-700">{record.name}</td>
+                        <td className="px-4 py-3 text-stone-700 font-mono text-xs">{record.email}</td>
+                        <td className="px-4 py-3 text-stone-700 font-mono text-xs">{record.contact}</td>
+                        <td className="px-4 py-3 text-stone-700">{record.position}</td>
+                        <td className="px-4 py-3 text-stone-700">{record.company}</td>
                         <td className="px-4 py-3">
                           <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap">
                             🔄 {record.reason}
@@ -3929,7 +3961,7 @@ const handleAddCandidate = async (e) => {
                 <button
                   type="button"
                   onClick={() => setShowDuplicatesModal(false)}
-                  className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition"
+                  className="flex-1 py-3 bg-stone-100 text-stone-700 font-bold rounded-xl hover:bg-stone-200 transition"
                 >
                   Close
                 </button>
@@ -3945,7 +3977,7 @@ const handleAddCandidate = async (e) => {
                     navigator.clipboard.writeText(csv);
                     toast.success('Duplicates copied to clipboard as CSV');
                   }}
-                  className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg transition"
+                  className="flex-1 py-3 bg-brand-600 text-white font-bold rounded-xl hover:bg-brand-700 shadow-lg transition"
                 >
                   📋 Copy as CSV
                 </button>
@@ -3957,20 +3989,20 @@ const handleAddCandidate = async (e) => {
 
       {/* ===================== CORRECTIONS MODAL (Field Misalignment Fixes) ===================== */}
       {showCorrectionsModal && correctionRecords.length > 0 && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm overflow-y-auto">
+        <div className="fixed inset-0 bg-stone-900/55 backdrop-blur-sm flex items-center justify-center z-50 p-4 backdrop-blur-sm overflow-y-auto">
           <div className="bg-white rounded-2xl w-full max-w-6xl p-8 shadow-2xl my-8">
             <div className="flex justify-between items-center mb-6 sticky top-0 bg-white z-10">
-              <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-stone-800 flex items-center gap-2">
                 <RefreshCw className="text-green-600" size={28} />
                 Field Corrections ({correctionRecords.length})
               </h2>
-              <button onClick={() => setShowCorrectionsModal(false)} className="p-2 hover:bg-gray-100 rounded-lg transition">
+              <button onClick={() => setShowCorrectionsModal(false)} className="p-2 hover:bg-stone-100 rounded-lg transition">
                 <X size={24} />
               </button>
             </div>
 
             <div className="space-y-2">
-              <p className="text-sm text-gray-600 mb-4">🎯 These records had misaligned fields (e.g., email in wrong column) that were automatically corrected:</p>
+              <p className="text-sm text-stone-600 mb-4">🎯 These records had misaligned fields (e.g., email in wrong column) that were automatically corrected:</p>
               
               {/* Corrections Table */}
               <div className="overflow-x-auto border-2 border-green-200 rounded-lg">
@@ -3987,10 +4019,10 @@ const handleAddCandidate = async (e) => {
                   <tbody>
                     {correctionRecords.map((record, idx) => (
                       <tr key={idx} className="border-b border-green-100 hover:bg-green-50 transition">
-                        <td className="px-4 py-3 font-semibold text-gray-700">{record.row}</td>
-                        <td className="px-4 py-3 text-gray-700">{record.name}</td>
-                        <td className="px-4 py-3 text-gray-700 font-mono text-xs bg-green-50 p-2 rounded">{record.email}</td>
-                        <td className="px-4 py-3 text-gray-700 font-mono text-xs bg-green-50 p-2 rounded">{record.contact}</td>
+                        <td className="px-4 py-3 font-semibold text-stone-700">{record.row}</td>
+                        <td className="px-4 py-3 text-stone-700">{record.name}</td>
+                        <td className="px-4 py-3 text-stone-700 font-mono text-xs bg-green-50 p-2 rounded">{record.email}</td>
+                        <td className="px-4 py-3 text-stone-700 font-mono text-xs bg-green-50 p-2 rounded">{record.contact}</td>
                         <td className="px-4 py-3">
                           <div className="space-y-1">
                             {record.corrections.map((correction, cIdx) => (
@@ -4022,7 +4054,7 @@ const handleAddCandidate = async (e) => {
                 <button
                   type="button"
                   onClick={() => setShowCorrectionsModal(false)}
-                  className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition"
+                  className="flex-1 py-3 bg-stone-100 text-stone-700 font-bold rounded-xl hover:bg-stone-200 transition"
                 >
                   Close
                 </button>
@@ -4057,14 +4089,14 @@ const handleAddCandidate = async (e) => {
             {bulkEmailStep === 'select' && (
               <div>
                 {/* Header */}
-                <div className="px-6 py-5 border-b border-gray-200 flex items-center justify-between">
+                <div className="px-6 py-5 border-b border-stone-200 flex items-center justify-between">
                   <div>
-                    <h2 className="text-xl font-bold text-gray-900">Bulk Email Manager</h2>
-                    <p className="text-sm text-gray-500 mt-0.5">Send professional emails to multiple candidates</p>
+                    <h2 className="text-xl font-bold text-stone-900">Bulk Email Manager</h2>
+                    <p className="text-sm text-stone-500 mt-0.5">Send professional emails to multiple candidates</p>
                   </div>
                   <button 
                     onClick={closeBulkEmailFlow}
-                    className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-500 hover:text-gray-700"
+                    className="p-2 hover:bg-stone-100 rounded-lg transition text-stone-500 hover:text-stone-700"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -4075,7 +4107,7 @@ const handleAddCandidate = async (e) => {
                 <div className="p-6">
                   {/* Email Type Selection */}
                   <div className="mb-6">
-                    <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-stone-900 mb-4 flex items-center gap-2">
                       Step 1: Select Email Type
                     </h3>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -4089,8 +4121,8 @@ const handleAddCandidate = async (e) => {
                       ].map((opt) => (
                         <label key={opt.value} className={`relative p-4 border-2 rounded-xl cursor-pointer transition-all ${
                           emailType === opt.value
-                            ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-500'
-                            : 'border-gray-200 bg-white hover:border-gray-300'
+                            ? 'border-brand-500 bg-brand-50 ring-2 ring-brand-500'
+                            : 'border-stone-200 bg-white hover:border-stone-300'
                         }`}>
                           <input
                             type="radio"
@@ -4102,12 +4134,12 @@ const handleAddCandidate = async (e) => {
                           />
                           <div className="text-center">
                             <div className="text-2xl mb-1.5">{opt.icon}</div>
-                            <div className={`text-sm font-semibold ${emailType === opt.value ? 'text-indigo-700' : 'text-gray-700'}`}>
+                            <div className={`text-sm font-semibold ${emailType === opt.value ? 'text-brand-700' : 'text-stone-700'}`}>
                               {opt.label}
                             </div>
                           </div>
                           {emailType === opt.value && (
-                            <div className="absolute top-2 right-2 bg-indigo-600 text-white rounded-full w-5 h-5 flex items-center justify-center">
+                            <div className="absolute top-2 right-2 bg-brand-600 text-white rounded-full w-5 h-5 flex items-center justify-center">
                               <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                               </svg>
@@ -4120,64 +4152,64 @@ const handleAddCandidate = async (e) => {
 
                   {/* Summary Stats */}
                   <div className="grid grid-cols-3 gap-4 mb-6">
-                    <div className="bg-white border border-gray-200 rounded-xl p-4">
-                      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Total Candidates</div>
-                      <div className="text-2xl font-bold text-gray-900">
+                    <div className="bg-white border border-stone-200 rounded-xl p-4">
+                      <div className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-1">Total Candidates</div>
+                      <div className="text-2xl font-bold text-stone-900">
                         {candidates.filter(c => selectedIds.includes(c._id) && c.email).length}
                       </div>
                     </div>
-                    <div className="bg-white border border-gray-200 rounded-xl p-4">
-                      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Valid Emails</div>
-                      <div className="text-2xl font-bold text-gray-900">
+                    <div className="bg-white border border-stone-200 rounded-xl p-4">
+                      <div className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-1">Valid Emails</div>
+                      <div className="text-2xl font-bold text-stone-900">
                         {candidates.filter(c => selectedIds.includes(c._id) && c.email && c.email.includes('@')).length}
                       </div>
                     </div>
-                    <div className="bg-white border border-gray-200 rounded-xl p-4">
-                      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Selected</div>
-                      <div className="text-2xl font-bold text-indigo-600">{selectedEmails.size}</div>
+                    <div className="bg-white border border-stone-200 rounded-xl p-4">
+                      <div className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-1">Selected</div>
+                      <div className="text-2xl font-bold text-brand-600">{selectedEmails.size}</div>
                     </div>
                   </div>
 
                   {/* Candidate Selection Table */}
                   <div className="mb-6">
-                    <h3 className="text-sm font-bold text-gray-900 mb-4">
+                    <h3 className="text-sm font-bold text-stone-900 mb-4">
                       Step 2: Select Recipients
                     </h3>
-                    <div className="border border-gray-200 rounded-xl overflow-hidden">
+                    <div className="border border-stone-200 rounded-xl overflow-hidden">
                       <div className="max-h-80 overflow-y-auto">
                         <table className="w-full">
-                          <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
+                          <thead className="bg-stone-50 border-b border-stone-200 sticky top-0 z-10">
                             <tr>
                               <th className="px-4 py-3 text-center w-12">
                                 <input 
                                   type="checkbox" 
                                   checked={selectedEmails.size === candidates.filter(c => selectedIds.includes(c._id) && c.email).length && selectedEmails.size > 0}
                                   onChange={selectAllEmails}
-                                  className="w-4 h-4 cursor-pointer accent-indigo-600"
+                                  className="w-4 h-4 cursor-pointer accent-brand-600"
                                 />
                               </th>
-                              <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Name</th>
-                              <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Email</th>
-                              <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Position</th>
-                              <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                              <th className="px-4 py-3 text-left text-[11px] font-bold text-stone-500 uppercase tracking-wider">Name</th>
+                              <th className="px-4 py-3 text-left text-[11px] font-bold text-stone-500 uppercase tracking-wider">Email</th>
+                              <th className="px-4 py-3 text-left text-[11px] font-bold text-stone-500 uppercase tracking-wider">Position</th>
+                              <th className="px-4 py-3 text-left text-[11px] font-bold text-stone-500 uppercase tracking-wider">Status</th>
                             </tr>
                           </thead>
                           <tbody>
                             {candidates
                               .filter(c => selectedIds.includes(c._id) && c.email)
                               .map((candidate) => (
-                                <tr key={candidate._id} className="border-b border-gray-100 hover:bg-gray-50/60 transition">
+                                <tr key={candidate._id} className="border-b border-stone-100 hover:bg-stone-50/60 transition">
                                   <td className="px-4 py-3 text-center">
                                     <input 
                                       type="checkbox" 
                                       checked={selectedEmails.has(candidate.email)}
                                       onChange={() => toggleEmailSelection(candidate.email)}
-                                      className="w-4 h-4 cursor-pointer accent-indigo-600"
+                                      className="w-4 h-4 cursor-pointer accent-brand-600"
                                     />
                                   </td>
-                                  <td className="px-4 py-3 text-sm font-semibold text-gray-900">{candidate.name}</td>
-                                  <td className="px-4 py-3 text-sm text-gray-600">{candidate.email}</td>
-                                  <td className="px-4 py-3 text-sm text-gray-600">{candidate.position || '—'}</td>
+                                  <td className="px-4 py-3 text-sm font-semibold text-stone-900">{candidate.name}</td>
+                                  <td className="px-4 py-3 text-sm text-stone-600">{candidate.email}</td>
+                                  <td className="px-4 py-3 text-sm text-stone-600">{candidate.position || '—'}</td>
                                   <td className="px-4 py-3">
                                     <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
                                       candidate.status === 'Hired' || candidate.status === 'Joined' ? 'bg-green-100 text-green-700' :
@@ -4206,10 +4238,10 @@ const handleAddCandidate = async (e) => {
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex justify-between items-center pt-5 border-t border-gray-200">
+                  <div className="flex justify-between items-center pt-5 border-t border-stone-200">
                     <button 
                       onClick={closeBulkEmailFlow}
-                      className="px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition text-sm font-medium"
+                      className="px-4 py-2.5 bg-white border border-stone-200 text-stone-700 rounded-lg hover:bg-stone-50 transition text-sm font-medium"
                     >
                       Cancel
                     </button>
@@ -4218,8 +4250,8 @@ const handleAddCandidate = async (e) => {
                       disabled={selectedEmails.size === 0}
                       className={`flex items-center gap-2 px-5 py-2.5 rounded-lg transition text-sm font-semibold ${
                         selectedEmails.size === 0 
-                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                          : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                          ? 'bg-stone-100 text-stone-400 cursor-not-allowed' 
+                          : 'bg-brand-600 text-white hover:bg-brand-700'
                       }`}
                     >
                       Next: Confirm
@@ -4236,14 +4268,14 @@ const handleAddCandidate = async (e) => {
             {bulkEmailStep === 'confirm' && (
               <div>
                 {/* Header */}
-                <div className="px-6 py-5 border-b border-gray-200 flex items-center justify-between">
+                <div className="px-6 py-5 border-b border-stone-200 flex items-center justify-between">
                   <div>
-                    <h2 className="text-xl font-bold text-gray-900">Confirm Sending</h2>
-                    <p className="text-sm text-gray-500 mt-0.5">Review your campaign before sending</p>
+                    <h2 className="text-xl font-bold text-stone-900">Confirm Sending</h2>
+                    <p className="text-sm text-stone-500 mt-0.5">Review your campaign before sending</p>
                   </div>
                   <button 
                     onClick={closeBulkEmailFlow}
-                    className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-500 hover:text-gray-700"
+                    className="p-2 hover:bg-stone-100 rounded-lg transition text-stone-500 hover:text-stone-700"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -4253,16 +4285,16 @@ const handleAddCandidate = async (e) => {
 
                 <div className="p-6">
                   {/* Campaign Summary */}
-                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 mb-6">
+                  <div className="bg-stone-50 border border-stone-200 rounded-xl p-6 mb-6">
                     <div className="text-center mb-5">
-                      <p className="text-lg font-bold text-gray-900">
-                        Ready to send <span className="text-indigo-600">{selectedEmails.size}</span> emails
+                      <p className="text-lg font-bold text-stone-900">
+                        Ready to send <span className="text-brand-600">{selectedEmails.size}</span> emails
                       </p>
                     </div>
 
                     <div className="flex items-center justify-center gap-2 mb-5">
-                      <span className="text-sm text-gray-500">Email Type:</span>
-                      <span className="inline-flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold">
+                      <span className="text-sm text-stone-500">Email Type:</span>
+                      <span className="inline-flex items-center gap-1.5 bg-brand-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold">
                         {emailType === 'interview' ? '📞 Interview Call' :
                          emailType === 'offer' ? '💼 Offer Letter' :
                          emailType === 'rejection' ? '❌ Rejection' :
@@ -4273,32 +4305,32 @@ const handleAddCandidate = async (e) => {
                     </div>
 
                     <div className="grid grid-cols-3 gap-4">
-                      <div className="bg-white border border-gray-200 rounded-xl p-4 text-center">
-                        <div className="text-xs text-gray-500 font-semibold uppercase mb-1">Processing</div>
-                        <div className="text-sm font-bold text-gray-900">Batch Mode</div>
+                      <div className="bg-white border border-stone-200 rounded-xl p-4 text-center">
+                        <div className="text-xs text-stone-500 font-semibold uppercase mb-1">Processing</div>
+                        <div className="text-sm font-bold text-stone-900">Batch Mode</div>
                       </div>
-                      <div className="bg-white border border-gray-200 rounded-xl p-4 text-center">
-                        <div className="text-xs text-gray-500 font-semibold uppercase mb-1">Est. Time</div>
-                        <div className="text-sm font-bold text-gray-900">~{Math.ceil(selectedEmails.size / 5)}s</div>
+                      <div className="bg-white border border-stone-200 rounded-xl p-4 text-center">
+                        <div className="text-xs text-stone-500 font-semibold uppercase mb-1">Est. Time</div>
+                        <div className="text-sm font-bold text-stone-900">~{Math.ceil(selectedEmails.size / 5)}s</div>
                       </div>
-                      <div className="bg-white border border-gray-200 rounded-xl p-4 text-center">
-                        <div className="text-xs text-gray-500 font-semibold uppercase mb-1">Service</div>
-                        <div className="text-sm font-bold text-gray-900">AWS SES</div>
+                      <div className="bg-white border border-stone-200 rounded-xl p-4 text-center">
+                        <div className="text-xs text-stone-500 font-semibold uppercase mb-1">Service</div>
+                        <div className="text-sm font-bold text-stone-900">AWS SES</div>
                       </div>
                     </div>
 
-                    <div className="mt-4 bg-blue-50 border border-blue-200 p-3 rounded-lg">
-                      <p className="text-xs text-blue-700 font-medium">
+                    <div className="mt-4 bg-brand-50 border border-brand-200 p-3 rounded-xl">
+                      <p className="text-xs text-brand-700 font-medium">
                         Each email will be sent once. Make sure all information is correct before proceeding.
                       </p>
                     </div>
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex justify-between items-center pt-5 border-t border-gray-200">
+                  <div className="flex justify-between items-center pt-5 border-t border-stone-200">
                     <button 
                       onClick={() => setBulkEmailStep('select')}
-                      className="px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition text-sm font-medium"
+                      className="px-4 py-2.5 bg-white border border-stone-200 text-stone-700 rounded-lg hover:bg-stone-50 transition text-sm font-medium"
                     >
                       Back
                     </button>
@@ -4327,58 +4359,58 @@ const handleAddCandidate = async (e) => {
             {bulkEmailStep === 'sending' && campaignStatus && (
               <div>
                 {/* Header */}
-                <div className="px-6 py-5 border-b border-gray-200">
-                  <h2 className="text-xl font-bold text-gray-900">Sending In Progress</h2>
-                  <p className="text-sm text-gray-500 mt-0.5">Please wait while we send your emails...</p>
+                <div className="px-6 py-5 border-b border-stone-200">
+                  <h2 className="text-xl font-bold text-stone-900">Sending In Progress</h2>
+                  <p className="text-sm text-stone-500 mt-0.5">Please wait while we send your emails...</p>
                 </div>
 
                 <div className="p-6">
                   <div className="mb-6">
-                    <p className="text-sm font-semibold text-gray-900 mb-4">
+                    <p className="text-sm font-semibold text-stone-900 mb-4">
                       Sending {campaignStatus.totalEmails} emails
                     </p>
 
                     {/* Progress Bar */}
                     <div className="mb-6">
                       <div className="flex justify-between items-center mb-2">
-                        <span className="text-xs font-medium text-gray-500">Overall Progress</span>
-                        <span className="text-sm font-bold text-indigo-600">
+                        <span className="text-xs font-medium text-stone-500">Overall Progress</span>
+                        <span className="text-sm font-bold text-brand-600">
                           {Math.min(100, Math.round(((campaignStatus.completed + campaignStatus.failed) / campaignStatus.totalEmails) * 100))}%
                         </span>
                       </div>
-                      <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-3 bg-stone-200 rounded-full overflow-hidden">
                         <div 
-                          className="h-full bg-indigo-600 transition-all duration-500 rounded-full"
+                          className="h-full bg-brand-600 transition-all duration-500 rounded-full"
                           style={{ width: `${Math.min(100, ((campaignStatus.completed + campaignStatus.failed) / campaignStatus.totalEmails) * 100)}%` }}
                         />
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">{campaignStatus.completed + campaignStatus.failed} / {campaignStatus.totalEmails} processed</p>
+                      <p className="text-xs text-stone-500 mt-1">{campaignStatus.completed + campaignStatus.failed} / {campaignStatus.totalEmails} processed</p>
                     </div>
 
                     {/* Status Cards */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div className="bg-white border border-gray-200 rounded-xl p-4">
-                        <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Queued</div>
-                        <div className="text-2xl font-bold text-gray-900">{campaignStatus.waiting || 0}</div>
+                      <div className="bg-white border border-stone-200 rounded-xl p-4">
+                        <div className="text-xs font-semibold text-stone-500 uppercase mb-1">Queued</div>
+                        <div className="text-2xl font-bold text-stone-900">{campaignStatus.waiting || 0}</div>
                       </div>
-                      <div className="bg-white border border-gray-200 rounded-xl p-4">
+                      <div className="bg-white border border-stone-200 rounded-xl p-4">
                         <div className="text-xs font-semibold text-amber-600 uppercase mb-1">Processing</div>
-                        <div className="text-2xl font-bold text-gray-900">{campaignStatus.processing || 0}</div>
+                        <div className="text-2xl font-bold text-stone-900">{campaignStatus.processing || 0}</div>
                       </div>
-                      <div className="bg-white border border-gray-200 rounded-xl p-4">
+                      <div className="bg-white border border-stone-200 rounded-xl p-4">
                         <div className="text-xs font-semibold text-green-600 uppercase mb-1">Sent</div>
                         <div className="text-2xl font-bold text-green-700">{campaignStatus.completed || 0}</div>
                       </div>
-                      <div className="bg-white border border-gray-200 rounded-xl p-4">
+                      <div className="bg-white border border-stone-200 rounded-xl p-4">
                         <div className="text-xs font-semibold text-red-600 uppercase mb-1">Failed</div>
                         <div className="text-2xl font-bold text-red-700">{campaignStatus.failed || 0}</div>
                       </div>
                     </div>
 
                     <div className="text-center mt-5">
-                      <div className="inline-flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-lg">
+                      <div className="inline-flex items-center gap-2 bg-stone-50 px-4 py-2 rounded-lg">
                         <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        <span className="text-xs text-gray-600 font-medium">Processing emails... Please wait</span>
+                        <span className="text-xs text-stone-600 font-medium">Processing emails... Please wait</span>
                       </div>
                     </div>
                   </div>
@@ -4390,9 +4422,9 @@ const handleAddCandidate = async (e) => {
             {bulkEmailStep === 'results' && campaignStatus && (
               <div>
                 {/* Header */}
-                <div className="px-6 py-5 border-b border-gray-200">
-                  <h2 className="text-xl font-bold text-gray-900">Campaign Complete</h2>
-                  <p className="text-sm text-gray-500 mt-0.5">Your bulk email campaign has finished processing</p>
+                <div className="px-6 py-5 border-b border-stone-200">
+                  <h2 className="text-xl font-bold text-stone-900">Campaign Complete</h2>
+                  <p className="text-sm text-stone-500 mt-0.5">Your bulk email campaign has finished processing</p>
                 </div>
 
                 <div className="p-6">
@@ -4409,28 +4441,28 @@ const handleAddCandidate = async (e) => {
 
                   {/* Summary Cards */}
                   <div className="grid grid-cols-3 gap-4 mb-6">
-                    <div className="bg-white border border-gray-200 rounded-xl p-5 text-center">
-                      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Total Emails</div>
-                      <div className="text-3xl font-bold text-gray-900">{campaignStatus.totalEmails || 0}</div>
+                    <div className="bg-white border border-stone-200 rounded-xl p-5 text-center">
+                      <div className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-1">Total Emails</div>
+                      <div className="text-3xl font-bold text-stone-900">{campaignStatus.totalEmails || 0}</div>
                     </div>
-                    <div className="bg-white border border-gray-200 rounded-xl p-5 text-center">
+                    <div className="bg-white border border-stone-200 rounded-xl p-5 text-center">
                       <div className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-1">Successfully Sent</div>
                       <div className="text-3xl font-bold text-green-700">{campaignStatus.completed || 0}</div>
                     </div>
-                    <div className="bg-white border border-gray-200 rounded-xl p-5 text-center">
+                    <div className="bg-white border border-stone-200 rounded-xl p-5 text-center">
                       <div className="text-xs font-semibold text-red-600 uppercase tracking-wider mb-1">Failed</div>
                       <div className="text-3xl font-bold text-red-700">{campaignStatus.failed || 0}</div>
                     </div>
                   </div>
 
                   {/* Success Rate */}
-                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 mb-6">
+                  <div className="bg-stone-50 border border-stone-200 rounded-xl p-5 mb-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-0.5">Success Rate</div>
-                        <div className="text-sm text-gray-600">Overall campaign performance</div>
+                        <div className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-0.5">Success Rate</div>
+                        <div className="text-sm text-stone-600">Overall campaign performance</div>
                       </div>
-                      <div className="text-3xl font-bold text-indigo-600">
+                      <div className="text-3xl font-bold text-brand-600">
                         {campaignStatus.successRate || '0%'}
                       </div>
                     </div>
@@ -4438,8 +4470,8 @@ const handleAddCandidate = async (e) => {
 
                   {/* Email Type */}
                   <div className="flex items-center justify-center gap-2 mb-6">
-                    <span className="text-sm text-gray-500">Email Type:</span>
-                    <span className="inline-flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold">
+                    <span className="text-sm text-stone-500">Email Type:</span>
+                    <span className="inline-flex items-center gap-1.5 bg-brand-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold">
                       {emailType === 'interview' ? '📞 Interview Call' :
                        emailType === 'offer' ? '💼 Offer Letter' :
                        emailType === 'rejection' ? '❌ Rejection' :
@@ -4450,10 +4482,10 @@ const handleAddCandidate = async (e) => {
                   </div>
 
                   {/* Action Button */}
-                  <div className="flex justify-center pt-5 border-t border-gray-200">
+                  <div className="flex justify-center pt-5 border-t border-stone-200">
                     <button 
                       onClick={closeBulkEmailFlow}
-                      className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-semibold"
+                      className="px-6 py-2.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition text-sm font-semibold"
                     >
                       Done
                     </button>
@@ -4468,17 +4500,17 @@ const handleAddCandidate = async (e) => {
 
       {/* ✅ REVIEW & FIX MODAL */}
       {showReviewModal && reviewData && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 bg-stone-900/55 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full my-8">
             {/* Header */}
-            <div className="px-6 py-5 border-b border-gray-200 flex items-center justify-between">
+            <div className="px-6 py-5 border-b border-stone-200 flex items-center justify-between">
               <div>
-                <h1 className="text-xl font-bold text-gray-900">Review & Import Candidates</h1>
-                <p className="text-sm text-gray-500 mt-0.5">Ready: {reviewData.ready?.length || 0} | Review: {reviewData.review?.length || 0} | Blocked: {reviewData.blocked?.length || 0}</p>
+                <h1 className="text-xl font-bold text-stone-900">Review & Import Candidates</h1>
+                <p className="text-sm text-stone-500 mt-0.5">Ready: {reviewData.ready?.length || 0} | Review: {reviewData.review?.length || 0} | Blocked: {reviewData.blocked?.length || 0}</p>
               </div>
               <button 
                 onClick={() => { setShowReviewModal(false); setReviewData(null); setEditingRow(null); }} 
-                className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-500 hover:text-gray-700"
+                className="p-2 hover:bg-stone-100 rounded-lg transition text-stone-500 hover:text-stone-700"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -4487,7 +4519,7 @@ const handleAddCandidate = async (e) => {
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-4 px-6 py-3 border-b border-gray-200">
+            <div className="flex gap-4 px-6 py-3 border-b border-stone-200">
               {[
                 { key: 'ready', label: `Ready (${reviewData.ready?.length || 0})`, color: 'text-green-700' },
                 { key: 'review', label: `Review (${reviewData.review?.length || 0})`, color: 'text-amber-700' },
@@ -4498,8 +4530,8 @@ const handleAddCandidate = async (e) => {
                   onClick={() => { setReviewFilter(tab.key); setEditingRow(null); }}
                   className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
                     reviewFilter === tab.key 
-                      ? 'bg-indigo-600 text-white' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      ? 'bg-brand-600 text-white' 
+                      : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
                   }`}
                 >
                   {tab.label}
@@ -4526,7 +4558,7 @@ const handleAddCandidate = async (e) => {
                 }
                 
                 if (!categoryData || categoryData.length === 0) {
-                  return <p className="text-gray-400 text-center py-12 text-sm">No records in this category</p>;
+                  return <p className="text-stone-400 text-center py-12 text-sm">No records in this category</p>;
                 }
 
                 return (
@@ -4535,30 +4567,30 @@ const handleAddCandidate = async (e) => {
                     <div className="overflow-x-auto">
                       <table className="w-full border-collapse">
                         <thead>
-                          <tr className="bg-gray-50 border-b border-gray-200">
-                            <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Name</th>
-                            <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Email</th>
-                            <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Contact</th>
-                            <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Position</th>
-                            <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">CTC</th>
-                            <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                            <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Confidence</th>
-                            <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Actions</th>
+                          <tr className="bg-stone-50 border-b border-stone-200">
+                            <th className="px-4 py-3 text-left text-[11px] font-bold text-stone-500 uppercase tracking-wider">Name</th>
+                            <th className="px-4 py-3 text-left text-[11px] font-bold text-stone-500 uppercase tracking-wider">Email</th>
+                            <th className="px-4 py-3 text-left text-[11px] font-bold text-stone-500 uppercase tracking-wider">Contact</th>
+                            <th className="px-4 py-3 text-left text-[11px] font-bold text-stone-500 uppercase tracking-wider">Position</th>
+                            <th className="px-4 py-3 text-left text-[11px] font-bold text-stone-500 uppercase tracking-wider">CTC</th>
+                            <th className="px-4 py-3 text-left text-[11px] font-bold text-stone-500 uppercase tracking-wider">Status</th>
+                            <th className="px-4 py-3 text-left text-[11px] font-bold text-stone-500 uppercase tracking-wider">Confidence</th>
+                            <th className="px-4 py-3 text-left text-[11px] font-bold text-stone-500 uppercase tracking-wider">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
                           {categoryData.map((row, idx) => (
-                            <tr key={idx} className={`border-b border-gray-100 hover:bg-gray-50/60 transition ${
+                            <tr key={idx} className={`border-b border-stone-100 hover:bg-stone-50/60 transition ${
                               row.validation.category === 'ready' ? 'bg-green-50/50' :
                               row.validation.category === 'review' ? 'bg-amber-50/50' :
                               'bg-red-50/50'
                             }`}>
-                              <td className="px-4 py-3 text-sm font-semibold text-gray-900">{row.fixed?.name || '-'}</td>
-                              <td className="px-4 py-3 text-sm text-gray-600">{row.fixed?.email || '-'}</td>
-                              <td className="px-4 py-3 text-sm text-gray-600">{row.fixed?.contact || '-'}</td>
-                              <td className="px-4 py-3 text-sm text-gray-600">{row.fixed?.position || '-'}</td>
-                              <td className="px-4 py-3 text-sm text-gray-600">{row.fixed?.ctc ? `${row.fixed.ctc} LPA` : '-'}</td>
-                              <td className="px-4 py-3 text-sm text-gray-600">{row.fixed?.status || '-'}</td>
+                              <td className="px-4 py-3 text-sm font-semibold text-stone-900">{row.fixed?.name || '-'}</td>
+                              <td className="px-4 py-3 text-sm text-stone-600">{row.fixed?.email || '-'}</td>
+                              <td className="px-4 py-3 text-sm text-stone-600">{row.fixed?.contact || '-'}</td>
+                              <td className="px-4 py-3 text-sm text-stone-600">{row.fixed?.position || '-'}</td>
+                              <td className="px-4 py-3 text-sm text-stone-600">{row.fixed?.ctc ? `${row.fixed.ctc} LPA` : '-'}</td>
+                              <td className="px-4 py-3 text-sm text-stone-600">{row.fixed?.status || '-'}</td>
                               <td className="px-4 py-3">
                                 <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                                   row.validation.confidence >= 80 ? 'bg-green-200 text-green-800' :
@@ -4571,7 +4603,7 @@ const handleAddCandidate = async (e) => {
                               <td className="px-4 py-3">
                                 <button
                                   onClick={() => setEditingRow(row)}
-                                  className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition font-semibold"
+                                  className="px-3 py-1 text-xs bg-brand-600 text-white rounded hover:bg-brand-700 transition font-semibold"
                                 >
                                   ✏️ Edit
                                 </button>
@@ -4584,9 +4616,9 @@ const handleAddCandidate = async (e) => {
 
                     {/* Editing Panel */}
                     {editingRow && (
-                      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                      <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/55 p-4">
                         <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-2xl max-h-96 overflow-y-auto">
-                          <h3 className="text-lg font-bold text-gray-900 mb-5">Edit Record — {editingRow.fixed?.name}</h3>
+                          <h3 className="text-lg font-bold text-stone-900 mb-5">Edit Record — {editingRow.fixed?.name}</h3>
                           
                           <div className="grid grid-cols-3 gap-3 mb-5">
                             {[
@@ -4608,12 +4640,12 @@ const handleAddCandidate = async (e) => {
                               { field: 'status', label: 'Status', type: 'select' }
                             ].map(({ field, label, type }) => (
                               <div key={field}>
-                                <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">{label}</label>
+                                <label className="block text-[11px] font-semibold text-stone-500 uppercase tracking-wider mb-1">{label}</label>
                                 {type === 'select' ? (
                                   <select
                                     value={editingRow.fixed?.[field] || ''}
                                     onChange={(e) => setEditingRow({ ...editingRow, fixed: { ...editingRow.fixed, [field]: e.target.value } })}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                    className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
                                   >
                                     <option value="">Select Status</option>
                                     {['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected', 'Interested', 'Interested and scheduled'].map(s => (
@@ -4625,7 +4657,7 @@ const handleAddCandidate = async (e) => {
                                     type={type}
                                     value={editingRow.fixed?.[field] || ''}
                                     onChange={(e) => setEditingRow({ ...editingRow, fixed: { ...editingRow.fixed, [field]: e.target.value } })}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                    className="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
                                   />
                                 )}
                               </div>
@@ -4634,7 +4666,7 @@ const handleAddCandidate = async (e) => {
 
                           {/* Validation Summary */}
                           {editingRow.validation && (
-                            <div className="mb-5 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div className="mb-5 p-4 bg-stone-50 rounded-lg border border-stone-200">
                               {editingRow.validation.errors?.length > 0 && (
                                 <div className="mb-3">
                                   <p className="font-bold text-red-700 mb-1">❌ Errors:</p>
@@ -4664,13 +4696,13 @@ const handleAddCandidate = async (e) => {
                             </button>
                             <button
                               onClick={() => handleRevalidateRecord(editingRow)}
-                              className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition"
+                              className="flex-1 px-4 py-2.5 bg-brand-600 text-white rounded-lg text-sm font-semibold hover:bg-brand-700 transition"
                             >
                               Re-validate
                             </button>
                             <button
                               onClick={() => setEditingRow(null)}
-                              className="flex-1 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition"
+                              className="flex-1 px-4 py-2.5 bg-white border border-stone-200 text-stone-700 rounded-lg text-sm font-medium hover:bg-stone-50 transition"
                             >
                               Close
                             </button>
@@ -4685,7 +4717,7 @@ const handleAddCandidate = async (e) => {
 
             {/* Import Confirmation Modal */}
             {importConfirmation?.show && (
-              <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
+              <div className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-900/55 backdrop-blur-sm p-4">
                 <div className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full text-center">
                   <div className="mb-4">
                     <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
@@ -4693,8 +4725,8 @@ const handleAddCandidate = async (e) => {
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                       </svg>
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-1">Imported Successfully</h3>
-                    <p className="text-sm text-gray-600">
+                    <h3 className="text-lg font-bold text-stone-900 mb-1">Imported Successfully</h3>
+                    <p className="text-sm text-stone-600">
                       <strong>{importConfirmation.candidateName}</strong> has been saved to the database.
                     </p>
                   </div>
@@ -4703,7 +4735,7 @@ const handleAddCandidate = async (e) => {
                       setImportConfirmation(null);
                       setReviewFilter('ready');
                     }}
-                    className="w-full px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition"
+                    className="w-full px-4 py-2.5 bg-brand-600 text-white rounded-lg text-sm font-semibold hover:bg-brand-700 transition"
                   >
                     Continue
                   </button>
@@ -4712,16 +4744,16 @@ const handleAddCandidate = async (e) => {
             )}
 
             {/* Footer Action Buttons */}
-            <div className="flex gap-3 px-6 py-4 border-t border-gray-200 justify-end">
+            <div className="flex gap-3 px-6 py-4 border-t border-stone-100 justify-end">
               <button
                 onClick={() => { setShowReviewModal(false); setReviewData(null); setEditingRow(null); }}
-                className="px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition"
+                className="btn-secondary"
               >
                 Close
               </button>
               <button
                 onClick={handleImportReviewed}
-                className="px-5 py-2.5 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 transition"
+                className="btn-primary !bg-emerald-600 hover:!bg-emerald-700"
               >
                 Import All Ready Records
               </button>
@@ -4732,15 +4764,15 @@ const handleAddCandidate = async (e) => {
 
       {/* Download Excel Confirmation Modal */}
       {showDownloadModal && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowDownloadModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-900/55 backdrop-blur-sm animate-fade-in" onClick={() => setShowDownloadModal(false)}>
+          <div className="bg-white rounded-2xl sm:rounded-3xl border border-stone-200/60 shadow-2xl w-full max-w-md p-6 modal-panel-ats" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                <Download size={20} className="text-green-600" />
+              <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
+                <Download size={20} className="text-emerald-600" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Download Excel</h3>
+              <h3 className="text-lg font-bold text-stone-900 tracking-tight">Download Excel</h3>
             </div>
-            <p className="text-sm text-gray-600 mb-6">
+            <p className="text-sm text-stone-600 mb-6">
               {selectedIds.length > 0 
                 ? `You have selected ${selectedIds.length} candidate(s). Do you want to download their data as Excel?`
                 : `No candidates selected. This will download all ${filteredCandidates.length} displayed candidate(s) as Excel.`}
@@ -4748,7 +4780,7 @@ const handleAddCandidate = async (e) => {
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowDownloadModal(false)}
-                className="px-4 py-2 rounded-lg text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
+                className="btn-secondary"
               >
                 Cancel
               </button>
@@ -4784,7 +4816,7 @@ const handleAddCandidate = async (e) => {
                   toast.success(`Downloaded ${toDownload.length} candidate(s) to Excel`);
                   setShowDownloadModal(false);
                 }}
-                className="px-4 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 transition flex items-center gap-2"
+                className="btn-primary !bg-emerald-600 hover:!bg-emerald-700"
               >
                 <Download size={16} /> Download {selectedIds.length > 0 ? `${selectedIds.length} Selected` : 'All'}
               </button>
@@ -4795,33 +4827,33 @@ const handleAddCandidate = async (e) => {
 
       {/* Resume Preview Modal */}
       {previewResumeUrl && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60" onClick={closeResumePreview}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-900/55 backdrop-blur-sm" onClick={closeResumePreview}>
           <div className="bg-white rounded-2xl shadow-2xl w-[90vw] h-[90vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
-              <h3 className="text-lg font-bold text-gray-900">Resume Preview</h3>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50">
+              <h3 className="text-lg font-bold text-stone-900">Resume Preview</h3>
               <div className="flex items-center gap-3">
                 <button type="button" onClick={() => previewResumeCandidate && handleResumeDownload(previewResumeCandidate)} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors flex items-center gap-2">
                   <Download size={16} /> Download
                 </button>
-                <button onClick={closeResumePreview} className="p-2 hover:bg-gray-200 rounded-lg transition-colors cursor-pointer">
-                  <X size={20} className="text-gray-600" />
+                <button onClick={closeResumePreview} className="p-2 hover:bg-stone-200 rounded-lg transition-colors cursor-pointer">
+                  <X size={20} className="text-stone-600" />
                 </button>
               </div>
             </div>
-            <div className="flex-1 bg-gray-100 flex items-center justify-center">
+            <div className="flex-1 bg-stone-100 flex items-center justify-center">
               {isPreviewLoading ? (
                 <div className="flex flex-col items-center gap-3">
-                  <RefreshCw size={32} className="text-indigo-500 animate-spin" />
-                  <p className="text-gray-500 font-medium">Loading preview...</p>
+                  <RefreshCw size={32} className="text-brand-500 animate-spin" />
+                  <p className="text-stone-500 font-medium">Loading preview...</p>
                 </div>
               ) : previewResumeError === 'file_not_found' ? (
                 <div className="flex flex-col items-center gap-4 p-6 text-center max-w-md">
                   <AlertCircle size={40} className="text-amber-500" />
-                  <p className="text-gray-700 font-medium">Resume file not found on this server</p>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-stone-700 font-medium">Resume file not found on this server</p>
+                  <p className="text-sm text-stone-500">
                     The file may have been uploaded on the live site. View it there, or re-upload the resume for this candidate here.
                   </p>
-                  <button type="button" onClick={() => previewResumeCandidate && handleResumeDownload(previewResumeCandidate)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+                  <button type="button" onClick={() => previewResumeCandidate && handleResumeDownload(previewResumeCandidate)} className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors">
                     Try Download
                   </button>
                 </div>
@@ -4834,8 +4866,8 @@ const handleAddCandidate = async (e) => {
               ) : (
                 <div className="flex flex-col items-center gap-3">
                   <AlertCircle size={32} className="text-red-400" />
-                  <p className="text-gray-500 font-medium">Unable to preview this file</p>
-                  <button type="button" onClick={() => previewResumeCandidate && handleResumeDownload(previewResumeCandidate)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+                  <p className="text-stone-500 font-medium">Unable to preview this file</p>
+                  <button type="button" onClick={() => previewResumeCandidate && handleResumeDownload(previewResumeCandidate)} className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors">
                     Download Instead
                   </button>
                 </div>
@@ -4860,15 +4892,15 @@ const handleAddCandidate = async (e) => {
 
       {/* Import shared candidates: confirm */}
       {showImportSharedConfirm && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60" onClick={() => setShowImportSharedConfirm(false)}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-900/55 backdrop-blur-sm" onClick={() => setShowImportSharedConfirm(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Import shared candidates</h3>
-            <p className="text-gray-600 mb-6">
+            <h3 className="text-lg font-bold text-stone-900 mb-2">Import shared candidates</h3>
+            <p className="text-stone-600 mb-6">
               Import {getIdsToImportShared().length} shared candidate(s) to your database? They will be copied to All Candidates.
             </p>
             <div className="flex gap-3 justify-end">
-              <button onClick={() => setShowImportSharedConfirm(false)} className="px-4 py-2 text-gray-700 font-medium rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
-              <button onClick={handleImportSharedToMine} disabled={isImportingShared} className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50">Import</button>
+              <button onClick={() => setShowImportSharedConfirm(false)} className="px-4 py-2 text-stone-700 font-medium rounded-lg hover:bg-stone-100 transition-colors">Cancel</button>
+              <button onClick={handleImportSharedToMine} disabled={isImportingShared} className="px-4 py-2 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 transition-colors disabled:opacity-50">Import</button>
             </div>
           </div>
         </div>
@@ -4876,15 +4908,15 @@ const handleAddCandidate = async (e) => {
 
       {/* Import all from database: confirm */}
       {showImportAllConfirm && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60" onClick={() => setShowImportAllConfirm(false)}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-900/55 backdrop-blur-sm" onClick={() => setShowImportAllConfirm(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Import all candidates from database</h3>
-            <p className="text-gray-600 mb-6">
+            <h3 className="text-lg font-bold text-stone-900 mb-2">Import all candidates from database</h3>
+            <p className="text-stone-600 mb-6">
               Copy every candidate in the database into your list? Candidates you already own will be skipped. This adds all others as &ldquo;My candidates&rdquo;.
             </p>
             <div className="flex gap-3 justify-end">
-              <button onClick={() => setShowImportAllConfirm(false)} className="px-4 py-2 text-gray-700 font-medium rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
-              <button onClick={handleImportAllToMine} disabled={isImportingAll} className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50">
+              <button onClick={() => setShowImportAllConfirm(false)} className="px-4 py-2 text-stone-700 font-medium rounded-lg hover:bg-stone-100 transition-colors">Cancel</button>
+              <button onClick={handleImportAllToMine} disabled={isImportingAll} className="px-4 py-2 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 transition-colors disabled:opacity-50">
                 {isImportingAll ? 'Importing...' : 'Import all'}
               </button>
             </div>
@@ -4894,13 +4926,13 @@ const handleAddCandidate = async (e) => {
 
       {/* Import all from database: success */}
       {importAllSuccess !== null && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-900/55 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Candidates imported</h3>
-            <p className="text-gray-600 mb-6">{Number(importAllSuccess.imported) || 0} candidate(s) have been added to your database. You can find them under &ldquo;Show only mine&rdquo; or &ldquo;View all&rdquo;.</p>
+            <h3 className="text-lg font-bold text-stone-900 mb-2">Candidates imported</h3>
+            <p className="text-stone-600 mb-6">{Number(importAllSuccess.imported) || 0} candidate(s) have been added to your database. You can find them under &ldquo;Show only mine&rdquo; or &ldquo;View all&rdquo;.</p>
             <div className="flex gap-3 justify-end">
-              <button onClick={() => setImportAllSuccess(null)} className="px-4 py-2 text-gray-700 font-medium rounded-lg hover:bg-gray-100 transition-colors">Stay here</button>
-              <button onClick={() => { setImportAllSuccess(null); fetchData(1, { search: '', position: '' }); }} className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors">Go to All Candidates</button>
+              <button onClick={() => setImportAllSuccess(null)} className="px-4 py-2 text-stone-700 font-medium rounded-lg hover:bg-stone-100 transition-colors">Stay here</button>
+              <button onClick={() => { setImportAllSuccess(null); fetchData(1, { search: '', position: '' }); }} className="px-4 py-2 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 transition-colors">Go to All Candidates</button>
             </div>
           </div>
         </div>
@@ -4908,13 +4940,13 @@ const handleAddCandidate = async (e) => {
 
       {/* Import shared candidates: success */}
       {importSharedSuccess !== null && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-900/55 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Candidates imported</h3>
-            <p className="text-gray-600 mb-6">{Number(importSharedSuccess.imported) || 0} shared candidate(s) have been added to your database.</p>
+            <h3 className="text-lg font-bold text-stone-900 mb-2">Candidates imported</h3>
+            <p className="text-stone-600 mb-6">{Number(importSharedSuccess.imported) || 0} shared candidate(s) have been added to your database.</p>
             <div className="flex gap-3 justify-end">
-              <button onClick={() => { setImportSharedSuccess(null); }} className="px-4 py-2 text-gray-700 font-medium rounded-lg hover:bg-gray-100 transition-colors">Stay here</button>
-              <button onClick={() => { setImportSharedSuccess(null); fetchData(1, { search: '', position: '' }); }} className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors">Go to All Candidates</button>
+              <button onClick={() => { setImportSharedSuccess(null); }} className="px-4 py-2 text-stone-700 font-medium rounded-lg hover:bg-stone-100 transition-colors">Stay here</button>
+              <button onClick={() => { setImportSharedSuccess(null); fetchData(1, { search: '', position: '' }); }} className="px-4 py-2 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 transition-colors">Go to All Candidates</button>
             </div>
           </div>
         </div>
@@ -4922,27 +4954,27 @@ const handleAddCandidate = async (e) => {
 
       {/* Share Candidate Modal - Member Selection */}
       {showShareModal && !showShareConfirmation && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60" onClick={() => setShowShareModal(false)}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-900/55 backdrop-blur-sm" onClick={() => setShowShareModal(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900">Share Candidate{selectedCandidatesForShare.length > 1 ? 's' : ''}</h3>
-              <button onClick={() => { setShowShareModal(false); setShowShareConfirmation(false); }} className="p-2 hover:bg-gray-200 rounded-lg transition-colors cursor-pointer">
-                <X size={20} className="text-gray-600" />
+              <h3 className="text-lg font-bold text-stone-900">Share Candidate{selectedCandidatesForShare.length > 1 ? 's' : ''}</h3>
+              <button onClick={() => { setShowShareModal(false); setShowShareConfirmation(false); }} className="p-2 hover:bg-stone-200 rounded-lg transition-colors cursor-pointer">
+                <X size={20} className="text-stone-600" />
               </button>
             </div>
             
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-stone-600 mb-4">
               {selectedCandidatesForShare.length === 1 ? (
-                <>Share <span className="font-semibold text-gray-900">{shareCandidate?.fullName || shareCandidate?.name || 'candidate'}</span> with team members</>
+                <>Share <span className="font-semibold text-stone-900">{shareCandidate?.fullName || shareCandidate?.name || 'candidate'}</span> with team members</>
               ) : (
-                <>Share <span className="font-semibold text-gray-900">{selectedCandidatesForShare.length} candidates</span> with team members</>
+                <>Share <span className="font-semibold text-stone-900">{selectedCandidatesForShare.length} candidates</span> with team members</>
               )}
             </p>
 
             <div className="space-y-3 max-h-64 overflow-y-auto mb-6">
               {teamMembers && teamMembers.length > 0 ? (
                 teamMembers.map((member) => (
-                  <label key={member._id} className="flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors">
+                  <label key={member._id} className="flex items-center gap-3 p-3 hover:bg-stone-50 rounded-lg cursor-pointer transition-colors">
                     <input
                       type="checkbox"
                       checked={selectedShareMembers.includes(member._id)}
@@ -4953,35 +4985,35 @@ const handleAddCandidate = async (e) => {
                           setSelectedShareMembers(selectedShareMembers.filter(id => id !== member._id));
                         }
                       }}
-                      className="w-4 h-4 text-indigo-600 rounded cursor-pointer"
+                      className="w-4 h-4 text-brand-600 rounded cursor-pointer"
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900">{member.name}</p>
-                      <p className="text-xs text-gray-500">{member.email}</p>
+                      <p className="text-sm font-medium text-stone-900">{member.name}</p>
+                      <p className="text-xs text-stone-500">{member.email}</p>
                     </div>
                     {member.role && (
-                      <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded whitespace-nowrap">
+                      <span className="text-xs font-medium text-brand-600 bg-brand-50 px-2 py-1 rounded whitespace-nowrap">
                         {member.role}
                       </span>
                     )}
                   </label>
                 ))
               ) : (
-                <p className="text-sm text-gray-500 text-center py-4">No team members available</p>
+                <p className="text-sm text-stone-500 text-center py-4">No team members available</p>
               )}
             </div>
 
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => { setShowShareModal(false); setShowShareConfirmation(false); }}
-                className="px-4 py-2 text-gray-700 font-medium rounded-lg hover:bg-gray-100 transition-colors"
+                className="px-4 py-2 text-stone-700 font-medium rounded-lg hover:bg-stone-100 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleShareCandidate}
                 disabled={selectedShareMembers.length === 0}
-                className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                className="px-4 py-2 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 disabled:bg-stone-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
               >
                 <Share2 size={16} />
                 Next
@@ -4993,24 +5025,24 @@ const handleAddCandidate = async (e) => {
 
       {/* Share Confirmation Modal */}
       {showShareConfirmation && selectedShareMembers.length > 0 && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60" onClick={() => setShowShareConfirmation(false)}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-900/55 backdrop-blur-sm" onClick={() => setShowShareConfirmation(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900">Confirm Share</h3>
-              <button onClick={() => setShowShareConfirmation(false)} className="p-2 hover:bg-gray-200 rounded-lg transition-colors cursor-pointer">
-                <X size={20} className="text-gray-600" />
+              <h3 className="text-lg font-bold text-stone-900">Confirm Share</h3>
+              <button onClick={() => setShowShareConfirmation(false)} className="p-2 hover:bg-stone-200 rounded-lg transition-colors cursor-pointer">
+                <X size={20} className="text-stone-600" />
               </button>
             </div>
 
             <div className="space-y-4 mb-6">
               {/* Candidates being shared */}
-              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-xs font-semibold text-blue-900 mb-2">CANDIDATES ({selectedCandidatesForShare.length})</p>
+              <div className="p-4 bg-brand-50 rounded-xl border border-brand-200">
+                <p className="text-xs font-semibold text-brand-900 mb-2">CANDIDATES ({selectedCandidatesForShare.length})</p>
                 <div className="space-y-2">
                   {selectedCandidatesForShare.length === 1 && shareCandidate ? (
-                    <p className="text-sm text-blue-800">{shareCandidate.fullName || shareCandidate.name || 'Unknown'}</p>
+                    <p className="text-sm text-brand-800">{shareCandidate.fullName || shareCandidate.name || 'Unknown'}</p>
                   ) : (
-                    <p className="text-sm text-blue-800">{selectedCandidatesForShare.length} candidates selected</p>
+                    <p className="text-sm text-brand-800">{selectedCandidatesForShare.length} candidates selected</p>
                   )}
                 </div>
               </div>
@@ -5028,20 +5060,20 @@ const handleAddCandidate = async (e) => {
                 </div>
               </div>
 
-              <p className="text-xs text-gray-500">Once shared, team members can view and interact with these candidates. This action cannot be undone.</p>
+              <p className="text-xs text-stone-500">Once shared, team members can view and interact with these candidates. This action cannot be undone.</p>
             </div>
 
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setShowShareConfirmation(false)}
-                className="px-4 py-2 text-gray-700 font-medium rounded-lg hover:bg-gray-100 transition-colors"
+                className="px-4 py-2 text-stone-700 font-medium rounded-lg hover:bg-stone-100 transition-colors"
               >
                 Back
               </button>
               <button
                 onClick={handleShareCandidate}
                 disabled={isSharingCandidate}
-                className="px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                className="px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:bg-stone-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
               >
                 {isSharingCandidate ? (
                   <>

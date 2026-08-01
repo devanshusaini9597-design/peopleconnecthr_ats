@@ -309,53 +309,60 @@ export default function ApplicationsPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
+    <div className="flex flex-col h-full min-h-0 bg-stone-50/50 overflow-hidden content-fill-ats">
       {/* Top Bar */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0 z-10 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <Activity className="w-6 h-6 text-indigo-600" />
-              Pipeline Board
-            </h1>
-            <div className="h-6 w-px bg-gray-300 hidden md:block"></div>
+      <div className="bg-white/90 backdrop-blur-xl border-b border-stone-200/60 px-3 sm:px-6 py-3 sm:py-4 flex-shrink-0 z-10 shadow-[var(--shadow-card)] animate-fade-in">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 min-w-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="icon-box-ats !w-10 !h-10 !rounded-xl">
+                <Activity className="w-5 h-5 text-white" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl font-bold text-gradient tracking-tight" style={{ letterSpacing: '-0.025em' }}>
+                  Pipeline Board
+                </h1>
+                <p className="text-xs text-stone-500 font-medium hidden sm:block">Drag candidates across stages</p>
+              </div>
+            </div>
+            <div className="h-6 w-px bg-stone-200 hidden md:block"></div>
             
             {/* Job Selector */}
             <div className="relative">
               <select 
                 value={selectedJobId}
                 onChange={(e) => setSelectedJobId(e.target.value)}
-                className="appearance-none bg-gray-100 border-none text-gray-700 py-2 pl-4 pr-10 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-colors cursor-pointer font-medium"
+                className="appearance-none bg-stone-50 border border-stone-200 text-stone-700 py-2 pl-4 pr-10 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:bg-white transition-colors cursor-pointer font-medium text-sm"
               >
                 <option value="">Select a Job</option>
                 {jobs.map(job => (
                   <option key={job._id} value={job._id}>{job.title}</option>
                 ))}
               </select>
-              <ChevronDown className="w-4 h-4 text-gray-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-4 h-4 text-stone-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {/* Search */}
-            <div className="relative">
-              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <div className="relative flex-1 sm:flex-none min-w-[160px]">
+              <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input 
                 type="text" 
                 placeholder="Search candidates..." 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm w-64"
+                className="pl-9 pr-4 py-2 border border-stone-200 bg-stone-50 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:bg-white text-sm w-full sm:w-64 transition-all"
               />
             </div>
 
             {/* View Toggles */}
-            <div className="flex bg-gray-100 p-1 rounded-lg">
+            <div className="flex bg-stone-100 p-1 rounded-xl">
               <button 
                 onClick={() => setViewMode('kanban')}
                 className={classNames(
-                  "p-1.5 rounded-md transition-colors",
-                  viewMode === 'kanban' ? "bg-white shadow-sm text-indigo-600" : "text-gray-500 hover:text-gray-700"
+                  "p-1.5 rounded-lg transition-colors",
+                  viewMode === 'kanban' ? "bg-white shadow-sm text-brand-600" : "text-stone-500 hover:text-stone-700"
                 )}
                 title="Kanban View"
               >
@@ -364,8 +371,8 @@ export default function ApplicationsPage() {
               <button 
                 onClick={() => setViewMode('table')}
                 className={classNames(
-                  "p-1.5 rounded-md transition-colors",
-                  viewMode === 'table' ? "bg-white shadow-sm text-indigo-600" : "text-gray-500 hover:text-gray-700"
+                  "p-1.5 rounded-lg transition-colors",
+                  viewMode === 'table' ? "bg-white shadow-sm text-brand-600" : "text-stone-500 hover:text-stone-700"
                 )}
                 title="Table View"
               >
@@ -376,7 +383,7 @@ export default function ApplicationsPage() {
             {/* Add Button */}
             <button 
               onClick={() => setIsAddModalOpen(true)}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
+              className="btn-primary !py-2"
             >
               <Plus className="w-4 h-4" />
               Add Application
@@ -386,11 +393,11 @@ export default function ApplicationsPage() {
         
         {/* Stats Bar */}
         <div className="mt-4 flex flex-wrap gap-6 text-sm">
-          <div className="flex items-center gap-2 text-gray-600">
-            <span className="font-medium text-gray-900">{stats.total || applications.length}</span> Total Applications
+          <div className="flex items-center gap-2 text-stone-600">
+            <span className="font-bold text-stone-900">{stats.total || applications.length}</span> Total Applications
           </div>
-          <div className="flex items-center gap-2 text-gray-600">
-            <span className="font-medium text-gray-900">{stats.avgTime || '12d'}</span> Avg Time-to-Hire
+          <div className="flex items-center gap-2 text-stone-600">
+            <span className="font-bold text-stone-900">{stats.avgTime || '12d'}</span> Avg Time-to-Hire
           </div>
         </div>
       </div>
@@ -399,27 +406,27 @@ export default function ApplicationsPage() {
       <div className="flex-1 overflow-hidden relative flex">
         
         {!selectedJobId ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
-            <Target className="w-16 h-16 text-gray-300 mb-4" />
-            <h2 className="text-xl font-semibold text-gray-700 mb-2">Select a Job</h2>
+          <div className="flex-1 flex flex-col items-center justify-center text-stone-500">
+            <Target className="w-16 h-16 text-stone-300 mb-4" />
+            <h2 className="text-xl font-semibold text-stone-700 mb-2">Select a Job</h2>
             <p>Please select a job from the dropdown to view its pipeline.</p>
           </div>
         ) : loading ? (
           <div className="flex-1 p-6 flex gap-6 overflow-x-auto">
             {[1,2,3,4,5].map(i => (
               <div key={i} className="w-[320px] flex-shrink-0 space-y-4">
-                <div className="h-10 bg-gray-200 rounded-lg animate-pulse"></div>
-                <div className="h-32 bg-gray-200 rounded-xl animate-pulse"></div>
-                <div className="h-32 bg-gray-200 rounded-xl animate-pulse"></div>
+                <div className="h-10 skeleton-ats"></div>
+                <div className="h-32 skeleton-ats"></div>
+                <div className="h-32 skeleton-ats"></div>
               </div>
             ))}
           </div>
         ) : applications.length === 0 && !searchQuery ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
-            <div className="bg-indigo-50 p-6 rounded-full mb-4">
-              <User className="w-12 h-12 text-indigo-300" />
+          <div className="flex-1 flex flex-col items-center justify-center text-stone-500">
+            <div className="bg-brand-50 p-6 rounded-full mb-4">
+              <User className="w-12 h-12 text-brand-300" />
             </div>
-            <h2 className="text-xl font-semibold text-gray-700 mb-2">No applications yet</h2>
+            <h2 className="text-xl font-semibold text-stone-700 mb-2">No applications yet</h2>
             <p>Share your careers page to start receiving applications.</p>
           </div>
         ) : viewMode === 'kanban' ? (
@@ -434,8 +441,8 @@ export default function ApplicationsPage() {
                   <div 
                     key={stage.id} 
                     className={classNames(
-                      "w-[340px] flex-shrink-0 flex flex-col max-h-full bg-gray-100/50 rounded-2xl border transition-all duration-200",
-                      isOver ? `border-indigo-400 bg-indigo-50/30 shadow-inner` : "border-gray-200/50"
+                      "w-[340px] flex-shrink-0 flex flex-col max-h-full bg-stone-100/50 rounded-2xl border transition-all duration-200",
+                      isOver ? `border-brand-400 bg-brand-50/30 shadow-inner` : "border-stone-200/50"
                     )}
                     onDragOver={(e) => handleDragOver(e, stage.id)}
                     onDragLeave={handleDragLeave}
@@ -461,7 +468,7 @@ export default function ApplicationsPage() {
                     </div>
 
                     {/* Column Body */}
-                    <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-gray-300 min-h-[150px]">
+                    <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-stone-300 min-h-[150px]">
                       {stageApps.map((app) => (
                         <div
                           key={app._id}
@@ -470,28 +477,28 @@ export default function ApplicationsPage() {
                           onDragEnd={handleDragEnd}
                           onClick={() => { setSelectedApp(app); setIsPanelOpen(true); }}
                           className={classNames(
-                            "bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-pointer transition-all duration-200",
-                            "hover:shadow-md hover:border-indigo-300 hover:-translate-y-0.5 group",
-                            draggedAppId === app._id ? "opacity-50 ring-2 ring-indigo-500" : ""
+                            "bg-white p-4 rounded-xl shadow-sm border border-stone-200 cursor-pointer transition-all duration-200",
+                            "hover:shadow-md hover:border-brand-300 hover:-translate-y-0.5 group",
+                            draggedAppId === app._id ? "opacity-50 ring-2 ring-brand-500" : ""
                           )}
                         >
                           <div className="flex justify-between items-start mb-2">
-                            <h4 className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">
+                            <h4 className="font-bold text-stone-900 group-hover:text-brand-600 transition-colors">
                               {app.candidate?.name || 'Unknown'}
                             </h4>
                             {app.source && (
-                              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 bg-gray-100 text-gray-600 rounded-md">
+                              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 bg-stone-100 text-stone-600 rounded-md">
                                 {app.source}
                               </span>
                             )}
                           </div>
                           
-                          <div className="text-sm text-gray-600 mb-3 flex items-center gap-1.5">
-                            <Briefcase className="w-3.5 h-3.5 text-gray-400" />
+                          <div className="text-sm text-stone-600 mb-3 flex items-center gap-1.5">
+                            <Briefcase className="w-3.5 h-3.5 text-stone-400" />
                             <span className="truncate">{app.job?.title || 'Unknown Position'}</span>
                           </div>
 
-                          <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
+                          <div className="flex items-center justify-between mt-4 pt-3 border-t border-stone-100">
                             {/* Stars */}
                             <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
                               {[1, 2, 3, 4, 5].map((star) => (
@@ -499,14 +506,14 @@ export default function ApplicationsPage() {
                                   key={star}
                                   className={classNames(
                                     "w-3.5 h-3.5 cursor-pointer transition-colors",
-                                    star <= (app.rating || 0) ? "text-amber-400 fill-amber-400" : "text-gray-300 hover:text-amber-200"
+                                    star <= (app.rating || 0) ? "text-amber-400 fill-amber-400" : "text-stone-300 hover:text-amber-200"
                                   )}
                                   onClick={() => handleRatingChange(app._id, star)}
                                 />
                               ))}
                             </div>
                             
-                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <div className="flex items-center gap-2 text-xs text-stone-500">
                               <Clock className="w-3 h-3" />
                               {formatDate(app.createdAt)}
                             </div>
@@ -515,7 +522,7 @@ export default function ApplicationsPage() {
                       ))}
                       
                       {stageApps.length === 0 && (
-                        <div className="h-full min-h-[100px] border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center text-gray-400 text-sm">
+                        <div className="h-full min-h-[100px] border-2 border-dashed border-stone-200 rounded-xl flex items-center justify-center text-stone-400 text-sm">
                           Drop here
                         </div>
                       )}
@@ -528,9 +535,9 @@ export default function ApplicationsPage() {
         ) : (
           /* TABLE VIEW */
           <div className="flex-1 overflow-auto p-6">
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden">
               <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200 text-gray-600">
+                <thead className="bg-stone-50 border-b border-stone-200 text-stone-600">
                   <tr>
                     <th className="px-6 py-4 font-medium">Candidate</th>
                     <th className="px-6 py-4 font-medium">Position</th>
@@ -540,18 +547,18 @@ export default function ApplicationsPage() {
                     <th className="px-6 py-4 font-medium">Rating</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-stone-100">
                   {filteredApplications.map(app => (
                     <tr 
                       key={app._id} 
-                      className="hover:bg-gray-50 cursor-pointer transition-colors"
+                      className="hover:bg-stone-50 cursor-pointer transition-colors"
                       onClick={() => { setSelectedApp(app); setIsPanelOpen(true); }}
                     >
                       <td className="px-6 py-4">
-                        <div className="font-medium text-gray-900">{app.candidate?.name}</div>
-                        <div className="text-gray-500 text-xs mt-0.5">{app.candidate?.email}</div>
+                        <div className="font-medium text-stone-900">{app.candidate?.name}</div>
+                        <div className="text-stone-500 text-xs mt-0.5">{app.candidate?.email}</div>
                       </td>
-                      <td className="px-6 py-4 text-gray-700">{app.job?.title}</td>
+                      <td className="px-6 py-4 text-stone-700">{app.job?.title}</td>
                       <td className="px-6 py-4">
                         <span className={classNames(
                           "px-2.5 py-1 rounded-full text-xs font-medium border",
@@ -562,12 +569,12 @@ export default function ApplicationsPage() {
                           {app.stage}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-gray-600">{app.source || '-'}</td>
-                      <td className="px-6 py-4 text-gray-600">{formatDate(app.createdAt)}</td>
+                      <td className="px-6 py-4 text-stone-600">{app.source || '-'}</td>
+                      <td className="px-6 py-4 text-stone-600">{formatDate(app.createdAt)}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-0.5">
                           {[1,2,3,4,5].map(star => (
-                            <Star key={star} className={classNames("w-3.5 h-3.5", star <= (app.rating||0) ? "text-amber-400 fill-amber-400" : "text-gray-300")} />
+                            <Star key={star} className={classNames("w-3.5 h-3.5", star <= (app.rating||0) ? "text-amber-400 fill-amber-400" : "text-stone-300")} />
                           ))}
                         </div>
                       </td>
@@ -584,7 +591,7 @@ export default function ApplicationsPage() {
           <>
             {/* Backdrop */}
             <div 
-              className="fixed inset-0 bg-gray-900/20 backdrop-blur-sm z-40 transition-opacity"
+              className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-40 transition-opacity"
               onClick={() => setIsPanelOpen(false)}
             />
             
@@ -592,19 +599,19 @@ export default function ApplicationsPage() {
             <div className="fixed inset-y-0 right-0 w-full md:w-[500px] bg-white shadow-2xl z-50 transform transition-transform duration-300 flex flex-col">
               
               {/* Panel Header */}
-              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-white">
+              <div className="px-6 py-4 border-b border-stone-100 flex items-center justify-between bg-white">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-lg">
+                  <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-lg">
                     {selectedApp.candidate?.name?.charAt(0) || 'U'}
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold text-gray-900">{selectedApp.candidate?.name}</h2>
-                    <p className="text-sm text-gray-500">{selectedApp.job?.title}</p>
+                    <h2 className="text-xl font-bold text-stone-900">{selectedApp.candidate?.name}</h2>
+                    <p className="text-sm text-stone-500">{selectedApp.job?.title}</p>
                   </div>
                 </div>
                 <button 
                   onClick={() => setIsPanelOpen(false)}
-                  className="p-2 hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
+                  className="p-2 hover:bg-stone-100 rounded-full text-stone-500 transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -619,16 +626,16 @@ export default function ApplicationsPage() {
                     <select 
                       value={selectedApp.stage}
                       onChange={(e) => handleStageChange(selectedApp._id, e.target.value)}
-                      className="appearance-none bg-indigo-50 border border-indigo-200 text-indigo-700 font-medium py-2 pl-4 pr-10 rounded-lg hover:bg-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer text-sm transition-colors"
+                      className="appearance-none bg-brand-50 border border-brand-200 text-brand-700 font-medium py-2 pl-4 pr-10 rounded-lg hover:bg-brand-100 focus:ring-2 focus:ring-brand-500 focus:outline-none cursor-pointer text-sm transition-colors"
                     >
                       {STAGES.map(s => (
                         <option key={s.id} value={s.id}>{s.label}</option>
                       ))}
                     </select>
-                    <ChevronDown className="w-4 h-4 text-indigo-600 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <ChevronDown className="w-4 h-4 text-brand-600 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   </div>
                   
-                  <button className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2">
+                  <button className="px-4 py-2 bg-white border border-stone-300 text-stone-700 rounded-lg text-sm font-medium hover:bg-stone-50 flex items-center gap-2">
                     <Calendar className="w-4 h-4" />
                     Schedule
                   </button>
@@ -668,25 +675,25 @@ export default function ApplicationsPage() {
 
                 {/* Candidate Info */}
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4 border-b pb-2">Candidate Details</h3>
+                  <h3 className="text-sm font-semibold text-stone-900 uppercase tracking-wider mb-4 border-b pb-2">Candidate Details</h3>
                   <div className="space-y-3 text-sm">
-                    <div className="flex items-center gap-3 text-gray-600">
-                      <Mail className="w-4 h-4 text-gray-400" />
-                      <a href={`mailto:${selectedApp.candidate?.email}`} className="hover:text-indigo-600">{selectedApp.candidate?.email}</a>
+                    <div className="flex items-center gap-3 text-stone-600">
+                      <Mail className="w-4 h-4 text-stone-400" />
+                      <a href={`mailto:${selectedApp.candidate?.email}`} className="hover:text-brand-600">{selectedApp.candidate?.email}</a>
                     </div>
                     {selectedApp.candidate?.phone && (
-                      <div className="flex items-center gap-3 text-gray-600">
-                        <Phone className="w-4 h-4 text-gray-400" />
-                        <a href={`tel:${selectedApp.candidate?.phone}`} className="hover:text-indigo-600">{selectedApp.candidate?.phone}</a>
+                      <div className="flex items-center gap-3 text-stone-600">
+                        <Phone className="w-4 h-4 text-stone-400" />
+                        <a href={`tel:${selectedApp.candidate?.phone}`} className="hover:text-brand-600">{selectedApp.candidate?.phone}</a>
                       </div>
                     )}
-                    <div className="flex items-center gap-3 text-gray-600">
-                      <Clock className="w-4 h-4 text-gray-400" />
+                    <div className="flex items-center gap-3 text-stone-600">
+                      <Clock className="w-4 h-4 text-stone-400" />
                       Applied on {new Date(selectedApp.createdAt).toLocaleString()}
                     </div>
                     {selectedApp.resumeUrl && (
                       <div className="mt-4 pt-2">
-                        <a href={selectedApp.resumeUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
+                        <a href={selectedApp.resumeUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-sm font-medium transition-colors">
                           <FileText className="w-4 h-4" />
                           View Resume
                         </a>
@@ -697,13 +704,13 @@ export default function ApplicationsPage() {
 
                 {/* Notes placeholder */}
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4 border-b pb-2">Notes</h3>
+                  <h3 className="text-sm font-semibold text-stone-900 uppercase tracking-wider mb-4 border-b pb-2">Notes</h3>
                   <textarea 
                     placeholder="Add a note about this candidate..."
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[100px] resize-none"
+                    className="w-full border border-stone-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 min-h-[100px] resize-none"
                   ></textarea>
                   <div className="flex justify-end mt-2">
-                    <button className="px-4 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800">Save Note</button>
+                    <button className="px-4 py-1.5 bg-stone-900 text-white text-sm rounded-lg hover:bg-stone-800">Save Note</button>
                   </div>
                 </div>
 
@@ -716,32 +723,32 @@ export default function ApplicationsPage() {
 
       {/* Add Application Modal (Simplified placeholder) */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-stone-900/55 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-              <h2 className="text-lg font-bold text-gray-900">Add Application</h2>
-              <button onClick={() => setIsAddModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+            <div className="px-6 py-4 border-b border-stone-100 flex justify-between items-center">
+              <h2 className="text-lg font-bold text-stone-900">Add Application</h2>
+              <button onClick={() => setIsAddModalOpen(false)} className="text-stone-400 hover:text-stone-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Job</label>
-                <select className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500">
+                <label className="block text-sm font-medium text-stone-700 mb-1">Job</label>
+                <select className="w-full border border-stone-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-500">
                   {jobs.map(job => <option key={job._id} value={job._id}>{job.title}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Candidate Name</label>
-                <input type="text" className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500" />
+                <label className="block text-sm font-medium text-stone-700 mb-1">Candidate Name</label>
+                <input type="text" className="w-full border border-stone-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Candidate Email</label>
-                <input type="email" className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500" />
+                <label className="block text-sm font-medium text-stone-700 mb-1">Candidate Email</label>
+                <input type="email" className="w-full border border-stone-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-500" />
               </div>
               <div className="pt-4 flex justify-end gap-3">
-                <button onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium">Cancel</button>
-                <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700">Submit</button>
+                <button onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-stone-600 hover:bg-stone-100 rounded-lg font-medium">Cancel</button>
+                <button className="px-4 py-2 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700">Submit</button>
               </div>
             </div>
           </div>
@@ -753,7 +760,7 @@ export default function ApplicationsPage() {
         <div className="fixed bottom-4 right-4 z-50 animate-fade-in-up">
           <div className={classNames(
             "px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 text-sm font-medium",
-            toast.type === 'error' ? "bg-red-600 text-white" : "bg-gray-900 text-white"
+            toast.type === 'error' ? "bg-red-600 text-white" : "bg-stone-900 text-white"
           )}>
             {toast.type === 'error' ? <AlertCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4 text-green-400" />}
             {toast.message}

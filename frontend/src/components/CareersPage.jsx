@@ -96,7 +96,7 @@ const CareersPage = () => {
     );
   }
 
-  const primaryColor = orgData?.settings?.brandColor || '#4F46E5';
+  const primaryColor = orgData?.brandColor || '#4F46E5';
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans flex flex-col">
@@ -255,12 +255,14 @@ const CareersPage = () => {
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 py-8 flex-shrink-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-gray-500">
-          Powered by <a href="/" className="font-semibold text-gray-900 hover:text-indigo-600 transition-colors">SkillNix ATS</a>
-        </div>
-      </footer>
+      {/* Footer — hidden when the org has the White-Label Kit add-on enabled */}
+      {!orgData?.hidePoweredBy && (
+        <footer className="bg-white border-t border-gray-200 py-8 flex-shrink-0">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-gray-500">
+            Powered by <a href="/" className="font-semibold text-gray-900 hover:text-indigo-600 transition-colors">SkillNix ATS</a>
+          </div>
+        </footer>
+      )}
     </div>
   );
 };

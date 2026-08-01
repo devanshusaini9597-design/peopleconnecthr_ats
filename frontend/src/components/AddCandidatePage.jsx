@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Upload } from 'lucide-react';
-import Layout from './Layout';
+import { ArrowLeft, UserPlus, Upload } from 'lucide-react';
+import PageHeader from './ui/PageHeader';
 import BASE_API_URL from '../config';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import useCountries from '../utils/useCountries';
@@ -460,41 +460,38 @@ const AddCandidatePage = () => {
   };
 
   return (
-    <Layout>
-      <div className="min-h-screen bg-gray-50 px-8 py-6">
+    <>
+      <div className="page-shell-ats">
         {/* Header */}
         <div className="mb-5">
           <button
             onClick={() => navigate('/ats')}
-            className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium mb-3 transition-colors text-sm"
+            className="flex items-center gap-2 text-brand-600 hover:text-brand-700 font-semibold mb-4 transition-colors text-sm group"
           >
             <ArrowLeft size={16} />
             Back to All Candidates
           </button>
           
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-green-600 rounded-full flex items-center justify-center">
-              <Plus size={18} className="text-white" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">Add New Candidate</h1>
-              <p className="text-xs text-gray-500 mt-0.5">Fill in the candidate details below</p>
-            </div>
-          </div>
+          <PageHeader
+            icon={UserPlus}
+            title="Add New Candidate"
+            subtitle="Fill in the candidate details below — required fields are marked."
+            gradientTitle
+          />
         </div>
 
         {/* Form Container */}
-        <div className="max-w-6xl mx-auto">
-          <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-6 space-y-6">
+        <div className="max-w-5xl mx-auto w-full">
+          <form onSubmit={handleSubmit} className="card-ats-bordered p-5 sm:p-8 space-y-8">
             
             {/* Basic Information Section */}
             <div>
-              <h2 className="text-sm font-bold text-gray-900 mb-4 pb-2.5 border-b border-gray-200">
-                📋 Basic Information
+              <h2 className="section-title-ats">
+                Basic Information
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Name <span className="text-red-500">*</span></label>
+                  <label className="label-ats">Name <span className="text-red-500">*</span></label>
                   <input
                     ref={fieldRefs.name}
                     type="text"
@@ -503,13 +500,13 @@ const AddCandidatePage = () => {
                     onChange={handleInputChange}
                     onBlur={handleBlur}
                     placeholder="Full Name"
-                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 transition-all ${formErrors.name ? 'border-red-400 focus:border-red-500 focus:ring-red-200 bg-red-50' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200'}`}
+                    className={`input-ats ${formErrors.name ? 'border-red-400 focus:border-red-500 focus:ring-red-200/60 bg-red-50/70' : 'border-stone-200 focus:border-brand-500 focus:ring-brand-500/20'}`}
                   />
-                  {formErrors.name && <p className="text-xs text-red-500 mt-1 font-medium">{formErrors.name}</p>}
+                  {formErrors.name && <p className="field-error">{formErrors.name}</p>}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Email <span className="text-red-500">*</span></label>
+                  <label className="label-ats">Email <span className="text-red-500">*</span></label>
                   <input
                     ref={fieldRefs.email}
                     type="email"
@@ -518,16 +515,16 @@ const AddCandidatePage = () => {
                     onChange={handleInputChange}
                     onBlur={handleBlur}
                     placeholder="email@example.com"
-                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 transition-all ${formErrors.email ? 'border-red-400 focus:border-red-500 focus:ring-red-200 bg-red-50' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200'}`}
+                    className={`input-ats ${formErrors.email ? 'border-red-400 focus:border-red-500 focus:ring-red-200/60 bg-red-50/70' : 'border-stone-200 focus:border-brand-500 focus:ring-brand-500/20'}`}
                   />
-                  {formErrors.email && <p className="text-xs text-red-500 mt-1 font-medium">{formErrors.email}</p>}
+                  {formErrors.email && <p className="field-error">{formErrors.email}</p>}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Contact <span className="text-red-500">*</span></label>
-                  <div className={`flex w-full items-stretch border rounded-lg focus-within:ring-2 transition-all bg-white overflow-hidden ${formErrors.contact ? 'border-red-400 focus-within:border-red-500 focus-within:ring-red-200 bg-red-50' : 'border-gray-300 focus-within:border-blue-500 focus-within:ring-blue-200'}`}>
+                  <label className="label-ats">Contact <span className="text-red-500">*</span></label>
+                  <div className={`flex w-full items-stretch border rounded-xl focus-within:ring-2 transition-all bg-white overflow-hidden ${formErrors.contact ? 'border-red-400 focus-within:border-red-500 focus-within:ring-red-200 bg-red-50' : 'border-stone-200 focus-within:border-brand-500 focus-within:ring-brand-500/20'}`}>
                     <select
-                      className="px-2.5 py-2 bg-white text-sm font-semibold min-w-[85px] border-r border-gray-300 outline-none"
+                      className="px-2.5 py-2.5 bg-stone-50 text-sm font-semibold min-w-[85px] border-r border-stone-200 outline-none"
                       value={countryCode}
                       onChange={(e) => {
                         setCountryCode(e.target.value);
@@ -553,17 +550,17 @@ const AddCandidatePage = () => {
                       maxLength="10"
                     />
                   </div>
-                  {formErrors.contact && <p className="text-xs text-red-500 mt-1 font-medium">{formErrors.contact}</p>}
+                  {formErrors.contact && <p className="field-error">{formErrors.contact}</p>}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Position</label>
+                  <label className="label-ats">Position</label>
                   <select
                     name="position"
                     value={formData.position}
                     onChange={handleInputChange}
                     data-long-list={positions.length > 8 ? 'true' : undefined}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    className="input-ats"
                   >
                     <option value="">Select Position</option>
                     {positions.map(pos => (
@@ -573,7 +570,7 @@ const AddCandidatePage = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Company <span className="text-red-500">*</span></label>
+                  <label className="label-ats">Company <span className="text-red-500">*</span></label>
                   <input
                     ref={fieldRefs.companyName}
                     type="text"
@@ -582,20 +579,20 @@ const AddCandidatePage = () => {
                     onChange={handleInputChange}
                     onBlur={handleBlur}
                     placeholder="Company Name"
-                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 transition-all ${formErrors.companyName ? 'border-red-400 focus:border-red-500 focus:ring-red-200 bg-red-50' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200'}`}
+                    className={`input-ats ${formErrors.companyName ? 'border-red-400 focus:border-red-500 focus:ring-red-200/60 bg-red-50/70' : 'border-stone-200 focus:border-brand-500 focus:ring-brand-500/20'}`}
                   />
-                  {formErrors.companyName && <p className="text-xs text-red-500 mt-1 font-medium">{formErrors.companyName}</p>}
+                  {formErrors.companyName && <p className="field-error">{formErrors.companyName}</p>}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Location</label>
+                  <label className="label-ats">Location</label>
                   <input
                     type="text"
                     name="location"
                     value={formData.location}
                     onChange={handleInputChange}
                     placeholder="City/Region"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    className="input-ats"
                   />
                 </div>
               </div>
@@ -603,17 +600,17 @@ const AddCandidatePage = () => {
 
             {/* Experience & Compensation Section */}
             <div>
-              <h2 className="text-sm font-bold text-gray-900 mb-4 pb-2.5 border-b border-gray-200">
-                💼 Experience & Compensation
+              <h2 className="section-title-ats">
+                Experience & Compensation
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Experience</label>
+                  <label className="label-ats">Experience</label>
                   <select
                     name="experience"
                     value={formData.experience}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    className="input-ats"
                   >
                     <option value="">Select</option>
                     <option value="Fresher">Fresher</option>
@@ -624,30 +621,30 @@ const AddCandidatePage = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Current CTC (LPA) <span className="text-red-500">*</span></label>
+                  <label className="label-ats">Current CTC (LPA) <span className="text-red-500">*</span></label>
                   <select
                     ref={fieldRefs.ctc}
                     name="ctc"
                     value={formData.ctc}
                     onChange={handleInputChange}
                     onBlur={handleBlur}
-                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 transition-all max-h-52 ${formErrors.ctc ? 'border-red-400 focus:border-red-500 focus:ring-red-200 bg-red-50' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200'}`}
+                    className={`input-ats max-h-52 ${formErrors.ctc ? 'border-red-400 focus:border-red-500 focus:ring-red-200/60 bg-red-50/70' : 'border-stone-200 focus:border-brand-500 focus:ring-brand-500/20'}`}
                   >
                     <option value="">Select CTC</option>
                     {ctcRanges.map(range => (
                       <option key={range} value={range}>{range}</option>
                     ))}
                   </select>
-                  {formErrors.ctc && <p className="text-xs text-red-500 mt-1 font-medium">{formErrors.ctc}</p>}
+                  {formErrors.ctc && <p className="field-error">{formErrors.ctc}</p>}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Expected CTC (LPA)</label>
+                  <label className="label-ats">Expected CTC (LPA)</label>
                   <select
                     name="expectedCtc"
                     value={formData.expectedCtc}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all max-h-52"
+                    className="input-ats max-h-52"
                   >
                     <option value="">Select Expected CTC</option>
                     {expectedCtcOptions.map(range => (
@@ -657,12 +654,12 @@ const AddCandidatePage = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Notice Period</label>
+                  <label className="label-ats">Notice Period</label>
                   <select
                     name="noticePeriod"
                     value={formData.noticePeriod}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    className="input-ats"
                   >
                     <option value="">Select Notice Period</option>
                     {noticePeriodOptions.map(opt => (
@@ -672,12 +669,12 @@ const AddCandidatePage = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">FLS/Non FLS</label>
+                  <label className="label-ats">FLS/Non FLS</label>
                   <select
                     name="fls"
                     value={formData.fls}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    className="input-ats"
                   >
                     <option value="">Select</option>
                     <option value="FLS">FLS</option>
@@ -686,12 +683,12 @@ const AddCandidatePage = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Status</label>
+                  <label className="label-ats">Status</label>
                   <select
                     name="status"
                     value={formData.status}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    className="input-ats"
                   >
                     <option value="Applied">Applied</option>
                     <option value="Screening">Screening</option>
@@ -710,18 +707,18 @@ const AddCandidatePage = () => {
 
             {/* Additional Information Section */}
             <div>
-              <h2 className="text-sm font-bold text-gray-900 mb-4 pb-2.5 border-b border-gray-200">
-                📝 Additional Information
+              <h2 className="section-title-ats">
+                Additional Information
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Client</label>
+                  <label className="label-ats">Client</label>
                   <select
                     name="client"
                     value={formData.client}
                     onChange={handleInputChange}
                     data-long-list={clients.length > 8 ? 'true' : undefined}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    className="input-ats"
                   >
                     <option value="">Select Client</option>
                     {clients.map(client => (
@@ -731,25 +728,25 @@ const AddCandidatePage = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">SPOC</label>
+                  <label className="label-ats">SPOC</label>
                   <input
                     type="text"
                     name="spoc"
                     value={formData.spoc}
                     onChange={handleInputChange}
                     placeholder="SPOC Name"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    className="input-ats"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Source of CV</label>
+                  <label className="label-ats">Source of CV</label>
                   <select
                     name="source"
                     value={formData.source}
                     onChange={handleInputChange}
                     data-long-list={sources.length > 8 ? 'true' : undefined}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    className="input-ats"
                   >
                     <option value="">Select Source</option>
                     {sources.map(source => (
@@ -759,24 +756,24 @@ const AddCandidatePage = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Date</label>
+                  <label className="label-ats">Date</label>
                   <input
                     type="date"
                     name="date"
                     value={formData.date}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    className="input-ats"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Call Back Date</label>
+                  <label className="label-ats">Call Back Date</label>
                   <input
                     type="date"
                     name="callBackDate"
                     value={formData.callBackDate}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    className="input-ats"
                   />
                 </div>
 
@@ -784,25 +781,25 @@ const AddCandidatePage = () => {
               </div>
               <div className="grid grid-cols-1 gap-4 mt-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Skills (from resume)</label>
+                  <label className="label-ats">Skills (from resume)</label>
                   <textarea
                     name="skills"
                     value={formData.skills}
                     onChange={handleInputChange}
                     placeholder="e.g. Java, React, AWS (from parsed resume)"
                     rows="2"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all resize-none"
+                    className="input-ats resize-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Remark</label>
+                  <label className="label-ats">Remark</label>
                   <textarea
                     name="remark"
                     value={formData.remark}
                     onChange={handleInputChange}
                     placeholder="e.g. Rejected due to salary mismatch, Not reachable, etc."
                     rows="2"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all resize-none"
+                    className="input-ats resize-none"
                   />
                 </div>
               </div>
@@ -810,10 +807,10 @@ const AddCandidatePage = () => {
 
             {/* Resume Upload Section */}
             <div>
-              <h2 className="text-sm font-bold text-gray-900 mb-4 pb-2.5 border-b border-gray-200">
-                📄 Resume (Optional)
+              <h2 className="section-title-ats">
+                Resume (Optional)
               </h2>
-              <div className="border border-dashed border-gray-300 rounded-lg p-6 bg-gray-50 text-center hover:bg-gray-100 transition-colors cursor-pointer relative">
+              <div className="dropzone-ats p-8">
                 <input
                   type="file"
                   name="resume"
@@ -822,44 +819,44 @@ const AddCandidatePage = () => {
                   className="absolute inset-0 opacity-0 cursor-pointer"
                 />
                 <div className="flex flex-col items-center gap-3">
-                  <Upload size={24} className="text-gray-500" />
+                  <Upload size={24} className="text-stone-500" />
                   <div>
-                    <p className="text-sm font-medium text-gray-700">Click to upload resume</p>
-                    <p className="text-xs text-gray-500">or drag and drop (PDF, DOC, DOCX)</p>
+                    <p className="text-sm font-semibold text-stone-700">Click to upload resume</p>
+                    <p className="text-xs text-stone-500">or drag and drop (PDF, DOC, DOCX)</p>
                   </div>
                   {isAutoParsing && (
-                    <div className="flex items-center gap-2 text-blue-600 font-semibold">
-                      <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <div className="flex items-center gap-2 text-brand-600 font-semibold">
+                      <div className="w-4 h-4 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
                       Parsing resume...
                     </div>
                   )}
                   {formData.resume && (
-                    <p className="text-sm text-green-600 font-semibold">✅ {formData.resume.name}</p>
+                    <p className="text-sm text-emerald-600 font-semibold">{formData.resume.name}</p>
                   )}
                 </div>
               </div>
             </div>
 
             {/* Form Actions */}
-            <div className="flex gap-3 pt-4 border-t border-gray-200">
+            <div className="flex flex-col-reverse sm:flex-row gap-3 pt-6 border-t border-stone-100">
               <button
                 type="button"
                 onClick={handleReset}
-                className="flex-1 px-4 py-2.5 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300 transition-all transform hover:scale-105 text-sm"
+                className="btn-secondary flex-1"
               >
-                🔄 Reset Form
+                Reset Form
               </button>
               <button
                 type="button"
                 onClick={() => navigate('/ats')}
-                className="flex-1 px-4 py-2.5 bg-gray-400 text-white rounded-lg font-semibold hover:bg-gray-500 transition-all transform hover:scale-105 text-sm"
+                className="btn-ghost flex-1 !bg-stone-100"
               >
-                ✕ Cancel
+                Cancel
               </button>
               <button
                 type="submit"
                 disabled={isLoading || isAutoParsing}
-                className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                className="btn-primary flex-1"
               >
                 {isLoading ? (
                   <>
@@ -868,7 +865,7 @@ const AddCandidatePage = () => {
                   </>
                 ) : (
                   <>
-                    ✅ Add Candidate
+                    Add Candidate
                   </>
                 )}
               </button>
@@ -876,7 +873,7 @@ const AddCandidatePage = () => {
           </form>
         </div>
       </div>
-    </Layout>
+    </>
   );
 };
 

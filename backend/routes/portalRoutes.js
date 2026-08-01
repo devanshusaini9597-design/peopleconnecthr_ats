@@ -119,4 +119,107 @@ router.get('/application/:id', requirePortalAuth, async (req, res) => {
   }
 });
 
+/**
+ * GDPR self-service (Art. 15/20 "right to access/portability").
+ * Always available on every plan — this is a compliance feature, not a
+ * paid add-on. Returns everything this platform holds about the candidate:
+ * their own profile fields + every application/pipeline record tied to
+ * their candidateId, scoped to this organization only.
+ *
+ * GET /api/portal/gdpr/export
+ */
+router.get('/gdpr/export', requirePortalAuth, async (req, res) => {
+  try {
+    const candidate = await Candidate.findOne({ _id: req.candidateId, organizationId: req.organizationId }).lean();
+    if (!candidate) return res.status(404).json({ success: false, message: 'Candidate record not found' });
+
+    const applications = await Application.find({ candidateId: req.candidateId, organizationId: req.organizationId })
+      .populate('jobId', 'title department location')
+      .lean();
+
+    const exportPayload = {
+      exportedAt: new Date().toISOString(),
+      profile: {
+        name: candidate.name,
+        email: candidate.email,
+        contact: candidate.contact,
+        phone: candidate.phone,
+        position: candidate.position,
+        location: candidate.location,
+        experience: candidate.experience,
+        skills: candidate.skills,
+        source: candidate.source,
+        status: candidate.status,
+        statusHistory: candidate.statusHistory || [],
+        demographics: candidate.demographics || null,
+        resume: candidate.resume || null,
+        createdAt: candidate.createdAt
+      },
+      applications: applications.map(app => ({
+        jobTitle: app.jobId?.title || 'Unknown Job',
+        department: app.jobId?.department || '',
+        location: app.jobId?.location || '',
+        stage: app.stage,
+        stageHistory: app.stageHistory || [],
+        source: app.source,
+        isRejected: app.isRejected,
+        rejectionReason: app.rejectionReason || undefined,
+        isHired: app.isHired,
+        appliedAt: app.appliedAt,
+        notes: app.notes || undefined
+      }))
+    };
+
+    res.setHeader('Content-Disposition', `attachment; filename="my-data-export-${Date.now()}.json"`);
+    res.setHeader('Content-Type', 'application/json');
+    res.json(exportPayload);
+  } catch (error) {
+    console.error('[portal] /gdpr/export error:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to export data' });
+  }
+});
+
+/**
+ * GDPR self-service erasure (Art. 17 "right to be forgotten").
+ * Anonymizes PII in-place rather than hard-deleting the row: pipeline
+ * history (stage/hired counts) stays intact for the org's own reporting,
+ * but the candidate's name/email/phone/resume/skills/demographics are
+ * scrubbed and the account can no longer be looked up or logged into
+ * (email is rewritten to a token, so the unique-per-org email index
+ * frees up the original address for future re-application).
+ *
+ * POST /api/portal/gdpr/erase   body: { confirm: true }
+ */
+router.post('/gdpr/erase', requirePortalAuth, async (req, res) => {
+  try {
+    if (req.body?.confirm !== true) {
+      return res.status(400).json({ success: false, message: 'Erasure must be explicitly confirmed (confirm: true)' });
+    }
+
+    const candidate = await Candidate.findOne({ _id: req.candidateId, organizationId: req.organizationId });
+    if (!candidate) return res.status(404).json({ success: false, message: 'Candidate record not found' });
+
+    const erasureToken = `erased-${candidate._id}@deleted.invalid`;
+
+    candidate.name = 'Erased Candidate';
+    candidate.email = erasureToken;
+    candidate.contact = '';
+    candidate.phone = '';
+    candidate.skills = '';
+    candidate.resume = '';
+    candidate.resumeText = '';
+    candidate.feedback = '';
+    candidate.remark = '';
+    candidate.demographics = { genderIdentity: '', ethnicity: '', veteranStatus: '', disabilityStatus: '', declinedToSelfIdentify: false };
+    candidate.customFields = {};
+    candidate.gdprErasedAt = new Date();
+    await candidate.save();
+
+    res.json({ success: true, message: 'Your personal data has been erased. This cannot be undone.' });
+  } catch (error) {
+    console.error('[portal] /gdpr/erase error:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to process erasure request' });
+  }
+});
+
 module.exports = router;

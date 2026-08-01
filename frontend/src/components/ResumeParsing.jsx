@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, FileText, CheckCircle, AlertCircle, X, ChevronLeft, ChevronRight, ThumbsUp, ThumbsDown, Loader2, Edit2 } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, ThumbsUp, ThumbsDown, Loader2, Edit2, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import Header from './Header';
-import Sidebar from './Sidebar';
+import PageHeader from './ui/PageHeader';
+import Modal from './ui/Modal';
+import EmptyState from './ui/EmptyState';
 import { BASE_API_URL } from '../config';
 import { authenticatedFetch } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -12,7 +13,6 @@ const PARSING_SESSION_KEY = 'resumeParsingSession';
 const ResumeParsing = () => {
   const navigate = useNavigate();
   const toast = useToast();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [parsing, setParsing] = useState(false);
   const [results, setResults] = useState([]);
@@ -168,7 +168,7 @@ const ResumeParsing = () => {
   // Get confidence color and label
   const getConfidenceColor = (score) => {
     if (score >= 85) return { bg: 'bg-green-100', text: 'text-green-700', label: 'High' };
-    if (score >= 70) return { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Medium' };
+    if (score >= 70) return { bg: 'bg-sky-100', text: 'text-sky-700', label: 'Medium' };
     if (score >= 50) return { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'Low' };
     return { bg: 'bg-red-100', text: 'text-red-700', label: 'Very Low' };
   };
@@ -282,500 +282,259 @@ const ResumeParsing = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      {/* Sidebar */}
-      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+    <div className="page-shell-ats">
+      <PageHeader
+        icon={FileText}
+        title="Resume Parsing"
+        subtitle="Extract candidate information from resume PDFs automatically with AI-assisted review."
+        gradientTitle
+      />
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
-
-        {/* Content Area */}
-        <main className="flex-1 overflow-auto">
-          <div className="p-6 max-w-6xl mx-auto">
-            {/* Page Header */}
-            <div className="mb-8">
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Resume Parsing</h1>
-              <p className="text-gray-600">Extract candidate information from resume PDFs automatically</p>
+      {/* Upload */}
+      <div className="card-ats-bordered p-6 sm:p-8 relative overflow-hidden">
+        <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-brand-400/10 blur-3xl pointer-events-none" />
+        <label className={`dropzone-ats block p-8 sm:p-12 ${parsing ? 'opacity-60 pointer-events-none' : ''}`}>
+          <div className="flex flex-col items-center justify-center gap-3 relative z-[1]">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-500 via-brand-600 to-teal-700 shadow-lg shadow-brand-500/25 flex items-center justify-center">
+              {parsing ? <Loader2 size={26} className="text-white animate-spin" /> : <Upload size={26} className="text-white" strokeWidth={1.75} />}
             </div>
-
-            {/* Upload Section */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 mb-8">
-              <div className="flex flex-col items-center">
-                <label className="flex flex-col items-center justify-center w-full cursor-pointer">
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    <Upload size={48} className="text-blue-600 mb-2" strokeWidth={1.5} />
-                    <p className="text-sm text-gray-700 text-center">
-                      <span className="font-semibold">Click to upload</span> or drag and drop
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">PDF files (Max 10MB each)</p>
-                  </div>
-                  <input
-                    type="file"
-                    multiple
-                    accept=".pdf"
-                    onChange={handleFileSelect}
-                    disabled={parsing}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-
-              {/* File Upload Progress */}
-              {uploadedFiles.length > 0 && (
-                <div className="mt-6 pt-6 border-t border-gray-200">
-                  <h3 className="font-semibold text-gray-900 mb-3">Uploaded Files</h3>
-                  <div className="space-y-2">
-                    {uploadedFiles.map((file, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div className="flex items-center gap-2">
-                          <FileText size={18} className="text-blue-600" />
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{file.name}</p>
-                            <p className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                          </div>
-                        </div>
-                        {parsing && <span className="text-xs text-gray-500">Processing...</span>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+            <p className="text-sm text-stone-700 text-center">
+              <span className="font-bold text-stone-900">Click to upload</span> or drag and drop
+            </p>
+            <p className="text-xs text-stone-500">PDF files · Max 10MB each</p>
+            <div className="flex items-center gap-1.5 mt-1 text-[11px] font-semibold text-brand-700 bg-brand-50 border border-brand-100 px-2.5 py-1 rounded-lg">
+              <Sparkles size={12} /> AI field extraction
             </div>
-
-            {/* Results Section */}
-            {results.length > 0 && (
-              <div className="space-y-4">
-                <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-                  <h2 className="text-xl font-bold text-gray-900">Parsing Results</h2>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <button
-                      onClick={openConfirmAddAll}
-                      disabled={addingAll || approvedDataList.length === 0}
-                      className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-semibold shadow-md hover:from-green-700 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                    >
-                      {addingAll ? (
-                        <>
-                          <Loader2 size={18} className="animate-spin" />
-                          Adding...
-                        </>
-                      ) : (
-                        <>Add {approvedDataList.length} Approved as Candidates</>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Slider view: one card + Prev/Next + Approve/Reject + all fields */}
-                {results.length > 0 && (
-                  <div className="mb-6 bg-white rounded-xl border border-gray-200 p-5">
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-sm font-medium text-gray-500">
-                        {currentSlide + 1} of {results.length}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setCurrentSlide(s => Math.max(0, s - 1))}
-                          disabled={currentSlide === 0}
-                          className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          <ChevronLeft size={20} />
-                        </button>
-                        <button
-                          onClick={() => setCurrentSlide(s => Math.min(results.length - 1, s + 1))}
-                          disabled={currentSlide === results.length - 1}
-                          className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          <ChevronRight size={20} />
-                        </button>
-                      </div>
-                    </div>
-                    {(() => {
-                      const result = results[currentSlide];
-                      const isApproved = approvedIdx.has(currentSlide);
-                      const isEditing = editingIdx === currentSlide;
-                      const fields = [
-                        { key: 'name', label: 'Name', type: 'text' },
-                        { key: 'email', label: 'Email', type: 'email' },
-                        { key: 'contact', label: 'Contact', type: 'tel' },
-                        { key: 'position', label: 'Position', type: 'text' },
-                        { key: 'company', label: 'Company', type: 'text' },
-                        { key: 'experience', label: 'Experience', type: 'text' },
-                        { key: 'location', label: 'Location', type: 'text' },
-                        { key: 'education', label: 'Education', type: 'text' },
-                        { key: 'skills', label: 'Skills', type: 'text' }
-                      ];
-                      return (
-                        <div className={`border rounded-lg p-5 ${result.success ? 'bg-white border-green-200' : 'bg-red-50 border-red-200'}`}>
-                          <div className="flex items-start justify-between mb-3">
-                            <div>
-                              <p className="font-semibold text-gray-900">{result.fileName}</p>
-                              {!result.success && result.error && (
-                                <p className="mt-2 text-sm text-red-700 font-medium">{result.error}</p>
-                              )}
-                            </div>
-                            {result.success && (
-                              <div className="flex gap-2">
-                                {!isEditing && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleEdit(currentSlide)}
-                                    className="p-2 rounded-lg bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition-colors"
-                                    title="Edit"
-                                  >
-                                    <Edit2 size={18} />
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => setApprovedIdx(prev => { const n = new Set(prev); n.add(currentSlide); return n; })}
-                                  className={`p-2 rounded-lg ${isApproved ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500 hover:bg-green-50'}`}
-                                  title="Approve (include when adding all)"
-                                >
-                                  <ThumbsUp size={18} />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setApprovedIdx(prev => { const n = new Set(prev); n.delete(currentSlide); return n; })}
-                                  className={`p-2 rounded-lg ${!isApproved ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500 hover:bg-red-50'}`}
-                                  title="Reject (exclude when adding all)"
-                                >
-                                  <ThumbsDown size={18} />
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                          {result.success && result.data && (
-                            <>
-                              {isEditing ? (
-                                <div className="space-y-3">
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                                    {fields.map(({ key: k, label, type }) => (
-                                      <div key={k} className={k === 'skills' ? 'sm:col-span-2' : ''}>
-                                        <label className="text-gray-500 text-xs font-medium uppercase block mb-1">{label}</label>
-                                        {k === 'skills' ? (
-                                          <textarea
-                                            name={k}
-                                            value={editBuffer[k] || ''}
-                                            onChange={handleEditChange}
-                                            rows={2}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                            placeholder={label}
-                                          />
-                                        ) : (
-                                          <input
-                                            type={type}
-                                            name={k}
-                                            value={editBuffer[k] || ''}
-                                            onChange={handleEditChange}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                            placeholder={label}
-                                          />
-                                        )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                  <div className="flex gap-2 pt-3 border-t">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSaveEdit(currentSlide)}
-                                      className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
-                                    >
-                                      Save
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={handleCancelEdit}
-                                      className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg text-sm font-medium hover:bg-gray-300 transition-colors"
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                                  {fields.map(({ key: k, label }) => {
-                                    const confidence = result.confidence?.[k] || 0;
-                                    const confidenceColor = confidence >= 85 ? 'bg-green-100 text-green-700' : confidence >= 70 ? 'bg-blue-100 text-blue-700' : confidence >= 50 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700';
-                                    return (
-                                      <div key={k} className="border border-gray-100 rounded-lg px-3 py-2 bg-gray-50/50 flex items-start justify-between gap-2">
-                                        <div className="min-w-0 flex-1">
-                                          <span className="text-gray-500 text-xs font-medium uppercase block mb-0.5">{label}</span>
-                                          <span className="text-gray-900 break-words">{result.data[k] || '—'}</span>
-                                        </div>
-                                        {confidence > 0 && (
-                                          <span className={`shrink-0 px-2 py-0.5 rounded text-xs font-semibold ${confidenceColor}`}>{Math.round(confidence)}%</span>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                              {!isEditing && (
-                                <div className="mt-4 pt-4 border-t flex justify-center">
-                                  <button
-                                    type="button"
-                                    onClick={() => addToCandidate(result.data)}
-                                    className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold shadow-sm hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all cursor-pointer min-w-[180px]"
-                                  >
-                                    Add as Candidate
-                                  </button>
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-
-                {/* Summary Stats */}
-                <div className="grid grid-cols-3 gap-4 mb-6">
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <p className="text-green-700 font-semibold">{results.filter(r => r.success).length}</p>
-                    <p className="text-green-600 text-sm">Successfully Parsed</p>
-                  </div>
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <p className="text-red-700 font-semibold">{results.filter(r => !r.success).length}</p>
-                    <p className="text-red-600 text-sm">Failed</p>
-                  </div>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p className="text-blue-700 font-semibold">{results.length}</p>
-                    <p className="text-blue-600 text-sm">Total Processed</p>
-                  </div>
-                </div>
-
-                {/* List view removed - slider only */}
-                {false && (
-                <div className="space-y-4">
-                  {results.map((result, idx) => (
-                    <div
-                      key={idx}
-                      className={`border rounded-lg p-5 ${
-                        result.success
-                          ? 'bg-white border-green-200'
-                          : 'bg-red-50 border-red-200'
-                      }`}
-                    >
-                      {/* Header */}
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          {result.success ? (
-                            <CheckCircle size={24} className="text-green-600" />
-                          ) : (
-                            <AlertCircle size={24} className="text-red-600" />
-                          )}
-                          <div>
-                            <p className="font-semibold text-gray-900">{result.fileName}</p>
-                            <p className={`text-sm ${result.success ? 'text-green-600' : 'text-red-600'}`}>
-                              {result.success ? '✅ Successfully Parsed' : `❌ ${result.error}`}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Data Fields - Editable Preview */}
-                      {result.success && result.data && (
-                        <div className="bg-gray-50 rounded-lg p-4 space-y-4">
-                          {editingIdx === idx ? (
-                            <>
-                              {/* Editable Fields */}
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {[
-                                  { key: 'name', label: 'Name', type: 'text' },
-                                  { key: 'email', label: 'Email', type: 'email' },
-                                  { key: 'contact', label: 'Contact', type: 'tel' },
-                                  { key: 'position', label: 'Position/Job Title', type: 'text' },
-                                  { key: 'company', label: 'Company', type: 'text' },
-                                  { key: 'experience', label: 'Years of Experience', type: 'text' },
-                                  { key: 'location', label: 'Location', type: 'text' },
-                                  { key: 'education', label: 'Education', type: 'text' }
-                                ].map(field => (
-                                  <div key={field.key}>
-                                    <label className="text-xs font-semibold text-gray-600 uppercase">{field.label}</label>
-                                    <input
-                                      type={field.type}
-                                      name={field.key}
-                                      value={editBuffer[field.key]}
-                                      onChange={handleEditChange}
-                                      className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                                      placeholder={`Enter ${field.label.toLowerCase()}`}
-                                    />
-                                  </div>
-                                ))}
-                                <div className="md:col-span-2">
-                                  <label className="text-xs font-semibold text-gray-600 uppercase">Skills</label>
-                                  <textarea
-                                    name="skills"
-                                    value={editBuffer.skills}
-                                    onChange={handleEditChange}
-                                    className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder="Enter skills (comma-separated)"
-                                    rows="2"
-                                  />
-                                </div>
-                              </div>
-                              <div className="flex gap-2 mt-4 pt-4 border-t border-gray-200">
-                                <button
-                                  onClick={() => handleSaveEdit(idx)}
-                                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium transition-colors"
-                                >
-                                  ✅ Save Changes
-                                </button>
-                                <button
-                                  onClick={handleCancelEdit}
-                                  className="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 text-sm font-medium transition-colors"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              {/* Read-only Preview Fields with Confidence Badges */}
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {[
-                                  { key: 'name', label: '👤 Name', icon: '👤' },
-                                  { key: 'email', label: '📧 Email', icon: '📧' },
-                                  { key: 'contact', label: '📞 Contact', icon: '📞' },
-                                  { key: 'position', label: '💼 Position', icon: '💼' },
-                                  { key: 'company', label: '🏢 Company', icon: '🏢' },
-                                  { key: 'experience', label: '⏳ Experience', icon: '⏳' },
-                                  { key: 'location', label: '📍 Location', icon: '📍' },
-                                  { key: 'education', label: '🎓 Education', icon: '🎓' }
-                                ].map(field => {
-                                  const value = result.data[field.key];
-                                  const confidence = result.confidence?.[field.key] || 0;
-                                  const confidenceColor = getConfidenceColor(confidence);
-                                  
-                                  return value ? (
-                                    <div key={field.key} className="border border-gray-200 rounded-lg p-3 bg-white hover:shadow-sm transition-shadow">
-                                      <div className="flex items-start justify-between gap-2">
-                                        <div className="flex-1">
-                                          <label className="text-xs font-semibold text-gray-500 uppercase block mb-1">{field.label}</label>
-                                          <p className="text-gray-900 font-medium text-sm break-words">{value}</p>
-                                        </div>
-                                        {confidence > 0 && (
-                                          <div className={`${confidenceColor.bg} ${confidenceColor.text} px-2 py-1 rounded text-xs font-semibold whitespace-nowrap`}>
-                                            {Math.round(confidence)}%
-                                          </div>
-                                        )}
-                                      </div>
-                                      <button
-                                        onClick={() => copyToClipboard(value)}
-                                        className="text-blue-600 hover:text-blue-700 text-xs font-medium mt-2 inline-flex items-center gap-1"
-                                      >
-                                        📋 Copy
-                                      </button>
-                                    </div>
-                                  ) : null;
-                                })}
-                              </div>
-
-                              {/* Missing Fields Notice */}
-                              {!Object.values(result.data).some(v => v) && (
-                                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                                  <p className="text-yellow-700 text-sm font-medium">⚠️ No data extracted from this resume. Please verify the file and try again.</p>
-                                </div>
-                              )}
-
-                              {/* Action Buttons */}
-                              <div className="flex gap-2 mt-4 pt-4 border-t border-gray-200">
-                                <button
-                                  onClick={() => handleEdit(idx)}
-                                  className="px-4 py-2 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 text-sm font-medium transition-colors"
-                                >
-                                  ✏️ Edit
-                                </button>
-                                <button
-                                  onClick={() => addToCandidate(result.data)}
-                                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors"
-                                >
-                                  ➕ Add as Candidate
-                                </button>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                )}
-              </div>
-            )}
-
-            {/* Empty State */}
-            {results.length === 0 && !parsing && (
-              <div className="text-center py-12">
-                <FileText size={48} className="text-gray-300 mx-auto mb-4" strokeWidth={1} />
-                <p className="text-gray-500">Upload resume PDFs to get started</p>
-              </div>
-            )}
-
-            {/* Loading State */}
-            {parsing && (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-center">
-                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-                  <p className="text-gray-600">Parsing resumes...</p>
-                </div>
-              </div>
-            )}
           </div>
-        </main>
+          <input
+            type="file"
+            multiple
+            accept=".pdf"
+            onChange={handleFileSelect}
+            disabled={parsing}
+            className="absolute inset-0 opacity-0 cursor-pointer"
+          />
+        </label>
+
+        {error && (
+          <div className="mt-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {uploadedFiles.length > 0 && (
+          <div className="mt-6 pt-6 border-t border-stone-100">
+            <h3 className="text-sm font-bold text-stone-900 mb-3">Uploaded Files</h3>
+            <div className="space-y-2 stagger-children">
+              {uploadedFiles.map((file, idx) => (
+                <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-stone-50 border border-stone-100 hover:border-brand-200 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center flex-shrink-0">
+                      <FileText size={18} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-stone-900 truncate">{file.name}</p>
+                      <p className="text-xs text-stone-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                    </div>
+                  </div>
+                  {parsing && <span className="text-xs font-medium text-brand-600 flex items-center gap-1.5"><Loader2 size={14} className="animate-spin" /> Processing…</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Confirm Add All (enterprise-style) */}
-      {confirmAddAllOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4" onClick={() => setConfirmAddAllOpen(false)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Add candidates to database</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Add {approvedDataList.length} candidate(s) from the parsed resumes to your All Candidates list?
-            </p>
-            <p className="text-xs text-gray-500 mb-4">Duplicates (same email/phone) will be skipped. You can review them in All Candidates after adding.</p>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmAddAllOpen(false)} className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
-                Cancel
-              </button>
-              <button onClick={addAllAsCandidates} disabled={addingAll} className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2">
-                {addingAll ? <Loader2 size={18} className="animate-spin" /> : null}
-                Add candidates
-              </button>
+      {parsing && results.length === 0 && (
+        <div className="card-ats-bordered p-12 text-center">
+          <Loader2 size={36} className="animate-spin text-brand-600 mx-auto mb-3" />
+          <p className="text-stone-600 font-medium">Parsing resumes…</p>
+          <p className="text-xs text-stone-400 mt-1">This can take a moment for larger files</p>
+        </div>
+      )}
+
+      {results.length > 0 && (
+        <div className="space-y-5 animate-slide-up">
+          <div className="flex flex-wrap justify-between items-center gap-3">
+            <h2 className="text-lg font-bold text-stone-900 tracking-tight">Parsing Results</h2>
+            <button
+              type="button"
+              onClick={openConfirmAddAll}
+              disabled={addingAll || approvedDataList.length === 0}
+              className="btn-primary"
+            >
+              {addingAll ? (<><Loader2 size={18} className="animate-spin" /> Adding…</>) : (<>Add {approvedDataList.length} Approved as Candidates</>)}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="card-ats-bordered p-4 border-l-4 border-l-emerald-500">
+              <p className="text-2xl font-bold text-emerald-700 tabular-nums">{results.filter(r => r.success).length}</p>
+              <p className="text-xs font-semibold text-emerald-600 mt-0.5">Successfully Parsed</p>
             </div>
+            <div className="card-ats-bordered p-4 border-l-4 border-l-red-400">
+              <p className="text-2xl font-bold text-red-700 tabular-nums">{results.filter(r => !r.success).length}</p>
+              <p className="text-xs font-semibold text-red-600 mt-0.5">Failed</p>
+            </div>
+            <div className="card-ats-bordered p-4 border-l-4 border-l-brand-500">
+              <p className="text-2xl font-bold text-brand-700 tabular-nums">{results.length}</p>
+              <p className="text-xs font-semibold text-brand-600 mt-0.5">Total Processed</p>
+            </div>
+          </div>
+
+          <div className="card-ats-bordered p-5 sm:p-6">
+            <div className="flex items-center justify-between mb-5">
+              <span className="badge-neutral">{currentSlide + 1} of {results.length}</span>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setCurrentSlide(s => Math.max(0, s - 1))} disabled={currentSlide === 0} className="btn-secondary !p-2.5 !px-2.5" aria-label="Previous">
+                  <ChevronLeft size={18} />
+                </button>
+                <button type="button" onClick={() => setCurrentSlide(s => Math.min(results.length - 1, s + 1))} disabled={currentSlide === results.length - 1} className="btn-secondary !p-2.5 !px-2.5" aria-label="Next">
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            </div>
+            {(() => {
+              const result = results[currentSlide];
+              const isApproved = approvedIdx.has(currentSlide);
+              const isEditing = editingIdx === currentSlide;
+              const fields = [
+                { key: 'name', label: 'Name', type: 'text' },
+                { key: 'email', label: 'Email', type: 'email' },
+                { key: 'contact', label: 'Contact', type: 'tel' },
+                { key: 'position', label: 'Position', type: 'text' },
+                { key: 'company', label: 'Company', type: 'text' },
+                { key: 'experience', label: 'Experience', type: 'text' },
+                { key: 'location', label: 'Location', type: 'text' },
+                { key: 'education', label: 'Education', type: 'text' },
+                { key: 'skills', label: 'Skills', type: 'text' }
+              ];
+              return (
+                <div className={`rounded-2xl border p-5 transition-all ${result.success ? 'bg-white border-stone-200' : 'bg-red-50/60 border-red-200'}`}>
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <div className="min-w-0">
+                      <p className="font-bold text-stone-900 truncate">{result.fileName}</p>
+                      {!result.success && result.error && (
+                        <p className="mt-2 text-sm text-red-700 font-medium">{result.error}</p>
+                      )}
+                    </div>
+                    {result.success && (
+                      <div className="flex gap-1.5 flex-shrink-0">
+                        {!isEditing && (
+                          <button type="button" onClick={() => handleEdit(currentSlide)} className="p-2.5 rounded-xl bg-stone-100 text-stone-600 hover:bg-brand-50 hover:text-brand-700 transition-colors" title="Edit">
+                            <Edit2 size={16} />
+                          </button>
+                        )}
+                        <button type="button" onClick={() => setApprovedIdx(prev => { const n = new Set(prev); n.add(currentSlide); return n; })} className={`p-2.5 rounded-xl transition-colors ${isApproved ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500 hover:bg-emerald-50'}`} title="Approve">
+                          <ThumbsUp size={16} />
+                        </button>
+                        <button type="button" onClick={() => setApprovedIdx(prev => { const n = new Set(prev); n.delete(currentSlide); return n; })} className={`p-2.5 rounded-xl transition-colors ${!isApproved ? 'bg-red-100 text-red-700' : 'bg-stone-100 text-stone-500 hover:bg-red-50'}`} title="Reject">
+                          <ThumbsDown size={16} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {result.success && result.data && (
+                    <>
+                      {isEditing ? (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                            {fields.map(({ key: k, label, type }) => (
+                              <div key={k} className={k === 'skills' ? 'sm:col-span-2' : ''}>
+                                <label className="label-ats">{label}</label>
+                                {k === 'skills' ? (
+                                  <textarea name={k} value={editBuffer[k] || ''} onChange={handleEditChange} rows={2} className="textarea-ats" placeholder={label} />
+                                ) : (
+                                  <input type={type} name={k} value={editBuffer[k] || ''} onChange={handleEditChange} className="input-ats" placeholder={label} />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex flex-wrap gap-2 pt-3 border-t border-stone-100">
+                            <button type="button" onClick={() => handleSaveEdit(currentSlide)} className="btn-primary !py-2">Save</button>
+                            <button type="button" onClick={handleCancelEdit} className="btn-secondary !py-2">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                          {fields.map(({ key: k, label }) => {
+                            const confidence = result.confidence?.[k] || 0;
+                            const confidenceColor = confidence >= 85 ? 'badge-success' : confidence >= 70 ? 'badge-info' : confidence >= 50 ? 'badge-warning' : 'badge-danger';
+                            return (
+                              <div key={k} className="rounded-xl border border-stone-100 px-3 py-2.5 bg-stone-50/70 flex items-start justify-between gap-2 hover:border-brand-200 transition-colors">
+                                <div className="min-w-0 flex-1">
+                                  <span className="text-stone-500 text-[10px] font-bold uppercase tracking-wide block mb-0.5">{label}</span>
+                                  <span className="text-stone-900 font-medium break-words">{result.data[k] || '—'}</span>
+                                </div>
+                                {confidence > 0 && (
+                                  <span className={`shrink-0 ${confidenceColor}`}>{Math.round(confidence)}%</span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {!isEditing && (
+                        <div className="mt-5 pt-4 border-t border-stone-100 flex justify-center">
+                          <button type="button" onClick={() => addToCandidate(result.data)} className="btn-cta-primary min-w-[200px]">
+                            Add as Candidate
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
 
-      {/* Success modal after Add All (enterprise-style) */}
-      {addSuccessModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 text-center">
-            <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-              <CheckCircle size={28} className="text-green-600" />
-            </div>
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Candidates added</h3>
-            <p className="text-sm text-gray-600 mb-1">{addSuccessModal.created} candidate(s) added to your database.</p>
-            {(addSuccessModal.skipped > 0 || addSuccessModal.errors > 0) && (
-              <p className="text-xs text-gray-500 mb-4">
-                {addSuccessModal.skipped > 0 && `${addSuccessModal.skipped} skipped (duplicate). `}
-                {addSuccessModal.errors > 0 && `${addSuccessModal.errors} failed validation.`}
-              </p>
-            )}
-            <div className="flex gap-3 mt-4">
-              <button onClick={() => { setAddSuccessModal(null); }} className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
-                Stay here
-              </button>
-              <button onClick={() => { setAddSuccessModal(null); navigate('/ats'); }} className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">
-                Go to All Candidates
-              </button>
-            </div>
-          </div>
+      {results.length === 0 && !parsing && (
+        <div className="card-ats-bordered">
+          <EmptyState
+            icon={FileText}
+            message="Upload resume PDFs to get started"
+            subMessage="Parsed fields appear here with confidence scores for quick review."
+          />
         </div>
       )}
+
+      <Modal
+        open={confirmAddAllOpen}
+        onClose={() => setConfirmAddAllOpen(false)}
+        title="Add candidates to database"
+        description={`Add ${approvedDataList.length} candidate(s) from the parsed resumes to your All Candidates list? Duplicates (same email/phone) will be skipped.`}
+        footer={
+          <>
+            <button type="button" onClick={() => setConfirmAddAllOpen(false)} className="btn-secondary">Cancel</button>
+            <button type="button" onClick={addAllAsCandidates} disabled={addingAll} className="btn-primary">
+              {addingAll ? <Loader2 size={18} className="animate-spin" /> : null}
+              Add candidates
+            </button>
+          </>
+        }
+      />
+
+      <Modal
+        open={!!addSuccessModal}
+        onClose={() => setAddSuccessModal(null)}
+        title="Candidates added"
+        description={addSuccessModal ? `${addSuccessModal.created} candidate(s) added to your database.${addSuccessModal.skipped || addSuccessModal.errors ? ` ${addSuccessModal.skipped || 0} skipped · ${addSuccessModal.errors || 0} failed.` : ''}` : ''}
+        footer={
+          <>
+            <button type="button" onClick={() => setAddSuccessModal(null)} className="btn-secondary">Stay here</button>
+            <button type="button" onClick={() => { setAddSuccessModal(null); navigate('/ats'); }} className="btn-primary">Go to All Candidates</button>
+          </>
+        }
+      >
+        <div className="flex justify-center py-2">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-100 flex items-center justify-center">
+            <CheckCircle size={28} className="text-emerald-600" />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

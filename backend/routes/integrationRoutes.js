@@ -20,7 +20,7 @@ const IntegrationConfig = require('../models/IntegrationConfig');
 const eventBus = require('../events/eventBus');
 const eventTypes = require('../events/eventTypes');
 
-const VALID_CATEGORIES = ['email', 'calendar', 'sms', 'ai', 'job_board', 'background_check', 'esign'];
+const VALID_CATEGORIES = ['email', 'calendar', 'sms', 'ai', 'job_board', 'background_check', 'esign', 'whatsapp'];
 
 const CATEGORY_FEATURE = {
   email: 'integrations.byoEmail',
@@ -29,7 +29,8 @@ const CATEGORY_FEATURE = {
   job_board: 'integrations.jobBoard',
   background_check: 'integrations.backgroundCheck',
   ai: 'integrations.aiScoring',
-  esign: 'integrations.esign'
+  esign: 'integrations.esign',
+  whatsapp: 'integrations.whatsapp'
 };
 
 const requireCategoryEntitlement = async (req, res, next) => {
@@ -159,6 +160,9 @@ router.post('/:id/test', async (req, res) => {
         break;
       case 'esign':
         adapter = require('../adapters/esignAdapter').createEsignAdapter(resolvedConfig);
+        break;
+      case 'whatsapp':
+        adapter = require('../adapters/smsAdapter').createSmsAdapter(resolvedConfig);
         break;
       default:
         return res.status(400).json({ success: false, message: `Test connection not yet implemented for category '${config.category}'` });

@@ -94,6 +94,11 @@ const backgroundCheckRoutes = require('./routes/backgroundCheckRoutes');
 const esignRoutes = require('./routes/esignRoutes');
 const reportScheduleRoutes = require('./routes/reportScheduleRoutes');
 const clientPortalRoutes = require('./routes/clientPortalRoutes');
+const talentPoolRoutes = require('./routes/talentPoolRoutes');
+const whatsappRoutes = require('./routes/whatsappRoutes');
+const assessmentRoutes = require('./routes/assessmentRoutes');
+const whiteLabelRoutes = require('./routes/whiteLabelRoutes');
+const chromeExtensionRoutes = require('./routes/chromeExtensionRoutes');
 
 // ── Services ─────────────────────────────────────────────────────────
 const { startNotificationScheduler } = require('./services/notificationService');
@@ -301,6 +306,11 @@ app.use('/api/email-settings', verifyToken, emailSettingsRoutes);
 app.use('/api/company-email-settings', verifyToken, companyEmailSettingsRoutes);
 app.use('/api/notifications', verifyToken, notificationRoutes);
 app.use('/api/team', teamRoutes);
+app.use('/api/talent-pools', verifyToken, talentPoolRoutes); // internally applies requireFeature('candidates.talentPools')
+app.use('/api/whatsapp', whatsappRoutes); // internally applies verifyToken + requireFeature('integrations.whatsapp')
+app.use('/api/assessments', assessmentRoutes); // internally applies verifyToken + requireFeature('assessments') for recruiter routes; candidate-facing routes are token-gated, not session-gated
+app.use('/api/white-label', whiteLabelRoutes); // internally applies verifyToken + requireFeature('whiteLabel')
+app.use('/api/chrome-extension', chromeExtensionRoutes); // internally applies verifyToken (config) or extension-token auth (import)
 
 // ── Static Uploads ───────────────────────────────────────────────────
 const uploadDir = path.join(__dirname, 'uploads');

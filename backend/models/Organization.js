@@ -53,7 +53,19 @@ const organizationSchema = new mongoose.Schema({
     // the customer must additionally CNAME this domain to the frontend's
     // hosting (Vercel/Render) and the frontend must handle the
     // hostname-based routing; that DNS/hosting step happens outside this repo.
-    careersCustomDomain: { type: String, default: '', trim: true, lowercase: true }
+    careersCustomDomain: { type: String, default: '', trim: true, lowercase: true },
+    // Careers-page brand color — always free to set, matching the reference
+    // product's "colors/logo stay free, kit extras gated" stance.
+    brandColor: { type: String, default: '#4F46E5' },
+    // White-Label Kit add-on (feature: 'whiteLabel', Enterprise). `enabled`
+    // is only honored by public-facing routes when the org's plan is
+    // actually entitled — see routes/careersRoutes.js — so a downgraded
+    // org can't keep the toggle working by editing this document directly.
+    whiteLabel: {
+      enabled: { type: Boolean, default: false },
+      hidePoweredBy: { type: Boolean, default: false },
+      emailFromName: { type: String, default: '', trim: true }
+    }
   },
   billingCustomerId: { type: String, default: '' },
   billingSubscriptionId: { type: String, default: '' },

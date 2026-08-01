@@ -1,6 +1,5 @@
 import React, { useRef, useState, useCallback, useMemo, useEffect } from 'react';
 import { Upload, FileText, CheckCircle, AlertCircle, X, Loader2, AlertTriangle, Edit2, Save, RefreshCw, ArrowLeft, FileSpreadsheet, ShieldCheck, Search, ChevronLeft, ChevronRight, Eye, EyeOff, ArrowRightLeft } from 'lucide-react';
-import Layout from './Layout';
 import { useNavigate, useBlocker, useLocation } from 'react-router-dom';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -533,7 +532,7 @@ const AutoImportPage = () => {
   };
 
   return (
-    <Layout>
+    <>
       <div className="min-h-screen bg-gray-50">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 px-6 py-4">
@@ -1092,7 +1091,7 @@ const AutoImportPage = () => {
           />
         )}
       </div>
-    </Layout>
+    </>
   );
 };
 

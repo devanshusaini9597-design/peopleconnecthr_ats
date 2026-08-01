@@ -49,6 +49,38 @@ class TwilioAdapter {
     });
     return true;
   }
+
+  /**
+   * WhatsApp Business messaging (add-on, feature: integrations.whatsapp).
+   * Twilio's WhatsApp channel reuses the same account credentials as SMS —
+   * only the To/From numbers get a "whatsapp:" prefix. `fromNumber` here
+   * must be a WhatsApp-enabled Twilio sender (sandbox or approved number).
+   */
+  async sendWhatsApp({ to, message }) {
+    const { accountSid, authToken, fromNumber } = this.config;
+    if (!accountSid || !authToken || !fromNumber) {
+      throw new Error('Twilio is not configured: missing accountSid, authToken, or fromNumber');
+    }
+    if (!to || !message) {
+      throw new Error('WhatsApp send requires both "to" and "message"');
+    }
+
+    const withPrefix = (num) => (num.startsWith('whatsapp:') ? num : `whatsapp:${num}`);
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+    const body = new URLSearchParams({ To: withPrefix(to), From: withPrefix(fromNumber), Body: message });
+
+    try {
+      const response = await axios.post(url, body.toString(), {
+        auth: { username: accountSid, password: authToken },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        timeout: 20000
+      });
+      return { sid: response.data.sid, status: response.data.status };
+    } catch (err) {
+      const twilioMsg = err.response?.data?.message || err.message;
+      throw new Error(`Twilio WhatsApp send failed: ${twilioMsg}`);
+    }
+  }
 }
 
 /**
