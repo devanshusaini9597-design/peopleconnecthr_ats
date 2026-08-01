@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Plus, Trash2, Lock, Loader2, Search, UserPlus, ArrowLeft, Layers } from 'lucide-react';
-import { authenticatedFetch, handleUnauthorized } from '../utils/fetchUtils';
+import { Users, Plus, Trash2, Lock, Loader2, Search, UserPlus, ArrowLeft, Layers, AlertCircle, RefreshCw } from 'lucide-react';
+import { authenticatedFetch, handleUnauthorized, readApiJson } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
@@ -342,8 +342,10 @@ const PoolDetail = ({ pool, onBack, toast }) => {
 const TalentPoolsPage = () => {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [pools, setPools] = useState([]);
+  const [query, setQuery] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activePool, setActivePool] = useState(null);
@@ -352,23 +354,39 @@ const TalentPoolsPage = () => {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await authenticatedFetch('/api/talent-pools');
       if (res.status === 401) return handleUnauthorized();
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (res.status === 403 && data.code === 'UPGRADE_REQUIRED') {
         setUpgradeRequired(true);
         return;
       }
-      if (data.success) setPools(data.data || []);
-    } catch {
-      toast?.error?.('Failed to load talent pools');
+      if (!res.ok || !data.success) {
+        setLoadError(data.message || 'Failed to load talent pools');
+        setPools([]);
+        return;
+      }
+      setPools(data.data || []);
+    } catch (err) {
+      setLoadError(err?.message || 'Failed to load talent pools');
+      setPools([]);
     } finally {
       setLoading(false);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const filteredPools = pools.filter((p) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.description || '').toLowerCase().includes(q)
+    );
+  });
 
   const handleCreate = async ({ name, description, color }) => {
     setSaving(true);
@@ -377,7 +395,7 @@ const TalentPoolsPage = () => {
         method: 'POST',
         body: JSON.stringify({ name, description, color })
       });
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok || !data.success) {
         toast?.error?.(data.message || 'Failed to create pool');
         return;
@@ -385,8 +403,8 @@ const TalentPoolsPage = () => {
       toast?.success?.('Talent pool created');
       setShowCreate(false);
       load();
-    } catch {
-      toast?.error?.('Failed to create pool');
+    } catch (err) {
+      toast?.error?.(err?.message || 'Failed to create pool');
     } finally {
       setSaving(false);
     }
@@ -397,7 +415,7 @@ const TalentPoolsPage = () => {
     setDeleting(true);
     try {
       const res = await authenticatedFetch(`/api/talent-pools/${deleteTarget._id}`, { method: 'DELETE' });
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok || !data.success) {
         toast?.error?.(data.message || 'Failed to delete pool');
         return;
@@ -405,8 +423,8 @@ const TalentPoolsPage = () => {
       toast?.success?.('Talent pool deleted');
       setDeleteTarget(null);
       load();
-    } catch {
-      toast?.error?.('Failed to delete pool');
+    } catch (err) {
+      toast?.error?.(err?.message || 'Failed to delete pool');
     } finally {
       setDeleting(false);
     }
@@ -454,12 +472,25 @@ const TalentPoolsPage = () => {
             subtitle="Keep strong candidates warm for future roles — independent of any single requisition."
             gradientTitle
           >
-            <button type="button" onClick={() => setShowCreate(true)} className="btn-primary">
+            <button type="button" onClick={() => setShowCreate(true)} className="btn-primary" disabled={!!loadError}>
               <Plus className="w-4 h-4" /> New Pool
             </button>
           </PageHeader>
 
-          {pools.length === 0 ? (
+          {loadError ? (
+            <div className="card-ats-bordered border-red-200/80 bg-red-50/30">
+              <EmptyState
+                icon={AlertCircle}
+                message="Couldn’t load talent pools"
+                subMessage={loadError}
+                action={
+                  <button type="button" onClick={load} className="btn-primary">
+                    <RefreshCw className="w-4 h-4" /> Retry
+                  </button>
+                }
+              />
+            </div>
+          ) : pools.length === 0 ? (
             <div className="card-ats-bordered">
               <EmptyState
                 icon={Layers}
@@ -473,43 +504,70 @@ const TalentPoolsPage = () => {
               />
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
-              {pools.map((pool) => (
-                <div
-                  key={pool._id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setActivePool(pool)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActivePool(pool); }}
-                  className="card-ats p-5 cursor-pointer group hover:border-brand-200/80 relative overflow-hidden"
-                >
-                  <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: pool.color || '#0d9488' }} />
-                  <div className="flex items-start justify-between gap-2">
-                    <div
-                      className="w-11 h-11 rounded-2xl flex items-center justify-center shadow-sm ring-1 ring-black/5 group-hover:scale-105 transition-transform"
-                      style={{ backgroundColor: `${pool.color}22` }}
-                    >
-                      <Layers className="w-5 h-5" style={{ color: pool.color }} />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(pool); }}
-                      className="p-2 hover:bg-red-50 rounded-xl text-stone-300 hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
-                      aria-label="Delete pool"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <h3 className="font-bold text-stone-900 mt-3.5 tracking-tight">{pool.name}</h3>
-                  {pool.description && (
-                    <p className="text-sm text-stone-500 mt-1 line-clamp-2 leading-relaxed">{pool.description}</p>
-                  )}
-                  <div className="flex items-center gap-1.5 mt-4 pt-3 border-t border-stone-100 text-sm font-medium text-stone-600">
-                    <Users className="w-4 h-4 text-stone-400" />
-                    {pool.memberCount} candidate{pool.memberCount === 1 ? '' : 's'}
-                  </div>
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search pools…"
+                    className="input-ats !pl-9"
+                  />
                 </div>
-              ))}
+                <p className="text-sm font-medium text-stone-500 sm:ml-auto">
+                  {filteredPools.length} pool{filteredPools.length === 1 ? '' : 's'}
+                </p>
+              </div>
+
+              {filteredPools.length === 0 ? (
+                <div className="card-ats-bordered">
+                  <EmptyState
+                    icon={Search}
+                    message="No pools match your search"
+                    subMessage="Try a different name or clear the search."
+                  />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
+                  {filteredPools.map((pool) => (
+                    <div
+                      key={pool._id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setActivePool(pool)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActivePool(pool); }}
+                      className="card-ats p-5 cursor-pointer group hover:border-brand-200/80 relative overflow-hidden"
+                    >
+                      <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: pool.color || '#0d9488' }} />
+                      <div className="flex items-start justify-between gap-2">
+                        <div
+                          className="w-11 h-11 rounded-2xl flex items-center justify-center shadow-sm ring-1 ring-black/5 group-hover:scale-105 transition-transform"
+                          style={{ backgroundColor: `${pool.color || '#0d9488'}22` }}
+                        >
+                          <Layers className="w-5 h-5" style={{ color: pool.color || '#0d9488' }} />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setDeleteTarget(pool); }}
+                          className="p-2 hover:bg-red-50 rounded-xl text-stone-300 hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                          aria-label="Delete pool"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <h3 className="font-bold text-stone-900 mt-3.5 tracking-tight">{pool.name}</h3>
+                      {pool.description && (
+                        <p className="text-sm text-stone-500 mt-1 line-clamp-2 leading-relaxed">{pool.description}</p>
+                      )}
+                      <div className="flex items-center gap-1.5 mt-4 pt-3 border-t border-stone-100 text-sm font-medium text-stone-600">
+                        <Users className="w-4 h-4 text-stone-400" />
+                        {pool.memberCount} candidate{pool.memberCount === 1 ? '' : 's'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </>

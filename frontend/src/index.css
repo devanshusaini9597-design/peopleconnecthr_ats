@@ -515,7 +515,8 @@ select:focus-visible {
 }
 
 .animate-page-enter {
-  animation: pageEnterAts 0.38s var(--transition-smooth) forwards;
+  /* no `forwards` — a lingering transform traps position:fixed modals inside main */
+  animation: pageEnterAts 0.38s var(--transition-smooth);
 }
 @keyframes pageEnterAts {
   from { opacity: 0; transform: translateY(10px); }

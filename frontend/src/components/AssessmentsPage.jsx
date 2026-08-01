@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ClipboardList, Plus, Trash2, Lock, Loader2, Send, ArrowLeft, Clock, FileEdit, Search } from 'lucide-react';
-import { authenticatedFetch, handleUnauthorized } from '../utils/fetchUtils';
+import { ClipboardList, Plus, Trash2, Lock, Loader2, Send, ArrowLeft, Clock, FileEdit, Search, AlertCircle, RefreshCw } from 'lucide-react';
+import { authenticatedFetch, handleUnauthorized, readApiJson } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
@@ -489,8 +489,10 @@ const AssessmentDetail = ({ assessment, onBack, toast }) => {
 const AssessmentsPage = () => {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [assessments, setAssessments] = useState([]);
+  const [query, setQuery] = useState('');
   const [showBuilder, setShowBuilder] = useState(false);
   const [saving, setSaving] = useState(false);
   const [active, setActive] = useState(null);
@@ -499,29 +501,45 @@ const AssessmentsPage = () => {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await authenticatedFetch('/api/assessments');
       if (res.status === 401) return handleUnauthorized();
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (res.status === 403 && data.code === 'UPGRADE_REQUIRED') {
         setUpgradeRequired(true);
         return;
       }
-      if (data.success) setAssessments(data.data || []);
-    } catch {
-      toast?.error?.('Failed to load assessments');
+      if (!res.ok || !data.success) {
+        setLoadError(data.message || 'Failed to load assessments');
+        setAssessments([]);
+        return;
+      }
+      setAssessments(data.data || []);
+    } catch (err) {
+      setLoadError(err?.message || 'Failed to load assessments');
+      setAssessments([]);
     } finally {
       setLoading(false);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const filtered = assessments.filter((a) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (a.title || '').toLowerCase().includes(q) ||
+      (a.description || '').toLowerCase().includes(q)
+    );
+  });
 
   const handleCreate = async (form) => {
     setSaving(true);
     try {
       const res = await authenticatedFetch('/api/assessments', { method: 'POST', body: JSON.stringify(form) });
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok || !data.success) {
         toast?.error?.(data.message || 'Failed to create assessment');
         return;
@@ -529,8 +547,8 @@ const AssessmentsPage = () => {
       toast?.success?.('Assessment created');
       setShowBuilder(false);
       load();
-    } catch {
-      toast?.error?.('Failed to create assessment');
+    } catch (err) {
+      toast?.error?.(err?.message || 'Failed to create assessment');
     } finally {
       setSaving(false);
     }
@@ -541,7 +559,7 @@ const AssessmentsPage = () => {
     setDeleting(true);
     try {
       const res = await authenticatedFetch(`/api/assessments/${deleteTarget._id}`, { method: 'DELETE' });
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok || !data.success) {
         toast?.error?.(data.message || 'Failed to delete');
         return;
@@ -549,8 +567,8 @@ const AssessmentsPage = () => {
       toast?.success?.('Assessment deleted');
       setDeleteTarget(null);
       load();
-    } catch {
-      toast?.error?.('Failed to delete');
+    } catch (err) {
+      toast?.error?.(err?.message || 'Failed to delete');
     } finally {
       setDeleting(false);
     }
@@ -598,12 +616,25 @@ const AssessmentsPage = () => {
             subtitle="Build skills tests and invite candidates to complete them. Code answers are graded by your team."
             gradientTitle
           >
-            <button type="button" onClick={() => setShowBuilder(true)} className="btn-primary">
+            <button type="button" onClick={() => setShowBuilder(true)} className="btn-primary" disabled={!!loadError}>
               <Plus className="w-4 h-4" /> New Assessment
             </button>
           </PageHeader>
 
-          {assessments.length === 0 ? (
+          {loadError ? (
+            <div className="card-ats-bordered border-red-200/80 bg-red-50/30">
+              <EmptyState
+                icon={AlertCircle}
+                message="Couldn’t load assessments"
+                subMessage={loadError}
+                action={
+                  <button type="button" onClick={load} className="btn-primary">
+                    <RefreshCw className="w-4 h-4" /> Retry
+                  </button>
+                }
+              />
+            </div>
+          ) : assessments.length === 0 ? (
             <div className="card-ats-bordered">
               <EmptyState
                 icon={ClipboardList}
@@ -617,40 +648,67 @@ const AssessmentsPage = () => {
               />
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
-              {assessments.map((a) => (
-                <div
-                  key={a._id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setActive(a)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActive(a); }}
-                  className="card-ats p-5 cursor-pointer group hover:border-brand-200/80 relative overflow-hidden"
-                >
-                  <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-brand-100 to-teal-100 border border-brand-200/60 flex items-center justify-center group-hover:scale-105 transition-transform">
-                      <ClipboardList className="w-5 h-5 text-brand-600" />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(a); }}
-                      className="p-2 hover:bg-red-50 rounded-xl text-stone-300 hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
-                      aria-label="Delete assessment"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <h3 className="font-bold text-stone-900 mt-3.5 tracking-tight line-clamp-2">{a.title}</h3>
-                  {a.description && (
-                    <p className="text-sm text-stone-500 mt-1 line-clamp-2 leading-relaxed">{a.description}</p>
-                  )}
-                  <div className="flex flex-wrap items-center gap-3 mt-4 pt-3 border-t border-stone-100 text-xs font-semibold text-stone-500">
-                    <span className="inline-flex items-center gap-1"><ClipboardList className="w-3.5 h-3.5" /> {a.questions.length} questions</span>
-                    <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {a.durationMinutes} min</span>
-                  </div>
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search assessments…"
+                    className="input-ats !pl-9"
+                  />
                 </div>
-              ))}
+                <p className="text-sm font-medium text-stone-500 sm:ml-auto">
+                  {filtered.length} assessment{filtered.length === 1 ? '' : 's'}
+                </p>
+              </div>
+
+              {filtered.length === 0 ? (
+                <div className="card-ats-bordered">
+                  <EmptyState
+                    icon={Search}
+                    message="No assessments match your search"
+                    subMessage="Try a different title or clear the search."
+                  />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
+                  {filtered.map((a) => (
+                    <div
+                      key={a._id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setActive(a)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActive(a); }}
+                      className="card-ats p-5 cursor-pointer group hover:border-brand-200/80 relative overflow-hidden"
+                    >
+                      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-brand-100 to-teal-100 border border-brand-200/60 flex items-center justify-center group-hover:scale-105 transition-transform">
+                          <ClipboardList className="w-5 h-5 text-brand-600" />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setDeleteTarget(a); }}
+                          className="p-2 hover:bg-red-50 rounded-xl text-stone-300 hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                          aria-label="Delete assessment"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <h3 className="font-bold text-stone-900 mt-3.5 tracking-tight line-clamp-2">{a.title}</h3>
+                      {a.description && (
+                        <p className="text-sm text-stone-500 mt-1 line-clamp-2 leading-relaxed">{a.description}</p>
+                      )}
+                      <div className="flex flex-wrap items-center gap-3 mt-4 pt-3 border-t border-stone-100 text-xs font-semibold text-stone-500">
+                        <span className="inline-flex items-center gap-1"><ClipboardList className="w-3.5 h-3.5" /> {a.questions?.length || 0} questions</span>
+                        <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {a.durationMinutes} min</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </>

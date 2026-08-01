@@ -3,7 +3,6 @@ import { Upload, FileText, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, 
 import { useNavigate } from 'react-router-dom';
 import PageHeader from './ui/PageHeader';
 import Modal from './ui/Modal';
-import EmptyState from './ui/EmptyState';
 import { BASE_API_URL } from '../config';
 import { authenticatedFetch } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -226,7 +225,7 @@ const ResumeParsing = () => {
       sessionStorage.setItem(PARSING_SESSION_KEY, JSON.stringify({ results, uploadedFiles }));
     } catch (_) { /* ignore */ }
     localStorage.setItem('parsedResumeData', JSON.stringify(resultData));
-    navigate('/add-candidate');
+    navigate('/ats');
   };
 
   // Add all successfully parsed resumes as candidates at once
@@ -286,30 +285,40 @@ const ResumeParsing = () => {
       <PageHeader
         icon={FileText}
         title="Resume Parsing"
-        subtitle="Extract candidate information from resume PDFs automatically with AI-assisted review."
+        subtitle="Upload resumes — extract contact info, skills, and experience for review"
         gradientTitle
       />
 
-      {/* Upload */}
-      <div className="card-ats-bordered p-6 sm:p-8 relative overflow-hidden">
-        <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-brand-400/10 blur-3xl pointer-events-none" />
-        <label className={`dropzone-ats block p-8 sm:p-12 ${parsing ? 'opacity-60 pointer-events-none' : ''}`}>
-          <div className="flex flex-col items-center justify-center gap-3 relative z-[1]">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-500 via-brand-600 to-teal-700 shadow-lg shadow-brand-500/25 flex items-center justify-center">
-              {parsing ? <Loader2 size={26} className="text-white animate-spin" /> : <Upload size={26} className="text-white" strokeWidth={1.75} />}
-            </div>
-            <p className="text-sm text-stone-700 text-center">
-              <span className="font-bold text-stone-900">Click to upload</span> or drag and drop
-            </p>
-            <p className="text-xs text-stone-500">PDF files · Max 10MB each</p>
-            <div className="flex items-center gap-1.5 mt-1 text-[11px] font-semibold text-brand-700 bg-brand-50 border border-brand-100 px-2.5 py-1 rounded-lg">
-              <Sparkles size={12} /> AI field extraction
-            </div>
+      {/* Upload zone */}
+      <div
+        className="relative overflow-hidden rounded-2xl border-2 border-dashed border-stone-300 bg-gradient-to-br from-stone-50 via-white to-brand-50/40 hover:border-brand-400 transition-colors"
+      >
+        <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top,_rgba(13,148,136,0.06),_transparent_55%)]" />
+        <label className={`relative block px-6 py-12 sm:py-16 text-center cursor-pointer ${parsing ? 'opacity-70 pointer-events-none' : ''}`}>
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-100 to-teal-100 flex items-center justify-center mx-auto mb-5 shadow-sm border border-brand-200/60">
+            {parsing ? (
+              <Loader2 size={28} className="text-brand-600 animate-spin" />
+            ) : (
+              <Upload size={28} className="text-brand-600" strokeWidth={1.75} />
+            )}
           </div>
+          <h3 className="text-xl font-semibold text-stone-900 mb-2 tracking-tight">
+            {parsing ? 'Analysing resumes…' : 'Drop resumes to get started'}
+          </h3>
+          <p className="text-stone-500 text-sm mb-6 max-w-md mx-auto">
+            {parsing
+              ? 'Pulling out name, contact, skills, and experience'
+              : 'PDF files up to 10 MB. Drag and drop, or choose files.'}
+          </p>
+          {!parsing && (
+            <span className="inline-flex items-center gap-2 px-7 py-3.5 bg-brand-600 text-white rounded-xl font-semibold shadow-lg shadow-brand-500/25 pointer-events-none">
+              <Upload size={18} /> Choose files
+            </span>
+          )}
           <input
             type="file"
             multiple
-            accept=".pdf"
+            accept=".pdf,.doc,.docx"
             onChange={handleFileSelect}
             disabled={parsing}
             className="absolute inset-0 opacity-0 cursor-pointer"
@@ -317,39 +326,83 @@ const ResumeParsing = () => {
         </label>
 
         {error && (
-          <div className="mt-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mx-6 mb-6 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
         )}
-
-        {uploadedFiles.length > 0 && (
-          <div className="mt-6 pt-6 border-t border-stone-100">
-            <h3 className="text-sm font-bold text-stone-900 mb-3">Uploaded Files</h3>
-            <div className="space-y-2 stagger-children">
-              {uploadedFiles.map((file, idx) => (
-                <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-stone-50 border border-stone-100 hover:border-brand-200 transition-colors">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center flex-shrink-0">
-                      <FileText size={18} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-stone-900 truncate">{file.name}</p>
-                      <p className="text-xs text-stone-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                    </div>
-                  </div>
-                  {parsing && <span className="text-xs font-medium text-brand-600 flex items-center gap-1.5"><Loader2 size={14} className="animate-spin" /> Processing…</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
+      {/* How it works — only when idle */}
+      {results.length === 0 && !parsing && (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              { n: '1', title: 'Upload', desc: 'PDF or Word resumes' },
+              { n: '2', title: 'Extract', desc: 'AI reads each file' },
+              { n: '3', title: 'Review', desc: 'Approve or edit fields' },
+              { n: '4', title: 'Save', desc: 'Add to Candidates' },
+            ].map((s) => (
+              <div key={s.n} className="flex items-start gap-3 p-4 rounded-xl bg-white border border-stone-200 shadow-[var(--shadow-card)]">
+                <div className="w-8 h-8 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-sm shrink-0">{s.n}</div>
+                <div>
+                  <p className="font-semibold text-stone-900 text-sm">{s.title}</p>
+                  <p className="text-xs text-stone-500 mt-0.5">{s.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-2xl bg-white border border-stone-200 p-5 sm:p-6 shadow-[var(--shadow-card)]">
+            <h3 className="font-bold text-stone-900 mb-3 text-sm flex items-center gap-2">
+              <Sparkles size={14} className="text-brand-600" /> What we pull from each resume
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {['Name', 'Email', 'Phone', 'Position', 'Company', 'Experience', 'Location', 'Education', 'Skills'].map((f) => (
+                <span key={f} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-stone-50 border border-stone-200 text-stone-700">
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  {f}
+                </span>
+              ))}
+            </div>
+            <p className="mt-4 text-xs text-stone-500 flex items-start gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+              Best results with text-based PDFs — not scanned images. Always review before saving.
+            </p>
+          </div>
+        </>
+      )}
+
+      {uploadedFiles.length > 0 && (
+        <div className="rounded-2xl border border-stone-200 bg-white p-4 sm:p-5 shadow-[var(--shadow-card)]">
+          <h3 className="text-sm font-bold text-stone-900 mb-3">Uploaded files</h3>
+          <div className="space-y-2">
+            {uploadedFiles.map((file, idx) => (
+              <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-stone-50 border border-stone-100">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center flex-shrink-0 border border-brand-100">
+                    <FileText size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-stone-900 truncate">{file.name}</p>
+                    <p className="text-xs text-stone-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                  </div>
+                </div>
+                {parsing && (
+                  <span className="text-xs font-medium text-brand-600 flex items-center gap-1.5">
+                    <Loader2 size={14} className="animate-spin" /> Processing…
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {parsing && results.length === 0 && (
-        <div className="card-ats-bordered p-12 text-center">
+        <div className="rounded-2xl border border-stone-200 bg-white p-12 text-center shadow-[var(--shadow-card)]">
           <Loader2 size={36} className="animate-spin text-brand-600 mx-auto mb-3" />
-          <p className="text-stone-600 font-medium">Parsing resumes…</p>
+          <p className="text-stone-700 font-semibold">Parsing resumes…</p>
           <p className="text-xs text-stone-400 mt-1">This can take a moment for larger files</p>
         </div>
       )}
@@ -357,35 +410,40 @@ const ResumeParsing = () => {
       {results.length > 0 && (
         <div className="space-y-5 animate-slide-up">
           <div className="flex flex-wrap justify-between items-center gap-3">
-            <h2 className="text-lg font-bold text-stone-900 tracking-tight">Parsing Results</h2>
+            <div>
+              <h2 className="text-lg font-bold text-stone-900 tracking-tight">Parsing results</h2>
+              <p className="text-xs text-stone-500 mt-0.5">{approvedDataList.length} approved · {successfulResults.length} parsed successfully</p>
+            </div>
             <button
               type="button"
               onClick={openConfirmAddAll}
               disabled={addingAll || approvedDataList.length === 0}
               className="btn-primary"
             >
-              {addingAll ? (<><Loader2 size={18} className="animate-spin" /> Adding…</>) : (<>Add {approvedDataList.length} Approved as Candidates</>)}
+              {addingAll ? (<><Loader2 size={18} className="animate-spin" /> Adding…</>) : (<>Add {approvedDataList.length} approved</>)}
             </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="card-ats-bordered p-4 border-l-4 border-l-emerald-500">
+            <div className="rounded-2xl border border-stone-200 bg-white p-4 border-l-4 border-l-emerald-500 shadow-[var(--shadow-card)]">
               <p className="text-2xl font-bold text-emerald-700 tabular-nums">{results.filter(r => r.success).length}</p>
-              <p className="text-xs font-semibold text-emerald-600 mt-0.5">Successfully Parsed</p>
+              <p className="text-xs font-semibold text-emerald-600 mt-0.5">Parsed</p>
             </div>
-            <div className="card-ats-bordered p-4 border-l-4 border-l-red-400">
+            <div className="rounded-2xl border border-stone-200 bg-white p-4 border-l-4 border-l-red-400 shadow-[var(--shadow-card)]">
               <p className="text-2xl font-bold text-red-700 tabular-nums">{results.filter(r => !r.success).length}</p>
               <p className="text-xs font-semibold text-red-600 mt-0.5">Failed</p>
             </div>
-            <div className="card-ats-bordered p-4 border-l-4 border-l-brand-500">
-              <p className="text-2xl font-bold text-brand-700 tabular-nums">{results.length}</p>
-              <p className="text-xs font-semibold text-brand-600 mt-0.5">Total Processed</p>
+            <div className="rounded-2xl border border-stone-200 bg-white p-4 border-l-4 border-l-brand-500 shadow-[var(--shadow-card)]">
+              <p className="text-2xl font-bold text-brand-700 tabular-nums">{approvedDataList.length}</p>
+              <p className="text-xs font-semibold text-brand-600 mt-0.5">Approved</p>
             </div>
           </div>
 
-          <div className="card-ats-bordered p-5 sm:p-6">
+          <div className="rounded-2xl border border-stone-200 bg-white p-5 sm:p-6 shadow-[var(--shadow-card)]">
             <div className="flex items-center justify-between mb-5">
-              <span className="badge-neutral">{currentSlide + 1} of {results.length}</span>
+              <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-stone-100 text-stone-600 border border-stone-200">
+                {currentSlide + 1} of {results.length}
+              </span>
               <div className="flex items-center gap-2">
                 <button type="button" onClick={() => setCurrentSlide(s => Math.max(0, s - 1))} disabled={currentSlide === 0} className="btn-secondary !p-2.5 !px-2.5" aria-label="Previous">
                   <ChevronLeft size={18} />
@@ -411,25 +469,31 @@ const ResumeParsing = () => {
                 { key: 'skills', label: 'Skills', type: 'text' }
               ];
               return (
-                <div className={`rounded-2xl border p-5 transition-all ${result.success ? 'bg-white border-stone-200' : 'bg-red-50/60 border-red-200'}`}>
+                <div className={`rounded-2xl border p-5 transition-all ${result.success ? 'bg-stone-50/50 border-stone-200' : 'bg-red-50/60 border-red-200'}`}>
                   <div className="flex items-start justify-between gap-3 mb-4">
-                    <div className="min-w-0">
-                      <p className="font-bold text-stone-900 truncate">{result.fileName}</p>
-                      {!result.success && result.error && (
-                        <p className="mt-2 text-sm text-red-700 font-medium">{result.error}</p>
-                      )}
+                    <div className="min-w-0 flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-100 to-teal-100 border border-brand-200/60 flex items-center justify-center flex-shrink-0">
+                        <Sparkles size={18} className="text-brand-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-bold text-stone-900 truncate">{result.fileName}</p>
+                        <p className="text-xs text-stone-500 mt-0.5">{result.success ? 'AI extracted data — review before saving' : 'Parse failed'}</p>
+                        {!result.success && result.error && (
+                          <p className="mt-2 text-sm text-red-700 font-medium">{result.error}</p>
+                        )}
+                      </div>
                     </div>
                     {result.success && (
                       <div className="flex gap-1.5 flex-shrink-0">
                         {!isEditing && (
-                          <button type="button" onClick={() => handleEdit(currentSlide)} className="p-2.5 rounded-xl bg-stone-100 text-stone-600 hover:bg-brand-50 hover:text-brand-700 transition-colors" title="Edit">
+                          <button type="button" onClick={() => handleEdit(currentSlide)} className="p-2.5 rounded-xl bg-white border border-stone-200 text-stone-600 hover:bg-brand-50 hover:text-brand-700 hover:border-brand-200 transition-colors" title="Edit">
                             <Edit2 size={16} />
                           </button>
                         )}
-                        <button type="button" onClick={() => setApprovedIdx(prev => { const n = new Set(prev); n.add(currentSlide); return n; })} className={`p-2.5 rounded-xl transition-colors ${isApproved ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500 hover:bg-emerald-50'}`} title="Approve">
+                        <button type="button" onClick={() => setApprovedIdx(prev => { const n = new Set(prev); n.add(currentSlide); return n; })} className={`p-2.5 rounded-xl border transition-colors ${isApproved ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-white border-stone-200 text-stone-500 hover:bg-emerald-50'}`} title="Approve">
                           <ThumbsUp size={16} />
                         </button>
-                        <button type="button" onClick={() => setApprovedIdx(prev => { const n = new Set(prev); n.delete(currentSlide); return n; })} className={`p-2.5 rounded-xl transition-colors ${!isApproved ? 'bg-red-100 text-red-700' : 'bg-stone-100 text-stone-500 hover:bg-red-50'}`} title="Reject">
+                        <button type="button" onClick={() => setApprovedIdx(prev => { const n = new Set(prev); n.delete(currentSlide); return n; })} className={`p-2.5 rounded-xl border transition-colors ${!isApproved ? 'bg-red-100 text-red-700 border-red-200' : 'bg-white border-stone-200 text-stone-500 hover:bg-red-50'}`} title="Reject">
                           <ThumbsDown size={16} />
                         </button>
                       </div>
@@ -451,7 +515,7 @@ const ResumeParsing = () => {
                               </div>
                             ))}
                           </div>
-                          <div className="flex flex-wrap gap-2 pt-3 border-t border-stone-100">
+                          <div className="flex flex-wrap gap-2 pt-3 border-t border-stone-200">
                             <button type="button" onClick={() => handleSaveEdit(currentSlide)} className="btn-primary !py-2">Save</button>
                             <button type="button" onClick={handleCancelEdit} className="btn-secondary !py-2">Cancel</button>
                           </div>
@@ -462,7 +526,7 @@ const ResumeParsing = () => {
                             const confidence = result.confidence?.[k] || 0;
                             const confidenceColor = confidence >= 85 ? 'badge-success' : confidence >= 70 ? 'badge-info' : confidence >= 50 ? 'badge-warning' : 'badge-danger';
                             return (
-                              <div key={k} className="rounded-xl border border-stone-100 px-3 py-2.5 bg-stone-50/70 flex items-start justify-between gap-2 hover:border-brand-200 transition-colors">
+                              <div key={k} className="rounded-xl border border-stone-200 px-3 py-2.5 bg-white flex items-start justify-between gap-2 hover:border-brand-200 transition-colors">
                                 <div className="min-w-0 flex-1">
                                   <span className="text-stone-500 text-[10px] font-bold uppercase tracking-wide block mb-0.5">{label}</span>
                                   <span className="text-stone-900 font-medium break-words">{result.data[k] || '—'}</span>
@@ -476,8 +540,8 @@ const ResumeParsing = () => {
                         </div>
                       )}
                       {!isEditing && (
-                        <div className="mt-5 pt-4 border-t border-stone-100 flex justify-center">
-                          <button type="button" onClick={() => addToCandidate(result.data)} className="btn-cta-primary min-w-[200px]">
+                        <div className="mt-5 pt-4 border-t border-stone-200 flex flex-wrap justify-center gap-2">
+                          <button type="button" onClick={() => addToCandidate(result.data)} className="btn-primary min-w-[200px]">
                             Add as Candidate
                           </button>
                         </div>
@@ -491,21 +555,11 @@ const ResumeParsing = () => {
         </div>
       )}
 
-      {results.length === 0 && !parsing && (
-        <div className="card-ats-bordered">
-          <EmptyState
-            icon={FileText}
-            message="Upload resume PDFs to get started"
-            subMessage="Parsed fields appear here with confidence scores for quick review."
-          />
-        </div>
-      )}
-
       <Modal
         open={confirmAddAllOpen}
         onClose={() => setConfirmAddAllOpen(false)}
         title="Add candidates to database"
-        description={`Add ${approvedDataList.length} candidate(s) from the parsed resumes to your All Candidates list? Duplicates (same email/phone) will be skipped.`}
+        description={`Add ${approvedDataList.length} candidate(s) from the parsed resumes to your Candidates list? Duplicates (same email/phone) will be skipped.`}
         footer={
           <>
             <button type="button" onClick={() => setConfirmAddAllOpen(false)} className="btn-secondary">Cancel</button>
@@ -525,7 +579,7 @@ const ResumeParsing = () => {
         footer={
           <>
             <button type="button" onClick={() => setAddSuccessModal(null)} className="btn-secondary">Stay here</button>
-            <button type="button" onClick={() => { setAddSuccessModal(null); navigate('/ats'); }} className="btn-primary">Go to All Candidates</button>
+            <button type="button" onClick={() => { setAddSuccessModal(null); navigate('/ats'); }} className="btn-primary">Go to Candidates</button>
           </>
         }
       >

@@ -5,7 +5,7 @@ import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { 
   Plus, Search, Mail, MessageCircle, Upload, 
-  Filter, CheckSquare, Square, FileText, Cpu, Trash2, Edit, X, Briefcase, BarChart3, AlertCircle, RefreshCw, Download, Eye, Info, Share2, Megaphone, Users, ArrowUpDown, Building2, MapPin, User, GripVertical, ChevronDown, Database
+  Filter, CheckSquare, Square, FileText, Cpu, Trash2, Edit, X, Briefcase, BarChart3, AlertCircle, RefreshCw, Download, Eye, Info, Share2, Megaphone, Users, ArrowUpDown, Building2, MapPin, User, ChevronDown, Database
 } from 'lucide-react';
 import { useParsing } from '../hooks/useParsing';
 import PhoneInput from 'react-phone-input-2';
@@ -190,6 +190,7 @@ const ATS = forwardRef((props, ref) => {
   const [masterClients, setMasterClients] = useState([]);
   const [masterSources, setMasterSources] = useState([]);
   const [countryCode, setCountryCode] = useState('+91');
+  const [countryIso, setCountryIso] = useState('IN');
   const countryCodes = useCountries();
 
   // Fetch master data for modal dropdowns
@@ -496,6 +497,8 @@ const ATS = forwardRef((props, ref) => {
         setEditId(null);
         setFormData(initialFormState);
         setFormErrors({});
+        setCountryCode('+91');
+        setCountryIso('IN');
         setShowModal(true);
       },
       refreshCandidates: () => {
@@ -507,6 +510,36 @@ const ATS = forwardRef((props, ref) => {
     };
   });
 
+  // Prefill Add Candidate from Resume Parsing
+  useEffect(() => {
+    try {
+      const parsedData = localStorage.getItem('parsedResumeData');
+      if (!parsedData) return;
+      const resumeData = JSON.parse(parsedData);
+      localStorage.removeItem('parsedResumeData');
+      const digits = String(resumeData.contact || '').replace(/\D/g, '').slice(-10);
+      setEditId(null);
+      setFormData((prev) => ({
+        ...initialFormState,
+        name: resumeData.name || '',
+        email: resumeData.email || '',
+        contact: digits || '',
+        position: resumeData.position || '',
+        companyName: resumeData.company || resumeData.companyName || '',
+        experience: resumeData.experience || '',
+        location: resumeData.location || '',
+        remark: resumeData.skills ? `Skills: ${resumeData.skills}` : '',
+      }));
+      setCountryCode('+91');
+      setCountryIso('IN');
+      setFormErrors({});
+      setShowModal(true);
+      toast.success('Resume data loaded — review and save.');
+    } catch (err) {
+      console.error('Error loading parsed resume data:', err);
+    }
+  }, []);
+
   // INITIAL DATA LOAD + refetch when view mode (Show mine / View all) changes
   useEffect(() => {
     fetchData(1, { search: searchQuery || '', position: filterJob || '' });
@@ -516,6 +549,14 @@ const ATS = forwardRef((props, ref) => {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, searchScope, advancedSearchFilters, showOnlyCorrect]);
+
+  // Lock body scroll while Add/Edit candidate modal is open (portaled overlay)
+  useEffect(() => {
+    if (!showModal) return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [showModal]);
 
   // ✅ MONITOR REVIEW DATA - When confirmation closes, ensure UI refreshes
   useEffect(() => {
@@ -1293,7 +1334,9 @@ const handleDelete = (id) => {
           date: freshCandidate.date ? freshCandidate.date.split('T')[0] : new Date().toISOString().split('T')[0],
           callBackDate: freshCandidate.callBackDate ? freshCandidate.callBackDate.split('T')[0] : ''
         });
-        setCountryCode(freshCandidate.countryCode || '+91');
+        const resolved = resolveCountryFromDial(freshCandidate.countryCode || '+91');
+        setCountryCode(resolved.code);
+        setCountryIso(resolved.iso);
         setFormErrors({});
         setShowModal(true);
       } else {
@@ -1872,8 +1915,11 @@ const handleAddCandidate = async (e) => {
     // Focus on the first error field
     const firstErrorField = Object.keys(errors)[0];
     if (fieldRefs[firstErrorField]?.current) {
-      fieldRefs[firstErrorField].current.focus();
-      fieldRefs[firstErrorField].current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const el = fieldRefs[firstErrorField].current;
+      if (typeof el.focus === 'function') {
+        try { el.focus(); } catch { /* non-focusable wrapper */ }
+      }
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
     toast.warning(errors[Object.keys(errors)[0]]);
     return;
@@ -1898,7 +1944,7 @@ const handleAddCandidate = async (e) => {
     const token = localStorage.getItem('token');
     const url = editId ? `${API_URL}/${editId}` : API_URL;
     const method = editId ? 'PUT' : 'POST';
-    response = await fetch(url, {
+    response = await authenticatedFetch(url, {
       method,
       headers: token ? { 'Authorization': `Bearer ${token}` } : {},
       body: data
@@ -1928,7 +1974,7 @@ const handleAddCandidate = async (e) => {
   }
 };
   const handleStatusChange = async (id, newStatus) => {
-    await fetch(`${API_URL}/${id}`, {
+    await authenticatedFetch(`${API_URL}/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus })
@@ -1940,7 +1986,7 @@ const handleAddCandidate = async (e) => {
 
   // ✅ Handle CTC Dropdown Change
   const handleCtcChange = async (id, newCtc) => {
-    await fetch(`${API_URL}/${id}`, {
+    await authenticatedFetch(`${API_URL}/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ctc: newCtc })
@@ -1952,7 +1998,7 @@ const handleAddCandidate = async (e) => {
 
   // ✅ Handle Expected CTC Dropdown Change
   const handleExpectedCtcChange = async (id, newExpectedCtc) => {
-    await fetch(`${API_URL}/${id}`, {
+    await authenticatedFetch(`${API_URL}/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ expectedCtc: newExpectedCtc })
@@ -1964,7 +2010,7 @@ const handleAddCandidate = async (e) => {
 
   // ✅ Handle Notice Period Dropdown Change
   const handleNoticePeriodChange = async (id, newNoticePeriod) => {
-    await fetch(`${API_URL}/${id}`, {
+    await authenticatedFetch(`${API_URL}/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ noticePeriod: newNoticePeriod })
@@ -1976,7 +2022,7 @@ const handleAddCandidate = async (e) => {
 
   // ✅ Handle Source of CV Dropdown Change
   const handleSourceChange = async (id, newSource) => {
-    await fetch(`${API_URL}/${id}`, {
+    await authenticatedFetch(`${API_URL}/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ source: newSource })
@@ -2344,86 +2390,178 @@ const handleAddCandidate = async (e) => {
   ];
 
   const [statusOptions, setStatusOptions] = useState(['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected']);
-
-  const DEFAULT_COLUMN_KEYS = [
-    'actions', 'srNo', 'resume', 'tools', 'date', 'location', 'position', 'fls',
-    'name', 'contact', 'email', 'companyName', 'experience', 'ctc', 'expectedCtc',
-    'noticePeriod', 'status', 'client', 'spoc', 'source', 'sharedBy'
-  ];
-
-  const [columnOrder, setColumnOrder] = useState(() => {
-    try {
-      const raw = localStorage.getItem('ats-candidate-column-order');
-      if (!raw) return DEFAULT_COLUMN_KEYS;
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed) || !parsed.length) return DEFAULT_COLUMN_KEYS;
-      const merged = parsed.filter((k) => DEFAULT_COLUMN_KEYS.includes(k));
-      DEFAULT_COLUMN_KEYS.forEach((k) => { if (!merged.includes(k)) merged.push(k); });
-      return merged;
-    } catch {
-      return DEFAULT_COLUMN_KEYS;
-    }
-  });
-
-  const [dragColKey, setDragColKey] = useState(null);
-  const [dragOverColKey, setDragOverColKey] = useState(null);
   const [showImportMenu, setShowImportMenu] = useState(false);
 
-  const orderedColumns = useMemo(() => {
-    const byKey = Object.fromEntries(tableColumns.map((c) => [c.key, c]));
-    const present = columnOrder.filter((k) => byKey[k]);
-    tableColumns.forEach((c) => {
-      if (!present.includes(c.key)) present.push(c.key);
+  const orderedColumns = tableColumns;
+
+  // Drag-to-scroll the wide candidates table (click + drag horizontally)
+  const tableScrollRef = useRef(null);
+  const dragScrollRef = useRef({ active: false, moved: false, startX: 0, scrollLeft: 0 });
+
+  const onTableDragScrollStart = (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest('button, a, input, select, textarea, label, [role="button"]')) return;
+    const el = tableScrollRef.current;
+    if (!el) return;
+    dragScrollRef.current = { active: true, moved: false, startX: e.pageX, scrollLeft: el.scrollLeft };
+    el.classList.add('cursor-grabbing');
+    el.classList.remove('cursor-grab');
+  };
+
+  const onTableDragScrollMove = (e) => {
+    const state = dragScrollRef.current;
+    if (!state.active) return;
+    const el = tableScrollRef.current;
+    if (!el) return;
+    const dx = e.pageX - state.startX;
+    if (Math.abs(dx) > 3) state.moved = true;
+    el.scrollLeft = state.scrollLeft - dx;
+  };
+
+  const onTableDragScrollEnd = () => {
+    const state = dragScrollRef.current;
+    if (!state.active) return;
+    state.active = false;
+    const el = tableScrollRef.current;
+    if (el) {
+      el.classList.remove('cursor-grabbing');
+      el.classList.add('cursor-grab');
+    }
+  };
+
+  const activeAdvFilterCount = Object.values(advancedSearchFilters).filter(Boolean).length;
+
+  const clearAdvancedFilters = () => {
+    setAdvancedSearchFilters({
+      position: '',
+      companyName: '',
+      location: '',
+      expMin: '',
+      expMax: '',
+      ctcMin: '',
+      ctcMax: '',
+      expectedCtcMin: '',
+      expectedCtcMax: '',
+      date: ''
     });
-    return present.map((k) => byKey[k]).filter(Boolean);
-  }, [tableColumns, columnOrder]);
-
-  const persistColumnOrder = (next) => {
-    setColumnOrder(next);
-    try {
-      localStorage.setItem('ats-candidate-column-order', JSON.stringify(next));
-    } catch { /* ignore */ }
   };
 
-  const handleColumnDragStart = (e, key) => {
-    setDragColKey(key);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', key);
+  const expOptions = useMemo(
+    () => [
+      { value: '', label: 'Any' },
+      ...[...Array(31).keys()].map((num) => ({
+        value: String(num),
+        label: `${num} ${num === 1 ? 'year' : 'years'}`,
+      })),
+    ],
+    []
+  );
+
+  const ctcFilterOptions = useMemo(
+    () => [{ value: '', label: 'Any' }, ...ctcRanges.map((range) => ({ value: range, label: range }))],
+    []
+  );
+
+  const positionFilterOptions = useMemo(
+    () => [
+      { value: '', label: 'All Positions', icon: Briefcase },
+      ...masterPositions.map((pos) => ({ value: pos.name, label: pos.name, icon: Briefcase })),
+    ],
+    [masterPositions]
+  );
+
+  const formPositionOptions = useMemo(
+    () => [
+      { value: '', label: 'Select position', icon: Briefcase },
+      ...masterPositions.map((pos) => ({ value: pos.name, label: pos.name, icon: Briefcase })),
+    ],
+    [masterPositions]
+  );
+
+  const formExperienceOptions = useMemo(
+    () => [
+      { value: '', label: 'Select' },
+      { value: 'Fresher', label: 'Fresher' },
+      ...[...Array(31).keys()].slice(1).map((num) => ({ value: String(num), label: String(num) })),
+    ],
+    []
+  );
+
+  const formCtcOptions = useMemo(
+    () => [{ value: '', label: 'Select CTC' }, ...ctcRanges.map((r) => ({ value: r, label: r }))],
+    []
+  );
+
+  const formExpectedCtcOptions = useMemo(
+    () => [{ value: '', label: 'Select expected CTC' }, ...expectedCtcOptions.map((r) => ({ value: r, label: r }))],
+    []
+  );
+
+  const formNoticeOptions = useMemo(
+    () => [{ value: '', label: 'Select notice period' }, ...noticePeriodOptions.map((opt) => ({ value: opt, label: opt }))],
+    []
+  );
+
+  const formFlsOptions = useMemo(
+    () => [
+      { value: '', label: 'Select' },
+      { value: 'FLS', label: 'FLS' },
+      { value: 'Non-FLS', label: 'Non-FLS' },
+    ],
+    []
+  );
+
+  const formStatusOptions = useMemo(
+    () => [
+      'Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Joined', 'Dropped', 'Rejected',
+      'Interested', 'Interested and scheduled',
+    ].map((s) => ({ value: s, label: s, icon: RefreshCw })),
+    []
+  );
+
+  const formClientOptions = useMemo(
+    () => [
+      { value: '', label: 'Select client', icon: Building2 },
+      ...masterClients.map((c) => ({ value: c.name, label: c.name, icon: Building2 })),
+    ],
+    [masterClients]
+  );
+
+  const formSourceOptions = useMemo(
+    () => [
+      { value: '', label: 'Select source', icon: Megaphone },
+      ...masterSources.map((s) => ({ value: s.name, label: s.name, icon: Megaphone })),
+    ],
+    [masterSources]
+  );
+
+  const formCountryOptions = useMemo(
+    () => (countryCodes || []).map((c) => {
+      const iso = (c.iso || '').toUpperCase();
+      return {
+        value: iso || c.code,
+        label: c.code,
+        description: c.name || '',
+        flagIso: iso || undefined,
+        searchText: `${c.name || ''} ${iso} ${c.code || ''}`,
+      };
+    }),
+    [countryCodes]
+  );
+
+  const resolveCountryFromDial = (dial) => {
+    const code = dial || '+91';
+    const matches = (countryCodes || []).filter((c) => c.code === code);
+    if (!matches.length) return { iso: 'IN', code: '+91' };
+    const preferred = matches.find((c) => c.iso === 'IN')
+      || matches.find((c) => c.iso === 'US')
+      || matches[0];
+    return { iso: preferred.iso, code: preferred.code };
   };
 
-  const handleColumnDragOver = (e, key) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (dragOverColKey !== key) setDragOverColKey(key);
-  };
-
-  const handleColumnDrop = (e, targetKey) => {
-    e.preventDefault();
-    const fromKey = dragColKey || e.dataTransfer.getData('text/plain');
-    setDragColKey(null);
-    setDragOverColKey(null);
-    if (!fromKey || fromKey === targetKey) return;
-
-    const current = orderedColumns.map((c) => c.key);
-    const fromIdx = current.indexOf(fromKey);
-    const toIdx = current.indexOf(targetKey);
-    if (fromIdx < 0 || toIdx < 0) return;
-    const next = [...current];
-    next.splice(fromIdx, 1);
-    next.splice(toIdx, 0, fromKey);
-    // keep any saved keys that aren't currently visible (e.g. sharedBy)
-    const extras = columnOrder.filter((k) => !next.includes(k));
-    persistColumnOrder([...next, ...extras]);
-  };
-
-  const handleColumnDragEnd = () => {
-    setDragColKey(null);
-    setDragOverColKey(null);
-  };
-
-  const resetColumnOrder = () => {
-    persistColumnOrder(DEFAULT_COLUMN_KEYS);
-    toast.success('Column order reset');
+  const setFormField = (name, value) => {
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (formErrors[name]) setFormErrors((prev) => ({ ...prev, [name]: '' }));
   };
 
   // Fetch status options from master data (or backend) on mount
@@ -2692,7 +2830,7 @@ const handleAddCandidate = async (e) => {
       <PageHeader
         icon={Users}
         title="Candidates"
-        subtitle="Talent database — search, filter, and manage every profile."
+        subtitle={`${filteredCandidates.length.toLocaleString()} total in your talent database`}
         gradientTitle
       >
         <div className="relative">
@@ -2745,6 +2883,8 @@ const handleAddCandidate = async (e) => {
             setEditId(null);
             setFormData(initialFormState);
             setFormErrors({});
+            setCountryCode('+91');
+            setCountryIso('IN');
             setShowModal(true);
           }}
           className="btn-primary flex-1 sm:flex-none"
@@ -2762,359 +2902,42 @@ const handleAddCandidate = async (e) => {
       <input type="file" accept=".csv, .xlsx, .xls" ref={fileInputRef} onChange={handleBulkUpload} className="hidden" />
       <input type="file" accept=".csv, .xlsx, .xls" ref={autoUploadInputRef} onChange={handleAutoUpload} className="hidden" />
 
-      {/* Enterprise toolbar — single clean strip */}
-      <div className="card-ats-bordered overflow-visible px-3 sm:px-4 py-3">
-        <div className="flex flex-col xl:flex-row xl:items-center gap-2.5 xl:gap-3">
-          <div className="inline-flex rounded-xl bg-stone-100/90 p-1 border border-stone-200/70 w-fit flex-shrink-0">
-            <button
-              type="button"
-              onClick={() => setCandidatesViewMode('mine')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${candidatesViewMode === 'mine' ? 'bg-white text-brand-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
-            >
-              <User size={13} /> Mine
-            </button>
-            <button
-              type="button"
-              onClick={() => setCandidatesViewMode('all')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${candidatesViewMode === 'all' ? 'bg-white text-brand-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
-            >
-              <Users size={13} /> All
-            </button>
-          </div>
-
-          <div className="relative flex-1 min-w-0">
-            <Search className="text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" size={16} />
-            <input
-              type="search"
-              placeholder="Search name, email, phone, position…"
-              className="input-ats !pl-10 !pr-24 w-full"
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-            />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-              {searchQuery.trim() && (
-                <button
-                  type="button"
-                  onClick={() => { setSearchQuery(''); setCurrentPage(1); }}
-                  className="p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100"
-                  title="Clear"
-                >
-                  <X size={14} />
-                </button>
-              )}
-              <span className="hidden sm:inline text-[10px] font-bold text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded-md tabular-nums">
-                {filteredCandidates.length.toLocaleString()}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
-            <PremiumSelect
-              className="w-[8.5rem]"
-              value={searchScope}
-              onChange={(v) => { setSearchScope(v); setCurrentPage(1); }}
-              options={[
-                { value: 'all', label: 'All fields', icon: Search },
-                { value: 'name', label: 'Name', icon: User },
-                { value: 'email', label: 'Email', icon: Mail },
-                { value: 'position', label: 'Position', icon: Briefcase },
-                { value: 'location', label: 'Location', icon: MapPin },
-                { value: 'company', label: 'Company', icon: Building2 },
-                { value: 'client', label: 'Client', icon: Building2 },
-                { value: 'spoc', label: 'SPOC', icon: User },
-              ]}
-              placeholder="Field"
-              icon={Search}
-            />
-            <button
-              type="button"
-              onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
-              className={showAdvancedSearch ? 'btn-primary !py-2 !h-[42px]' : 'btn-secondary !py-2 !h-[42px]'}
-            >
-              <Filter size={15} /> Filters
-            </button>
-            <button
-              type="button"
-              onClick={() => { if (filteredCandidates.length === 0) toast.warning('No candidates to download.'); else setShowDownloadModal(true); }}
-              className="btn-secondary !py-2 !h-[42px]"
-            >
-              <Download size={15} /> Export{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
-            </button>
-            <PremiumSelect
-              className="w-[9rem]"
-              value={sortField}
-              onChange={(v) => { setSortField(v); setCurrentPage(1); }}
-              options={[
-                { value: 'date', label: 'Date', icon: ArrowUpDown },
-                { value: 'name', label: 'Name', icon: User },
-                { value: 'email', label: 'Email', icon: Mail },
-                { value: 'position', label: 'Position', icon: Briefcase },
-                { value: 'location', label: 'Location', icon: MapPin },
-                { value: 'company', label: 'Company', icon: Building2 },
-                { value: 'status', label: 'Status', icon: RefreshCw },
-                { value: 'spoc', label: 'SPOC', icon: User },
-              ]}
-              placeholder="Sort"
-              icon={ArrowUpDown}
-            />
-            <button
-              type="button"
-              onClick={() => { setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc'); setCurrentPage(1); }}
-              className="h-[42px] w-[42px] flex items-center justify-center rounded-xl border border-stone-200 bg-stone-50 text-stone-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 transition-all font-bold text-sm"
-              title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
-            >
-              {sortOrder === 'asc' ? '↑' : '↓'}
-            </button>
-            <button
-              type="button"
-              onClick={resetColumnOrder}
-              className="btn-ghost !py-2 !px-2.5 !h-[42px] !text-xs text-stone-500"
-              title="Reset column order"
-            >
-              <GripVertical size={15} />
-            </button>
-          </div>
-        </div>
-        <p className="mt-2 text-[11px] text-stone-400 font-medium hidden sm:block">
-          Drag column headers to reorder · order is saved on this device
-        </p>
-      </div>
-
-      {/* ADVANCED SEARCH PANEL - ABOVE TABLE */}
-      {showAdvancedSearch && (
-        <div className="card-ats-bordered p-5 sm:p-6 animate-fade-in">
-          <div className="flex justify-between items-center mb-5">
-            <div>
-              <h3 className="text-base font-bold text-stone-900 tracking-tight">Advanced Filters</h3>
-              <p className="text-xs text-stone-400 mt-0.5">Filters apply instantly to the list below</p>
-            </div>
-            <button
-              onClick={() => {
-                setAdvancedSearchFilters({
-                  position: '',
-                  companyName: '',
-                  location: '',
-                  expMin: '',
-                  expMax: '',
-                  ctcMin: '',
-                  ctcMax: '',
-                  expectedCtcMin: '',
-                  expectedCtcMax: '',
-                  date: ''
-                });
-                setSearchQuery('');
-              }}
-              className="btn-secondary !py-1.5 !px-3 !text-sm"
-            >
-              <RefreshCw size={14} /> Reset
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* Position - Dropdown */}
-            <div>
-              <label className="label-ats">Position</label>
-              <select
-                value={advancedSearchFilters.position}
-                onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, position: e.target.value }))}
-                className="select-ats"
-              >
-                <option value="">All Positions</option>
-                {masterPositions.map(pos => (
-                  <option key={pos._id} value={pos.name}>{pos.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Company - Text Input */}
-            <div>
-              <label className="label-ats">Company</label>
-              <input
-                type="text"
-                value={advancedSearchFilters.companyName}
-                onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, companyName: e.target.value }))}
-                placeholder="Search company"
-                className="input-ats"
-              />
-            </div>
-
-            {/* Location - Text input */}
-            <div>
-              <label className="label-ats">Location</label>
-              <input
-                type="text"
-                value={advancedSearchFilters.location}
-                onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, location: e.target.value }))}
-                placeholder="City or location"
-                className="input-ats"
-              />
-            </div>
-
-            {/* Experience Min - Number Dropdown */}
-            <div>
-              <label className="label-ats">Min Experience (Yrs)</label>
-              <select
-                value={advancedSearchFilters.expMin}
-                onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, expMin: e.target.value }))}
-                className="select-ats"
-              >
-                <option value="">Any</option>
-                {[...Array(31).keys()].map(num => (
-                  <option key={num} value={num}>{num} {num === 1 ? 'year' : 'years'}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Experience Max - Number Dropdown */}
-            <div>
-              <label className="label-ats">Max Experience (Yrs)</label>
-              <select
-                value={advancedSearchFilters.expMax}
-                onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, expMax: e.target.value }))}
-                className="select-ats"
-              >
-                <option value="">Any</option>
-                {[...Array(31).keys()].map(num => (
-                  <option key={num} value={num}>{num} {num === 1 ? 'year' : 'years'}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* CTC Min - Range Dropdown */}
-            <div>
-              <label className="label-ats">Min CTC</label>
-              <select
-                value={advancedSearchFilters.ctcMin}
-                onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, ctcMin: e.target.value }))}
-                className="select-ats"
-              >
-                <option value="">Any</option>
-                {ctcRanges.map(range => (
-                  <option key={range} value={range}>{range}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* CTC Max - Range Dropdown */}
-            <div>
-              <label className="label-ats">Max CTC</label>
-              <select
-                value={advancedSearchFilters.ctcMax}
-                onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, ctcMax: e.target.value }))}
-                className="select-ats"
-              >
-                <option value="">Any</option>
-                {ctcRanges.map(range => (
-                  <option key={range} value={range}>{range}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Expected CTC Min - Range Dropdown */}
-            <div>
-              <label className="label-ats">Min Expected CTC</label>
-              <select
-                value={advancedSearchFilters.expectedCtcMin}
-                onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, expectedCtcMin: e.target.value }))}
-                className="select-ats"
-              >
-                <option value="">Any</option>
-                {ctcRanges.map(range => (
-                  <option key={range} value={range}>{range}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Expected CTC Max - Range Dropdown */}
-            <div>
-              <label className="label-ats">Max Expected CTC</label>
-              <select
-                value={advancedSearchFilters.expectedCtcMax}
-                onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, expectedCtcMax: e.target.value }))}
-                className="select-ats"
-              >
-                <option value="">Any</option>
-                {ctcRanges.map(range => (
-                  <option key={range} value={range}>{range}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Date */}
-            <div>
-              <label className="label-ats">Date</label>
-              <input
-                type="date"
-                value={advancedSearchFilters.date}
-                onChange={(e) => setAdvancedSearchFilters(prev => ({ ...prev, date: e.target.value }))}
-                className="input-ats"
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* PARSING PREVIEW MODAL */}
-      {showPreview && (
-        <div className="fixed inset-0 bg-stone-900/55 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden">
-            <div className="p-4 bg-brand-600 text-white flex justify-between items-center">
-              <h3 className="font-bold flex items-center gap-2"><Cpu size={20}/> Parsed Results</h3>
-              <button onClick={() => setShowPreview(false)}><X size={24}/></button>
-            </div>
-            <div className="p-6 overflow-auto max-h-[60vh]">
-              <table className="w-full text-sm">
-                <thead><tr className="border-b text-left text-stone-500 font-bold"><th>Name</th><th>Email</th><th>Contact</th></tr></thead>
-                <tbody>
-                  {parsedResults.map(p => (
-                    <tr key={p._id} className="border-b">
-                      <td className="py-2">{p.name}</td>
-                      <td className="py-2">{p.email}</td>
-                      <td className="py-2">{p.contact}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="p-4 border-t flex justify-end">
-              <button onClick={() => setShowPreview(false)} className="bg-stone-800 text-white px-6 py-2 rounded-lg font-bold">Close</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* BULK ACTIONS BAR */}
       {selectedIds.length > 0 && (
-        <div className="sticky top-0 z-30 bg-gradient-to-r from-brand-600 via-teal-600 to-brand-700 text-white rounded-2xl shadow-lg shadow-brand-500/25 px-5 py-3 flex items-center justify-between gap-4 animate-fade-in">
+        <div className="sticky top-0 z-30 bg-gradient-to-r from-brand-600 via-teal-600 to-brand-700 text-white rounded-2xl shadow-lg shadow-brand-500/25 px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in">
           <div className="flex items-center gap-3">
             <div className="bg-white/20 px-3 py-1 rounded-lg text-sm font-bold">
               {selectedIds.length} selected
             </div>
             <button
+              type="button"
               onClick={() => setSelectedIds([])}
               className="text-white/80 hover:text-white text-xs underline underline-offset-2 cursor-pointer"
             >
               Clear selection
             </button>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
+              type="button"
               onClick={startBulkEmailFlow}
-              className="flex items-center gap-1.5 px-4 py-2 bg-white/15 hover:bg-white/25 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-white/15 hover:bg-white/25 rounded-lg text-sm font-medium transition-colors cursor-pointer"
               title="Send bulk email"
             >
               <Mail size={15} /> Email
             </button>
             <button
+              type="button"
               onClick={handleBulkWhatsApp}
-              className="flex items-center gap-1.5 px-4 py-2 bg-white/15 hover:bg-white/25 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-white/15 hover:bg-white/25 rounded-lg text-sm font-medium transition-colors cursor-pointer"
               title="Send bulk WhatsApp"
             >
               <MessageCircle size={15} /> WhatsApp
             </button>
             <div className="relative group">
               <button
-                className="flex items-center gap-1.5 px-4 py-2 bg-white/15 hover:bg-white/25 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+                type="button"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-white/15 hover:bg-white/25 rounded-lg text-sm font-medium transition-colors cursor-pointer"
                 title="Change status"
               >
                 <RefreshCw size={15} /> Status
@@ -3123,6 +2946,7 @@ const handleAddCandidate = async (e) => {
                 {['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Joined', 'Rejected', 'Dropped'].map(s => (
                   <button
                     key={s}
+                    type="button"
                     onClick={() => handleBulkStatusUpdate(s)}
                     className="w-full text-left px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 cursor-pointer"
                   >
@@ -3132,15 +2956,17 @@ const handleAddCandidate = async (e) => {
               </div>
             </div>
             <button
+              type="button"
               onClick={() => handleShareClick(null)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500/80 hover:bg-emerald-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500/80 hover:bg-emerald-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
               title="Share selected with team"
             >
               <Share2 size={15} /> Share
             </button>
             <button
+              type="button"
               onClick={handleBulkDelete}
-              className="flex items-center gap-1.5 px-4 py-2 bg-red-500/80 hover:bg-red-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-red-500/80 hover:bg-red-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
               title="Delete selected"
             >
               <Trash2 size={15} /> Delete
@@ -3149,88 +2975,357 @@ const handleAddCandidate = async (e) => {
         </div>
       )}
 
-      {/* MAIN TABLE */}
-      <div className="table-shell-ats overflow-x-auto overflow-y-visible">
-        <table className="w-full text-left border-collapse min-w-[1100px]">
-          <thead>
-            <tr className="bg-gradient-to-r from-stone-100 via-stone-50 to-stone-100 border-b border-stone-200/90">
-              <th className="px-4 py-3.5 w-[50px] text-center sticky left-0 bg-stone-100 z-10">
-                <div onClick={() => selectAll(filteredCandidates.map(c => c._id))} className="cursor-pointer flex justify-center">
-                  {isAllSelected ? <CheckSquare size={18} className="text-brand-600" /> : <Square size={18} className="text-stone-400" />}
-                </div>
-              </th>
-              {orderedColumns.map((column) => (
-                <th
-                  key={column.key}
-                  draggable
-                  onDragStart={(e) => handleColumnDragStart(e, column.key)}
-                  onDragOver={(e) => handleColumnDragOver(e, column.key)}
-                  onDrop={(e) => handleColumnDrop(e, column.key)}
-                  onDragEnd={handleColumnDragEnd}
-                  title="Drag to reorder column"
-                  className={`px-3 py-3.5 text-[10px] font-bold text-stone-500 uppercase tracking-wider whitespace-nowrap border-r border-stone-200/60 last:border-r-0 select-none cursor-grab active:cursor-grabbing transition-colors ${
-                    dragColKey === column.key ? 'opacity-40 bg-brand-50' : ''
-                  } ${dragOverColKey === column.key && dragColKey !== column.key ? 'bg-brand-100/70 ring-2 ring-inset ring-brand-400' : ''}`}
+      {/* Codester-style: one card = toolbar + filters + table + pager */}
+      <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden shadow-[var(--shadow-card)] min-h-[320px]">
+        {/* Toolbar — search + essential actions only */}
+        <div className="p-4 sm:p-5 border-b border-stone-100">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="relative flex-1 min-w-0 w-full">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
+              <input
+                type="search"
+                placeholder="Search candidates by name, email, phone, position…"
+                className="w-full pl-11 pr-10 py-3 rounded-xl border border-stone-200 bg-stone-50/50 focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 outline-none text-sm font-medium text-stone-900 placeholder:text-stone-400 transition-all"
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+              />
+              {searchQuery.trim() && (
+                <button
+                  type="button"
+                  onClick={() => { setSearchQuery(''); setCurrentPage(1); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100"
+                  title="Clear"
                 >
-                  <span className="inline-flex items-center gap-1">
-                    <GripVertical size={12} className="text-stone-300 flex-shrink-0" />
-                    {column.label}
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
+                className={`inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold border-2 transition-all text-sm ${
+                  showAdvancedSearch || activeAdvFilterCount > 0
+                    ? 'border-brand-500 bg-brand-50 text-brand-700'
+                    : 'border-stone-200 hover:border-brand-300 hover:bg-brand-50/50 text-stone-700'
+                }`}
+              >
+                <Filter size={16} />
+                Advanced Search
+                {activeAdvFilterCount > 0 && (
+                  <span className="ml-0.5 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-brand-600 text-white text-[10px] font-bold">
+                    {activeAdvFilterCount}
                   </span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-stone-100">
-            {visibleCandidates.map((candidate, index) => (
-              <tr key={candidate._id} className={`transition-colors duration-150 ${selectedIds.includes(candidate._id) ? 'bg-brand-50/80' : index % 2 === 0 ? 'bg-white' : 'bg-stone-50/30'} hover:bg-brand-50/40`}>
-                <td className="px-4 py-3 text-center w-[50px]">
-                  <div onClick={() => toggleSelection(candidate._id)} className="cursor-pointer flex justify-center">
-                    {selectedIds.includes(candidate._id) ? <CheckSquare className="text-brand-600" size={17} /> : <Square className="text-stone-300 hover:text-stone-400" size={17} />}
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => { if (filteredCandidates.length === 0) toast.warning('No candidates to download.'); else setShowDownloadModal(true); }}
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold border-2 border-stone-200 hover:border-emerald-400 hover:bg-emerald-50/50 text-stone-700 text-sm transition-all"
+              >
+                <Download size={16} /> Export{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Advanced Search — grouped premium panels */}
+        {showAdvancedSearch && (
+          <div className="px-4 sm:px-6 py-5 border-b border-stone-100 bg-gradient-to-br from-stone-50 via-brand-50/30 to-stone-50 animate-fade-in">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-600 to-teal-600 flex items-center justify-center shadow-sm shadow-brand-500/25">
+                  <Filter size={14} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-stone-900 tracking-tight">Advanced Search</h3>
+                  <p className="text-[11px] text-stone-500 font-medium">
+                    {activeAdvFilterCount > 0 ? `${activeAdvFilterCount} filter${activeAdvFilterCount > 1 ? 's' : ''} active` : 'Narrow your talent pool'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={clearAdvancedFilters}
+                disabled={activeAdvFilterCount === 0}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-stone-200 bg-white text-stone-600 hover:border-brand-300 hover:bg-brand-50/50 transition-all disabled:opacity-40 disabled:pointer-events-none"
+              >
+                <RefreshCw size={12} /> Clear
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
+              {/* Role & place */}
+              <div className="rounded-2xl border border-stone-200/80 bg-white/90 p-4 shadow-sm">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-brand-700 mb-3 flex items-center gap-1.5">
+                  <Briefcase size={12} /> Role & place
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-stone-500 mb-1.5">Position</label>
+                    <PremiumSelect
+                      value={advancedSearchFilters.position}
+                      onChange={(v) => setAdvancedSearchFilters((prev) => ({ ...prev, position: v }))}
+                      options={positionFilterOptions}
+                      placeholder="All Positions"
+                      icon={Briefcase}
+                      searchable
+                      searchPlaceholder="Search positions…"
+                      allowClear
+                    />
                   </div>
-                </td>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-stone-500 mb-1.5">Company</label>
+                    <input
+                      type="text"
+                      value={advancedSearchFilters.companyName}
+                      onChange={(e) => setAdvancedSearchFilters((prev) => ({ ...prev, companyName: e.target.value }))}
+                      placeholder="Search company"
+                      className="w-full px-3 py-2.5 rounded-xl border border-stone-200 bg-stone-50/50 focus:bg-white text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-stone-500 mb-1.5">Location</label>
+                    <input
+                      type="text"
+                      value={advancedSearchFilters.location}
+                      onChange={(e) => setAdvancedSearchFilters((prev) => ({ ...prev, location: e.target.value }))}
+                      placeholder="City or location"
+                      className="w-full px-3 py-2.5 rounded-xl border border-stone-200 bg-stone-50/50 focus:bg-white text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-stone-500 mb-1.5">Date</label>
+                    <input
+                      type="date"
+                      value={advancedSearchFilters.date}
+                      onChange={(e) => setAdvancedSearchFilters((prev) => ({ ...prev, date: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl border border-stone-200 bg-stone-50/50 focus:bg-white text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Experience & CTC */}
+              <div className="rounded-2xl border border-stone-200/80 bg-white/90 p-4 shadow-sm xl:col-span-1">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-teal-700 mb-3 flex items-center gap-1.5">
+                  <BarChart3 size={12} /> Experience & CTC
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-stone-500 mb-1.5">Min exp</label>
+                    <PremiumSelect value={advancedSearchFilters.expMin} onChange={(v) => setAdvancedSearchFilters((prev) => ({ ...prev, expMin: v }))} options={expOptions} placeholder="Any" allowClear />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-stone-500 mb-1.5">Max exp</label>
+                    <PremiumSelect value={advancedSearchFilters.expMax} onChange={(v) => setAdvancedSearchFilters((prev) => ({ ...prev, expMax: v }))} options={expOptions} placeholder="Any" allowClear />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-stone-500 mb-1.5">Min CTC</label>
+                    <PremiumSelect value={advancedSearchFilters.ctcMin} onChange={(v) => setAdvancedSearchFilters((prev) => ({ ...prev, ctcMin: v }))} options={ctcFilterOptions} placeholder="Any" allowClear />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-stone-500 mb-1.5">Max CTC</label>
+                    <PremiumSelect value={advancedSearchFilters.ctcMax} onChange={(v) => setAdvancedSearchFilters((prev) => ({ ...prev, ctcMax: v }))} options={ctcFilterOptions} placeholder="Any" allowClear />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-stone-500 mb-1.5">Min expected</label>
+                    <PremiumSelect value={advancedSearchFilters.expectedCtcMin} onChange={(v) => setAdvancedSearchFilters((prev) => ({ ...prev, expectedCtcMin: v }))} options={ctcFilterOptions} placeholder="Any" allowClear />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-stone-500 mb-1.5">Max expected</label>
+                    <PremiumSelect value={advancedSearchFilters.expectedCtcMax} onChange={(v) => setAdvancedSearchFilters((prev) => ({ ...prev, expectedCtcMax: v }))} options={ctcFilterOptions} placeholder="Any" allowClear />
+                  </div>
+                </div>
+              </div>
+
+              {/* Sort */}
+              <div className="rounded-2xl border border-stone-200/80 bg-white/90 p-4 shadow-sm">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-stone-600 mb-3 flex items-center gap-1.5">
+                  <ArrowUpDown size={12} /> Sort results
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-stone-500 mb-1.5">Sort by</label>
+                    <PremiumSelect
+                      value={sortField}
+                      onChange={(v) => { setSortField(v); setCurrentPage(1); }}
+                      options={[
+                        { value: 'date', label: 'Date', icon: ArrowUpDown },
+                        { value: 'name', label: 'Name', icon: User },
+                        { value: 'email', label: 'Email', icon: Mail },
+                        { value: 'position', label: 'Position', icon: Briefcase },
+                        { value: 'location', label: 'Location', icon: MapPin },
+                        { value: 'company', label: 'Company', icon: Building2 },
+                        { value: 'status', label: 'Status', icon: RefreshCw },
+                        { value: 'spoc', label: 'SPOC', icon: User },
+                      ]}
+                      placeholder="Sort"
+                      icon={ArrowUpDown}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-stone-500 mb-1.5">Order</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { setSortOrder('asc'); setCurrentPage(1); }}
+                        className={`h-[42px] rounded-xl border-2 text-sm font-semibold transition-all ${
+                          sortOrder === 'asc'
+                            ? 'border-brand-500 bg-brand-50 text-brand-700'
+                            : 'border-stone-200 bg-white text-stone-600 hover:border-brand-300'
+                        }`}
+                      >
+                        ↑ Asc
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setSortOrder('desc'); setCurrentPage(1); }}
+                        className={`h-[42px] rounded-xl border-2 text-sm font-semibold transition-all ${
+                          sortOrder === 'desc'
+                            ? 'border-brand-500 bg-brand-50 text-brand-700'
+                            : 'border-stone-200 bg-white text-stone-600 hover:border-brand-300'
+                        }`}
+                      >
+                        ↓ Desc
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Table — bordered grid + drag-to-scroll */}
+        <div
+          ref={tableScrollRef}
+          className="overflow-x-auto cursor-grab select-none"
+          onMouseDown={onTableDragScrollStart}
+          onMouseMove={onTableDragScrollMove}
+          onMouseUp={onTableDragScrollEnd}
+          onMouseLeave={onTableDragScrollEnd}
+        >
+          <table className="w-full text-left border-collapse min-w-[1100px] select-text border border-stone-200">
+            <thead>
+              <tr className="bg-stone-100">
+                <th className="px-3 py-3 w-[50px] text-center border border-stone-200 bg-stone-100">
+                  <div role="button" tabIndex={0} onClick={() => selectAll(filteredCandidates.map(c => c._id))} className="cursor-pointer flex justify-center">
+                    {isAllSelected ? <CheckSquare size={18} className="text-brand-600" /> : <Square size={18} className="text-stone-400" />}
+                  </div>
+                </th>
                 {orderedColumns.map((column) => (
-                  <td
-                    key={`${candidate._id}-${column.key}`}
-                    className="px-4 py-3 text-sm text-stone-700 border-r border-stone-100/80 last:border-r-0 font-medium"
+                  <th
+                    key={column.key}
+                    className="px-3 py-3 text-[10px] font-bold text-stone-600 uppercase tracking-wider whitespace-nowrap border border-stone-200 bg-stone-100"
                   >
-                    {column.render(candidate, index)}
-                  </td>
+                    {column.label}
+                  </th>
                 ))}
               </tr>
-            ))}
-            {visibleCandidates.length === 0 && !isLoadingInitial && (
-              <tr>
-                <td colSpan={orderedColumns.length + 1}>
-                  {viewMode === 'shared' ? (
-                    <EmptyState icon={Share2} message="No shared candidates yet" subMessage="When team members share candidates with you, they will appear here." />
-                  ) : searchQuery ? (
-                    <EmptyState icon={Search} message="No candidates match your search" subMessage="Try different keywords or clear the search filter." />
-                  ) : (
-                    <EmptyState
-                      icon={Users}
-                      message="No candidates yet"
-                      subMessage="Add candidates manually or import from Excel to get started."
-                      action={
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditId(null);
-                            setFormData(initialFormState);
-                            setFormErrors({});
-                            setShowModal(true);
-                          }}
-                          className="btn-primary"
-                        >
-                          <Plus size={16} /> Add Candidate
-                        </button>
-                      }
-                    />
-                  )}
-                </td>
-              </tr>
+            </thead>
+            <tbody>
+              {visibleCandidates.map((candidate, index) => (
+                <tr
+                  key={candidate._id}
+                  className={`transition-colors ${
+                    selectedIds.includes(candidate._id) ? 'bg-brand-50/80' : index % 2 === 0 ? 'bg-white' : 'bg-stone-50/40'
+                  } hover:bg-brand-50/50`}
+                >
+                  <td className="px-3 py-2.5 text-center w-[50px] border border-stone-200">
+                    <div role="button" tabIndex={0} onClick={() => toggleSelection(candidate._id)} className="cursor-pointer flex justify-center">
+                      {selectedIds.includes(candidate._id) ? <CheckSquare className="text-brand-600" size={17} /> : <Square className="text-stone-300 hover:text-stone-400" size={17} />}
+                    </div>
+                  </td>
+                  {orderedColumns.map((column) => (
+                    <td
+                      key={`${candidate._id}-${column.key}`}
+                      className="px-3 py-2.5 text-sm text-stone-700 font-medium border border-stone-200 align-middle"
+                    >
+                      {column.render(candidate, index)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              {visibleCandidates.length === 0 && !isLoadingInitial && (
+                <tr>
+                  <td colSpan={orderedColumns.length + 1} className="border border-stone-200">
+                    {viewMode === 'shared' ? (
+                      <EmptyState icon={Share2} message="No shared candidates yet" subMessage="When team members share candidates with you, they will appear here." />
+                    ) : searchQuery || Object.values(advancedSearchFilters).some(Boolean) ? (
+                      <EmptyState icon={Search} message="No candidates match your filters" subMessage="Try different keywords or clear advanced filters." />
+                    ) : (
+                      <EmptyState
+                        icon={Users}
+                        message="No candidates yet"
+                        subMessage="Add candidates manually or import from Excel to get started."
+                        action={
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditId(null);
+                              setFormData(initialFormState);
+                              setFormErrors({});
+                              setCountryCode('+91');
+                              setCountryIso('IN');
+                              setShowModal(true);
+                            }}
+                            className="btn-primary"
+                          >
+                            <Plus size={16} /> Add Candidate
+                          </button>
+                        }
+                      />
+                    )}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination footer */}
+        <div className="border-t border-stone-100 bg-stone-50/50 px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <p className="text-xs sm:text-sm text-stone-500 font-medium">
+            Showing <span className="text-stone-800 font-semibold">{visibleCandidates.length > 0 ? (currentPage - 1) * PAGE_SIZE + 1 : 0}–{Math.min(currentPage * PAGE_SIZE, filteredCandidates.length)}</span> of <span className="text-stone-800 font-semibold">{filteredCandidates.length.toLocaleString()}</span>
+          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="min-h-[44px] px-4 rounded-xl border-2 border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:border-brand-300 disabled:opacity-40 transition-all"
+            >
+              Previous
+            </button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalFilteredPages) }, (_, i) => {
+                let page;
+                if (totalFilteredPages <= 5) page = i + 1;
+                else if (currentPage <= 3) page = i + 1;
+                else if (currentPage >= totalFilteredPages - 2) page = totalFilteredPages - 4 + i;
+                else page = currentPage - 2 + i;
+                return (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`min-h-[44px] min-w-[44px] rounded-xl text-sm font-semibold transition ${page === currentPage ? 'bg-gradient-to-br from-brand-600 to-teal-600 text-white shadow-md shadow-brand-500/25' : 'text-stone-600 hover:bg-white border border-transparent hover:border-stone-200'}`}
+                  >
+                    {page}
+                  </button>
+                );
+              })}
+            </div>
+            {currentPage < totalFilteredPages && (
+              <button
+                onClick={() => setCurrentPage(currentPage + 1)}
+                className="min-h-[44px] px-4 rounded-xl border-2 border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:border-brand-300 transition-all"
+              >
+                Next
+              </button>
             )}
-          </tbody>
-        </table>
+          </div>
+        </div>
       </div>
 
       {/* Remark popover via portal so it is not cut off by table overflow */}
@@ -3260,262 +3355,284 @@ const handleAddCandidate = async (e) => {
       {/* Sentinel for lazy-loading more rows */}
       <div ref={loadMoreRef} />
       
-      {/* PAGINATION */}
-      <div className="card-ats-bordered px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <p className="text-xs sm:text-sm text-stone-500 font-medium">
-          Showing <span className="text-stone-800 font-semibold">{visibleCandidates.length > 0 ? (currentPage - 1) * PAGE_SIZE + 1 : 0}–{Math.min(currentPage * PAGE_SIZE, filteredCandidates.length)}</span> of <span className="text-stone-800 font-semibold">{filteredCandidates.length.toLocaleString()}</span> candidates
-        </p>
-        <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-              disabled={currentPage === 1}
-              className="btn-secondary !py-2 disabled:opacity-40"
-            >
-              Previous
-            </button>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: Math.min(5, totalFilteredPages) }, (_, i) => {
-                let page;
-                if (totalFilteredPages <= 5) page = i + 1;
-                else if (currentPage <= 3) page = i + 1;
-                else if (currentPage >= totalFilteredPages - 2) page = totalFilteredPages - 4 + i;
-                else page = currentPage - 2 + i;
-                return (
-                  <button
-                    key={page}
-                    onClick={() => setCurrentPage(page)}
-                    className={`w-9 h-9 rounded-xl text-sm font-semibold transition ${page === currentPage ? 'bg-gradient-to-br from-brand-600 to-teal-600 text-white shadow-md shadow-brand-500/25' : 'text-stone-600 hover:bg-stone-100'}`}
-                  >
-                    {page}
-                  </button>
-                );
-              })}
-            </div>
-            {currentPage < totalFilteredPages && (
-              <button 
-                onClick={() => setCurrentPage(currentPage + 1)}
-                className="btn-secondary !py-2"
-              >
-                Next
-              </button>
-            )}
-        </div>
-      </div>
+{showModal && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto animate-fade-in">
+          <div className="absolute inset-0 bg-stone-900/55 backdrop-blur-sm" onClick={() => setShowModal(false)} aria-hidden />
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative w-full max-w-4xl my-auto rounded-t-2xl sm:rounded-3xl border border-stone-200/60 bg-white shadow-2xl max-h-[92dvh] sm:max-h-[90vh] flex flex-col overflow-hidden modal-panel-ats"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 flex-shrink-0" />
 
-{showModal && (
-        <div className="fixed inset-0 bg-stone-900/55 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl sm:rounded-3xl border border-stone-200/60 w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 sm:p-8 shadow-2xl modal-panel-ats">
-            <div className="h-px -mt-6 sm:-mt-8 mb-6 bg-gradient-to-r from-transparent via-brand-500/40 to-transparent" />
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h2 className="text-2xl font-bold text-stone-900 tracking-tight">{editId ? 'Edit Candidate' : 'Add New Candidate'}</h2>
-                <p className="text-sm text-stone-500 mt-1">{editId ? 'Update profile details and save changes.' : 'Fill in the candidate profile or upload a resume to auto-fill.'}</p>
+            <div className="flex items-start justify-between gap-3 px-5 sm:px-6 py-4 sm:py-5 border-b border-stone-100 flex-shrink-0">
+              <div className="min-w-0 flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-600 to-teal-600 flex items-center justify-center shadow-md shadow-brand-500/25 flex-shrink-0">
+                  <User size={18} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+                    {editId ? 'Edit Candidate' : 'Add Candidate'}
+                  </h2>
+                  <p className="text-sm text-stone-500 mt-0.5">
+                    {editId ? 'Update profile details and save changes.' : 'Upload a resume to auto-fill, or enter details manually.'}
+                  </p>
+                </div>
               </div>
-              <button type="button" onClick={() => setShowModal(false)} className="p-2 rounded-lg hover:bg-stone-100 text-stone-400 hover:text-stone-600 transition-colors" aria-label="Close">&times;</button>
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="p-2.5 rounded-xl hover:bg-stone-100 text-stone-400 hover:text-stone-600 transition-all hover:rotate-90 flex-shrink-0"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
             </div>
-            <form onSubmit={handleAddCandidate} className="space-y-6">
-              
-              {/* Resume Upload */}
-              <div className="border-2 border-dashed border-brand-300 rounded-2xl p-8 bg-brand-50/50 text-center hover:bg-brand-50 transition-colors cursor-pointer relative">
-                <input type="file" name="resume" accept=".pdf,.doc,.docx" onChange={handleInputChange} className="absolute inset-0 opacity-0 cursor-pointer" />
-                <div className="flex flex-col items-center gap-3">
-                  <Upload size={32} className="text-brand-600" />
-                  <p className="font-semibold text-stone-800 text-sm">Click to upload resume (PDF, DOC, DOCX)</p>
-                  {isAutoParsing && (
-                    <div className="flex items-center gap-2 text-brand-600 font-semibold text-sm">
-                      <div className="w-4 h-4 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
-                      Parsing resume...
-                    </div>
-                  )}
-                  {formData.resume && (
-                    <p className="text-sm text-green-600 font-semibold">✅ {formData.resume.name || 'File selected'}</p>
-                  )}
+
+            <form id="candidate-form" onSubmit={handleAddCandidate} className="overflow-y-auto flex-1 min-h-0 px-5 sm:px-6 py-5 space-y-5">
+              {/* Resume upload — compact strip */}
+              <div className="relative rounded-2xl border border-dashed border-brand-300/80 bg-gradient-to-r from-brand-50/80 to-teal-50/40 px-4 py-4 sm:px-5 hover:border-brand-400 transition-colors">
+                <input type="file" name="resume" accept=".pdf,.doc,.docx" onChange={handleInputChange} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                <div className="flex items-center gap-3 pointer-events-none">
+                  <div className="w-11 h-11 rounded-xl bg-white border border-brand-200 flex items-center justify-center flex-shrink-0 shadow-sm">
+                    <Upload size={18} className="text-brand-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-stone-800">Upload resume</p>
+                    <p className="text-xs text-stone-500 mt-0.5">PDF, DOC, or DOCX — fields auto-fill when possible</p>
+                    {isAutoParsing && (
+                      <p className="text-xs text-brand-600 font-semibold mt-1 flex items-center gap-1.5">
+                        <span className="w-3 h-3 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" /> Parsing…
+                      </p>
+                    )}
+                    {formData.resume && !isAutoParsing && (
+                      <p className="text-xs text-emerald-600 font-semibold mt-1 truncate">{formData.resume.name || 'File selected'}</p>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* 📋 Basic Information */}
-              <div>
-                <h3 className="text-lg font-bold text-stone-900 mb-4 pb-3 border-b-2 border-brand-500">📋 Basic Information</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Basic Information */}
+              <section className="rounded-2xl border border-stone-200 bg-stone-50/40 p-4 sm:p-5">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-4 flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand-500" /> Basic information
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Name <span className="text-red-500">*</span></label>
-                    <input ref={fieldRefs.name} type="text" name="name" value={formData.name || ''} onChange={handleInputChange} placeholder="Full Name"
-                      className={`w-full px-4 py-2.5 border-2 rounded-lg focus:ring-2 focus:outline-none transition-all text-sm font-medium ${formErrors.name ? 'border-red-400 focus:border-red-500 focus:ring-red-200 bg-red-50' : 'border-stone-300 focus:border-brand-500 focus:ring-brand-100'}`} />
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Name <span className="text-red-500">*</span></label>
+                    <input ref={fieldRefs.name} type="text" name="name" value={formData.name || ''} onChange={handleInputChange} placeholder="Full name"
+                      className={`w-full px-3.5 py-2.5 rounded-xl border bg-white text-sm font-medium outline-none transition-all focus:ring-2 ${formErrors.name ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : 'border-stone-200 focus:border-brand-500 focus:ring-brand-500/15'}`} />
                     {formErrors.name && <p className="text-xs text-red-500 mt-1 font-medium">{formErrors.name}</p>}
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Email <span className="text-red-500">*</span></label>
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Email <span className="text-red-500">*</span></label>
                     <input ref={fieldRefs.email} type="email" name="email" value={formData.email || ''} onChange={handleInputChange} placeholder="email@example.com"
-                      className={`w-full px-4 py-2.5 border-2 rounded-lg focus:ring-2 focus:outline-none transition-all text-sm font-medium ${formErrors.email ? 'border-red-400 focus:border-red-500 focus:ring-red-200 bg-red-50' : 'border-stone-300 focus:border-brand-500 focus:ring-brand-100'}`} />
+                      className={`w-full px-3.5 py-2.5 rounded-xl border bg-white text-sm font-medium outline-none transition-all focus:ring-2 ${formErrors.email ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : 'border-stone-200 focus:border-brand-500 focus:ring-brand-500/15'}`} />
                     {formErrors.email && <p className="text-xs text-red-500 mt-1 font-medium">{formErrors.email}</p>}
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Contact <span className="text-red-500">*</span></label>
-                    <div className={`flex w-full items-stretch border-2 rounded-lg focus-within:ring-2 focus-within:outline-none transition-all bg-white overflow-hidden ${formErrors.contact ? 'border-red-400 focus-within:border-red-500 focus-within:ring-red-200 bg-red-50' : 'border-stone-300 focus-within:border-brand-500 focus-within:ring-brand-100'}`}>
-                      <select
-                        className="px-3 py-2.5 bg-white text-sm font-semibold min-w-[92px] border-r border-stone-300 outline-none"
-                        value={countryCode}
-                        onChange={(e) => {
-                          setCountryCode(e.target.value);
-                          setFormData(prev => ({ ...prev, countryCode: e.target.value }));
-                        }}
-                      >
-                        {countryCodes.map(c => <option key={c.code} value={c.code}>{c.flag} {c.code}</option>)}
-                      </select>
-                      <input ref={fieldRefs.contact} type="tel" name="contact" value={formData.contact || ''} placeholder="1234567890"
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Contact <span className="text-red-500">*</span></label>
+                    <div className="flex items-center gap-2 max-w-sm">
+                      <div className="w-[7.75rem] flex-shrink-0">
+                        <PremiumSelect
+                          value={countryIso}
+                          onChange={(iso) => {
+                            const match = (countryCodes || []).find((c) => c.iso === iso);
+                            const dial = match?.code || '+91';
+                            setCountryIso(iso);
+                            setCountryCode(dial);
+                            setFormField('countryCode', dial);
+                          }}
+                          options={formCountryOptions}
+                          placeholder="Code"
+                          searchable
+                          searchPlaceholder="Search India…"
+                          error={!!formErrors.contact}
+                          compact
+                        />
+                      </div>
+                      <input
+                        ref={fieldRefs.contact}
+                        type="tel"
+                        name="contact"
+                        value={formData.contact || ''}
+                        placeholder="Phone number"
                         onChange={(e) => {
                           let digitsOnly = e.target.value.replace(/\D/g, '');
                           if (digitsOnly.length > 10) digitsOnly = digitsOnly.slice(0, 10);
-                          setFormData(prev => ({ ...prev, contact: digitsOnly }));
-                          if (formErrors.contact) setFormErrors(prev => ({ ...prev, contact: '' }));
+                          setFormField('contact', digitsOnly);
                         }}
-                        className="flex-1 px-4 py-2.5 text-sm outline-none font-medium" maxLength="10" />
+                        className={`flex-1 min-w-0 px-3.5 py-2.5 rounded-xl border bg-white text-sm outline-none font-medium transition-all focus:ring-2 ${formErrors.contact ? 'border-red-400 focus:ring-red-200' : 'border-stone-200 focus:border-brand-500 focus:ring-brand-500/15'}`}
+                        maxLength="10"
+                      />
                     </div>
                     {formErrors.contact && <p className="text-xs text-red-500 mt-1 font-medium">{formErrors.contact}</p>}
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Position</label>
-                    <select name="position" value={formData.position || ''} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium">
-                      <option value="">Select Position</option>
-                      {masterPositions.map(pos => <option key={pos._id} value={pos.name}>{pos.name}</option>)}
-                    </select>
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Position</label>
+                    <PremiumSelect
+                      value={formData.position || ''}
+                      onChange={(v) => setFormField('position', v)}
+                      options={formPositionOptions}
+                      placeholder="Select position"
+                      icon={Briefcase}
+                      searchable
+                      searchPlaceholder="Search positions…"
+                      allowClear
+                    />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Company</label>
-                    <input type="text" name="companyName" value={formData.companyName || ''} onChange={handleInputChange} placeholder="Company Name"
-                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium" />
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Company</label>
+                    <input type="text" name="companyName" value={formData.companyName || ''} onChange={handleInputChange} placeholder="Company name"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 bg-white text-sm font-medium outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 transition-all" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Location</label>
-                    <input ref={fieldRefs.location} type="text" name="location" value={formData.location || ''} onChange={handleInputChange} placeholder="City/Region"
-                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium" />
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Location</label>
+                    <input ref={fieldRefs.location} type="text" name="location" value={formData.location || ''} onChange={handleInputChange} placeholder="City / region"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 bg-white text-sm font-medium outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 transition-all" />
                   </div>
                 </div>
-              </div>
+              </section>
 
-              {/* 💼 Experience & Compensation */}
-              <div>
-                <h3 className="text-lg font-bold text-stone-900 mb-4 pb-3 border-b-2 border-brand-500">💼 Experience & Compensation</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Experience & Compensation */}
+              <section className="rounded-2xl border border-stone-200 bg-stone-50/40 p-4 sm:p-5">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-4 flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-teal-500" /> Experience & compensation
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Experience (Years)</label>
-                    <select name="experience" value={formData.experience || ''} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium">
-                      <option value="">Select</option>
-                      <option value="Fresher">Fresher</option>
-                      {[...Array(31).keys()].slice(1).map(num => <option key={num} value={num}>{num}</option>)}
-                    </select>
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Experience (years)</label>
+                    <PremiumSelect
+                      value={formData.experience != null ? String(formData.experience) : ''}
+                      onChange={(v) => setFormField('experience', v)}
+                      options={formExperienceOptions}
+                      placeholder="Select"
+                      allowClear
+                    />
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Current CTC (LPA) <span className="text-red-500">*</span></label>
-                    <select ref={fieldRefs.ctc} name="ctc" value={formData.ctc || ''} onChange={handleInputChange}
-                      className={`w-full px-4 py-2.5 border-2 rounded-lg focus:ring-2 focus:outline-none transition-all text-sm font-medium max-h-52 ${formErrors.ctc ? 'border-red-400 focus:border-red-500 focus:ring-red-200 bg-red-50' : 'border-stone-300 focus:border-brand-500 focus:ring-brand-100'}`}>
-                      <option value="">Select CTC</option>
-                      {ctcRanges.map(range => <option key={range} value={range}>{range}</option>)}
-                    </select>
+                  <div ref={fieldRefs.ctc}>
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Current CTC (LPA) <span className="text-red-500">*</span></label>
+                    <PremiumSelect
+                      value={formData.ctc || ''}
+                      onChange={(v) => setFormField('ctc', v)}
+                      options={formCtcOptions}
+                      placeholder="Select CTC"
+                      allowClear
+                      error={!!formErrors.ctc}
+                    />
                     {formErrors.ctc && <p className="text-xs text-red-500 mt-1 font-medium">{formErrors.ctc}</p>}
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Expected CTC (LPA)</label>
-                    <select name="expectedCtc" value={formData.expectedCtc || ''} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium max-h-52">
-                      <option value="">Select Expected CTC</option>
-                      {expectedCtcOptions.map(range => <option key={range} value={range}>{range}</option>)}
-                    </select>
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Expected CTC (LPA)</label>
+                    <PremiumSelect
+                      value={formData.expectedCtc || ''}
+                      onChange={(v) => setFormField('expectedCtc', v)}
+                      options={formExpectedCtcOptions}
+                      placeholder="Select expected CTC"
+                      allowClear
+                    />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Notice Period</label>
-                    <select name="noticePeriod" value={formData.noticePeriod || ''} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium">
-                      <option value="">Select Notice Period</option>
-                      {noticePeriodOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                    </select>
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Notice period</label>
+                    <PremiumSelect
+                      value={formData.noticePeriod || ''}
+                      onChange={(v) => setFormField('noticePeriod', v)}
+                      options={formNoticeOptions}
+                      placeholder="Select notice period"
+                      allowClear
+                    />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">FLS/Non FLS</label>
-                    <select name="fls" value={formData.fls || ''} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium">
-                      <option value="">Select</option>
-                      <option value="FLS">FLS</option>
-                      <option value="Non-FLS">Non-FLS</option>
-                    </select>
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">FLS / Non-FLS</label>
+                    <PremiumSelect
+                      value={formData.fls || ''}
+                      onChange={(v) => setFormField('fls', v)}
+                      options={formFlsOptions}
+                      placeholder="Select"
+                      allowClear
+                    />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Status</label>
-                    <select name="status" value={formData.status || 'Applied'} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium">
-                      <option value="Applied">Applied</option>
-                      <option value="Screening">Screening</option>
-                      <option value="Interview">Interview</option>
-                      <option value="Offer">Offer</option>
-                      <option value="Hired">Hired</option>
-                      <option value="Joined">Joined</option>
-                      <option value="Dropped">Dropped</option>
-                      <option value="Rejected">Rejected</option>
-                      <option value="Interested">Interested</option>
-                      <option value="Interested and scheduled">Interested and scheduled</option>
-                    </select>
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Status</label>
+                    <PremiumSelect
+                      value={formData.status || 'Applied'}
+                      onChange={(v) => setFormField('status', v)}
+                      options={formStatusOptions}
+                      placeholder="Status"
+                      icon={RefreshCw}
+                    />
                   </div>
                 </div>
-              </div>
+              </section>
 
-              {/* 📝 Additional Information */}
-              <div>
-                <h3 className="text-lg font-bold text-stone-900 mb-4 pb-3 border-b-2 border-brand-500">📝 Additional Information</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Additional Information */}
+              <section className="rounded-2xl border border-stone-200 bg-stone-50/40 p-4 sm:p-5">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-4 flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-stone-400" /> Additional details
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Client</label>
-                    <select name="client" value={formData.client || ''} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium">
-                      <option value="">Select Client</option>
-                      {masterClients.map(client => <option key={client._id} value={client.name}>{client.name}</option>)}
-                    </select>
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Client</label>
+                    <PremiumSelect
+                      value={formData.client || ''}
+                      onChange={(v) => setFormField('client', v)}
+                      options={formClientOptions}
+                      placeholder="Select client"
+                      icon={Building2}
+                      searchable
+                      searchPlaceholder="Search clients…"
+                      allowClear
+                    />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">SPOC</label>
-                    <input ref={fieldRefs.spoc} type="text" name="spoc" value={formData.spoc || ''} onChange={handleInputChange} placeholder="SPOC Name"
-                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium" />
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">SPOC</label>
+                    <input ref={fieldRefs.spoc} type="text" name="spoc" value={formData.spoc || ''} onChange={handleInputChange} placeholder="SPOC name"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 bg-white text-sm font-medium outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 transition-all" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Source of CV</label>
-                    <select name="source" value={formData.source || ''} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium">
-                      <option value="">Select Source</option>
-                      {masterSources.map(source => <option key={source._id} value={source.name}>{source.name}</option>)}
-                    </select>
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Source of CV</label>
+                    <PremiumSelect
+                      value={formData.source || ''}
+                      onChange={(v) => setFormField('source', v)}
+                      options={formSourceOptions}
+                      placeholder="Select source"
+                      icon={Megaphone}
+                      searchable
+                      searchPlaceholder="Search sources…"
+                      allowClear
+                    />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Date</label>
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Date</label>
                     <input type="date" name="date" value={formData.date || new Date().toISOString().split('T')[0]} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium" />
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 bg-white text-sm font-medium outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 transition-all" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Call Back Date</label>
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Call back date</label>
                     <input type="date" name="callBackDate" value={formData.callBackDate || ''} onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium" />
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 bg-white text-sm font-medium outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 transition-all" />
                   </div>
-
                   <div className="md:col-span-2 lg:col-span-3">
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2.5">Remark</label>
-                    <textarea name="remark" value={formData.remark || ''} onChange={handleInputChange} placeholder="e.g. Rejected due to salary mismatch, Not reachable, etc."
-                      rows="2" className="w-full px-4 py-2.5 border-2 border-stone-300 rounded-lg focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none transition-all text-sm font-medium resize-none" />
+                    <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Remark</label>
+                    <textarea name="remark" value={formData.remark || ''} onChange={handleInputChange} placeholder="e.g. Salary mismatch, not reachable…"
+                      rows="2" className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 bg-white text-sm font-medium outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 transition-all resize-none" />
                   </div>
                 </div>
-              </div>
-
-              {/* Footer Buttons */}
-              <div className="flex gap-3 pt-6 border-t border-stone-200 justify-end">
-                <button type="button" onClick={() => setShowModal(false)} className="btn-secondary min-w-[120px]">
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary min-w-[160px]">
-                  {editId ? 'Save Changes' : 'Add Candidate'}
-                </button>
-              </div>
+              </section>
             </form>
+
+            <div className="px-5 sm:px-6 py-4 border-t border-stone-100 bg-stone-50/80 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 flex-shrink-0">
+              <button type="button" onClick={() => setShowModal(false)} className="btn-secondary min-w-[120px]">
+                Cancel
+              </button>
+              <button type="submit" form="candidate-form" className="btn-primary min-w-[160px]">
+                {editId ? 'Save Changes' : 'Add Candidate'}
+              </button>
+            </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 📧 EMAIL MODAL — Template-Powered */}

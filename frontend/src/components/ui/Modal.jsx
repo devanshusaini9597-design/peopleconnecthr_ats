@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 /**
@@ -36,8 +37,8 @@ const Modal = ({
 
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto animate-fade-in">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto animate-fade-in">
       <div
         className="absolute inset-0 bg-stone-900/55 backdrop-blur-sm"
         onClick={closeOnBackdrop ? onClose : undefined}
@@ -82,7 +83,8 @@ const Modal = ({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

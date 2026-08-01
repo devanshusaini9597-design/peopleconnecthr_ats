@@ -53,4 +53,22 @@ export const handleUnauthorized = () => {
   window.location.href = '/login';
 };
 
+/** Parse JSON from a fetch Response; throws on HTML/empty non-JSON (e.g. Express 404 pages). */
+export async function readApiJson(res) {
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    const err = new Error(
+      res.status === 404
+        ? 'API endpoint not found. The backend may need a redeploy.'
+        : `Invalid response from server (${res.status || 'unknown'})`
+    );
+    err.status = res.status;
+    err.nonJson = true;
+    throw err;
+  }
+}
+
 export { BASE_API_URL };

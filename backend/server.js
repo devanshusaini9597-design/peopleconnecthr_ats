@@ -352,7 +352,7 @@ app.use('/uploads', (req, res, next) => {
 // ── Health Check ─────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ 
   status: 'ok', 
-  version: 'v3-saas', 
+  version: 'v3-saas-talent-assess', 
   timestamp: new Date().toISOString() 
 }));
 
