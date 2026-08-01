@@ -553,3 +553,185 @@ select:focus-visible {
 .content-fill-ats {
   @apply h-full min-h-0 flex flex-col;
 }
+
+/* ── Billing page premium hover motion ─────────────────────────────── */
+.billing-hero {
+  transition: transform 0.45s var(--transition-smooth), box-shadow 0.45s ease;
+}
+.billing-hero:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 28px 60px -28px rgba(13, 148, 136, 0.45), 0 12px 28px -12px rgba(0, 0, 0, 0.35);
+}
+.billing-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.08) 50%, transparent 65%);
+  background-size: 220% 100%;
+  background-position: 120% 0;
+  pointer-events: none;
+  transition: background-position 0.9s var(--transition-smooth);
+  z-index: 1;
+}
+.billing-hero:hover::after {
+  background-position: -40% 0;
+}
+.billing-hero-chip {
+  transition: transform 0.3s var(--transition-smooth), background-color 0.3s ease, border-color 0.3s ease;
+}
+.billing-hero:hover .billing-hero-chip {
+  transform: translateY(-2px);
+  background-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+.billing-hero-cta {
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.35s ease, background-color 0.25s ease;
+}
+.billing-hero-cta:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 14px 28px -10px rgba(255, 255, 255, 0.35);
+}
+.billing-hero-cta:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.billing-usage-card {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.4s var(--transition-smooth), box-shadow 0.4s ease, border-color 0.35s ease;
+}
+.billing-usage-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), rgba(13, 148, 136, 0.1), transparent 55%);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+}
+.billing-usage-card:hover {
+  transform: translateY(-5px);
+  border-color: rgba(13, 148, 136, 0.35);
+  box-shadow: 0 18px 40px -24px rgba(13, 148, 136, 0.35), 0 8px 16px -10px rgba(28, 25, 23, 0.12);
+}
+.billing-usage-card:hover::before {
+  opacity: 1;
+}
+.billing-usage-card .billing-usage-icon {
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.3s ease, border-color 0.3s ease;
+}
+.billing-usage-card:hover .billing-usage-icon {
+  transform: scale(1.12) rotate(-6deg);
+  background-color: #f0fdfa;
+  border-color: #99f6e4;
+}
+.billing-usage-card .billing-usage-bar-fill {
+  position: relative;
+  overflow: hidden;
+}
+.billing-usage-card:hover .billing-usage-bar-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent);
+  animation: shimmerAts 1.4s ease-in-out infinite;
+}
+
+.billing-plan-card {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.45s var(--transition-smooth), box-shadow 0.45s ease, border-color 0.35s ease;
+}
+.billing-plan-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(500px circle at var(--mx, 50%) var(--my, 20%), rgba(13, 148, 136, 0.12), transparent 50%);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+  z-index: 0;
+}
+.billing-plan-card > * {
+  position: relative;
+  z-index: 1;
+}
+.billing-plan-card:hover {
+  transform: translateY(-10px) scale(1.015);
+  border-color: rgba(13, 148, 136, 0.45);
+  box-shadow:
+    0 28px 50px -28px rgba(13, 148, 136, 0.4),
+    0 14px 28px -16px rgba(28, 25, 23, 0.14);
+}
+.billing-plan-card:hover::before {
+  opacity: 1;
+}
+.billing-plan-card.is-featured:hover {
+  box-shadow:
+    0 32px 56px -26px rgba(13, 148, 136, 0.5),
+    0 16px 32px -18px rgba(15, 118, 110, 0.25);
+}
+.billing-plan-card.is-current:hover {
+  transform: translateY(-6px);
+}
+.billing-plan-icon {
+  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.35s ease;
+}
+.billing-plan-card:hover .billing-plan-icon {
+  transform: scale(1.1) rotate(-8deg);
+  box-shadow: 0 12px 24px -10px rgba(13, 148, 136, 0.55);
+}
+.billing-plan-check {
+  transition: transform 0.3s var(--transition-smooth), background-color 0.3s ease, color 0.3s ease;
+}
+.billing-plan-card:hover .billing-plan-check {
+  transform: scale(1.15);
+  background-color: #ccfbf1;
+  color: #0f766e;
+}
+.billing-plan-card:hover .billing-plan-feature {
+  transform: translateX(3px);
+}
+.billing-plan-feature {
+  transition: transform 0.3s var(--transition-smooth);
+}
+.billing-plan-card:hover .billing-plan-feature:nth-child(1) { transition-delay: 0.02s; }
+.billing-plan-card:hover .billing-plan-feature:nth-child(2) { transition-delay: 0.04s; }
+.billing-plan-card:hover .billing-plan-feature:nth-child(3) { transition-delay: 0.06s; }
+.billing-plan-card:hover .billing-plan-feature:nth-child(4) { transition-delay: 0.08s; }
+.billing-plan-card:hover .billing-plan-feature:nth-child(5) { transition-delay: 0.1s; }
+.billing-plan-card:hover .billing-plan-feature:nth-child(6) { transition-delay: 0.12s; }
+.billing-plan-cta-arrow {
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.billing-plan-card:hover .billing-plan-cta-arrow {
+  transform: translateX(4px);
+}
+
+.billing-trust-card {
+  transition: transform 0.4s var(--transition-smooth), box-shadow 0.4s ease, border-color 0.3s ease, background-color 0.3s ease;
+}
+.billing-trust-card:hover {
+  transform: translateY(-6px);
+  background-color: #fff;
+  border-color: rgba(13, 148, 136, 0.3);
+  box-shadow: 0 16px 32px -20px rgba(13, 148, 136, 0.3);
+}
+.billing-trust-icon {
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.3s ease, border-color 0.3s ease;
+}
+.billing-trust-card:hover .billing-trust-icon {
+  transform: scale(1.12) rotate(8deg);
+  background-color: #f0fdfa;
+  border-color: #99f6e4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .billing-hero:hover,
+  .billing-usage-card:hover,
+  .billing-plan-card:hover,
+  .billing-trust-card:hover,
+  .billing-hero-cta:hover:not(:disabled) {
+    transform: none;
+  }
+}
