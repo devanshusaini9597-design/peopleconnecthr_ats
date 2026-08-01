@@ -1,13 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ClipboardList, Plus, Trash2, Lock, Loader2, Send, ArrowLeft, Clock, FileEdit, Search, AlertCircle, RefreshCw } from 'lucide-react';
+import { ClipboardList, Plus, Trash2, Lock, Loader2, Send, ArrowLeft, Clock, FileEdit, Search, AlertCircle, RefreshCw, Type, Code2, ListChecks } from 'lucide-react';
 import { authenticatedFetch, handleUnauthorized, readApiJson } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
 import Modal from './ui/Modal';
 import ConfirmationModal from './ConfirmationModal';
+import PremiumSelect from './ui/PremiumSelect';
 
 const emptyQuestion = () => ({ type: 'text', prompt: '', options: ['', ''], correctOptionIndex: 0, points: 10, language: '' });
+
+const QUESTION_TYPE_OPTIONS = [
+  { value: 'text', label: 'Free text', description: 'Open written answer', icon: Type },
+  { value: 'code', label: 'Code', description: 'Code snippet answer', icon: Code2 },
+  { value: 'multiple_choice', label: 'Multiple choice', description: 'Pick one correct option', icon: ListChecks },
+];
 
 const STATUS_BADGE = {
   pending: 'badge-neutral',
@@ -108,11 +115,15 @@ const BuilderModal = ({ open, onClose, onSave, saving }) => {
                 )}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <select value={q.type} onChange={(e) => updateQuestion(idx, { type: e.target.value })} className="input-ats !py-2">
-                  <option value="text">Free text</option>
-                  <option value="code">Code</option>
-                  <option value="multiple_choice">Multiple choice</option>
-                </select>
+                <PremiumSelect
+                  compact
+                  value={q.type}
+                  onChange={(v) => updateQuestion(idx, { type: v })}
+                  options={QUESTION_TYPE_OPTIONS}
+                  placeholder="Question type"
+                  icon={ListChecks}
+                  className="w-full"
+                />
                 {q.type === 'code' && (
                   <input
                     value={q.language}

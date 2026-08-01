@@ -10,6 +10,7 @@ import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
 import Modal from './ui/Modal';
 import ConfirmationModal from './ConfirmationModal';
+import PremiumSelect from './ui/PremiumSelect';
 
 const RECS = [
   { value: 'strong_yes', label: 'Strong Yes' },
@@ -830,17 +831,21 @@ export default function InterviewsPage() {
             </div>
             <div>
               <label className="label-ats">Type</label>
-              <select
-                className="input-ats"
+              <PremiumSelect
+                compact
                 value={scheduleForm.type}
-                onChange={(e) => setScheduleForm((f) => ({ ...f, type: e.target.value }))}
-              >
-                <option value="video">Video</option>
-                <option value="phone_screen">Phone</option>
-                <option value="in_person">Onsite</option>
-                <option value="technical">Technical</option>
-                <option value="hr">HR</option>
-              </select>
+                onChange={(v) => setScheduleForm((f) => ({ ...f, type: v }))}
+                options={[
+                  { value: 'video', label: 'Video', description: 'Online meeting', icon: Video },
+                  { value: 'phone_screen', label: 'Phone', description: 'Call screen', icon: Phone },
+                  { value: 'in_person', label: 'Onsite', description: 'In person', icon: MapPin },
+                  { value: 'technical', label: 'Technical', description: 'Skills deep-dive', icon: Briefcase },
+                  { value: 'hr', label: 'HR', description: 'Culture / HR round', icon: User },
+                ]}
+                placeholder="Interview type"
+                icon={Video}
+                className="w-full"
+              />
             </div>
             <div>
               <label className="label-ats">Duration (minutes)</label>
