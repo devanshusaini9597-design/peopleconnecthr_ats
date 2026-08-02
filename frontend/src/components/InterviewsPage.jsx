@@ -571,6 +571,7 @@ export default function InterviewsPage() {
         <div className="card-ats-bordered border-red-200/80 bg-red-50/30">
           <EmptyState
             icon={AlertCircle}
+            tone="amber"
             message="Couldn’t load interviews"
             subMessage={loadError}
             action={
@@ -622,6 +623,7 @@ export default function InterviewsPage() {
               calendarGroups.length === 0 ? (
                 <EmptyState
                   icon={CalendarIcon}
+                  tone="sky"
                   message="No interviews on the calendar"
                   subMessage="Schedule an interview to see it grouped by date."
                   action={
@@ -658,6 +660,7 @@ export default function InterviewsPage() {
             ) : filtered.length === 0 ? (
               <EmptyState
                 icon={CalendarIcon}
+                tone={interviews.length === 0 ? 'sky' : 'amber'}
                 message={interviews.length === 0 ? 'No interviews yet' : 'No interviews match'}
                 subMessage={
                   interviews.length === 0
@@ -795,7 +798,13 @@ export default function InterviewsPage() {
                   {searchingApps ? (
                     <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-brand-600 animate-spin" /></div>
                   ) : appResults.length === 0 ? (
-                    <p className="text-sm text-stone-400 text-center py-8">No applications found.</p>
+                    <EmptyState
+                      icon={Search}
+                      tone="amber"
+                      compact
+                      message="No applications found"
+                      subMessage="Try a different name or email."
+                    />
                   ) : (
                     appResults.map((a) => (
                       <button

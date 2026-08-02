@@ -23,8 +23,9 @@ const CareersPage = () => {
         const res = await fetch(`${API_URL}/api/careers/${orgSlug}`);
         if (!res.ok) throw new Error('Organization or careers page not found');
         const data = await res.json();
-        setOrgData(data.organization || {});
-        setJobs(data.jobs || []);
+        const payload = data.data || data;
+        setOrgData(payload.organization || {});
+        setJobs(payload.jobs || []);
       } catch (err) {
         setError(err.message);
       } finally {
@@ -97,6 +98,36 @@ const CareersPage = () => {
   }
 
   const primaryColor = orgData?.brandColor || '#4F46E5';
+  const pageBlocks = orgData?.pageBlocks || [];
+
+  const renderBlock = (block, idx) => {
+    if (!block?.type) return null;
+    switch (block.type) {
+      case 'hero':
+        return (
+          <div key={idx} className="text-center py-8 px-4 rounded-2xl mb-8" style={{ backgroundColor: `${primaryColor}15` }}>
+            <h2 className="text-2xl font-bold text-gray-900">{block.title || 'We are hiring'}</h2>
+            {block.subtitle && <p className="text-gray-600 mt-2 max-w-xl mx-auto">{block.subtitle}</p>}
+          </div>
+        );
+      case 'text':
+        return (
+          <div key={idx} className="prose max-w-3xl mx-auto mb-8 text-gray-600" dangerouslySetInnerHTML={{ __html: block.content || '' }} />
+        );
+      case 'testimonials':
+        return (
+          <div key={idx} className="grid md:grid-cols-2 gap-4 mb-8 max-w-4xl mx-auto">
+            {(block.items || []).map((item, i) => (
+              <blockquote key={i} className="p-5 bg-white rounded-xl border border-gray-200 italic text-gray-600">
+                "{item.quote}" — <span className="font-medium not-italic text-gray-800">{item.author}</span>
+              </blockquote>
+            ))}
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans flex flex-col">
@@ -135,6 +166,11 @@ const CareersPage = () => {
 
       {/* Main Content */}
       <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full">
+        {pageBlocks.length > 0 && (
+          <section className="mb-8">
+            {pageBlocks.map((block, idx) => renderBlock(block, idx))}
+          </section>
+        )}
         {/* Filters */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 space-y-4 md:space-y-0">
           <div className="flex flex-wrap gap-3">

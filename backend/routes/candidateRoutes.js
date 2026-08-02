@@ -634,23 +634,29 @@ router.get('/:id/resume', async (req, res) => {
             return res.status(404).json({ message: 'Resume not found' });
         }
         const resumeValue = String(candidate.resume).trim();
+        const documentStorage = require('../services/documentStorageService');
         const s3Service = require('../services/s3Service');
 
-        // Serve from S3 if resume is stored in S3 (key like "resumes/xxx.pdf")
-        if (s3Service.isS3Resume(resumeValue)) {
-            const s3Key = resumeValue.replace(/^\/+/, '');
-            const result = await s3Service.getResumeStream(s3Key);
-            if (result && result.stream) {
+        // Serve from BYOK customer bucket or platform S3
+        if (documentStorage.isByokResume(resumeValue) || s3Service.isS3Resume(resumeValue)) {
+            const result = await documentStorage.getResumeStream({
+                organizationId: req.user.organizationId,
+                resumeValue
+            });
+            if (result?.redirectUrl) {
+                return res.redirect(result.redirectUrl);
+            }
+            if (result?.stream) {
                 const isDownload = req.query.download === '1';
-                const filename = path.basename(s3Key);
+                const filename = path.basename(resumeValue.replace(/^\/+/, ''));
                 const disposition = isDownload ? `attachment; filename="${filename}"` : 'inline';
                 res.setHeader('Content-Disposition', disposition);
                 res.setHeader('Content-Type', result.contentType || 'application/octet-stream');
                 result.stream.pipe(res);
                 return;
             }
-            console.error('[Resume] S3 get failed for key:', s3Key);
-            return res.status(404).json({ message: 'Resume file not found in S3. Try re-uploading.' });
+            console.error('[Resume] Remote storage get failed for:', resumeValue);
+            return res.status(404).json({ message: 'Resume file not found in storage. Try re-uploading.' });
         }
 
         // Local file: try uploads directory

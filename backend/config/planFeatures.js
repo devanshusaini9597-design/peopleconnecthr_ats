@@ -15,6 +15,9 @@
  * Consumed by:
  * - Backend: middleware/featureMiddleware.js -> requireFeature('key')
  * - Frontend: src/config/planFeatures.js (kept in sync) -> <FeatureGate feature="key">
+ *
+ * NOT in this map (always available): candidate portal GDPR self-service,
+ * Chrome LinkedIn-import extension, Trust Center, public status page, SOC 2 materials.
  */
 
 // Order matters: index = rank. Higher index = more access.
@@ -45,7 +48,7 @@ const FEATURES = {
   'team.customRoles': 'enterprise',
   'export.data': 'professional',
 
-  // Integrations (BYOK)
+  // Integrations (BYOK) — existing categories
   'integrations.byoEmail': 'professional',
   'integrations.calendar': 'professional',
   'integrations.sms': 'enterprise',
@@ -56,39 +59,64 @@ const FEATURES = {
   'integrations.webhooksFull': 'enterprise',
   'integrations.zapier': 'enterprise',
   'integrations.esign': 'enterprise',
+  'integrations.whatsapp': 'enterprise',
+
+  // Integrations (BYOK) — new categories
+  'integrations.video': 'professional',
+  'integrations.storage': 'enterprise',
+  'integrations.crm': 'enterprise',
+  'integrations.hris': 'enterprise',
+  'integrations.siem': 'enterprise',
+  'integrations.dataWarehouse': 'enterprise',
+  'integrations.slackApp': 'professional',
 
   // Agency / recruiting-firm mode
   'agency.multiClient': 'professional',
   'agency.clientSharing': 'enterprise',
   'agency.clientPortal': 'enterprise',
 
-  // Enterprise-only table stakes
+  // SSO / SCIM
   'sso': 'enterprise',
+  'sso.scim': 'enterprise',
 
-  // ── Add-ons (see docs comparing against market ATS reference products) ──
-  // Talent Pools: silver-medalist / passive-candidate database, independent
-  // of any single job requisition.
+  // Add-ons
   'candidates.talentPools': 'professional',
-  // Diversity & Inclusion funnel analytics (self-reported, optional fields).
   'analytics.dei': 'enterprise',
-  // WhatsApp Business messaging as its own channel (distinct from the
-  // always-free "wa.me" manual click-to-chat link) — BYOK via Twilio.
-  'integrations.whatsapp': 'enterprise',
-  // Coding / skills assessments — recruiter builds a test, candidate
-  // submits via portal link, recruiter grades manually (no auto-run
-  // sandbox by default — see routes/assessmentRoutes.js).
   'assessments': 'professional',
-  // White-Label Kit: hide "Powered by SkillNix" branding + fully custom
-  // sender name across candidate-facing surfaces (careers page, portal,
-  // transactional email, exported PDFs).
-  'whiteLabel': 'enterprise'
-};
+  'whiteLabel': 'enterprise',
 
-// NOTE: Candidate GDPR self-service (export/erase own data at the portal)
-// and the Chrome LinkedIn-import extension are intentionally NOT in this
-// map — both are always available on every plan, matching the
-// "always available" pattern used for the candidate portal itself.
-// See routes/portalRoutes.js and routes/chromeExtensionRoutes.js.
+  // Starter — trust-building / PLG
+  'security.mfa': 'starter',
+  'candidates.dedupe': 'starter',
+  'candidates.surveys': 'starter',
+  'portal.localization': 'starter',
+
+  // Professional — productivity + self-serve BYOK
+  'ai.semanticSearch': 'professional',
+  'ai.jdGenerator': 'professional',
+  'ai.interviewQuestions': 'professional',
+  'ai.booleanGenerator': 'professional',
+  'ai.emailDrafting': 'professional',
+  'candidates.anonymize': 'professional',
+  'security.mfaEnforcement': 'professional',
+  'security.sessionPolicy': 'professional',
+  'scheduling.selfBook': 'professional',
+  'careers.pageBuilder': 'professional',
+  'referrals.program': 'professional',
+
+  // Enterprise — compliance-heavy / dedicated
+  'security.byokEncryption': 'enterprise',
+  'security.ipAllowlist': 'enterprise',
+  'compliance.retentionPolicy': 'enterprise',
+  'compliance.legalHold': 'enterprise',
+  'ai.interviewTranscription': 'enterprise',
+  'ai.biasFlagging': 'enterprise',
+  'ai.narrativeAnalytics': 'enterprise',
+  'workflows.approvals': 'enterprise',
+  'offers.templates': 'enterprise',
+  'careers.whiteLabelBuilder': 'enterprise',
+  'deployment.dedicated': 'enterprise'
+};
 
 const rankOf = (plan) => {
   const resolved = PLAN_ALIASES[plan] || plan;

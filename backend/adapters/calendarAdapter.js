@@ -1,7 +1,7 @@
 /**
  * Calendar Adapter — unified interface for interview scheduling regardless
  * of provider.
- * Supports: Google Calendar (OAuth2 refresh-token flow).
+ * Supports: Google Calendar (OAuth2 refresh-token flow), Microsoft Outlook / Graph.
  *
  * IntegrationConfig.credentials shape for provider 'google':
  *   { clientId, clientSecret, refreshToken, calendarId? } // calendarId defaults to 'primary'
@@ -143,6 +143,127 @@ class GoogleCalendarAdapter {
   }
 }
 
+class OutlookCalendarAdapter {
+  constructor(config) {
+    this.config = config.credentials || {};
+    this._accessToken = null;
+    this._accessTokenExpiresAt = 0;
+  }
+
+  async _getAccessToken() {
+    const { clientId, clientSecret, refreshToken, tenantId = 'common' } = this.config;
+    if (!clientId || !clientSecret || !refreshToken) {
+      throw new Error('Outlook Calendar is not configured: missing clientId, clientSecret, or refreshToken');
+    }
+    if (this._accessToken && Date.now() < this._accessTokenExpiresAt - 30000) {
+      return this._accessToken;
+    }
+
+    try {
+      const response = await axios.post(
+        `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
+        new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          refresh_token: refreshToken,
+          grant_type: 'refresh_token',
+          scope: 'https://graph.microsoft.com/.default offline_access'
+        }).toString(),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
+      );
+      this._accessToken = response.data.access_token;
+      this._accessTokenExpiresAt = Date.now() + (response.data.expires_in || 3600) * 1000;
+      return this._accessToken;
+    } catch (err) {
+      const msg = err.response?.data?.error_description || err.message;
+      throw new Error(`Microsoft token refresh failed: ${msg}`);
+    }
+  }
+
+  async createEvent({ summary, description, startTime, endTime, timeZone = 'UTC', attendees = [], addMeetLink = false }) {
+    if (!summary || !startTime || !endTime) {
+      throw new Error('createEvent requires summary, startTime, and endTime');
+    }
+    const accessToken = await this._getAccessToken();
+
+    const body = {
+      subject: summary,
+      body: { contentType: 'HTML', content: description || '' },
+      start: { dateTime: startTime, timeZone },
+      end: { dateTime: endTime, timeZone },
+      attendees: attendees.map((email) => ({
+        emailAddress: { address: email },
+        type: 'required'
+      }))
+    };
+    if (addMeetLink) {
+      body.isOnlineMeeting = true;
+      body.onlineMeetingProvider = 'teamsForBusiness';
+    }
+
+    try {
+      const response = await axios.post(
+        'https://graph.microsoft.com/v1.0/me/events',
+        body,
+        {
+          headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+          timeout: 20000
+        }
+      );
+      return response.data;
+    } catch (err) {
+      const msg = err.response?.data?.error?.message || err.message;
+      throw new Error(`Outlook Calendar createEvent failed: ${msg}`);
+    }
+  }
+
+  async listEvents({ timeMin, timeMax, maxResults = 50 } = {}) {
+    const accessToken = await this._getAccessToken();
+    const params = { $top: maxResults, $orderby: 'start/dateTime' };
+    if (timeMin) params.$filter = `start/dateTime ge '${timeMin}'`;
+    if (timeMax) {
+      params.$filter = params.$filter
+        ? `${params.$filter} and end/dateTime le '${timeMax}'`
+        : `end/dateTime le '${timeMax}'`;
+    }
+
+    try {
+      const response = await axios.get('https://graph.microsoft.com/v1.0/me/events', {
+        params,
+        headers: { Authorization: `Bearer ${accessToken}` },
+        timeout: 20000
+      });
+      return response.data.value || [];
+    } catch (err) {
+      const msg = err.response?.data?.error?.message || err.message;
+      throw new Error(`Outlook Calendar listEvents failed: ${msg}`);
+    }
+  }
+
+  async deleteEvent(eventId) {
+    const accessToken = await this._getAccessToken();
+    try {
+      await axios.delete(`https://graph.microsoft.com/v1.0/me/events/${eventId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        timeout: 15000
+      });
+      return true;
+    } catch (err) {
+      const msg = err.response?.data?.error?.message || err.message;
+      throw new Error(`Outlook Calendar deleteEvent failed: ${msg}`);
+    }
+  }
+
+  async testConnection() {
+    const accessToken = await this._getAccessToken();
+    await axios.get('https://graph.microsoft.com/v1.0/me/calendar', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      timeout: 15000
+    });
+    return true;
+  }
+}
+
 /**
  * Factory to create a calendar adapter based on provider config.
  */
@@ -153,6 +274,9 @@ const createCalendarAdapter = (config) => {
   switch (config.provider.toLowerCase()) {
     case 'google':
       return new GoogleCalendarAdapter(config);
+    case 'outlook':
+    case 'microsoft':
+      return new OutlookCalendarAdapter(config);
     default:
       throw new Error(`Unsupported calendar provider: ${config.provider}`);
   }
@@ -161,6 +285,7 @@ const createCalendarAdapter = (config) => {
 module.exports = {
   createCalendarAdapter,
   GoogleCalendarAdapter,
+  OutlookCalendarAdapter,
   createEvent: async () => {
     throw new Error('Calendar integration not configured — use createCalendarAdapter(config) via getAdapter(orgId, "calendar")');
   },

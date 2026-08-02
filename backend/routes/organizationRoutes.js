@@ -32,7 +32,7 @@ router.get('/', async (req, res) => {
  */
 router.put('/', requireAdmin, async (req, res) => {
   try {
-    const { name, logo, settings, atsSettings } = req.body;
+    const { name, logo, domain, settings, atsSettings } = req.body;
 
     // Guard: atsSettings is a free-form blob accepted wholesale above, so a
     // plan-gated sub-field (careersCustomDomain) could otherwise be set by
@@ -68,9 +68,30 @@ router.put('/', requireAdmin, async (req, res) => {
       }
     }
 
+    // Guard portal localization — requires portal.localization feature
+    if (atsSettings?.portalLocalization?.enabled) {
+      const { planHasFeature } = require('../config/planFeatures');
+      const currentOrg = await Organization.findById(req.user.organizationId).select('plan');
+      if (!currentOrg || !planHasFeature(currentOrg.plan, 'portal.localization')) {
+        return res.status(403).json({
+          success: false,
+          code: 'UPGRADE_REQUIRED',
+          message: 'Multi-locale candidate portal requires a plan that includes portal.localization.',
+          feature: 'portal.localization'
+        });
+      }
+    }
+
+    const update = {};
+    if (name !== undefined) update.name = name;
+    if (logo !== undefined) update.logo = logo;
+    if (domain !== undefined) update.domain = String(domain).trim().toLowerCase();
+    if (settings !== undefined) update.settings = settings;
+    if (atsSettings !== undefined) update.atsSettings = atsSettings;
+
     const org = await Organization.findByIdAndUpdate(
       req.user.organizationId,
-      { $set: { name, logo, settings, atsSettings } },
+      { $set: update },
       { new: true }
     );
     res.json({ success: true, data: org });
@@ -262,6 +283,24 @@ router.get('/audit-log/export', requireAdmin, requireFeature('audit.export'), as
     ].map(escapeCsv).join(','));
 
     const csv = [header.map(escapeCsv).join(','), ...rows].join('\n');
+
+    // Enterprise SIEM BYOK — also ship the export batch to Splunk/Datadog when configured.
+    try {
+      const { getAdapter } = require('../adapters');
+      const siem = await getAdapter(req.user.organizationId, 'siem');
+      if (siem && typeof siem.shipEvents === 'function') {
+        await siem.shipEvents(entries.slice(0, 500).map((e) => ({
+          timestamp: e.timestamp?.toISOString?.() || new Date().toISOString(),
+          action: e.action,
+          resource: e.resource,
+          resourceId: e.resourceId,
+          user: e.userId?.email || e.userId?.name,
+          ipAddress: e.ipAddress
+        })));
+      }
+    } catch (siemErr) {
+      console.warn('[audit-export] SIEM ship failed:', siemErr.message);
+    }
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="audit-log-${new Date().toISOString().slice(0, 10)}.csv"`);

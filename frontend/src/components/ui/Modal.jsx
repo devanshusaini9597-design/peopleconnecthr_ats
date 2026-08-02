@@ -38,14 +38,14 @@ const Modal = ({
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto animate-fade-in">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-hidden animate-fade-in">
       <div
         className="absolute inset-0 bg-stone-900/55 backdrop-blur-sm"
         onClick={closeOnBackdrop ? onClose : undefined}
         aria-hidden
       />
       <div
-        className={`relative w-full my-auto ${SIZE[size] || SIZE.md} rounded-t-2xl sm:rounded-3xl border border-stone-200/60 bg-white shadow-2xl overflow-hidden max-h-[92dvh] sm:max-h-[90vh] flex flex-col modal-panel-ats`}
+        className={`relative w-full ${SIZE[size] || SIZE.md} rounded-t-2xl sm:rounded-2xl border border-stone-200/60 bg-white shadow-2xl overflow-hidden max-h-[92dvh] sm:max-h-[85vh] flex flex-col modal-panel-ats`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? 'modal-title' : undefined}
@@ -53,14 +53,14 @@ const Modal = ({
       >
         <div className="h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 flex-shrink-0" />
         {(title || onClose) && (
-          <div className="flex items-start justify-between gap-3 p-5 sm:p-6 border-b border-stone-100 flex-shrink-0">
+          <div className="flex items-start justify-between gap-3 px-4 sm:px-5 py-4 border-b border-stone-100 flex-shrink-0">
             <div className="min-w-0">
               {title && (
-                <h3 id="modal-title" className="text-lg sm:text-xl font-bold text-stone-900 tracking-tight" style={{ letterSpacing: '-0.02em' }}>
+                <h3 id="modal-title" className="text-lg font-bold text-stone-900 tracking-tight" style={{ letterSpacing: '-0.02em' }}>
                   {title}
                 </h3>
               )}
-              {description && <p className="text-stone-500 text-sm mt-1.5 leading-relaxed">{description}</p>}
+              {description && <p className="text-stone-500 text-sm mt-1 leading-snug">{description}</p>}
             </div>
             {onClose && (
               <button
@@ -74,11 +74,11 @@ const Modal = ({
             )}
           </div>
         )}
-        <div className="p-5 sm:p-6 overflow-y-auto flex-1 min-h-0">
+        <div className="px-4 sm:px-5 py-3.5 overflow-y-auto flex-1 min-h-0 overscroll-contain">
           {children}
         </div>
         {footer && (
-          <div className="px-5 sm:px-6 py-4 border-t border-stone-100 bg-stone-50/80 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 flex-shrink-0">
+          <div className="px-4 sm:px-5 py-3 border-t border-stone-100 bg-stone-50/90 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 flex-shrink-0">
             {footer}
           </div>
         )}

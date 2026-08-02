@@ -48,13 +48,17 @@ const JDTemplate = require('./models/JDTemplate');
 const { verifyToken, generateToken, optionalAuth, JWT_SECRET } = require('./middleware/authMiddleware');
 const { requireRole, requireOwner, requireAdmin, requireRecruiterOrAbove, checkPlanLimit } = require('./middleware/rbacMiddleware');
 const { tenantScope, requireOrganization } = require('./middleware/tenantMiddleware');
-const { getEntitlements } = require('./config/planFeatures');
+const { getEntitlements, planHasFeature } = require('./config/planFeatures');
 
 // ── Event Bus ────────────────────────────────────────────────────────
 const eventBus = require('./events/eventBus');
 const eventTypes = require('./events/eventTypes');
-require('./events/listeners/notificationListener');
-require('./events/listeners/auditListener');
+const { initNotificationListeners } = require('./events/listeners/notificationListener');
+const { initAuditListeners } = require('./events/listeners/auditListener');
+const { registerIntegrationHandoffListeners } = require('./events/listeners/integrationHandoffListener');
+initNotificationListeners();
+initAuditListeners();
+registerIntegrationHandoffListeners();
 
 // ── Routes ───────────────────────────────────────────────────────────
 const homeRoutes = require('./routes/home');
@@ -99,6 +103,20 @@ const whatsappRoutes = require('./routes/whatsappRoutes');
 const assessmentRoutes = require('./routes/assessmentRoutes');
 const whiteLabelRoutes = require('./routes/whiteLabelRoutes');
 const chromeExtensionRoutes = require('./routes/chromeExtensionRoutes');
+const mfaRoutes = require('./routes/mfaRoutes');
+const securityRoutes = require('./routes/securityRoutes');
+const complianceRoutes = require('./routes/complianceRoutes');
+const scimRoutes = require('./routes/scimRoutes');
+const aiFeatureRoutes = require('./routes/aiFeatureRoutes');
+const statusRoutes = require('./routes/statusRoutes');
+const approvalRoutes = require('./routes/approvalRoutes');
+const offerTemplateRoutes = require('./routes/offerTemplateRoutes');
+const schedulingRoutes = require('./routes/schedulingRoutes');
+const careerPageBuilderRoutes = require('./routes/careerPageBuilderRoutes');
+const referralRoutes = require('./routes/referralRoutes');
+const surveyRoutes = require('./routes/surveyRoutes');
+const slackAppRoutes = require('./routes/slackAppRoutes');
+const { issueAuthToken } = require('./services/sessionService');
 
 // ── Services ─────────────────────────────────────────────────────────
 const { startNotificationScheduler } = require('./services/notificationService');
@@ -110,6 +128,7 @@ const { startReportScheduler } = require('./services/reportScheduler');
 // ── App Setup ────────────────────────────────────────────────────────
 const app = express();
 const PORT = process.env.PORT || 5000;
+app.set('trust proxy', 1);
 
 // ── Security Middleware ──────────────────────────────────────────────
 app.use(helmet({
@@ -269,15 +288,26 @@ app.use('/api/public', publicSubscribeRoutes);
 app.use('/oauth/zoho', zohoOAuthRoutes);
 app.use('/oauth/google-calendar', calendarOAuthRoutes); // public callback (Google redirects here directly)
 app.use('/api/integrations/oauth/google-calendar', calendarOAuthRoutes); // authenticated auth-url endpoint
-app.use('/sso', ssoRoutes.publicRouter); // public SAML SP endpoints (login/acs/metadata) — IdP and browser call these directly
+const outlookCalendarOAuthRoutes = require('./routes/outlookCalendarOAuthRoutes');
+app.use('/oauth/outlook-calendar', outlookCalendarOAuthRoutes);
+app.use('/api/integrations/oauth/outlook-calendar', outlookCalendarOAuthRoutes);
+app.use('/sso', ssoRoutes.publicRouter); // public SAML/OIDC SP endpoints
+app.use('/scim/v2', scimRoutes);
 app.use('/api/careers', careersRoutes);
 app.use('/api/portal', portalRoutes);
+app.use('/api/status', statusRoutes);
+app.use('/api/scheduling', schedulingRoutes);
+app.use('/api/career-page', careerPageBuilderRoutes);
+app.use('/api/surveys', surveyRoutes);
 app.use('/client-portal', clientPortalRoutes); // public, token-gated — see routes/clientPortalRoutes.js
 
 // ── Auth routes (rate limited) ───────────────────────────────────────
 app.use('/api/onboarding', onboardingRoutes);
 
 // ── Protected routes ─────────────────────────────────────────────────
+app.use('/api/mfa', mfaRoutes);
+app.use('/api/security', verifyToken, securityRoutes);
+app.use('/api/compliance', verifyToken, complianceRoutes);
 app.use('/api/organization', verifyToken, organizationRoutes);
 app.use('/api/applications', verifyToken, applicationRoutes);
 app.use('/api/interviews', verifyToken, interviewRoutes);
@@ -311,6 +341,12 @@ app.use('/api/whatsapp', whatsappRoutes); // internally applies verifyToken + re
 app.use('/api/assessments', assessmentRoutes); // internally applies verifyToken + requireFeature('assessments') for recruiter routes; candidate-facing routes are token-gated, not session-gated
 app.use('/api/white-label', whiteLabelRoutes); // internally applies verifyToken + requireFeature('whiteLabel')
 app.use('/api/chrome-extension', chromeExtensionRoutes); // internally applies verifyToken (config) or extension-token auth (import)
+app.use('/api/approvals', verifyToken, approvalRoutes);
+app.use('/api/offer-templates', verifyToken, offerTemplateRoutes);
+app.use('/api/referrals', referralRoutes);
+app.use('/api/integrations/slack', slackAppRoutes);
+app.use('/api/ai', verifyToken, aiFeatureRoutes); // Phase 4 AI product capabilities; each route applies requireFeature
+app.use('/api/data-warehouse', require('./routes/dataWarehouseRoutes'));
 
 // ── Static Uploads ───────────────────────────────────────────────────
 const uploadDir = path.join(__dirname, 'uploads');
@@ -380,7 +416,7 @@ app.post('/api/login', authLimiter, async (req, res) => {
       return res.status(400).json({ message: 'Email and password required' });
     }
     
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+mfaEnabled');
     
     if (!user) {
       return res.status(401).json({ 
@@ -420,25 +456,57 @@ app.post('/api/login', authLimiter, async (req, res) => {
         displayMessage: "Invalid password. Please try again."
       });
     }
-    
-    // Update last login
-    user.lastLoginAt = new Date();
-    await user.save();
-    
-    // Generate token with org and role info
-    const token = generateToken(user);
-    
-    // Load organization info if user has one
+
     let organization = null;
     let entitlements = [];
     if (user.organizationId) {
       organization = await Organization.findById(user.organizationId)
-        .select('name slug logo plan planExpiresAt atsSettings settings')
+        .select('name slug logo plan planExpiresAt atsSettings settings securitySettings')
         .lean();
       if (organization) {
         entitlements = getEntitlements(organization.plan);
       }
     }
+
+    // Org MFA enforcement — must enroll before full access
+    if (
+      organization?.securitySettings?.mfaEnforced &&
+      planHasFeature(organization.plan, 'security.mfaEnforcement') &&
+      !user.mfaEnabled
+    ) {
+      const enrollmentToken = jwt.sign(
+        { id: user._id, purpose: 'mfa_enrollment' },
+        JWT_SECRET,
+        { expiresIn: '30m' }
+      );
+      return res.json({
+        message: 'MFA enrollment required',
+        requiresMfaEnrollment: true,
+        enrollmentToken,
+        user: { email: user.email, name: user.name || '' }
+      });
+    }
+
+    // MFA second factor
+    if (user.mfaEnabled) {
+      const mfaToken = jwt.sign(
+        { id: user._id, purpose: 'mfa_pending' },
+        JWT_SECRET,
+        { expiresIn: '5m' }
+      );
+      return res.json({
+        message: 'MFA required',
+        requiresMfa: true,
+        mfaToken,
+        user: { email: user.email, name: user.name || '' }
+      });
+    }
+    
+    // Update last login
+    user.lastLoginAt = new Date();
+    await user.save();
+    
+    const token = await issueAuthToken(user, req);
     
     res.json({ 
       message: "Login Successful", 
@@ -451,7 +519,8 @@ app.post('/api/login', authLimiter, async (req, res) => {
         organizationId: user.organizationId,
         isEmailVerified: user.isEmailVerified,
         onboardingCompleted: user.onboardingCompleted,
-        profilePicture: user.profilePicture || ''
+        profilePicture: user.profilePicture || '',
+        mfaEnabled: user.mfaEnabled
       },
       organization,
       entitlements

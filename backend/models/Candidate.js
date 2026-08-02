@@ -82,6 +82,10 @@ const CandidateSchema = new mongoose.Schema({
   resumeText: { type: String, default: '' },      // Extracted text for search
   resumeParsedAt: { type: Date },
 
+  // ── AI semantic search (ai.semanticSearch) ───────────────────────
+  embedding: { type: [Number], default: undefined },
+  embeddingUpdatedAt: { type: Date },
+
   // ── Tags & custom data ─────────────────────────────────────────────
   tags: [{ type: String, trim: true }],
   customFields: { type: mongoose.Schema.Types.Mixed, default: {} },
@@ -106,6 +110,7 @@ const CandidateSchema = new mongoose.Schema({
 
   // ── GDPR self-service (always available, no plan gate) ─────────────
   gdprErasedAt: { type: Date },
+  legalHold: { type: Boolean, default: false },
 
   // ── Ownership & sharing ────────────────────────────────────────────
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },

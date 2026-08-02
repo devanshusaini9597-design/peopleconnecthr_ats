@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, Search, ChevronDown, User, LogOut, Building2, CreditCard, Settings, Shield, Command } from 'lucide-react';
+import { Menu, Search, ChevronDown, User, LogOut, Building2, CreditCard, Settings, Plug, Command, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { handleLogout } from '../utils/authUtils';
 import NotificationBell from './NotificationBell';
@@ -70,10 +70,21 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
     navigate(`/candidate-search?q=${encodeURIComponent(q)}`);
   };
 
+  const go = (path) => {
+    navigate(path);
+    setShowUserMenu(false);
+  };
+
+  const menuItems = [
+    { label: 'My Profile', desc: 'Account & security', path: '/settings', icon: User, tone: 'bg-brand-50 text-brand-600', show: true },
+    { label: 'Organization', desc: 'Company settings', path: '/organization', icon: Settings, tone: 'bg-sky-50 text-sky-600', show: isAdmin },
+    { label: 'Integrations', desc: 'Email & providers', path: '/organization/integrations', icon: Plug, tone: 'bg-violet-50 text-violet-600', show: isAdmin },
+    { label: 'Billing & Plans', desc: 'Subscription', path: '/billing', icon: CreditCard, tone: 'bg-amber-50 text-amber-600', show: userRole === 'owner' },
+  ].filter((i) => i.show);
+
   return (
     <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-stone-200/60 flex-shrink-0">
       <div className="flex items-center justify-between h-14 sm:h-16 px-3 sm:px-6 gap-2 sm:gap-4 min-w-0">
-        {/* Left */}
         <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
           <button
             type="button"
@@ -102,17 +113,17 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
           </form>
         </div>
 
-        {/* Right */}
         <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
           <NotificationBell />
 
           <div className="relative user-menu-container">
             <button
+              type="button"
               onClick={() => setShowUserMenu(!showUserMenu)}
-              className="flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 py-2 hover:bg-stone-100 rounded-xl transition-colors"
+              className="flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 py-2 hover:bg-stone-100 rounded-xl transition-all duration-200"
               title="User menu"
             >
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center font-bold text-sm text-white shadow-md flex-shrink-0 overflow-hidden">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-teal-600 flex items-center justify-center font-bold text-sm text-white shadow-md flex-shrink-0 overflow-hidden ring-2 ring-white">
                 {profilePicture ? (
                   <img src={`${BASE_API_URL}${profilePicture}`} alt="" className="w-full h-full object-cover" />
                 ) : (
@@ -123,53 +134,74 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
               <span className={`hidden sm:inline text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border ${roleBadgeColors[userRole] || roleBadgeColors.readonly}`}>
                 {userRole}
               </span>
-              <ChevronDown className={`hidden sm:inline w-4 h-4 text-stone-500 transition-transform ${showUserMenu ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`hidden sm:inline w-4 h-4 text-stone-500 transition-transform duration-200 ${showUserMenu ? 'rotate-180' : ''}`} />
             </button>
 
             {showUserMenu && (
-              <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-stone-200/80 overflow-hidden z-50">
-                <div className="px-4 py-3 border-b border-stone-100 bg-gradient-to-r from-stone-50/80 to-transparent">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-stone-900 truncate">{displayName}</p>
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize border flex-shrink-0 ${roleBadgeColors[userRole] || roleBadgeColors.readonly}`}>
-                      {userRole}
-                    </span>
+              <div className="absolute right-0 mt-2 w-[280px] bg-white rounded-2xl shadow-xl border border-stone-200/80 overflow-hidden z-50 animate-fade-in">
+                <div className="h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+                <div className="px-4 py-4 bg-gradient-to-br from-brand-50/40 via-white to-teal-50/30">
+                  <div className="flex items-start gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-500 to-teal-600 flex items-center justify-center font-bold text-sm text-white shadow-md flex-shrink-0 overflow-hidden">
+                      {profilePicture ? (
+                        <img src={`${BASE_API_URL}${profilePicture}`} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        initials
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-bold text-stone-900 truncate tracking-tight">{displayName}</p>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize border flex-shrink-0 ${roleBadgeColors[userRole] || roleBadgeColors.readonly}`}>
+                          {userRole}
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-500 mt-0.5 truncate">{userEmail}</p>
+                      {orgName && (
+                        <p className="text-xs text-brand-700 font-semibold mt-1.5 flex items-center gap-1">
+                          <Building2 size={11} /> {orgName}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-xs text-stone-500 mt-0.5 truncate">{userEmail}</p>
-                  {orgName && (
-                    <p className="text-xs text-teal-700 font-medium mt-1.5 flex items-center gap-1">
-                      <Building2 size={11} />{orgName}
-                    </p>
-                  )}
                 </div>
-                <div className="py-1">
-                  <button onClick={() => { navigate('/settings'); setShowUserMenu(false); }} className="w-full text-left px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2.5 transition-colors">
-                    <User size={16} className="text-stone-400" />
-                    My Profile
-                  </button>
-                  {isAdmin && (
-                    <>
-                      <button onClick={() => { navigate('/organization'); setShowUserMenu(false); }} className="w-full text-left px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2.5 transition-colors">
-                        <Settings size={16} className="text-stone-400" />
-                        Organization Settings
+
+                <div className="p-1.5 space-y-0.5">
+                  {menuItems.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.path}
+                        type="button"
+                        onClick={() => go(item.path)}
+                        className="w-full flex items-center gap-3 px-2.5 py-2.5 rounded-xl text-left transition-all duration-200 hover:bg-stone-50 group"
+                      >
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform duration-200 group-hover:scale-105 ${item.tone}`}>
+                          <Icon size={16} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-stone-800 tracking-tight">{item.label}</p>
+                          <p className="text-[11px] text-stone-400">{item.desc}</p>
+                        </div>
+                        <ChevronRight size={14} className="text-stone-300 group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all" />
                       </button>
-                      <button onClick={() => { navigate('/organization/integrations'); setShowUserMenu(false); }} className="w-full text-left px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2.5 transition-colors">
-                        <Shield size={16} className="text-stone-400" />
-                        Integrations
-                      </button>
-                    </>
-                  )}
-                  {userRole === 'owner' && (
-                    <button onClick={() => { navigate('/billing'); setShowUserMenu(false); }} className="w-full text-left px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2.5 transition-colors">
-                      <CreditCard size={16} className="text-stone-400" />
-                      Billing & Plans
-                    </button>
-                  )}
+                    );
+                  })}
                 </div>
-                <div className="border-t border-stone-100 py-1">
-                  <button onClick={() => handleLogout(navigate)} className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition-colors font-medium">
-                    <LogOut size={16} />
-                    Logout
+
+                <div className="p-1.5 border-t border-stone-100">
+                  <button
+                    type="button"
+                    onClick={() => handleLogout(navigate)}
+                    className="w-full flex items-center gap-3 px-2.5 py-2.5 rounded-xl text-left transition-all duration-200 hover:bg-red-50 group"
+                  >
+                    <div className="w-9 h-9 rounded-xl bg-red-50 text-red-500 flex items-center justify-center flex-shrink-0 group-hover:bg-red-100 transition-colors">
+                      <LogOut size={16} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-red-600">Log out</p>
+                      <p className="text-[11px] text-red-400">End this session</p>
+                    </div>
                   </button>
                 </div>
               </div>

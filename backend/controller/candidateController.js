@@ -2078,7 +2078,7 @@ exports.createCandidate = async (req, res) => {
             req.body.statusHistory = JSON.parse(req.body.statusHistory);
         }
         if (req.file) {
-            const s3Service = require('../services/s3Service');
+            const documentStorage = require('../services/documentStorageService');
             const path = require('path');
             const fs = require('fs');
             const filePath = (req.file.path && fs.existsSync(req.file.path))
@@ -2086,14 +2086,19 @@ exports.createCandidate = async (req, res) => {
                 : (fs.existsSync(path.join(process.cwd(), 'uploads', req.file.filename))
                     ? path.join(process.cwd(), 'uploads', req.file.filename)
                     : path.join(__dirname, '..', 'uploads', req.file.filename));
-            console.log('[Resume] Saving resume — storage: S3 if configured, else local');
-            const uploaded = s3Service.uploadResumeFromFile(filePath, req.file.originalname);
+            const orgId = req.user?.organizationId;
+            console.log('[Resume] Saving resume — BYOK storage / platform S3 / local');
+            const uploaded = await documentStorage.uploadResume({
+                organizationId: orgId,
+                localFilePath: filePath,
+                originalName: req.file.originalname
+            });
             if (uploaded && uploaded.key) {
                 req.body.resume = uploaded.key;
-                console.log('[Resume] ✅ Stored in S3 — bucket:', process.env.S3_BUCKET_NAME, ', folder: resumes/, key:', uploaded.key);
+                console.log('[Resume] ✅ Stored via', uploaded.storage, '— key:', uploaded.key);
             } else {
                 req.body.resume = `/uploads/${req.file.filename}`;
-                console.log('[Resume] Stored locally (S3 not used) — path: uploads/' + req.file.filename);
+                console.log('[Resume] Stored locally — path: uploads/' + req.file.filename);
             }
         }
 
@@ -2225,7 +2230,7 @@ exports.updateCandidate = async (req, res) => {
             catch (e) { req.body.statusHistory = []; }
         }
         if (req.file) {
-            const s3Service = require('../services/s3Service');
+            const documentStorage = require('../services/documentStorageService');
             const path = require('path');
             const fs = require('fs');
             const filePath = (req.file.path && fs.existsSync(req.file.path))
@@ -2233,14 +2238,19 @@ exports.updateCandidate = async (req, res) => {
                 : (fs.existsSync(path.join(process.cwd(), 'uploads', req.file.filename))
                     ? path.join(process.cwd(), 'uploads', req.file.filename)
                     : path.join(__dirname, '..', 'uploads', req.file.filename));
-            console.log('[Resume] Saving resume (update) — storage: S3 if configured, else local');
-            const uploaded = s3Service.uploadResumeFromFile(filePath, req.file.originalname);
+            const orgId = req.user?.organizationId;
+            console.log('[Resume] Saving resume (update) — BYOK storage / platform S3 / local');
+            const uploaded = await documentStorage.uploadResume({
+                organizationId: orgId,
+                localFilePath: filePath,
+                originalName: req.file.originalname
+            });
             if (uploaded && uploaded.key) {
                 req.body.resume = uploaded.key;
-                console.log('[Resume] ✅ Stored in S3 — bucket:', process.env.S3_BUCKET_NAME, ', folder: resumes/, key:', uploaded.key);
+                console.log('[Resume] ✅ Stored via', uploaded.storage, '— key:', uploaded.key);
             } else {
                 req.body.resume = `/uploads/${req.file.filename}`;
-                console.log('[Resume] Stored locally (S3 not used) — path: uploads/' + req.file.filename);
+                console.log('[Resume] Stored locally — path: uploads/' + req.file.filename);
             }
         }
 

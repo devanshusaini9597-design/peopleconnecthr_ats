@@ -1,23 +1,35 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Mail, Plus, Edit3, Trash2, Eye, Copy, Search, X, Save, FileText, Send, ChevronDown, Briefcase, Phone, XCircle, UserCheck, FileCheck, Sparkles, Check, AlertCircle, Megaphone } from 'lucide-react';
+import {
+  Mail, Plus, Edit3, Trash2, Eye, Copy, Search, Save,
+  Briefcase, Phone, XCircle, UserCheck, FileCheck, Sparkles, Check, Megaphone, Loader2
+} from 'lucide-react';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import { formatByFieldName } from '../utils/textFormatter';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
+import Modal from './ui/Modal';
+import PremiumSelect from './ui/PremiumSelect';
+import ConfirmationModal from './ConfirmationModal';
 
 import API_URL from '../config';
 const BASE = API_URL;
 
 const CATEGORY_META = {
-  hiring:     { label: 'Hiring Drive',   icon: Briefcase, color: 'brand', bg: 'bg-brand-50',  text: 'text-brand-700', ring: 'ring-brand-400', badge: 'bg-brand-100 text-brand-700' },
-  interview:  { label: 'Interview',      icon: Phone,     color: 'cyan',   bg: 'bg-cyan-50',    text: 'text-cyan-700',   ring: 'ring-cyan-400',   badge: 'bg-cyan-100 text-cyan-700' },
-  rejection:  { label: 'Rejection',      icon: XCircle,   color: 'red',    bg: 'bg-red-50',     text: 'text-red-700',    ring: 'ring-red-400',    badge: 'bg-red-100 text-red-700' },
-  onboarding: { label: 'Onboarding',     icon: UserCheck,  color: 'green',  bg: 'bg-green-50',   text: 'text-green-700',  ring: 'ring-green-400',  badge: 'bg-green-100 text-green-700' },
-  document:   { label: 'Document',       icon: FileCheck, color: 'amber',  bg: 'bg-amber-50',   text: 'text-amber-700',  ring: 'ring-amber-400',  badge: 'bg-amber-100 text-amber-700' },
-  marketing:  { label: 'Marketing',      icon: Megaphone, color: 'fuchsia', bg: 'bg-fuchsia-50', text: 'text-fuchsia-700', ring: 'ring-fuchsia-400', badge: 'bg-fuchsia-100 text-fuchsia-700' },
-  custom:     { label: 'Custom',         icon: Sparkles,  color: 'purple', bg: 'bg-purple-50',  text: 'text-purple-700', ring: 'ring-purple-400', badge: 'bg-purple-100 text-purple-700' },
+  hiring:     { label: 'Hiring Drive', icon: Briefcase, bg: 'bg-brand-50',  text: 'text-brand-700',  badge: 'bg-brand-100 text-brand-700 border-brand-200' },
+  interview:  { label: 'Interview',    icon: Phone,     bg: 'bg-cyan-50',    text: 'text-cyan-700',   badge: 'bg-cyan-100 text-cyan-700 border-cyan-200' },
+  rejection:  { label: 'Rejection',    icon: XCircle,   bg: 'bg-red-50',     text: 'text-red-700',    badge: 'bg-red-100 text-red-700 border-red-200' },
+  onboarding: { label: 'Onboarding',   icon: UserCheck, bg: 'bg-emerald-50', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  document:   { label: 'Document',     icon: FileCheck, bg: 'bg-amber-50',   text: 'text-amber-700',  badge: 'bg-amber-100 text-amber-700 border-amber-200' },
+  marketing:  { label: 'Marketing',    icon: Megaphone, bg: 'bg-fuchsia-50', text: 'text-fuchsia-700', badge: 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200' },
+  custom:     { label: 'Custom',       icon: Sparkles,  bg: 'bg-violet-50',  text: 'text-violet-700', badge: 'bg-violet-100 text-violet-700 border-violet-200' },
 };
+
+const CATEGORY_OPTIONS = Object.entries(CATEGORY_META).map(([value, meta]) => ({
+  value,
+  label: meta.label,
+  icon: meta.icon,
+}));
 
 const VARIABLE_OPTIONS = [
   { key: 'candidateName', label: 'Candidate Name', example: 'Devanshu Saini' },
@@ -34,6 +46,14 @@ const VARIABLE_OPTIONS = [
   { key: 'unsubscribeLink', label: 'Unsubscribe Link (Marketing)', example: '#unsubscribe' },
 ];
 
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
+  const h = Math.floor(i / 2);
+  const m = i % 2 === 0 ? '00' : '30';
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return { value: `${String(h).padStart(2, '0')}:${m}`, label: `${h12}:${m} ${ampm}` };
+});
+
 const EmailTemplatesPage = () => {
   const toast = useToast();
   const [templates, setTemplates] = useState([]);
@@ -41,21 +61,18 @@ const EmailTemplatesPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
 
-  // Editor state
   const [showEditor, setShowEditor] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [form, setForm] = useState({ name: '', category: 'custom', subject: '', body: '', variables: [] });
   const [saving, setSaving] = useState(false);
 
-  // Preview state
   const [showPreview, setShowPreview] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState(null);
   const [previewVars, setPreviewVars] = useState({});
 
-  // Delete state
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
-  // Fetch templates
   const fetchTemplates = useCallback(async () => {
     try {
       const res = await authenticatedFetch(`${BASE}/api/email-templates`);
@@ -64,7 +81,6 @@ const EmailTemplatesPage = () => {
       if (data.success) {
         setTemplates(data.templates);
       } else {
-        // Seed defaults if none exist
         await authenticatedFetch(`${BASE}/api/email-templates/seed-defaults`, { method: 'POST' });
         const res2 = await authenticatedFetch(`${BASE}/api/email-templates`);
         const data2 = await res2.json();
@@ -79,11 +95,8 @@ const EmailTemplatesPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    fetchTemplates();
-  }, [fetchTemplates]);
+  useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
 
-  // Auto-seed on first load if empty
   useEffect(() => {
     if (!loading && templates.length === 0) {
       (async () => {
@@ -96,13 +109,15 @@ const EmailTemplatesPage = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, templates.length]);
 
-  const filtered = templates.filter(t => {
+  const filtered = templates.filter((t) => {
     if (filterCategory !== 'all' && t.category !== filterCategory) return false;
-    if (searchTerm && !t.name.toLowerCase().includes(searchTerm.toLowerCase()) && !t.subject.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+    if (searchTerm) {
+      const q = searchTerm.toLowerCase();
+      if (!t.name.toLowerCase().includes(q) && !t.subject.toLowerCase().includes(q)) return false;
+    }
     return true;
   });
 
-  // ─── Editor ───
   const openNewTemplate = () => {
     setEditingTemplate(null);
     setForm({ name: '', category: 'custom', subject: '', body: '', variables: [] });
@@ -123,10 +138,10 @@ const EmailTemplatesPage = () => {
 
   const insertVariable = (key) => {
     const tag = `{{${key}}}`;
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
       body: prev.body + tag,
-      variables: prev.variables.includes(key) ? prev.variables : [...prev.variables, key]
+      variables: prev.variables.includes(key) ? prev.variables : [...prev.variables, key],
     }));
   };
 
@@ -137,8 +152,9 @@ const EmailTemplatesPage = () => {
     }
     setSaving(true);
     try {
-      // Detect variables used in body/subject
-      const usedVars = VARIABLE_OPTIONS.filter(v => form.body.includes(`{{${v.key}}}`) || form.subject.includes(`{{${v.key}}}`)).map(v => v.key);
+      const usedVars = VARIABLE_OPTIONS
+        .filter((v) => form.body.includes(`{{${v.key}}}`) || form.subject.includes(`{{${v.key}}}`))
+        .map((v) => v.key);
       const payload = { ...form, variables: usedVars };
 
       let res;
@@ -146,13 +162,13 @@ const EmailTemplatesPage = () => {
         res = await authenticatedFetch(`${BASE}/api/email-templates/${editingTemplate._id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
         });
       } else {
         res = await authenticatedFetch(`${BASE}/api/email-templates`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
         });
       }
       const data = await res.json();
@@ -170,28 +186,31 @@ const EmailTemplatesPage = () => {
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      const res = await authenticatedFetch(`${BASE}/api/email-templates/${id}`, { method: 'DELETE' });
+      const res = await authenticatedFetch(`${BASE}/api/email-templates/${deleteTarget._id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         toast.success('Template deleted');
-        setDeleteConfirm(null);
+        setDeleteTarget(null);
         fetchTemplates();
       } else {
         toast.error(data.message || 'Delete failed');
       }
     } catch {
       toast.error('Failed to delete template');
+    } finally {
+      setDeleting(false);
     }
   };
 
-  // ─── Preview ───
   const openPreview = (t) => {
     setPreviewTemplate(t);
     const vars = {};
-    (t.variables || []).forEach(v => {
-      const opt = VARIABLE_OPTIONS.find(o => o.key === v);
+    (t.variables || []).forEach((v) => {
+      const opt = VARIABLE_OPTIONS.find((o) => o.key === v);
       vars[v] = opt?.example || '';
     });
     setPreviewVars(vars);
@@ -206,412 +225,398 @@ const EmailTemplatesPage = () => {
     return result;
   };
 
-  // ─── Render ───
+  const detectedVars = VARIABLE_OPTIONS.filter(
+    (v) => form.body.includes(`{{${v.key}}}`) || form.subject.includes(`{{${v.key}}}`)
+  );
+
   if (loading) {
     return (
-      <>
-        <div className="page-shell-ats">
-          <div className="flex items-center justify-center h-96">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-10 w-10 border-2 border-brand-600 border-t-transparent mx-auto mb-3"></div>
-              <p className="text-sm text-stone-500 font-medium">Loading templates...</p>
-            </div>
+      <div className="page-shell-ats animate-page-enter">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-2xl skeleton-ats flex-shrink-0" />
+          <div className="space-y-2 flex-1 pt-1">
+            <div className="h-7 w-52 skeleton-ats rounded-lg" />
+            <div className="h-4 w-72 max-w-full skeleton-ats rounded-lg" />
           </div>
         </div>
-      </>
+        <div className="h-12 skeleton-ats rounded-xl mt-2" />
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mt-2">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="card-ats-bordered p-5 space-y-3">
+              <div className="flex gap-3">
+                <div className="w-9 h-9 rounded-xl skeleton-ats" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-32 skeleton-ats rounded-lg" />
+                  <div className="h-3 w-48 skeleton-ats rounded-lg" />
+                </div>
+              </div>
+              <div className="h-20 skeleton-ats rounded-xl" />
+            </div>
+          ))}
+        </div>
+      </div>
     );
   }
 
   return (
-    <>
-      <div className="page-shell-ats">
-        <PageHeader
-          icon={Mail}
-          title="Email Templates"
-          subtitle="Create, manage and send professional email templates"
-        >
-          <button type="button" onClick={openNewTemplate} className="btn-primary">
-            <Plus size={16} />
-            Create Template
-          </button>
-        </PageHeader>
+    <div className="page-shell-ats animate-page-enter">
+      <PageHeader
+        icon={Mail}
+        title="Email Templates"
+        subtitle="Create and manage professional email templates for hiring workflows."
+        gradientTitle
+      >
+        <button type="button" onClick={openNewTemplate} className="btn-primary flex-1 sm:flex-none">
+          <Plus size={16} /> Create Template
+        </button>
+      </PageHeader>
 
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1 max-w-sm">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-            <input
-              type="text"
-              placeholder="Search templates..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="input-ats pl-9"
-            />
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              onClick={() => setFilterCategory('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${filterCategory === 'all' ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
-            >All</button>
-            {Object.entries(CATEGORY_META).map(([key, meta]) => (
-              <button
-                key={key}
-                onClick={() => setFilterCategory(key)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${filterCategory === key ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
-              >{meta.label}</button>
-            ))}
-          </div>
+      <div className="toolbar-ats flex flex-col gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search templates…"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="input-ats !pl-10"
+          />
         </div>
-
-        {/* Templates Grid */}
-        {filtered.length === 0 ? (
-          <div className="card-ats-bordered">
-            <EmptyState
-              icon={Mail}
-              message="No templates found"
-              subMessage="Create your first email template to get started"
-              action={
-                <button type="button" onClick={openNewTemplate} className="btn-primary">
-                  <Plus size={14} /> Create Template
-                </button>
-              }
-            />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map((t) => {
-              const meta = CATEGORY_META[t.category] || CATEGORY_META.custom;
-              const Icon = meta.icon;
-              return (
-                <div
-                  key={t._id}
-                  className="card-ats-bordered hover:border-stone-300 flex flex-col"
-                >
-                  {/* Card Header */}
-                  <div className="p-4 pb-3 flex items-start gap-3">
-                    <div className={`w-9 h-9 rounded-lg ${meta.bg} flex items-center justify-center flex-shrink-0`}>
-                      <Icon size={16} className={meta.text} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <h3 className="text-sm font-bold text-stone-900 truncate">{t.name}</h3>
-                        {t.isDefault && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 bg-stone-100 text-stone-500 rounded">DEFAULT</span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-stone-500 truncate">{t.subject}</p>
-                    </div>
-                  </div>
-
-                  {/* Body preview */}
-                  <div className="px-4 pb-3 flex-1">
-                    <div className="bg-stone-50 rounded-lg p-3 border border-stone-100">
-                      <p className="text-[11px] text-stone-500 line-clamp-4 leading-relaxed whitespace-pre-line">{t.body.substring(0, 200)}{t.body.length > 200 ? '...' : ''}</p>
-                    </div>
-                  </div>
-
-                  {/* Variables */}
-                  {t.variables && t.variables.length > 0 && (
-                    <div className="px-4 pb-3">
-                      <div className="flex flex-wrap gap-1">
-                        {t.variables.slice(0, 5).map(v => (
-                          <span key={v} className="text-[9px] font-semibold px-1.5 py-0.5 bg-brand-50 text-brand-600 rounded">{`{{${v}}}`}</span>
-                        ))}
-                        {t.variables.length > 5 && (
-                          <span className="text-[9px] text-stone-400">+{t.variables.length - 5} more</span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Actions */}
-                  <div className="px-4 py-3 border-t border-stone-100 flex items-center gap-1.5">
-                    <button
-                      onClick={() => openPreview(t)}
-                      className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-stone-600 hover:bg-stone-100 rounded-lg transition-all"
-                    >
-                      <Eye size={12} /> Preview
-                    </button>
-                    <button
-                      onClick={() => openEditTemplate(t)}
-                      className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-brand-600 hover:bg-brand-50 rounded-lg transition-all"
-                    >
-                      <Edit3 size={12} /> Edit
-                    </button>
-                    <button
-                      onClick={() => duplicateTemplate(t)}
-                      className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-stone-600 hover:bg-stone-100 rounded-lg transition-all"
-                    >
-                      <Copy size={12} /> Duplicate
-                    </button>
-                    {!t.isDefault && (
-                      <button
-                        onClick={() => setDeleteConfirm(t._id)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-red-500 hover:bg-red-50 rounded-lg transition-all ml-auto"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Delete confirm */}
-                  {deleteConfirm === t._id && (
-                    <div className="px-4 py-2.5 bg-red-50 border-t border-red-200 flex items-center justify-between">
-                      <p className="text-xs text-red-700 font-medium">Delete this template?</p>
-                      <div className="flex gap-2">
-                        <button onClick={() => setDeleteConfirm(null)} className="text-xs text-stone-500 hover:text-stone-700 font-medium">Cancel</button>
-                        <button onClick={() => handleDelete(t._id)} className="text-xs text-red-600 hover:text-red-800 font-bold">Delete</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => setFilterCategory('all')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+              filterCategory === 'all'
+                ? 'bg-stone-900 text-white border-stone-900'
+                : 'bg-white text-stone-600 border-stone-200 hover:border-stone-300 hover:bg-stone-50'
+            }`}
+          >
+            All
+          </button>
+          {Object.entries(CATEGORY_META).map(([key, meta]) => (
+            <button
+              type="button"
+              key={key}
+              onClick={() => setFilterCategory(key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                filterCategory === key
+                  ? 'bg-stone-900 text-white border-stone-900'
+                  : 'bg-white text-stone-600 border-stone-200 hover:border-stone-300 hover:bg-stone-50'
+              }`}
+            >
+              {meta.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* ═══════ TEMPLATE EDITOR MODAL ═══════ */}
-      {showEditor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/55 backdrop-blur-sm p-4">
-          <div className="relative bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-stone-200/60 modal-panel-ats">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50/80 flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-brand-100 flex items-center justify-center">
-                  <FileText size={18} className="text-brand-600" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-stone-900">{editingTemplate ? 'Edit Template' : 'Create New Template'}</h3>
-                  <p className="text-xs text-stone-500">Use {'{{variableName}}'} placeholders for dynamic content</p>
-                </div>
-              </div>
-              <button onClick={() => setShowEditor(false)} className="p-2 hover:bg-stone-200 rounded-lg transition-colors">
-                <X size={18} className="text-stone-500" />
+      {filtered.length === 0 ? (
+        <div className="card-ats-bordered">
+          <EmptyState
+            icon={Mail}
+            tone="emerald"
+            message="No templates found"
+            subMessage="Create your first email template to get started"
+            action={
+              <button type="button" onClick={openNewTemplate} className="btn-primary">
+                <Plus size={14} /> Create Template
               </button>
-            </div>
-
-            {/* Body */}
-            <div className="overflow-y-auto flex-1 p-6 space-y-5">
-              {/* Row 1: Name + Category */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                  <label className="block text-xs font-semibold text-stone-600 mb-1.5">Template Name *</label>
-                  <input
-                    type="text"
-                    value={form.name}
-                    onChange={(e) => setForm(prev => ({ ...prev, name: formatByFieldName('templateName', e.target.value) }))}
-                    placeholder="e.g. Hiring Drive Invitation"
-                    className="input-ats"
-                  />
+            }
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {filtered.map((t) => {
+            const meta = CATEGORY_META[t.category] || CATEGORY_META.custom;
+            const Icon = meta.icon;
+            return (
+              <div
+                key={t._id}
+                className="card-ats-bordered hover:border-stone-300 flex flex-col relative overflow-hidden group"
+              >
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="p-4 pb-3 flex items-start gap-3">
+                  <div className={`w-10 h-10 rounded-xl ${meta.bg} flex items-center justify-center flex-shrink-0 border border-white/60`}>
+                    <Icon size={16} className={meta.text} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                      <h3 className="text-sm font-bold text-stone-900 truncate tracking-tight">{t.name}</h3>
+                      {t.isDefault && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 bg-stone-100 text-stone-500 rounded border border-stone-200">DEFAULT</span>
+                      )}
+                    </div>
+                    <span className={`inline-flex text-[10px] font-bold px-2 py-0.5 rounded-full border ${meta.badge}`}>
+                      {meta.label}
+                    </span>
+                    <p className="text-[11px] text-stone-500 truncate mt-1.5">{t.subject}</p>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-stone-600 mb-1.5">Category</label>
-                  <select
-                    value={form.category}
-                    onChange={(e) => setForm(prev => ({ ...prev, category: e.target.value }))}
-                    className="input-ats"
-                  >
-                    {Object.entries(CATEGORY_META).map(([key, meta]) => (
-                      <option key={key} value={key}>{meta.label}</option>
-                    ))}
-                  </select>
+
+                <div className="px-4 pb-3 flex-1">
+                  <div className="bg-stone-50 rounded-xl p-3 border border-stone-100">
+                    <p className="text-[11px] text-stone-500 line-clamp-4 leading-relaxed whitespace-pre-line">
+                      {t.body.substring(0, 200)}{t.body.length > 200 ? '…' : ''}
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              {/* Subject */}
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1.5">Email Subject *</label>
-                <input
-                  type="text"
-                  value={form.subject}
-                  onChange={(e) => setForm(prev => ({ ...prev, subject: e.target.value }))}
-                  placeholder="e.g. Hiring Drive – {{position}} | {{company}}"
-                  className="input-ats"
-                />
-              </div>
-
-              {/* Variables quick-insert */}
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1.5">Insert Variable (click to add to body)</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {VARIABLE_OPTIONS.map(v => (
-                    <button
-                      key={v.key}
-                      type="button"
-                      onClick={() => insertVariable(v.key)}
-                      className="px-2.5 py-1 text-[11px] font-semibold bg-brand-50 text-brand-700 hover:bg-brand-100 rounded-lg transition-all border border-brand-100"
-                      title={`Example: ${v.example}`}
-                    >
-                      {`{{${v.key}}}`} <span className="text-brand-400 ml-1">{v.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Body */}
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1.5">Email Body *</label>
-                <textarea
-                  value={form.body}
-                  onChange={(e) => setForm(prev => ({ ...prev, body: e.target.value }))}
-                  placeholder={`Dear {{candidateName}},\n\nGreetings!\n\nWe are hiring for the profile of {{position}} with {{company}}.\n\nCTC: {{ctc}}\nLocation: {{location}}\n\nBest regards,\nHR Team`}
-                  rows={14}
-                  className="input-ats resize-none font-mono leading-relaxed"
-                />
-              </div>
-
-              {/* Detected variables */}
-              {(() => {
-                const detected = VARIABLE_OPTIONS.filter(v => form.body.includes(`{{${v.key}}}`) || form.subject.includes(`{{${v.key}}}`));
-                if (detected.length === 0) return null;
-                return (
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                    <p className="text-[11px] font-bold text-green-700 mb-1.5 flex items-center gap-1"><Check size={12} /> Detected Variables</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {detected.map(v => (
-                        <span key={v.key} className="text-[10px] font-semibold px-2 py-0.5 bg-green-100 text-green-700 rounded">{`{{${v.key}}}`} = {v.label}</span>
+                {t.variables?.length > 0 && (
+                  <div className="px-4 pb-3">
+                    <div className="flex flex-wrap gap-1">
+                      {t.variables.slice(0, 5).map((v) => (
+                        <span key={v} className="text-[9px] font-semibold px-1.5 py-0.5 bg-brand-50 text-brand-600 rounded border border-brand-100">{`{{${v}}}`}</span>
                       ))}
+                      {t.variables.length > 5 && (
+                        <span className="text-[9px] text-stone-400 font-medium">+{t.variables.length - 5} more</span>
+                      )}
                     </div>
                   </div>
-                );
-              })()}
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-stone-200 bg-stone-50/80 flex-shrink-0">
-              <button onClick={() => setShowEditor(false)} className="btn-secondary">
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="btn-primary"
-              >
-                {saving ? (
-                  <><div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" /> Saving...</>
-                ) : (
-                  <><Save size={16} /> {editingTemplate ? 'Update Template' : 'Save Template'}</>
                 )}
-              </button>
-            </div>
-          </div>
+
+                <div className="px-4 py-3 border-t border-stone-100 flex items-center gap-1">
+                  <button type="button" onClick={() => openPreview(t)} className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-stone-600 hover:bg-stone-100 rounded-lg transition-all">
+                    <Eye size={12} /> Preview
+                  </button>
+                  <button type="button" onClick={() => openEditTemplate(t)} className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-brand-600 hover:bg-brand-50 rounded-lg transition-all">
+                    <Edit3 size={12} /> Edit
+                  </button>
+                  <button type="button" onClick={() => duplicateTemplate(t)} className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-stone-600 hover:bg-stone-100 rounded-lg transition-all">
+                    <Copy size={12} /> Duplicate
+                  </button>
+                  {!t.isDefault && (
+                    <button
+                      type="button"
+                      onClick={() => setDeleteTarget(t)}
+                      className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-all ml-auto"
+                      title="Delete"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* ═══════ PREVIEW MODAL ═══════ */}
-      {showPreview && previewTemplate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/55 backdrop-blur-sm p-4">
-          <div className="relative bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden border border-stone-200/60 modal-panel-ats">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50/80 flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-brand-100 flex items-center justify-center">
-                  <Eye size={18} className="text-brand-600" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-stone-900">Template Preview</h3>
-                  <p className="text-xs text-stone-500">Fill sample values to see how the email will look</p>
-                </div>
-              </div>
-              <button onClick={() => setShowPreview(false)} className="p-2 hover:bg-stone-200 rounded-lg transition-colors">
-                <X size={18} className="text-stone-500" />
-              </button>
+      <Modal
+        open={showEditor}
+        onClose={() => setShowEditor(false)}
+        title={editingTemplate ? 'Edit Template' : 'Create New Template'}
+        description="Use {{variableName}} placeholders for dynamic content."
+        size="xl"
+        footer={
+          <>
+            <button type="button" onClick={() => setShowEditor(false)} className="btn-secondary" disabled={saving}>Cancel</button>
+            <button type="button" onClick={handleSave} disabled={saving} className="btn-primary">
+              {saving ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : <><Save size={16} /> {editingTemplate ? 'Update Template' : 'Save Template'}</>}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label-ats">Template Name *</label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => setForm((prev) => ({ ...prev, name: formatByFieldName('templateName', e.target.value) }))}
+                placeholder="e.g. Hiring Drive Invitation"
+                className="input-ats"
+                autoFocus
+              />
             </div>
+            <div>
+              <label className="label-ats">Category</label>
+              <PremiumSelect
+                value={form.category}
+                onChange={(v) => setForm((prev) => ({ ...prev, category: v || 'custom' }))}
+                options={CATEGORY_OPTIONS}
+                placeholder="Category"
+                compact
+              />
+            </div>
+          </div>
 
-            <div className="overflow-y-auto flex-1 p-6 space-y-5">
-              {/* Variable inputs */}
-              {previewTemplate.variables && previewTemplate.variables.length > 0 && (
-                <div>
-                  <label className="block text-xs font-bold text-stone-600 mb-2">Sample Variable Values</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {previewTemplate.variables.map(v => {
-                      const opt = VARIABLE_OPTIONS.find(o => o.key === v);
+          <div>
+            <label className="label-ats">Email Subject *</label>
+            <input
+              type="text"
+              value={form.subject}
+              onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))}
+              placeholder="e.g. Hiring Drive – {{position}} | {{company}}"
+              className="input-ats"
+            />
+          </div>
+
+          <div>
+            <label className="label-ats">Insert Variable</label>
+            <div className="flex flex-wrap gap-1.5">
+              {VARIABLE_OPTIONS.map((v) => (
+                <button
+                  key={v.key}
+                  type="button"
+                  onClick={() => insertVariable(v.key)}
+                  className="px-2.5 py-1 text-[11px] font-semibold bg-brand-50 text-brand-700 hover:bg-brand-100 rounded-lg transition-all border border-brand-100"
+                  title={`Example: ${v.example}`}
+                >
+                  {`{{${v.key}}}`} <span className="text-brand-400 ml-1 font-medium">{v.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="label-ats">Email Body *</label>
+            <textarea
+              value={form.body}
+              onChange={(e) => setForm((prev) => ({ ...prev, body: e.target.value }))}
+              placeholder={`Dear {{candidateName}},\n\nGreetings!\n\nWe are hiring for the profile of {{position}} with {{company}}.\n\nCTC: {{ctc}}\nLocation: {{location}}\n\nBest regards,\nHR Team`}
+              rows={12}
+              className="input-ats resize-none font-mono text-sm leading-relaxed"
+            />
+          </div>
+
+          {detectedVars.length > 0 && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+              <p className="text-[11px] font-bold text-emerald-700 mb-1.5 flex items-center gap-1">
+                <Check size={12} /> Detected Variables
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {detectedVars.map((v) => (
+                  <span key={v.key} className="text-[10px] font-semibold px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded border border-emerald-200">
+                    {`{{${v.key}}}`} = {v.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={showPreview && !!previewTemplate}
+        onClose={() => setShowPreview(false)}
+        title="Template Preview"
+        description="Fill sample values to see how the email will look."
+        size="lg"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => { setShowPreview(false); openEditTemplate(previewTemplate); }}
+              className="btn-secondary"
+            >
+              <Edit3 size={14} /> Edit Template
+            </button>
+            <button type="button" onClick={() => setShowPreview(false)} className="btn-primary">Close</button>
+          </>
+        }
+      >
+        {previewTemplate && (
+          <div className="space-y-4">
+            {previewTemplate.variables?.length > 0 && (
+              <div>
+                <label className="label-ats">Sample Variable Values</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {previewTemplate.variables.map((v) => {
+                    const opt = VARIABLE_OPTIONS.find((o) => o.key === v);
+                    if (opt?.isTime) {
+                      const current = previewVars[v];
+                      let timeVal = '';
+                      if (current) {
+                        const m = current.match(/(\d+):(\d+)\s*(AM|PM)/i);
+                        if (m) {
+                          let h = parseInt(m[1], 10);
+                          const ampm = m[3].toUpperCase();
+                          if (ampm === 'PM' && h !== 12) h += 12;
+                          if (ampm === 'AM' && h === 12) h = 0;
+                          timeVal = `${String(h).padStart(2, '0')}:${m[2]}`;
+                        }
+                      }
                       return (
                         <div key={v}>
                           <label className="block text-[10px] font-semibold text-stone-500 mb-1">{opt?.label || v}</label>
-                          {opt?.isTime ? (
-                            <div className="flex gap-2">
-                              <select
-                                value={(() => { const t = previewVars[v]; if (!t) return ''; const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i); if (!m) return ''; let h = parseInt(m[1]); const ampm = m[3].toUpperCase(); if (ampm === 'PM' && h !== 12) h += 12; if (ampm === 'AM' && h === 12) h = 0; return `${String(h).padStart(2,'0')}:${m[2]}`; })()}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  if (val) {
-                                    const [h, m] = val.split(':');
-                                    const hr = parseInt(h);
-                                    const ampm = hr >= 12 ? 'PM' : 'AM';
-                                    const hr12 = hr % 12 || 12;
-                                    setPreviewVars(prev => ({ ...prev, [v]: `${hr12}:${m} ${ampm}` }));
-                                  }
-                                }}
-                                className="input-ats !py-1.5"
-                              >
-                                <option value="">Select time</option>
-                                {Array.from({ length: 48 }, (_, i) => { const h = Math.floor(i / 2); const m = i % 2 === 0 ? '00' : '30'; const ampm = h >= 12 ? 'PM' : 'AM'; const h12 = h % 12 || 12; return <option key={i} value={`${String(h).padStart(2,'0')}:${m}`}>{`${h12}:${m} ${ampm}`}</option>; })}
-                              </select>
-                            </div>
-                          ) : (
-                            <input
-                              type={v === 'date' ? 'date' : 'text'}
-                              value={previewVars[v] || ''}
-                              onChange={(e) => setPreviewVars(prev => ({ ...prev, [v]: e.target.value }))}
-                              placeholder={opt?.example || ''}
-                              className="input-ats !py-1.5"
-                            />
-                          )}
+                          <PremiumSelect
+                            value={timeVal}
+                            onChange={(val) => {
+                              if (!val) return;
+                              const [h, m] = val.split(':');
+                              const hr = parseInt(h, 10);
+                              const ampm = hr >= 12 ? 'PM' : 'AM';
+                              const hr12 = hr % 12 || 12;
+                              setPreviewVars((prev) => ({ ...prev, [v]: `${hr12}:${m} ${ampm}` }));
+                            }}
+                            options={TIME_OPTIONS}
+                            placeholder="Select time"
+                            compact
+                          />
                         </div>
                       );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Email preview */}
-              <div className="border border-stone-200 rounded-xl overflow-hidden">
-                {/* Subject bar */}
-                <div className="bg-brand-600 px-5 py-3">
-                  <p className="text-white text-sm font-semibold">{renderPreviewText(previewTemplate.subject)}</p>
-                </div>
-                {/* Body */}
-                <div className="p-6 bg-white">
-                  <div className="text-sm text-stone-700 leading-relaxed whitespace-pre-line">
-                    {previewTemplate.name === 'Subscribe for Updates' && previewTemplate.category === 'marketing'
-                      ? renderPreviewText(previewTemplate.body.replace(/\n?Subscribe now:\s*\{\{subscribeLink\}\}\s*\n?/gi, '\n'))
-                      : renderPreviewText(previewTemplate.body)}
-                  </div>
-                  {previewTemplate.name === 'Subscribe for Updates' && previewTemplate.category === 'marketing' && (
-                    <div className="mt-5 text-center">
-                      <a
-                        href={previewVars.subscribeLink && previewVars.subscribeLink.startsWith('http') ? previewVars.subscribeLink : '#'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-block px-6 py-3 bg-gradient-to-r from-brand-600 to-teal-600 text-white text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
-                      >
-                        Subscribe for updates
-                      </a>
-                    </div>
-                  )}
-                </div>
-                {/* Footer */}
-                <div className="px-5 py-3 bg-stone-50 border-t border-stone-100 text-center">
-                  <p className="text-[10px] text-stone-400">Skillnix Recruitment Services</p>
+                    }
+                    return (
+                      <div key={v}>
+                        <label className="block text-[10px] font-semibold text-stone-500 mb-1">{opt?.label || v}</label>
+                        <input
+                          type={v === 'date' ? 'date' : 'text'}
+                          value={previewVars[v] || ''}
+                          onChange={(e) => setPreviewVars((prev) => ({ ...prev, [v]: e.target.value }))}
+                          placeholder={opt?.example || ''}
+                          className="input-ats !py-1.5"
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            </div>
+            )}
 
-            {/* Footer */}
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-stone-200 bg-stone-50/80 flex-shrink-0">
-              <button onClick={() => { setShowPreview(false); openEditTemplate(previewTemplate); }} className="px-4 py-2.5 text-sm font-semibold text-brand-600 hover:bg-brand-50 rounded-lg transition-all flex items-center gap-1.5">
-                <Edit3 size={14} /> Edit Template
-              </button>
-              <button onClick={() => setShowPreview(false)} className="btn-secondary">
-                Close
-              </button>
+            <div className="border border-stone-200 rounded-xl overflow-hidden">
+              <div className="bg-gradient-to-r from-brand-600 to-teal-600 px-5 py-3">
+                <p className="text-white text-sm font-semibold">{renderPreviewText(previewTemplate.subject)}</p>
+              </div>
+              <div className="p-5 bg-white">
+                <div className="text-sm text-stone-700 leading-relaxed whitespace-pre-line">
+                  {previewTemplate.name === 'Subscribe for Updates' && previewTemplate.category === 'marketing'
+                    ? renderPreviewText(previewTemplate.body.replace(/\n?Subscribe now:\s*\{\{subscribeLink\}\}\s*\n?/gi, '\n'))
+                    : renderPreviewText(previewTemplate.body)}
+                </div>
+                {previewTemplate.name === 'Subscribe for Updates' && previewTemplate.category === 'marketing' && (
+                  <div className="mt-5 text-center">
+                    <a
+                      href={previewVars.subscribeLink?.startsWith('http') ? previewVars.subscribeLink : '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block px-6 py-3 bg-gradient-to-r from-brand-600 to-teal-600 text-white text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
+                    >
+                      Subscribe for updates
+                    </a>
+                  </div>
+                )}
+              </div>
+              <div className="px-5 py-3 bg-stone-50 border-t border-stone-100 text-center">
+                <p className="text-[10px] text-stone-400 font-medium">Skillnix Recruitment Services</p>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </>
+        )}
+      </Modal>
+
+      <ConfirmationModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete template?"
+        message={`Delete "${deleteTarget?.name}"? This cannot be undone.`}
+        confirmText="Delete"
+        type="delete"
+        isLoading={deleting}
+      />
+    </div>
   );
 };
 

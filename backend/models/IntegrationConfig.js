@@ -23,9 +23,13 @@ const integrationConfigSchema = new mongoose.Schema({
   category: {
     type: String,
     required: true,
-    enum: ['email', 'calendar', 'sms', 'ai', 'job_board', 'background_check', 'esign', 'whatsapp']
+    enum: [
+      'email', 'calendar', 'sms', 'ai', 'job_board', 'background_check', 'esign', 'whatsapp',
+      'storage', 'encryption', 'video', 'crm', 'hris', 'siem', 'data_warehouse', 'slack_app'
+    ]
   },
   displayName: { type: String },
+  metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
   credentials: { type: mongoose.Schema.Types.Mixed },
   isActive: { type: Boolean, default: false },
   isValidated: { type: Boolean, default: false },

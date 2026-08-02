@@ -108,6 +108,14 @@ const Login = () => {
   const [recoveryStatus, setRecoveryStatus] = useState('idle'); // idle | sending | sent | error
   const [recoveryMessage, setRecoveryMessage] = useState('');
 
+  // ----- MFA state -----
+  const [mfaStep, setMfaStep] = useState('login'); // login | mfa | enroll
+  const [mfaToken, setMfaToken] = useState('');
+  const [enrollmentToken, setEnrollmentToken] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaSetup, setMfaSetup] = useState(null);
+  const [backupCodes, setBackupCodes] = useState(null);
+
   // ----- Ambient "live pipeline" motion on the brand panel -----
   const [pipelineStages, setPipelineStages] = useState(PIPELINE_SEED.map((p) => p.stage));
   useEffect(() => {
@@ -169,6 +177,20 @@ const Login = () => {
       const data = await res.json();
 
       if (res.ok) {
+        if (data.requiresMfa) {
+          setMfaToken(data.mfaToken);
+          setMfaStep('mfa');
+          setIsSubmitting(false);
+          return;
+        }
+        if (data.requiresMfaEnrollment) {
+          setEnrollmentToken(data.enrollmentToken);
+          sessionStorage.setItem('mfaEnrollmentToken', data.enrollmentToken);
+          setMfaStep('enroll');
+          setIsSubmitting(false);
+          return;
+        }
+
         localStorage.setItem('token', data.token);
         localStorage.setItem('userEmail', email);
         localStorage.setItem('userName', data.user?.name || '');
@@ -184,6 +206,7 @@ const Login = () => {
         }
 
         setSuccess('Signed in — taking you in.');
+        sessionStorage.setItem('showWelcomeModal', '1');
 
         setTimeout(() => {
           if (data.user && !data.user.onboardingCompleted && !data.organization) {
@@ -203,6 +226,111 @@ const Login = () => {
       }
     } catch (_err) {
       setError("We couldn't reach the server. Check your connection and try again.");
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleMfaVerify = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!mfaCode || mfaCode.length < 6) {
+      setError('Enter the 6-digit code from your authenticator app.');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`${API_URL}/api/mfa/verify-mfa`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mfaToken, code: mfaCode }),
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message || 'Invalid verification code.');
+        setIsSubmitting(false);
+        return;
+      }
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('userEmail', data.user?.email || formData.email);
+      localStorage.setItem('userName', data.user?.name || '');
+      localStorage.setItem('isLoggedIn', 'true');
+      if (data.user) {
+        localStorage.setItem('userData', JSON.stringify(data.user));
+        localStorage.setItem('userRole', data.user.role || 'recruiter');
+      }
+      if (data.organization) {
+        localStorage.setItem('orgData', JSON.stringify(data.organization));
+        localStorage.setItem('orgName', data.organization.name || '');
+      }
+      setSuccess('Signed in — taking you in.');
+      setTimeout(() => { window.location.href = '/dashboard'; }, 700);
+    } catch (_err) {
+      setError("We couldn't verify your code. Try again.");
+      setIsSubmitting(false);
+    }
+  };
+
+  const startEnrollmentSetup = async () => {
+    setError('');
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`${API_URL}/api/mfa/setup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${enrollmentToken}`,
+        },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.message || 'Failed to start MFA setup.');
+        setIsSubmitting(false);
+        return;
+      }
+      setMfaSetup(data.data);
+      setIsSubmitting(false);
+    } catch (_err) {
+      setError('Failed to start MFA setup.');
+      setIsSubmitting(false);
+    }
+  };
+
+  const completeEnrollment = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!mfaCode || mfaCode.length < 6) {
+      setError('Enter the 6-digit verification code.');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`${API_URL}/api/mfa/verify-setup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${enrollmentToken}`,
+        },
+        body: JSON.stringify({ code: mfaCode }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.message || 'Invalid verification code.');
+        setIsSubmitting(false);
+        return;
+      }
+      setBackupCodes(data.backupCodes || []);
+      if (data.token) {
+        localStorage.setItem('token', data.token);
+        sessionStorage.removeItem('mfaEnrollmentToken');
+        localStorage.setItem('isLoggedIn', 'true');
+        if (data.user) localStorage.setItem('userData', JSON.stringify(data.user));
+        if (data.organization) localStorage.setItem('orgData', JSON.stringify(data.organization));
+        setSuccess('MFA enabled — taking you in.');
+        setTimeout(() => { window.location.href = '/dashboard'; }, 1200);
+      }
+    } catch (_err) {
+      setError('Failed to complete MFA enrollment.');
       setIsSubmitting(false);
     }
   };
@@ -238,6 +366,7 @@ const Login = () => {
       }
 
       setSuccess('Demo account signed in — taking you in.');
+      sessionStorage.setItem('showWelcomeModal', '1');
       setTimeout(() => window.location.href = '/dashboard', 600);
     } catch (err) {
       const message = err?.message && err.message !== 'Demo login failed'
@@ -395,9 +524,15 @@ const Login = () => {
               >
                 <div className="mb-8">
                   <h1 style={{ fontFamily: DISPLAY_FONT }} className="text-[28px] font-bold text-gray-900">
-                    Welcome back
+                    {mfaStep === 'mfa' ? 'Two-factor authentication' : mfaStep === 'enroll' ? 'Set up MFA' : 'Welcome back'}
                   </h1>
-                  <p className="text-sm text-gray-500 mt-1.5">Sign in to your SkillNix account to continue.</p>
+                  <p className="text-sm text-gray-500 mt-1.5">
+                    {mfaStep === 'mfa'
+                      ? 'Enter the code from your authenticator app.'
+                      : mfaStep === 'enroll'
+                        ? 'Your organization requires MFA before you can sign in.'
+                        : 'Sign in to your SkillNix account to continue.'}
+                  </p>
                 </div>
 
                 {/* Status messages */}
@@ -432,6 +567,61 @@ const Login = () => {
                   </AnimatePresence>
                 </div>
 
+                {mfaStep === 'mfa' ? (
+                  <form onSubmit={handleMfaVerify} className="space-y-5" noValidate>
+                    <div>
+                      <label htmlFor="mfa-code" className="block text-sm font-medium text-gray-700 mb-1.5">
+                        Authentication code
+                      </label>
+                      <input
+                        id="mfa-code"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        value={mfaCode}
+                        onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="000000"
+                        className="w-full px-4 py-3 rounded-xl bg-slate-50/70 border border-gray-200 text-gray-900 font-mono tracking-widest text-center text-lg outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500"
+                      />
+                    </div>
+                    <button type="submit" disabled={isSubmitting} className="w-full py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-60 flex items-center justify-center gap-2">
+                      {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Verify & sign in'}
+                    </button>
+                    <button type="button" onClick={() => { setMfaStep('login'); setMfaCode(''); setError(''); }} className="w-full text-sm text-gray-500 hover:text-gray-700">
+                      Back to sign in
+                    </button>
+                  </form>
+                ) : mfaStep === 'enroll' ? (
+                  <div className="space-y-5">
+                    {!mfaSetup ? (
+                      <button type="button" onClick={startEnrollmentSetup} disabled={isSubmitting} className="w-full py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-60 flex items-center justify-center gap-2">
+                        {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Begin MFA setup'}
+                      </button>
+                    ) : (
+                      <form onSubmit={completeEnrollment} className="space-y-4">
+                        <p className="text-sm text-gray-600">Add this secret to your authenticator app:</p>
+                        <code className="block text-xs font-mono bg-slate-100 rounded-lg p-3 break-all">{mfaSetup.secret}</code>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={mfaCode}
+                          onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          placeholder="000000"
+                          className="w-full px-4 py-3 rounded-xl border border-gray-200 font-mono tracking-widest text-center"
+                        />
+                        <button type="submit" disabled={isSubmitting} className="w-full py-3 rounded-xl bg-indigo-600 text-white font-semibold">
+                          {isSubmitting ? 'Verifying…' : 'Verify & continue'}
+                        </button>
+                      </form>
+                    )}
+                    {backupCodes?.length > 0 && (
+                      <div className="text-xs bg-amber-50 border border-amber-200 rounded-lg p-3">
+                        <p className="font-semibold text-amber-900 mb-1">Save backup codes:</p>
+                        <div className="grid grid-cols-2 gap-1 font-mono">{backupCodes.map((c) => <span key={c}>{c}</span>)}</div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
                 <form onSubmit={handleSubmit} className="space-y-5" noValidate>
                   <div>
                     <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -552,6 +742,7 @@ const Login = () => {
                     </Link>
                   </p>
                 </form>
+                )}
               </motion.div>
             ) : (
               <motion.div

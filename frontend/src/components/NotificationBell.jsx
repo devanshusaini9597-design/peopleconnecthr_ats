@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Bell, X, Check, CheckCheck, Clock, AlertTriangle, Calendar, Phone, ChevronRight, Trash2, RefreshCw, User, Mail, ExternalLink, Eye, Users, Share2, UserPlus, UserX, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { authenticatedFetch } from '../utils/fetchUtils';
-
+import EmptyState from './ui/EmptyState';
 import { BASE_API_URL } from '../config';
 
 const NotificationBell = () => {
@@ -225,13 +225,20 @@ const NotificationBell = () => {
       {/* Bell Button */}
       <button
         ref={bellRef}
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+        className={`relative p-2.5 rounded-xl transition-all duration-200 ${
+          isOpen
+            ? 'bg-brand-50 text-brand-700 ring-2 ring-brand-200/70'
+            : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
+        }`}
         title="Notifications"
+        aria-expanded={isOpen}
+        aria-haspopup="dialog"
       >
-        <Bell size={20} className={unreadCount > 0 ? 'text-gray-800' : 'text-gray-600'} />
+        <Bell size={20} strokeWidth={isOpen || unreadCount > 0 ? 2.25 : 2} />
         {unreadCount > 0 && (
-          <span className={`absolute -top-0.5 -right-0.5 min-w-[20px] h-5 px-1 flex items-center justify-center rounded-full text-white text-[11px] font-bold ${urgentCount > 0 ? 'bg-red-500 animate-pulse' : 'bg-blue-600'}`}>
+          <span className={`absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full text-white text-[10px] font-bold shadow-sm ring-2 ring-white ${urgentCount > 0 ? 'bg-red-500 animate-pulse' : 'bg-brand-600'}`}>
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
@@ -241,60 +248,84 @@ const NotificationBell = () => {
       {isOpen && (
         <div
           ref={panelRef}
-          className="absolute right-0 mt-2 w-[420px] max-h-[580px] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden z-50 flex flex-col"
-          style={{ animation: 'fadeInDown 0.15s ease-out' }}
+          className="absolute right-0 mt-2.5 w-[min(420px,calc(100vw-1.5rem))] max-h-[min(580px,70vh)] bg-white rounded-2xl shadow-2xl shadow-stone-300/40 border border-stone-200/80 overflow-hidden z-50 flex flex-col animate-fade-in"
+          role="dialog"
+          aria-label="Notifications"
         >
+          <div className="h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 flex-shrink-0" />
+
           {/* Header */}
-          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/80">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-gray-900">Notifications</h3>
-                {unreadCount > 0 && (
-                  <span className="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-                    {unreadCount} new
-                  </span>
-                )}
+          <div className="px-4 pt-3.5 pb-3 border-b border-stone-100 bg-gradient-to-b from-stone-50/90 to-white">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-teal-500 flex items-center justify-center shadow-sm shadow-brand-500/20 flex-shrink-0">
+                  <Bell size={16} className="text-white" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-stone-900 tracking-tight">Notifications</h3>
+                    {unreadCount > 0 && (
+                      <span className="bg-brand-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full tabular-nums">
+                        {unreadCount} new
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-stone-500 mt-0.5 truncate">Callbacks, shares & team updates</p>
+                </div>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-0.5 flex-shrink-0">
                 <button
+                  type="button"
                   onClick={fetchNotifications}
-                  className="p-1.5 hover:bg-gray-200 rounded-md transition-colors text-gray-500"
+                  className="p-2 rounded-xl hover:bg-stone-100 transition-colors text-stone-400 hover:text-stone-700"
                   title="Refresh"
                 >
-                  <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                  <RefreshCw size={15} className={loading ? 'animate-spin text-brand-600' : ''} />
                 </button>
                 {unreadCount > 0 && (
                   <button
+                    type="button"
                     onClick={markAllRead}
-                    className="p-1.5 hover:bg-gray-200 rounded-md transition-colors text-gray-500"
+                    className="p-2 rounded-xl hover:bg-brand-50 transition-colors text-stone-400 hover:text-brand-700"
                     title="Mark all as read"
                   >
-                    <CheckCheck size={14} />
+                    <CheckCheck size={15} />
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={() => setIsOpen(false)}
-                  className="p-1.5 hover:bg-gray-200 rounded-md transition-colors text-gray-500"
+                  className="p-2 rounded-xl hover:bg-stone-100 transition-all text-stone-400 hover:text-stone-700 hover:rotate-90"
                   title="Close"
                 >
-                  <X size={14} />
+                  <X size={15} />
                 </button>
               </div>
             </div>
-            
+
             {/* Filter Tabs */}
-            <div className="flex gap-1 mt-2">
+            <div className="flex p-1 mt-3 rounded-xl bg-stone-100/90 border border-stone-200/60">
               <button
+                type="button"
                 onClick={() => setFilter('all')}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${filter === 'all' ? 'bg-white text-gray-900 shadow-sm border border-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
+                  filter === 'all'
+                    ? 'bg-white text-stone-900 shadow-sm ring-1 ring-stone-200/80'
+                    : 'text-stone-500 hover:text-stone-700'
+                }`}
               >
                 All
               </button>
               <button
+                type="button"
                 onClick={() => setFilter('unread')}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${filter === 'unread' ? 'bg-white text-gray-900 shadow-sm border border-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
+                  filter === 'unread'
+                    ? 'bg-white text-stone-900 shadow-sm ring-1 ring-stone-200/80'
+                    : 'text-stone-500 hover:text-stone-700'
+                }`}
               >
-                Unread {unreadCount > 0 && `(${unreadCount})`}
+                Unread{unreadCount > 0 ? ` · ${unreadCount}` : ''}
               </button>
             </div>
           </div>
@@ -306,8 +337,9 @@ const NotificationBell = () => {
               <div className="p-4" style={{ animation: 'fadeInDown 0.15s ease-out' }}>
                 {/* Back button */}
                 <button
+                  type="button"
                   onClick={() => setSelectedNotif(null)}
-                  className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium mb-3"
+                  className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-700 font-semibold mb-3"
                 >
                   <ChevronRight size={12} className="rotate-180" />
                   Back to all notifications
@@ -547,25 +579,38 @@ const NotificationBell = () => {
             ) : (
             /* Normal list view */
             loading && notifications.length === 0 ? (
-              <div className="flex items-center justify-center py-12">
-                <RefreshCw size={20} className="animate-spin text-gray-400" />
+              <div className="flex flex-col items-center justify-center py-14 gap-3">
+                <div className="relative w-10 h-10">
+                  <div className="absolute inset-0 rounded-xl bg-brand-100" />
+                  <RefreshCw size={18} className="absolute inset-0 m-auto animate-spin text-brand-600" />
+                </div>
+                <p className="text-xs font-medium text-stone-500">Loading notifications…</p>
               </div>
             ) : notifications.length === 0 ? (
-              <div className="text-center py-12 px-4">
-                <Bell size={36} className="mx-auto text-gray-300 mb-3" />
-                <p className="text-sm font-medium text-gray-500">No notifications</p>
-                <p className="text-xs text-gray-400 mt-1">
-                  {filter === 'unread' ? 'All caught up!' : 'Callback reminders will appear here'}
-                </p>
-              </div>
+              <EmptyState
+                icon={Bell}
+                tone={filter === 'unread' ? 'emerald' : 'sky'}
+                compact
+                message={filter === 'unread' ? 'You’re all caught up' : 'Inbox is quiet'}
+                subMessage={
+                  filter === 'unread'
+                    ? 'No unread items right now.'
+                    : 'Callback reminders, shares, and team invites will show up here.'
+                }
+              />
             ) : (
-              <div className="divide-y divide-gray-50">
+              <div className="divide-y divide-stone-100">
                 {notifications.map((notif) => (
                   <div
                     key={notif._id}
-                    className={`px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer group ${!notif.isRead ? 'bg-blue-50/40 border-l-3 border-l-blue-500' : ''}`}
+                    className={`px-4 py-3.5 hover:bg-brand-50/40 transition-colors cursor-pointer group relative ${
+                      !notif.isRead ? 'bg-brand-50/30' : ''
+                    }`}
                     onClick={() => handleNotifClick(notif)}
                   >
+                    {!notif.isRead && (
+                      <span className="absolute left-0 top-3 bottom-3 w-0.5 rounded-r-full bg-brand-500" />
+                    )}
                     <div className="flex gap-3">
                       {/* Icon */}
                       <div className="mt-0.5">
@@ -575,7 +620,7 @@ const NotificationBell = () => {
                       {/* Content */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
-                          <p className={`text-sm leading-snug ${!notif.isRead ? 'font-semibold text-gray-900' : 'font-medium text-gray-700'}`}>
+                          <p className={`text-sm leading-snug ${!notif.isRead ? 'font-semibold text-stone-900' : 'font-medium text-stone-700'}`}>
                             {notif.title}
                           </p>
                           {notif.type === 'invitation' && notif.status === 'pending' ? (
@@ -595,7 +640,7 @@ const NotificationBell = () => {
                           )}
                         </div>
                         
-                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{notif.message}</p>
+                        <p className="text-xs text-stone-500 mt-1 line-clamp-2 leading-relaxed">{notif.message}</p>
                         
                         {/* Action buttons for invitations */}
                         {notif.type === 'invitation' && notif.actionRequired && notif.status === 'pending' && (
@@ -659,13 +704,14 @@ const NotificationBell = () => {
                       {/* Dismiss button */}
                       <div className="flex flex-col items-center gap-1 self-start">
                         <button
+                          type="button"
                           onClick={(e) => { e.stopPropagation(); dismiss(notif._id); }}
-                          className="p-1 opacity-0 group-hover:opacity-100 hover:bg-gray-200 rounded transition-all text-gray-400 hover:text-gray-600"
+                          className="p-1.5 opacity-0 group-hover:opacity-100 hover:bg-stone-200/80 rounded-lg transition-all text-stone-400 hover:text-stone-700"
                           title="Dismiss"
                         >
                           <X size={14} />
                         </button>
-                        <ChevronRight size={12} className="text-gray-300 group-hover:text-gray-500 transition-colors" />
+                        <ChevronRight size={14} className="text-stone-300 group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all" />
                       </div>
                     </div>
                   </div>
@@ -677,29 +723,22 @@ const NotificationBell = () => {
 
           {/* Footer */}
           {notifications.length > 0 && (
-            <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between">
+            <div className="px-4 py-2.5 border-t border-stone-100 bg-stone-50/80 flex items-center justify-between">
               <button
+                type="button"
                 onClick={clearAll}
-                className="text-xs text-gray-400 hover:text-red-500 transition-colors flex items-center gap-1"
+                className="text-xs font-medium text-stone-400 hover:text-red-500 transition-colors flex items-center gap-1.5"
               >
                 <Trash2 size={12} />
                 Clear read
               </button>
-              <span className="text-[11px] text-gray-400">
+              <span className="text-[11px] font-medium text-stone-400 tabular-nums">
                 {notifications.length} notification{notifications.length !== 1 ? 's' : ''}
               </span>
             </div>
           )}
         </div>
       )}
-
-      {/* Animation styles */}
-      <style>{`
-        @keyframes fadeInDown {
-          from { opacity: 0; transform: translateY(-8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
     </div>
   );
 };

@@ -20,7 +20,10 @@ const IntegrationConfig = require('../models/IntegrationConfig');
 const eventBus = require('../events/eventBus');
 const eventTypes = require('../events/eventTypes');
 
-const VALID_CATEGORIES = ['email', 'calendar', 'sms', 'ai', 'job_board', 'background_check', 'esign', 'whatsapp'];
+const VALID_CATEGORIES = [
+  'email', 'calendar', 'sms', 'ai', 'job_board', 'background_check', 'esign', 'whatsapp',
+  'video', 'storage', 'encryption', 'crm', 'hris', 'siem', 'data_warehouse', 'slack_app'
+];
 
 const CATEGORY_FEATURE = {
   email: 'integrations.byoEmail',
@@ -30,7 +33,15 @@ const CATEGORY_FEATURE = {
   background_check: 'integrations.backgroundCheck',
   ai: 'integrations.aiScoring',
   esign: 'integrations.esign',
-  whatsapp: 'integrations.whatsapp'
+  whatsapp: 'integrations.whatsapp',
+  video: 'integrations.video',
+  storage: 'integrations.storage',
+  encryption: 'security.byokEncryption',
+  crm: 'integrations.crm',
+  hris: 'integrations.hris',
+  siem: 'integrations.siem',
+  data_warehouse: 'integrations.dataWarehouse',
+  slack_app: 'integrations.slackApp'
 };
 
 const requireCategoryEntitlement = async (req, res, next) => {
@@ -99,6 +110,9 @@ router.post('/', requireCategoryEntitlement, async (req, res) => {
     if (credentials !== undefined) {
       config.credentials = credentials; // encrypted automatically by pre-save hook
       config.isValidated = false; // must re-test after credentials change
+      if (category === 'slack_app' && credentials.teamId) {
+        config.metadata = { ...(config.metadata || {}), teamId: credentials.teamId };
+      }
     }
     config.configuredBy = config.configuredBy || req.user.id;
     config.lastModifiedBy = req.user.id;
@@ -163,6 +177,27 @@ router.post('/:id/test', async (req, res) => {
         break;
       case 'whatsapp':
         adapter = require('../adapters/smsAdapter').createSmsAdapter(resolvedConfig);
+        break;
+      case 'video':
+        adapter = require('../adapters/videoAdapter').createVideoAdapter(resolvedConfig);
+        break;
+      case 'storage':
+        adapter = require('../adapters/storageAdapter').createStorageAdapter(resolvedConfig);
+        break;
+      case 'encryption':
+        adapter = require('../adapters/encryptionAdapter').createEncryptionAdapter(resolvedConfig);
+        break;
+      case 'crm':
+        adapter = require('../adapters/crmAdapter').createCrmAdapter(resolvedConfig);
+        break;
+      case 'hris':
+        adapter = require('../adapters/hrisAdapter').createHrisAdapter(resolvedConfig);
+        break;
+      case 'siem':
+        adapter = require('../adapters/siemAdapter').createSiemAdapter(resolvedConfig);
+        break;
+      case 'data_warehouse':
+        adapter = require('../adapters/dataWarehouseAdapter').createDataWarehouseAdapter(resolvedConfig);
         break;
       default:
         return res.status(400).json({ success: false, message: `Test connection not yet implemented for category '${config.category}'` });

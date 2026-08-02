@@ -77,7 +77,7 @@ router.get('/by-domain/:domain', async (req, res) => {
 router.get('/:orgSlug', async (req, res) => {
   try {
     const org = await Organization.findOne({ slug: req.params.orgSlug })
-      .select('name logo plan settings.careersPageTitle settings.careersPageDescription atsSettings.brandColor atsSettings.whiteLabel');
+      .select('name logo plan settings.careersPageTitle settings.careersPageDescription atsSettings.brandColor atsSettings.whiteLabel atsSettings.pageBlocks');
     if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
 
     const jobs = await Job.find({ organizationId: org._id, isPublished: true, status: 'Open' })
@@ -88,6 +88,13 @@ router.get('/:orgSlug', async (req, res) => {
     // alone (a downgraded org shouldn't keep the perk just because the
     // field is still `true` in the database).
     const whiteLabelActive = !!org.atsSettings?.whiteLabel?.enabled && planHasFeature(org.plan, 'whiteLabel');
+    let pageBlocks = org.atsSettings?.pageBlocks || [];
+    if (!planHasFeature(org.plan, 'careers.pageBuilder')) {
+      pageBlocks = [];
+    } else if (!planHasFeature(org.plan, 'careers.whiteLabelBuilder')) {
+      const enterpriseTypes = ['custom_css', 'custom_html', 'video_hero', 'testimonials'];
+      pageBlocks = pageBlocks.filter((b) => !enterpriseTypes.includes(b.type));
+    }
     const orgPublic = {
       _id: org._id,
       name: org.name,
@@ -95,7 +102,8 @@ router.get('/:orgSlug', async (req, res) => {
       settings: org.settings,
       brandColor: org.atsSettings?.brandColor || '#4F46E5',
       whiteLabelActive,
-      hidePoweredBy: whiteLabelActive && !!org.atsSettings?.whiteLabel?.hidePoweredBy
+      hidePoweredBy: whiteLabelActive && !!org.atsSettings?.whiteLabel?.hidePoweredBy,
+      pageBlocks
     };
 
     res.json({ success: true, data: { organization: orgPublic, jobs } });

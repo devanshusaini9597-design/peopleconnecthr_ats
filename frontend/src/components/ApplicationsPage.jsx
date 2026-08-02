@@ -623,7 +623,14 @@ export default function ApplicationsPage() {
               </button>
             </div>
             {jobs.length === 0 && (
-              <p className="text-xs text-stone-400 mt-4">No open jobs yet — post a role from Job Openings first.</p>
+              <EmptyState
+                icon={Briefcase}
+                tone="violet"
+                compact
+                message="No open jobs yet"
+                subMessage="Post a role from Job Openings first."
+                className="mt-2"
+              />
             )}
           </div>
         ) : loading ? (
@@ -641,6 +648,7 @@ export default function ApplicationsPage() {
             <div className="card-ats-bordered w-full max-w-md">
               <EmptyState
                 icon={User}
+                tone="brand"
                 message="No applications yet"
                 subMessage="Add a candidate to this role or share your careers page."
                 action={
@@ -767,7 +775,15 @@ export default function ApplicationsPage() {
                 <tbody className="divide-y divide-stone-100">
                   {filteredApplications.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-5 py-12 text-center text-stone-500">No candidates match your search.</td>
+                      <td colSpan={6} className="px-5">
+                        <EmptyState
+                          icon={Search}
+                          tone="amber"
+                          compact
+                          message="No candidates match your search"
+                          subMessage="Try a different name or clear the search."
+                        />
+                      </td>
                     </tr>
                   ) : (
                     filteredApplications.map((app) => {

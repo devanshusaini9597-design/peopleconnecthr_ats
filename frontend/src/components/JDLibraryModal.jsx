@@ -4,6 +4,7 @@ import {
   X, Check, BookmarkPlus, Pencil
 } from 'lucide-react';
 import Modal from './ui/Modal';
+import EmptyState from './ui/EmptyState';
 import BASE_API_URL from '../config';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 
@@ -331,22 +332,24 @@ const JDLibraryModal = ({ isOpen, onClose, onSelectTemplate }) => {
                 <Loader2 className="w-5 h-5 animate-spin text-brand-600" /> Loading templates…
               </div>
             ) : filteredTemplates.length === 0 ? (
-              <div className="text-center py-12 text-stone-500">
-                <BookOpen className="w-10 h-10 mx-auto mb-3 text-stone-300" />
-                <p className="font-semibold text-stone-700">
-                  {tab === 'saved' ? 'No saved templates yet' : 'No templates match'}
-                </p>
-                <p className="text-sm mt-1 max-w-xs mx-auto">
-                  {tab === 'saved'
+              <EmptyState
+                icon={tab === 'saved' ? BookOpen : Search}
+                tone={tab === 'saved' ? 'violet' : 'amber'}
+                compact
+                message={tab === 'saved' ? 'No saved templates yet' : 'No templates match'}
+                subMessage={
+                  tab === 'saved'
                     ? 'Create one with New Template, or save an existing job as a template.'
-                    : 'Try a different keyword.'}
-                </p>
-                {tab === 'saved' && (
-                  <button type="button" onClick={openCreate} className="btn-primary mt-4 !py-2">
-                    <Plus size={16} /> Create Template
-                  </button>
-                )}
-              </div>
+                    : 'Try a different keyword.'
+                }
+                action={
+                  tab === 'saved' ? (
+                    <button type="button" onClick={openCreate} className="btn-primary !py-2">
+                      <Plus size={16} /> Create Template
+                    </button>
+                  ) : undefined
+                }
+              />
             ) : (
               filteredTemplates.map((template) => (
                 <div

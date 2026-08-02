@@ -1,5 +1,8 @@
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
+const { validateSession, touchSession } = require('../services/sessionService');
+const { ipMatchesAllowlist } = require('../utils/ipMatch');
+const { getClientIp } = require('../utils/clientIp');
 
 // FAIL CLOSED: No hardcoded fallback in production
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -34,7 +37,7 @@ const verifyToken = async (req, res, next) => {
     
     // Check if user still exists in DB
     const User = mongoose.model('User');
-    const user = await User.findById(decoded.id).select('+isActive +role +organizationId +email +name');
+    const user = await User.findById(decoded.id).select('+isActive +role +organizationId +email +name +mfaEnabled');
     
     if (!user) {
       return res.status(401).json({ success: false, message: 'The user belonging to this token no longer exists.' });
@@ -45,13 +48,56 @@ const verifyToken = async (req, res, next) => {
       return res.status(401).json({ success: false, code: 'ACCOUNT_DEACTIVATED', message: 'Your account has been deactivated.' });
     }
 
+    // Session policy (idle timeout / revocation)
+    if (decoded.jti) {
+      const sessionCheck = await validateSession(user._id, decoded.jti, user.organizationId);
+      if (!sessionCheck.valid) {
+        return res.status(401).json({
+          success: false,
+          code: sessionCheck.code,
+          message: sessionCheck.message
+        });
+      }
+      await touchSession(decoded.jti);
+    }
+
     // Check organization if attached
     if (user.organizationId) {
       const Organization = mongoose.model('Organization');
-      const org = await Organization.findById(user.organizationId).select('+isActive');
+      const org = await Organization.findById(user.organizationId).select('+isActive securitySettings plan');
       
       if (org && org.isActive === false) {
         return res.status(401).json({ success: false, code: 'ORG_DEACTIVATED', message: 'Your organization has been deactivated.' });
+      }
+
+      // MFA enforcement — block API access until enrolled
+      const { planHasFeature } = require('../config/planFeatures');
+      if (
+        org?.securitySettings?.mfaEnforced &&
+        planHasFeature(org.plan, 'security.mfaEnforcement') &&
+        !user.mfaEnabled &&
+        decoded.purpose !== 'mfa_enrollment'
+      ) {
+        return res.status(403).json({
+          success: false,
+          code: 'MFA_ENROLLMENT_REQUIRED',
+          message: 'Your organization requires multi-factor authentication. Please enroll MFA before continuing.'
+        });
+      }
+
+      // IP allowlist
+      if (planHasFeature(org.plan, 'security.ipAllowlist')) {
+        const allowlist = org.securitySettings?.ipAllowlist || [];
+        if (allowlist.length) {
+          const clientIp = getClientIp(req);
+          if (!ipMatchesAllowlist(clientIp, allowlist)) {
+            return res.status(403).json({
+              success: false,
+              code: 'IP_NOT_ALLOWED',
+              message: 'Access from your IP address is not permitted by your organization security policy.'
+            });
+          }
+        }
       }
     }
 
@@ -60,7 +106,8 @@ const verifyToken = async (req, res, next) => {
       organizationId: user.organizationId,
       role: user.role,
       email: user.email,
-      name: user.name
+      name: user.name,
+      jti: decoded.jti
     };
     
     next();
@@ -104,7 +151,8 @@ const optionalAuth = async (req, res, next) => {
           organizationId: user.organizationId,
           role: user.role,
           email: user.email,
-          name: user.name
+          name: user.name,
+          jti: decoded.jti
         };
       }
     }
@@ -116,7 +164,8 @@ const optionalAuth = async (req, res, next) => {
 };
 
 /**
- * Generate JWT token for user
+ * Generate JWT token for user (legacy — no session tracking).
+ * Prefer issueAuthToken from sessionService for new logins.
  * @param {Object} user User document
  * @returns {string} JWT Token
  */

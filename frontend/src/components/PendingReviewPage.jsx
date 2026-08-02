@@ -5,6 +5,7 @@ import BASE_API_URL from '../config';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import ConfirmationModal from './ConfirmationModal';
+import EmptyState from './ui/EmptyState';
 import { ctcRanges, expectedCtcOptions, noticePeriodOptions } from '../utils/ctcRanges';
 import { formatNameForInput } from '../utils/textFormatter';
 
@@ -402,11 +403,12 @@ const PendingReviewPage = () => {
                 <Loader2 size={32} className="animate-spin text-[var(--primary-main)]" />
               </div>
             ) : candidates.length === 0 ? (
-              <div className="text-center py-20">
-                <CheckCircle size={48} className="mx-auto text-[var(--success-main)] mb-3" />
-                <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-1">No pending records</h2>
-                <p className="text-sm text-[var(--text-secondary)]">All records have been resolved or there are no auto-imported review/blocked records.</p>
-              </div>
+              <EmptyState
+                icon={CheckCircle}
+                tone="emerald"
+                message="No pending records"
+                subMessage="All records have been resolved or there are no auto-imported review/blocked records."
+              />
             ) : (
               <>
                 <div className="overflow-x-auto">

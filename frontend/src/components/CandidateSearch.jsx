@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, ArrowLeft, RefreshCw, Loader2 } from 'lucide-react';
+import { Search, ArrowLeft, RefreshCw, Loader2, Users } from 'lucide-react';
 import API_URL from '../config';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { ctcRanges } from '../utils/ctcRanges';
 import PageHeader from './ui/PageHeader';
+import EmptyState from './ui/EmptyState';
 
 const CandidateSearch = () => {
   const navigate = useNavigate();
@@ -210,7 +211,15 @@ const CandidateSearch = () => {
               ))}
               {!loading && results.length === 0 && (
                 <tr>
-                  <td className="p-10 text-center text-stone-400" colSpan={6}>No candidates found. Adjust filters and search again.</td>
+                  <td className="p-4" colSpan={6}>
+                    <EmptyState
+                      icon={Users}
+                      tone="amber"
+                      compact
+                      message="No candidates found"
+                      subMessage="Adjust filters and search again."
+                    />
+                  </td>
                 </tr>
               )}
               {loading && (

@@ -249,6 +249,7 @@ exports.getDashboardStats = async (req, res) => {
       topPositions: topPositions.map(p => ({ position: p._id, count: p.count })),
       topSources: topSources.map(s => ({ source: s._id, count: s.count })),
       recentCandidates: recentCandidates.map(c => ({
+        id: c._id,
         name: c.name,
         position: c.position,
         status: c.status,

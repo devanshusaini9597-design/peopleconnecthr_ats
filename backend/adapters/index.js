@@ -1,12 +1,11 @@
 /**
  * Adapter Registry and Factory
- * 
+ *
  * Factory function to get adapters based on organization integration configs.
  */
 const mongoose = require('mongoose');
 const { planHasFeature } = require('../config/planFeatures');
 
-// Import Adapters (lazy loaded or stubs)
 const emailAdapters = require('./emailAdapter');
 const smsAdapter = require('./smsAdapter');
 const calendarAdapter = require('./calendarAdapter');
@@ -14,12 +13,14 @@ const aiAdapter = require('./aiAdapter');
 const jobBoardAdapter = require('./jobBoardAdapter');
 const backgroundCheckAdapter = require('./backgroundCheckAdapter');
 const esignAdapter = require('./esignAdapter');
+const videoAdapter = require('./videoAdapter');
+const storageAdapter = require('./storageAdapter');
+const encryptionAdapter = require('./encryptionAdapter');
+const crmAdapter = require('./crmAdapter');
+const hrisAdapter = require('./hrisAdapter');
+const siemAdapter = require('./siemAdapter');
+const dataWarehouseAdapter = require('./dataWarehouseAdapter');
 
-// Which plan-entitlement gates a BYOK category. If an org's plan doesn't
-// include the feature, getAdapter() returns null even if an IntegrationConfig
-// document exists — this closes the gap where a Starter org that finds the
-// IntegrationConfig endpoint directly could self-configure and use an
-// integration they were never sold. UI hiding alone is not enough.
 const CATEGORY_FEATURE = {
   email: 'integrations.byoEmail',
   calendar: 'integrations.calendar',
@@ -28,16 +29,19 @@ const CATEGORY_FEATURE = {
   background_check: 'integrations.backgroundCheck',
   ai: 'integrations.aiScoring',
   esign: 'integrations.esign',
-  whatsapp: 'integrations.whatsapp'
+  whatsapp: 'integrations.whatsapp',
+  video: 'integrations.video',
+  storage: 'integrations.storage',
+  encryption: 'security.byokEncryption',
+  crm: 'integrations.crm',
+  hris: 'integrations.hris',
+  siem: 'integrations.siem',
+  data_warehouse: 'integrations.dataWarehouse',
+  slack_app: 'integrations.slackApp'
 };
 
 /**
  * Loads IntegrationConfig for the org+category, returns the appropriate adapter instance.
- * Enforces plan entitlement: a non-default (BYOK) adapter is only returned if
- * the org's current plan includes that integration category.
- * @param {string} organizationId The organization ID
- * @param {string} category The category of integration (e.g., 'email', 'sms', 'calendar', 'ai')
- * @returns {Object|null} The adapter instance or null if not configured / not entitled
  */
 const getAdapter = async (organizationId, category) => {
   try {
@@ -53,7 +57,6 @@ const getAdapter = async (organizationId, category) => {
       }
     }
 
-    // Find active integration config for the given org and category
     const config = await IntegrationConfig.findOne({
       organizationId,
       category,
@@ -83,8 +86,21 @@ const getAdapter = async (organizationId, category) => {
       case 'esign':
         return esignAdapter.createEsignAdapter(resolvedConfig);
       case 'whatsapp':
-        // Same Twilio adapter class as SMS — sendWhatsApp() prefixes numbers.
         return smsAdapter.createSmsAdapter(resolvedConfig);
+      case 'video':
+        return videoAdapter.createVideoAdapter(resolvedConfig);
+      case 'storage':
+        return storageAdapter.createStorageAdapter(resolvedConfig);
+      case 'encryption':
+        return encryptionAdapter.createEncryptionAdapter(resolvedConfig);
+      case 'crm':
+        return crmAdapter.createCrmAdapter(resolvedConfig);
+      case 'hris':
+        return hrisAdapter.createHrisAdapter(resolvedConfig);
+      case 'siem':
+        return siemAdapter.createSiemAdapter(resolvedConfig);
+      case 'data_warehouse':
+        return dataWarehouseAdapter.createDataWarehouseAdapter(resolvedConfig);
       default:
         console.warn(`Unknown adapter category requested: ${category}`);
         return null;

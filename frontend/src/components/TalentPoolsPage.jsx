@@ -180,9 +180,13 @@ const AddCandidatesModal = ({ pool, open, onClose, onAdded }) => {
         {searching ? (
           <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 text-brand-600 animate-spin" /></div>
         ) : results.length === 0 ? (
-          <p className="text-sm text-stone-400 text-center py-10">
-            {query ? 'No candidates found.' : 'Start typing to search your candidates.'}
-          </p>
+          <EmptyState
+            icon={query ? Search : Users}
+            tone={query ? 'amber' : 'brand'}
+            compact
+            message={query ? 'No candidates found' : 'Search candidates'}
+            subMessage={query ? 'Try a different name or email.' : 'Start typing to search your candidates.'}
+          />
         ) : (
           <div className="space-y-0.5 stagger-children">
             {results.map((c) => (
@@ -289,6 +293,7 @@ const PoolDetail = ({ pool, onBack, toast }) => {
         ) : candidates.length === 0 ? (
           <EmptyState
             icon={Users}
+            tone="brand"
             message="No candidates in this pool yet"
             subMessage="Add candidates to keep them warm for future roles."
             action={
@@ -481,6 +486,7 @@ const TalentPoolsPage = () => {
             <div className="card-ats-bordered border-red-200/80 bg-red-50/30">
               <EmptyState
                 icon={AlertCircle}
+                tone="amber"
                 message="Couldn’t load talent pools"
                 subMessage={loadError}
                 action={
@@ -499,6 +505,7 @@ const TalentPoolsPage = () => {
             <div className="card-ats-bordered">
               <EmptyState
                 icon={Layers}
+                tone="violet"
                 message="No talent pools yet"
                 subMessage={'Create one to start bucketing candidates like "Frontend Bench" or "Referrals 2026".'}
                 action={
@@ -529,6 +536,7 @@ const TalentPoolsPage = () => {
                 <div className="card-ats-bordered">
                   <EmptyState
                     icon={Search}
+                    tone="amber"
                     message="No pools match your search"
                     subMessage="Try a different name or clear the search."
                   />

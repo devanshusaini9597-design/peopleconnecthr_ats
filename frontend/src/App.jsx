@@ -29,6 +29,7 @@ import ProfileSettingsPage from './components/ProfileSettingsPage'
 import TeamPage from './components/TeamPage'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
+import AppLoadingScreen from './components/ui/AppLoadingScreen'
 
 const OnboardingPage = React.lazy(() => import('./components/OnboardingPage'))
 const AcceptInvitePage = React.lazy(() => import('./components/AcceptInvitePage'))
@@ -51,14 +52,21 @@ const AssessmentsPage = React.lazy(() => import('./components/AssessmentsPage'))
 const AssessmentTakePage = React.lazy(() => import('./components/AssessmentTakePage'))
 const WhiteLabelSettingsPage = React.lazy(() => import('./components/WhiteLabelSettingsPage'))
 const ChromeExtensionSettingsPage = React.lazy(() => import('./components/ChromeExtensionSettingsPage'))
+const SecuritySettingsPage = React.lazy(() => import('./components/SecuritySettingsPage'))
+const TrustCenterPage = React.lazy(() => import('./components/TrustCenterPage'))
+const StatusPage = React.lazy(() => import('./components/StatusPage'))
+const ApprovalsPage = React.lazy(() => import('./components/ApprovalsPage'))
+const ReferralsPage = React.lazy(() => import('./components/ReferralsPage'))
+const SelfBookPage = React.lazy(() => import('./components/SelfBookPage'))
+const SurveyTakePage = React.lazy(() => import('./components/SurveyTakePage'))
+const AiToolsPage = React.lazy(() => import('./components/AiToolsPage'))
 
 const LoadingFallback = () => (
-  <div className="flex items-center justify-center min-h-[50vh] p-8">
-    <div className="text-center">
-      <div className="mx-auto mb-3 h-9 w-9 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
-      <p className="text-sm font-medium text-stone-500">Loading…</p>
-    </div>
-  </div>
+  <AppLoadingScreen
+    fullScreen={false}
+    message="Loading page"
+    subMessage="Just a moment…"
+  />
 );
 
 /** Persistent shell — sidebar/header stay mounted; only Outlet content swaps (AJAX feel). */
@@ -83,6 +91,10 @@ const router = createBrowserRouter([
   { path: '/careers/:orgSlug/jobs/:jobId', element: <Suspense fallback={<LoadingFallback />}><JobDetailPublic /></Suspense> },
   { path: '/portal', element: <Suspense fallback={<LoadingFallback />}><CandidatePortal /></Suspense> },
   { path: '/assessment/:token', element: <Suspense fallback={<LoadingFallback />}><AssessmentTakePage /></Suspense> },
+  { path: '/trust', element: <Suspense fallback={<LoadingFallback />}><TrustCenterPage /></Suspense> },
+  { path: '/status', element: <Suspense fallback={<LoadingFallback />}><StatusPage /></Suspense> },
+  { path: '/book/:tokenOrSlug', element: <Suspense fallback={<LoadingFallback />}><SelfBookPage /></Suspense> },
+  { path: '/survey/:token', element: <Suspense fallback={<LoadingFallback />}><SurveyTakePage /></Suspense> },
 
   { path: '/onboarding', element: <ProtectedRoute><Suspense fallback={<LoadingFallback />}><OnboardingPage /></Suspense></ProtectedRoute> },
   { path: '/onboarding/create-org', element: <ProtectedRoute><Suspense fallback={<LoadingFallback />}><OnboardingPage /></Suspense></ProtectedRoute> },
@@ -107,6 +119,7 @@ const router = createBrowserRouter([
       { path: '/candidate-search', element: <CandidateSearch /> },
       { path: '/talent-pools', element: <Suspense fallback={<LoadingFallback />}><TalentPoolsPage /></Suspense> },
       { path: '/assessments', element: <Suspense fallback={<LoadingFallback />}><AssessmentsPage /></Suspense> },
+      { path: '/ai-tools', element: <Suspense fallback={<LoadingFallback />}><AiToolsPage /></Suspense> },
 
       // Related / shared
       { path: '/auto-import', element: <AutoImportPage /> },
@@ -127,6 +140,9 @@ const router = createBrowserRouter([
       { path: '/organization/white-label', element: <Suspense fallback={<LoadingFallback />}><WhiteLabelSettingsPage /></Suspense> },
       { path: '/organization/chrome-extension', element: <Suspense fallback={<LoadingFallback />}><ChromeExtensionSettingsPage /></Suspense> },
       { path: '/organization/sso', element: <Suspense fallback={<LoadingFallback />}><SSOSettingsPage /></Suspense> },
+      { path: '/organization/security', element: <Suspense fallback={<LoadingFallback />}><SecuritySettingsPage /></Suspense> },
+      { path: '/organization/approvals', element: <Suspense fallback={<LoadingFallback />}><ApprovalsPage /></Suspense> },
+      { path: '/organization/referrals', element: <Suspense fallback={<LoadingFallback />}><ReferralsPage /></Suspense> },
       { path: '/organization/webhooks-api', element: <Suspense fallback={<LoadingFallback />}><WebhooksApiPage /></Suspense> },
       { path: '/organization/scheduled-reports', element: <Suspense fallback={<LoadingFallback />}><ScheduledReportsPage /></Suspense> },
       { path: '/billing', element: <Suspense fallback={<LoadingFallback />}><BillingPage /></Suspense> },

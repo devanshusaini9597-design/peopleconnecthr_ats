@@ -1,11 +1,12 @@
 /**
  * Email Adapter — unified interface for sending emails regardless of provider.
- * 
- * Supports: SMTP (nodemailer), Zoho Zeptomail, SendGrid
+ *
+ * Supports: SMTP (nodemailer), Zoho Zeptomail, SendGrid, AWS SES, Mailgun, Postmark
  */
 
 const nodemailer = require('nodemailer');
 const axios = require('axios');
+const { SESClient, SendEmailCommand, GetAccountSendingEnabledCommand } = require('@aws-sdk/client-ses');
 
 const zohoAuthHeader = (apiKey) => {
   if (!apiKey || typeof apiKey !== 'string') return '';
@@ -140,10 +141,136 @@ class SendGridAdapter {
   }
 }
 
+class SesAdapter {
+  constructor(config) {
+    this.config = config.credentials || {};
+    const { accessKeyId, secretAccessKey, region } = this.config;
+    if (!accessKeyId || !secretAccessKey || !region) {
+      throw new Error('AWS SES is not configured: missing accessKeyId, secretAccessKey, or region');
+    }
+    this.client = new SESClient({
+      region,
+      credentials: { accessKeyId, secretAccessKey, sessionToken: this.config.sessionToken }
+    });
+  }
+
+  async send({ to, subject, html, text, from, replyTo }) {
+    const fromEmail = from || this.config.fromEmail;
+    if (!fromEmail) throw new Error('AWS SES is not configured: missing fromEmail');
+
+    const toList = Array.isArray(to) ? to : [to];
+    const command = new SendEmailCommand({
+      Source: fromEmail,
+      Destination: { ToAddresses: toList },
+      Message: {
+        Subject: { Data: subject, Charset: 'UTF-8' },
+        Body: {
+          ...(text ? { Text: { Data: text, Charset: 'UTF-8' } } : {}),
+          ...(html ? { Html: { Data: html, Charset: 'UTF-8' } } : {})
+        }
+      },
+      ReplyToAddresses: replyTo ? [replyTo] : undefined
+    });
+    const response = await this.client.send(command);
+    return { messageId: response.MessageId };
+  }
+
+  async testConnection() {
+    await this.client.send(new GetAccountSendingEnabledCommand({}));
+    return true;
+  }
+}
+
+class MailgunAdapter {
+  constructor(config) {
+    this.config = config.credentials || {};
+    this.domain = this.config.domain;
+    this.baseUrl = (this.config.apiUrl || `https://api.mailgun.net/v3/${this.domain}`).replace(/\/$/, '');
+  }
+
+  async send({ to, subject, html, text, from, replyTo }) {
+    const { apiKey } = this.config;
+    const fromEmail = from || this.config.fromEmail;
+    if (!apiKey || !fromEmail || !this.domain) {
+      throw new Error('Mailgun is not configured: missing apiKey, fromEmail, or domain');
+    }
+
+    const toList = Array.isArray(to) ? to.join(',') : to;
+    const body = new URLSearchParams({
+      from: fromEmail,
+      to: toList,
+      subject,
+      ...(text ? { text } : {}),
+      ...(html ? { html } : {}),
+      ...(replyTo ? { 'h:Reply-To': replyTo } : {})
+    });
+
+    const response = await axios.post(`${this.baseUrl}/messages`, body.toString(), {
+      auth: { username: 'api', password: apiKey },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      timeout: 30000
+    });
+    return response.data;
+  }
+
+  async testConnection() {
+    const { apiKey } = this.config;
+    if (!apiKey || !this.domain) throw new Error('Missing Mailgun apiKey or domain');
+    await axios.get(`https://api.mailgun.net/v3/domains/${this.domain}`, {
+      auth: { username: 'api', password: apiKey },
+      timeout: 15000
+    });
+    return true;
+  }
+}
+
+class PostmarkAdapter {
+  constructor(config) {
+    this.config = config.credentials || {};
+  }
+
+  async send({ to, subject, html, text, from, replyTo }) {
+    const { serverToken } = this.config;
+    const fromEmail = from || this.config.fromEmail;
+    if (!serverToken || !fromEmail) {
+      throw new Error('Postmark is not configured: missing serverToken or fromEmail');
+    }
+
+    const toList = Array.isArray(to) ? to : [to];
+    const payload = {
+      From: fromEmail,
+      To: toList.join(','),
+      Subject: subject,
+      ...(html ? { HtmlBody: html } : {}),
+      ...(text ? { TextBody: text } : {}),
+      ...(replyTo ? { ReplyTo: replyTo } : {})
+    };
+
+    const response = await axios.post('https://api.postmarkapp.com/email', payload, {
+      headers: {
+        'X-Postmark-Server-Token': serverToken,
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      timeout: 30000
+    });
+    return response.data;
+  }
+
+  async testConnection() {
+    const { serverToken } = this.config;
+    if (!serverToken) throw new Error('Missing Postmark serverToken');
+    await axios.get('https://api.postmarkapp.com/server', {
+      headers: { 'X-Postmark-Server-Token': serverToken, Accept: 'application/json' },
+      timeout: 15000
+    });
+    return true;
+  }
+}
+
 /**
  * Factory to create email adapter based on provider config
  * @param {Object} config The IntegrationConfig document
- * @returns {SMTPAdapter|ZeptoMailAdapter|SendGridAdapter}
  */
 const createEmailAdapter = (config) => {
   if (!config || !config.provider) {
@@ -157,6 +284,12 @@ const createEmailAdapter = (config) => {
       return new ZeptoMailAdapter(config);
     case 'sendgrid':
       return new SendGridAdapter(config);
+    case 'ses':
+      return new SesAdapter(config);
+    case 'mailgun':
+      return new MailgunAdapter(config);
+    case 'postmark':
+      return new PostmarkAdapter(config);
     default:
       throw new Error(`Unsupported email provider: ${config.provider}`);
   }
@@ -166,5 +299,8 @@ module.exports = {
   createEmailAdapter,
   SMTPAdapter,
   ZeptoMailAdapter,
-  SendGridAdapter
+  SendGridAdapter,
+  SesAdapter,
+  MailgunAdapter,
+  PostmarkAdapter
 };

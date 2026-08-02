@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Edit, Trash2, Search, ArrowUpDown, Users2, Link2, Copy, X } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, Search, ArrowUpDown, Users2, Link2, Copy, X, Inbox } from 'lucide-react';
 import BASE_API_URL from '../config';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import ConfirmationModal from './ConfirmationModal';
+import EmptyState from './ui/EmptyState';
 import { formatByFieldName, formatNameForInput } from '../utils/textFormatter';
 import { useAuth } from '../context/AuthContext';
 import { planHasFeature } from '../config/planFeatures';
@@ -446,8 +447,14 @@ const ManageMasterData = ({ title, apiEndpoint, navigateBack }) => {
                 <tbody className="divide-y divide-slate-200">
                   {filteredData.length === 0 ? (
                     <tr>
-                      <td colSpan={viewAllMode ? 5 : 4} className="px-6 py-8 text-center text-slate-500">
-                        {searchTerm ? 'No matching items found' : `No ${title.toLowerCase()} found`}
+                      <td colSpan={viewAllMode ? 5 : 4} className="px-6">
+                        <EmptyState
+                          icon={searchTerm ? Search : Inbox}
+                          tone={searchTerm ? 'amber' : 'brand'}
+                          compact
+                          message={searchTerm ? 'No matching items found' : `No ${title.toLowerCase()} found`}
+                          subMessage={searchTerm ? 'Try a different search term.' : `Add your first ${title.toLowerCase().replace(/s$/, '')} to get started.`}
+                        />
                       </td>
                     </tr>
                   ) : (

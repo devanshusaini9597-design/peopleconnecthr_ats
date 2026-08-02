@@ -13,24 +13,24 @@ const PLAN_FEATURES = {
     'Core ATS workspace',
     'Jobs, candidates & pipeline',
     'Basic analytics',
-    'Email outreach',
-    'Team seats (plan limit)',
+    'MFA / 2FA',
+    'Duplicate detection & candidate surveys',
   ],
   professional: [
     'Everything in Starter',
     'Talent pools & assessments',
-    'Custom pipelines',
-    'Advanced analytics & audit log',
-    'Calendar + BYO email',
-    'AI scoring assist',
+    'Calendar + BYO email + video BYOK',
+    'LLM resume scoring (not parsing)',
+    'Semantic search & AI drafting tools',
+    'Self-schedule booking & referrals',
   ],
   enterprise: [
     'Everything in Professional',
-    'SSO & custom roles',
-    'White-label careers site',
-    'WhatsApp, e-sign, background checks',
-    'Webhooks, Zapier & job boards',
-    'Dedicated success support',
+    'SSO (SAML/OIDC) + SCIM',
+    'Storage, KMS, CRM, HRIS, SIEM BYOK',
+    'IP allowlist, retention & legal hold',
+    'Approvals, offer templates, white-label CMS',
+    'Dedicated / VPC deployment option',
   ],
 };
 
@@ -329,6 +329,8 @@ export default function BillingPage() {
           <UsageBar label="Team members" current={usage.users || 0} max={limits.maxUsers} icon={Users} />
           <UsageBar label="Candidates" current={usage.candidates || 0} max={limits.maxCandidates} icon={Users} tone="emerald" />
           <UsageBar label="Emails sent" current={usage.emailsSent || 0} max={limits.maxEmailsPerMonth} icon={Mail} tone="amber" />
+          <UsageBar label="Job board posts (add-on)" current={usage.jobBoardPostsExtra || 0} max={null} icon={Briefcase} tone="violet" />
+          <UsageBar label="Assessments (add-on)" current={usage.assessmentsExtra || 0} max={null} icon={Users} tone="violet" />
         </div>
       </section>
 

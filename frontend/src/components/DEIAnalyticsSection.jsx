@@ -35,7 +35,13 @@ const BreakdownCard = ({ title, rows }) => {
     return (
       <div className="card-ats-bordered p-5">
         <h4 className="text-sm font-semibold text-stone-900 mb-3">{title}</h4>
-        <p className="text-xs text-stone-400">No self-reported data yet.</p>
+        <EmptyState
+          icon={ShieldCheck}
+          tone="violet"
+          compact
+          message="No self-reported data yet"
+          subMessage="Demographic breakdowns appear when candidates opt in."
+        />
       </div>
     );
   }
@@ -98,7 +104,7 @@ const DEIAnalyticsSection = () => {
   if (!data || data.totalCandidates === 0) {
     return (
       <div className="card-ats-bordered">
-        <EmptyState icon={Users2} message="No candidates yet to analyze." subMessage="Self-reported demographic data will appear here once candidates opt in." />
+        <EmptyState icon={Users2} tone="brand" message="No candidates yet to analyze." subMessage="Self-reported demographic data will appear here once candidates opt in." />
       </div>
     );
   }

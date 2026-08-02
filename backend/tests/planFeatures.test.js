@@ -57,4 +57,25 @@ describe('planFeatures.getEntitlements', () => {
       expect(pro.has(key)).toBe(true);
     }
   });
+
+  test('starter gets MFA and dedupe; not video or storage BYOK', () => {
+    expect(planHasFeature('starter', 'security.mfa')).toBe(true);
+    expect(planHasFeature('starter', 'candidates.dedupe')).toBe(true);
+    expect(planHasFeature('starter', 'integrations.video')).toBe(false);
+    expect(planHasFeature('starter', 'integrations.storage')).toBe(false);
+  });
+
+  test('professional gets AI tools and video; not SCIM or KMS', () => {
+    expect(planHasFeature('professional', 'ai.semanticSearch')).toBe(true);
+    expect(planHasFeature('professional', 'integrations.video')).toBe(true);
+    expect(planHasFeature('professional', 'sso.scim')).toBe(false);
+    expect(planHasFeature('professional', 'security.byokEncryption')).toBe(false);
+  });
+
+  test('enterprise gets compliance and new BYOK categories', () => {
+    expect(planHasFeature('enterprise', 'integrations.crm')).toBe(true);
+    expect(planHasFeature('enterprise', 'compliance.legalHold')).toBe(true);
+    expect(planHasFeature('enterprise', 'workflows.approvals')).toBe(true);
+    expect(planHasFeature('enterprise', 'deployment.dedicated')).toBe(true);
+  });
 });

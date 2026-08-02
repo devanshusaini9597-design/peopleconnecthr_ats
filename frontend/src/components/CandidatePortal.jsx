@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Mail, CheckCircle, ChevronDown, ChevronUp, Clock, AlertCircle, Briefcase, Building, LogOut, ArrowRight, FileText, Download, ShieldAlert, X } from 'lucide-react';
+import { Mail, CheckCircle, ChevronDown, ChevronUp, Clock, AlertCircle, Briefcase, Building, LogOut, ArrowRight, FileText, Download, ShieldAlert, X, Globe } from 'lucide-react';
 import API_URL from '../config';
+import { getPortalLocale, setPortalLocale, t, PORTAL_LOCALES } from '../utils/portalI18n';
 
 /**
  * GDPR self-service widget (Art. 15/17/20) — always available, no plan gate.
@@ -210,9 +211,18 @@ const ApplicationCard = ({ app }) => {
 };
 
 const CandidatePortal = () => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const token = searchParams.get('token');
   const navigate = useNavigate();
+  const [locale, setLocale] = useState(() => getPortalLocale(searchParams));
+
+  const handleLocaleChange = (code) => {
+    setLocale(code);
+    setPortalLocale(code);
+    const next = new URLSearchParams(searchParams);
+    next.set('locale', code);
+    setSearchParams(next, { replace: true });
+  };
 
   const [email, setEmail] = useState('');
   const [loginState, setLoginState] = useState('idle'); // idle, loading, sent, error
@@ -276,15 +286,28 @@ const CandidatePortal = () => {
   if (!token && !authData) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
+        <div className="absolute top-4 right-4 flex items-center gap-2 text-sm text-gray-600">
+          <Globe className="h-4 w-4" />
+          <select
+            value={locale}
+            onChange={(e) => handleLocaleChange(e.target.value)}
+            className="border border-gray-300 rounded-lg px-2 py-1 bg-white"
+            aria-label={t(locale, 'language')}
+          >
+            {PORTAL_LOCALES.map((l) => (
+              <option key={l.code} value={l.code}>{l.label}</option>
+            ))}
+          </select>
+        </div>
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
           <div className="flex justify-center h-12 w-12 bg-indigo-100 rounded-xl mx-auto items-center text-indigo-600">
             <Briefcase className="h-8 w-8" />
           </div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Candidate Portal
+            {t(locale, 'portalTitle')}
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Enter your email to check your application status
+            {t(locale, 'loginTitle')}
           </p>
         </div>
 
@@ -307,7 +330,7 @@ const CandidatePortal = () => {
               <form className="space-y-6" onSubmit={handleLogin}>
                 <div>
                   <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                    Email address
+                    {t(locale, 'emailLabel')}
                   </label>
                   <div className="mt-1">
                     <input

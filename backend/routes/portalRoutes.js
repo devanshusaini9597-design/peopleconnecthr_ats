@@ -17,6 +17,28 @@ const { sendEmail } = require('../services/emailService');
 
 const PORTAL_TOKEN_PURPOSE = 'candidate-portal';
 
+/** GET /localization/:orgSlug — public locale config (portal.localization) */
+router.get('/localization/:orgSlug', async (req, res) => {
+  try {
+    const org = await Organization.findOne({ slug: req.params.orgSlug })
+      .select('atsSettings.portalLocalization plan');
+    if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
+    const { planHasFeature } = require('../config/planFeatures');
+    const loc = org.atsSettings?.portalLocalization || {};
+    const enabled = !!loc.enabled && planHasFeature(org.plan, 'portal.localization');
+    res.json({
+      success: true,
+      data: {
+        enabled,
+        defaultLocale: loc.defaultLocale || 'en',
+        supportedLocales: enabled ? (loc.supportedLocales || ['en']) : ['en']
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 /**
  * POST /login
  * body: { email, orgSlug } — orgSlug disambiguates when the same email

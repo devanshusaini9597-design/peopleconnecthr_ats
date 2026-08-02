@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import AppLoadingScreen from './ui/AppLoadingScreen';
 
 export default function ProtectedRoute({ children, requiredRoles }) {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -8,9 +9,10 @@ export default function ProtectedRoute({ children, requiredRoles }) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-2 border-brand-500 border-t-transparent"></div>
-      </div>
+      <AppLoadingScreen
+        message="Signing you in"
+        subMessage="Verifying your session and loading entitlements…"
+      />
     );
   }
 

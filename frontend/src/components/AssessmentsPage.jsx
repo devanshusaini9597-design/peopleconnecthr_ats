@@ -247,9 +247,13 @@ const InviteModal = ({ assessment, open, onClose, onSent }) => {
       </div>
       <div className="mt-3 max-h-64 overflow-y-auto space-y-0.5">
         {results.length === 0 ? (
-          <p className="text-sm text-stone-400 text-center py-8">
-            {query ? 'No candidates found.' : 'Start typing a name or email.'}
-          </p>
+          <EmptyState
+            icon={Search}
+            tone={query ? 'amber' : 'sky'}
+            compact
+            message={query ? 'No candidates found' : 'Search candidates'}
+            subMessage={query ? 'Try a different name or email.' : 'Start typing a name or email.'}
+          />
         ) : results.map((c) => (
           <button
             key={c._id}
@@ -439,6 +443,7 @@ const AssessmentDetail = ({ assessment, onBack, toast }) => {
         ) : invites.length === 0 ? (
           <EmptyState
             icon={ClipboardList}
+            tone="sky"
             message="No invites sent yet"
             subMessage="Invite a candidate to take this assessment."
             action={
@@ -636,6 +641,7 @@ const AssessmentsPage = () => {
             <div className="card-ats-bordered border-red-200/80 bg-red-50/30">
               <EmptyState
                 icon={AlertCircle}
+                tone="amber"
                 message="Couldn’t load assessments"
                 subMessage={loadError}
                 action={
@@ -654,6 +660,7 @@ const AssessmentsPage = () => {
             <div className="card-ats-bordered">
               <EmptyState
                 icon={ClipboardList}
+                tone="violet"
                 message="No assessments yet"
                 subMessage="Create a skills test and invite candidates to take it."
                 action={
@@ -684,6 +691,7 @@ const AssessmentsPage = () => {
                 <div className="card-ats-bordered">
                   <EmptyState
                     icon={Search}
+                    tone="amber"
                     message="No assessments match your search"
                     subMessage="Try a different title or clear the search."
                   />

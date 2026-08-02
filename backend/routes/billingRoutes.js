@@ -123,4 +123,33 @@ router.post('/cancel', async (req, res) => {
   }
 });
 
+/**
+ * GET /usage-addons — current metered add-on usage
+ */
+const usageMeterService = require('../services/usageMeterService');
+
+router.get('/usage-addons', async (req, res) => {
+  try {
+    const usage = await usageMeterService.getAddonUsage(req.user.organizationId);
+    res.json({ success: true, data: usage });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /usage-addons/increment — internal/stub increment (e.g. after job board post)
+ * Body: { addon: 'jobBoardPosts' | 'assessments', amount?: number }
+ */
+router.post('/usage-addons/increment', async (req, res) => {
+  try {
+    const { addon, amount } = req.body;
+    if (!addon) return res.status(400).json({ success: false, message: 'addon is required' });
+    const total = await usageMeterService.incrementUsage(req.user.organizationId, addon, amount || 1);
+    res.json({ success: true, data: { addon, total } });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 module.exports = router;

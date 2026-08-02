@@ -28,12 +28,33 @@ const organizationSchema = new mongoose.Schema({
     jobs: { type: Number, default: 0 },
     candidates: { type: Number, default: 0 },
     emailsSent: { type: Number, default: 0 },
-    emailsResetAt: { type: Date }
+    emailsResetAt: { type: Date },
+    jobBoardPostsExtra: { type: Number, default: 0 },
+    assessmentsExtra: { type: Number, default: 0 }
   },
   settings: {
     timezone: { type: String, default: 'Asia/Kolkata' },
     currency: { type: String, default: 'INR' },
     dateFormat: { type: String, default: 'DD/MM/YYYY' }
+  },
+  // Enterprise security / compliance controls (gated by planFeatures keys).
+  securitySettings: {
+    mfaEnforced: { type: Boolean, default: false },
+    sessionIdleMinutes: { type: Number, default: 480 },
+    maxConcurrentSessions: { type: Number, default: 10 },
+    ipAllowlist: [{ type: String }],
+    aiTone: { type: String, default: 'professional' }
+  },
+  complianceSettings: {
+    retentionDaysByRegion: { type: Map, of: Number, default: undefined },
+    defaultRetentionDays: { type: Number, default: 730 },
+    legalHoldEnabled: { type: Boolean, default: false }
+  },
+  // shared = multi-tenant SaaS; dedicated = single-tenant/VPC SKU (ops provisions infra).
+  deploymentTier: {
+    type: String,
+    enum: ['shared', 'dedicated'],
+    default: 'shared'
   },
   atsSettings: {
     pipelineStages: {
@@ -65,6 +86,14 @@ const organizationSchema = new mongoose.Schema({
       enabled: { type: Boolean, default: false },
       hidePoweredBy: { type: Boolean, default: false },
       emailFromName: { type: String, default: '', trim: true }
+    },
+    // Career page builder blocks (careers.pageBuilder / careers.whiteLabelBuilder).
+    pageBlocks: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    // Candidate portal localization (portal.localization).
+    portalLocalization: {
+      enabled: { type: Boolean, default: false },
+      defaultLocale: { type: String, default: 'en' },
+      supportedLocales: { type: [String], default: ['en'] }
     }
   },
   billingCustomerId: { type: String, default: '' },

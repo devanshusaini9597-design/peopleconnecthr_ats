@@ -37,7 +37,13 @@ const userSchema = new mongoose.Schema({
   invitedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   inviteToken: { type: String, default: null },
   inviteTokenExpires: { type: Date, default: null },
-  onboardingCompleted: { type: Boolean, default: false }
+  onboardingCompleted: { type: Boolean, default: false },
+  mfaEnabled: { type: Boolean, default: false },
+  mfaSecret: { type: String, select: false, default: null },
+  mfaBackupCodes: [{
+    code: { type: String },
+    used: { type: Boolean, default: false }
+  }]
 }, { timestamps: true });
 
 // Indexes

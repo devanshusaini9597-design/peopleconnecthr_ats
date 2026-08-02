@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, Edit2, Trash2, Mail, Phone, Briefcase, X, Save, Loader2, Search, Building2, ChevronDown, CheckCircle, Clock, UsersRound, Handshake, BarChart3, Target } from 'lucide-react';
+import { Users, Plus, Edit2, Trash2, Mail, Phone, Briefcase, X, Save, Loader2, Search, Building2, CheckCircle, Clock, UsersRound, Handshake, BarChart3, Target, Filter, UserCog, Shield } from 'lucide-react';
 import API_URL from '../config';
 import { authenticatedFetch, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -7,6 +7,22 @@ import ConfirmationModal from './ConfirmationModal';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
 import Modal from './ui/Modal';
+import PremiumSelect from './ui/PremiumSelect';
+
+const ROLE_OPTIONS = [
+  { value: 'Team Member', label: 'Team Member', description: 'My Team', icon: Users },
+  { value: 'Team Lead', label: 'Team Lead', description: 'My Team', icon: UsersRound },
+  { value: 'Recruiter', label: 'Recruiter', description: 'My Team', icon: Briefcase },
+  { value: 'HR Executive', label: 'HR Executive', description: 'My Team', icon: UserCog },
+  { value: 'Reporting Manager', label: 'Reporting Manager', description: 'Reporting / Senior', icon: BarChart3 },
+  { value: 'HR Manager', label: 'HR Manager', description: 'Reporting / Senior', icon: UserCog },
+  { value: 'Director', label: 'Director', description: 'Reporting / Senior', icon: Target },
+  { value: 'VP / Head', label: 'VP / Head', description: 'Reporting / Senior', icon: Shield },
+  { value: 'Hiring Manager', label: 'Hiring Manager', description: 'Stakeholders', icon: Handshake },
+  { value: 'SPOC', label: 'SPOC', description: 'Stakeholders', icon: Target },
+  { value: 'Admin', label: 'Admin', description: 'Stakeholders', icon: Shield },
+  { value: 'External', label: 'External', description: 'Stakeholders', icon: Users },
+];
 
 const BASE = API_URL;
 
@@ -238,326 +254,399 @@ const TeamPage = () => {
     'External': 'bg-stone-100 text-stone-600',
   };
 
-  return (
-    <>
-      <div className="page-shell-ats max-w-5xl">
-        <PageHeader
-          icon={Users}
-          title="Team Directory"
-          subtitle="Add colleagues, managers & stakeholders — quickly CC/BCC them in emails."
-          gradientTitle
-        >
-          <button
-            type="button"
-            onClick={() => { resetForm(); setShowForm(true); }}
-            className="btn-primary"
-          >
-            <Plus size={16} /> Add Member
-          </button>
-        </PageHeader>
+  const filterTabs = [
+    { key: 'all', label: 'All', icon: UsersRound },
+    { key: 'myTeam', label: 'My Team', icon: Handshake },
+    { key: 'reporting', label: 'Reporting', icon: BarChart3 },
+    { key: 'stakeholders', label: 'Stakeholders', icon: Target },
+  ];
 
-        {/* Tabs */}
-        {members.length > 0 && (
-          <div className="flex gap-1 p-1 bg-stone-100 rounded-2xl mb-4 overflow-x-auto scrollbar-hide">
-            {[
-              { key: 'all', label: 'All', icon: UsersRound },
-              { key: 'myTeam', label: 'My Team', icon: Handshake },
-              { key: 'reporting', label: 'Reporting / Senior', icon: BarChart3 },
-              { key: 'stakeholders', label: 'Stakeholders', icon: Target },
-            ].map(tab => {
+  return (
+    <div className="page-shell-ats animate-page-enter">
+      <PageHeader
+        icon={Users}
+        title="Team Directory"
+        subtitle="Add colleagues, managers & stakeholders — quickly CC/BCC them in emails."
+        gradientTitle
+      >
+        <button
+          type="button"
+          onClick={() => { resetForm(); setShowForm(true); }}
+          className="btn-primary flex-1 sm:flex-none"
+        >
+          <Plus size={16} />
+          <span className="whitespace-nowrap">Add Member</span>
+        </button>
+      </PageHeader>
+
+      {/* Pending invitations */}
+      {pendingInvitations.length > 0 && (
+        <div className="card-ats-bordered overflow-hidden border-amber-200/80 bg-gradient-to-br from-amber-50/90 via-white to-orange-50/40">
+          <div className="px-5 sm:px-6 py-4 border-b border-amber-100/80 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-md shadow-amber-500/20 flex-shrink-0">
+              <Clock size={18} className="text-white" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-amber-900 tracking-tight">Pending invitations</h3>
+              <p className="text-xs text-amber-700/80 font-medium mt-0.5">
+                {pendingInvitations.length} invite{pendingInvitations.length !== 1 ? 's' : ''} waiting for your response
+              </p>
+            </div>
+          </div>
+          <div className="p-4 sm:p-5 space-y-3">
+            {pendingInvitations.map((inv) => (
+              <div
+                key={inv._id}
+                className="flex flex-col sm:flex-row sm:items-center gap-4 bg-white rounded-2xl border border-amber-100/90 p-4 shadow-sm"
+              >
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="w-11 h-11 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-sm flex-shrink-0 ring-2 ring-amber-100">
+                    <Mail size={16} className="text-white" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-stone-900 truncate">
+                      Invitation from{' '}
+                      <span className="text-brand-600">{inv.invitedBy ? 'a team member' : 'Unknown'}</span>
+                    </p>
+                    <p className="text-xs text-stone-500 mt-0.5">
+                      Role: {inv.role || 'Team Member'}
+                      {inv.department ? ` · ${inv.department}` : ''}
+                    </p>
+                    {inv.invitationMessage && (
+                      <p className="text-xs text-stone-400 italic mt-1 line-clamp-2">&ldquo;{inv.invitationMessage}&rdquo;</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0 sm:pl-2">
+                  <button
+                    type="button"
+                    onClick={() => handleAcceptInvitation(inv._id)}
+                    disabled={processingInvitation === inv._id}
+                    className="btn-primary !text-xs !px-4 !py-2 flex-1 sm:flex-none !from-emerald-600 !via-emerald-600 !to-emerald-700"
+                  >
+                    {processingInvitation === inv._id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
+                    Accept
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeclineInvitation(inv._id)}
+                    disabled={processingInvitation === inv._id}
+                    className="btn-secondary !text-xs !px-4 !py-2 flex-1 sm:flex-none"
+                  >
+                    <X size={13} />
+                    Decline
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Toolbar: search + filter chips */}
+      {(members.length > 0 || isLoading) && (
+        <div className="toolbar-ats flex flex-col gap-3">
+          <div className="relative flex-1 min-w-0 max-w-full sm:max-w-md">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search name, email, role, department…"
+              className="input-ats !pl-10"
+              disabled={isLoading || members.length === 0}
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500 px-1">
+              <Filter size={14} /> Filter
+            </div>
+            {filterTabs.map((tab) => {
               const count = getTabCount(tab.key);
               const Icon = tab.icon;
+              const active = activeTab === tab.key;
               return (
                 <button
                   key={tab.key}
                   type="button"
                   onClick={() => setActiveTab(tab.key)}
-                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
-                    activeTab === tab.key
-                      ? 'bg-white shadow-sm text-stone-900'
-                      : 'text-stone-500 hover:text-stone-700 hover:bg-stone-50'
+                  disabled={isLoading || members.length === 0}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all whitespace-nowrap ${
+                    active
+                      ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-500/20'
+                      : 'bg-white text-stone-600 border-stone-200 hover:border-brand-300 hover:bg-brand-50/50'
                   }`}
                 >
-                  <Icon size={15} className={activeTab === tab.key ? 'text-brand-600' : ''} />
+                  <Icon size={13} className={active ? 'text-white' : 'text-stone-400'} />
                   {tab.label}
-                  {count > 0 && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === tab.key ? 'bg-brand-100 text-brand-700' : 'bg-stone-200 text-stone-500'}`}>{count}</span>}
+                  {count > 0 && <span className="opacity-70">{count}</span>}
                 </button>
               );
             })}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Search */}
-        {members.length > 0 && (
-          <div className="relative mb-6">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name, email, role, or department..."
-              className="input-ats pl-10"
-            />
-          </div>
-        )}
-
-        {/* PENDING INVITATIONS BANNER */}
-        {pendingInvitations.length > 0 && (
-          <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <Clock size={18} className="text-amber-600" />
-              <h3 className="text-sm font-bold text-amber-800">Pending Invitations ({pendingInvitations.length})</h3>
-            </div>
-            <div className="space-y-3">
-              {pendingInvitations.map(inv => (
-                <div key={inv._id} className="flex items-center justify-between bg-white rounded-lg border border-amber-100 p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center">
-                      <Mail size={16} className="text-white" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-stone-900">Team invitation from <span className="text-brand-600">{inv.invitedBy ? 'a team member' : 'Unknown'}</span></p>
-                      <p className="text-xs text-stone-500">Role: {inv.role || 'Team Member'}{inv.department ? ` in ${inv.department}` : ''}</p>
-                      {inv.invitationMessage && <p className="text-xs text-stone-400 italic mt-0.5">"{inv.invitationMessage}"</p>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleAcceptInvitation(inv._id)}
-                      disabled={processingInvitation === inv._id}
-                      className="btn-primary !text-xs !px-4 !py-2 !from-emerald-600 !via-emerald-600 !to-emerald-700"
-                    >
-                      {processingInvitation === inv._id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
-                      Accept
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeclineInvitation(inv._id)}
-                      disabled={processingInvitation === inv._id}
-                      className="btn-secondary !text-xs !px-4 !py-2"
-                    >
-                      <X size={13} />
-                      Decline
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <Modal
-          open={showForm}
-          onClose={resetForm}
-          title={editingId ? 'Edit Team Member' : 'Add Team Member'}
-          description="They’ll appear as CC/BCC suggestions when you send emails."
-          size="lg"
-          footer={
-            <>
-              <button type="button" onClick={resetForm} className="btn-secondary">Cancel</button>
-              <button type="button" onClick={handleSave} disabled={isSaving} className="btn-primary">
-                {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                {isSaving ? 'Saving…' : editingId ? 'Update' : 'Add Member'}
-              </button>
-            </>
-          }
-        >
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="label-ats">Full Name *</label>
-                <div className="relative">
-                  <Users size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value.replace(/^\s+/, '').replace(/\s{2,}/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }))}
-                    onBlur={() => setFormData((p) => ({ ...p, name: p.name.trim() }))}
-                    className="input-ats !pl-9"
-                    placeholder="John Doe"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="label-ats">Email Address *</label>
-                <div className="relative">
-                  <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => {
-                      setFormData((p) => ({ ...p, email: e.target.value.trim().toLowerCase() }));
-                      if (emailError) setEmailError('');
-                    }}
-                    onBlur={() => formData.email && checkEmailDomain(formData.email)}
-                    className={`input-ats !pl-9 ${emailError ? 'input-ats-error' : ''}`}
-                    placeholder={companyDomain?.domain ? `xyz@${companyDomain.domain}` : 'xyz@skillnixrecruitment.com'}
-                  />
-                </div>
-                {emailError && <p className="field-error">{emailError}</p>}
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="label-ats">Role</label>
-                <div className="relative">
-                  <Briefcase size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-                  <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
-                  <select
-                    value={formData.role}
-                    onChange={(e) => setFormData((p) => ({ ...p, role: e.target.value }))}
-                    className="input-ats !pl-9 !pr-9 appearance-none cursor-pointer"
-                  >
-                    <optgroup label="My Team">
-                      <option value="Team Member">Team Member</option>
-                      <option value="Team Lead">Team Lead</option>
-                      <option value="Recruiter">Recruiter</option>
-                      <option value="HR Executive">HR Executive</option>
-                    </optgroup>
-                    <optgroup label="Reporting / Senior">
-                      <option value="Reporting Manager">Reporting Manager</option>
-                      <option value="HR Manager">HR Manager</option>
-                      <option value="Director">Director</option>
-                      <option value="VP / Head">VP / Head</option>
-                    </optgroup>
-                    <optgroup label="Stakeholders">
-                      <option value="Hiring Manager">Hiring Manager</option>
-                      <option value="SPOC">SPOC</option>
-                      <option value="Admin">Admin</option>
-                      <option value="External">External</option>
-                    </optgroup>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="label-ats">Department</label>
-                <div className="relative">
-                  <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-                  <input
-                    type="text"
-                    value={formData.department}
-                    onChange={(e) => setFormData((p) => ({ ...p, department: e.target.value.replace(/^\s+/, '').replace(/\s{2,}/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }))}
-                    onBlur={() => setFormData((p) => ({ ...p, department: p.department.trim() }))}
-                    className="input-ats !pl-9"
-                    placeholder="e.g. Engineering"
-                  />
-                </div>
+      <Modal
+        open={showForm}
+        onClose={resetForm}
+        title={editingId ? 'Edit Team Member' : 'Add Team Member'}
+        description="They’ll appear as CC/BCC suggestions when you send emails."
+        size="lg"
+        footer={
+          <>
+            <button type="button" onClick={resetForm} className="btn-secondary">Cancel</button>
+            <button type="button" onClick={handleSave} disabled={isSaving} className="btn-primary">
+              {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+              {isSaving ? 'Saving…' : editingId ? 'Update' : 'Add Member'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label-ats">Full Name *</label>
+              <div className="relative">
+                <Users size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value.replace(/^\s+/, '').replace(/\s{2,}/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }))}
+                  onBlur={() => setFormData((p) => ({ ...p, name: p.name.trim() }))}
+                  className="input-ats !pl-10"
+                  placeholder="John Doe"
+                />
               </div>
             </div>
             <div>
-              <label className="label-ats">Phone (Optional)</label>
+              <label className="label-ats">Email Address *</label>
               <div className="relative">
-                <Phone size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
                 <input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
-                  className="input-ats !pl-9"
-                  placeholder="+91-XXXXXXXXXX"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => {
+                    setFormData((p) => ({ ...p, email: e.target.value.trim().toLowerCase() }));
+                    if (emailError) setEmailError('');
+                  }}
+                  onBlur={() => formData.email && checkEmailDomain(formData.email)}
+                  className={`input-ats !pl-10 ${emailError ? 'input-ats-error' : ''}`}
+                  placeholder={companyDomain?.domain ? `xyz@${companyDomain.domain}` : 'xyz@skillnixrecruitment.com'}
+                />
+              </div>
+              {emailError && <p className="field-error">{emailError}</p>}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label-ats">Role</label>
+              <PremiumSelect
+                value={formData.role}
+                onChange={(v) => setFormData((p) => ({ ...p, role: v || 'Team Member' }))}
+                options={ROLE_OPTIONS}
+                placeholder="Select role"
+                icon={Briefcase}
+                searchable
+                searchPlaceholder="Search roles…"
+              />
+            </div>
+            <div>
+              <label className="label-ats">Department</label>
+              <div className="relative">
+                <Building2 size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={formData.department}
+                  onChange={(e) => setFormData((p) => ({ ...p, department: e.target.value.replace(/^\s+/, '').replace(/\s{2,}/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }))}
+                  onBlur={() => setFormData((p) => ({ ...p, department: p.department.trim() }))}
+                  className="input-ats !pl-10"
+                  placeholder="e.g. Engineering"
                 />
               </div>
             </div>
           </div>
-        </Modal>
-
-        {/* Content */}
-        {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <Loader2 size={32} className="text-brand-600 animate-spin" />
-            <p className="text-stone-500 mt-3">Loading team...</p>
+          <div>
+            <label className="label-ats">Phone (Optional)</label>
+            <div className="relative">
+              <Phone size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+              <input
+                type="tel"
+                value={formData.phone}
+                onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
+                className="input-ats !pl-10"
+                placeholder="+91-XXXXXXXXXX"
+              />
+            </div>
           </div>
-        ) : members.length === 0 ? (
-          <div className="card-ats-bordered">
+        </div>
+      </Modal>
+
+      {/* Content */}
+      {isLoading ? (
+        <div className="card-ats-bordered overflow-hidden">
+          <div className="px-5 sm:px-6 py-4 border-b border-stone-100 bg-stone-50/80 flex items-center gap-3">
+            <div className="h-4 w-32 skeleton-ats rounded-lg" />
+          </div>
+          <div className="divide-y divide-stone-100">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="flex items-center gap-4 px-5 sm:px-6 py-4">
+                <div className="w-11 h-11 rounded-full skeleton-ats flex-shrink-0" />
+                <div className="flex-1 space-y-2 min-w-0">
+                  <div className="h-4 w-40 skeleton-ats rounded-lg" />
+                  <div className="h-3 w-56 max-w-full skeleton-ats rounded-lg" />
+                </div>
+                <div className="hidden sm:block h-8 w-16 skeleton-ats rounded-xl" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : members.length === 0 ? (
+        <div className="card-ats-bordered">
+          <EmptyState
+            icon={Users}
+            tone="brand"
+            message="No contacts yet"
+            subMessage="Add your team members, reporting managers, and stakeholders here. They'll appear as suggestions when you CC/BCC in emails — just like Gmail."
+            action={
+              <button type="button" onClick={() => { resetForm(); setShowForm(true); }} className="btn-primary">
+                <Plus size={16} /> Add Your First Contact
+              </button>
+            }
+          />
+        </div>
+      ) : (
+        <div className="card-ats-bordered overflow-hidden relative">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+          <div className="px-5 sm:px-6 py-4 border-b border-stone-100 bg-stone-50/80 flex items-center justify-between gap-3 mt-1">
+            <p className="text-sm font-semibold text-stone-700">
+              {filtered.length} team member{filtered.length !== 1 ? 's' : ''}
+            </p>
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="text-xs font-semibold text-brand-600 hover:text-brand-700"
+              >
+                Clear search
+              </button>
+            )}
+          </div>
+          {filtered.length === 0 ? (
             <EmptyState
-              icon={Users}
-              message="No contacts yet"
-              subMessage="Add your team members, reporting managers, and stakeholders here. They'll appear as suggestions when you CC/BCC in emails — just like Gmail."
+              icon={Search}
+              tone="amber"
+              message="No matching members"
+              subMessage="Try adjusting your search or filter."
               action={
-                <button type="button" onClick={() => { resetForm(); setShowForm(true); }} className="btn-primary">
-                  <Plus size={16} /> Add Your First Contact
+                <button
+                  type="button"
+                  onClick={() => { setSearchQuery(''); setActiveTab('all'); }}
+                  className="btn-secondary"
+                >
+                  Clear filters
                 </button>
               }
             />
-          </div>
-        ) : (
-          <div className="card-ats-bordered overflow-hidden">
-            <div className="px-6 py-4 border-b border-stone-200 bg-stone-50 flex items-center justify-between">
-              <p className="text-sm font-medium text-stone-600">{filtered.length} team member{filtered.length !== 1 ? 's' : ''}</p>
-            </div>
-            {filtered.length === 0 ? (
-              <div className="p-8 text-center text-stone-500 text-sm">No team members match your search</div>
-            ) : (
-              <div className="divide-y divide-stone-100">
-                {filtered.map(member => (
-                  <div key={member._id} className="flex items-center gap-4 px-6 py-4 hover:bg-stone-50/50 transition-colors group">
-                    {/* Avatar */}
-                    <div className="w-10 h-10 bg-gradient-to-br from-brand-500 to-teal-700 rounded-full flex items-center justify-center flex-shrink-0">
-                      <span className="text-white font-bold text-sm">
-                        {member.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
-                      </span>
-                    </div>
-
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-semibold text-stone-900 truncate">{member.name}</p>
-                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${roleColors[member.role] || 'bg-stone-100 text-stone-600'}`}>
-                          {member.role === 'SPOC' ? 'SPOC' : member.role}
-                        </span>
-                        {member.invitedMe && (
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700" title="This person invited you to their team">Invited you</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 mt-0.5">
-                        <p className="text-xs text-stone-500 flex items-center gap-1"><Mail size={11} /> {member.email}</p>
-                        {member.phone && <p className="text-xs text-stone-400 flex items-center gap-1"><Phone size={11} /> {member.phone}</p>}
-                        {member.department && <p className="text-xs text-stone-400 flex items-center gap-1"><Building2 size={11} /> {member.department}</p>}
-                      </div>
-                    </div>
-
-                    {/* Actions - only for members I invited (not "invited me") */}
-                    {!member.invitedMe && (
-                      <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => handleEdit(member)} className="p-2 hover:bg-brand-50 rounded-lg transition-colors" title="Edit">
-                          <Edit2 size={15} className="text-brand-600" />
-                        </button>
-                        <button onClick={() => confirmDelete(member)} disabled={deletingId === member._id}
-                          className="p-2 hover:bg-red-50 rounded-lg transition-colors" title="Remove">
-                          {deletingId === member._id ? <Loader2 size={15} className="text-red-400 animate-spin" /> : <Trash2 size={15} className="text-red-500" />}
-                        </button>
-                      </div>
-                    )}
+          ) : (
+            <div className="divide-y divide-stone-100 stagger-children">
+              {filtered.map((member) => (
+                <div
+                  key={member._id}
+                  className="flex items-center gap-3 sm:gap-4 px-5 sm:px-6 py-4 hover:bg-brand-50/30 transition-colors duration-200 group"
+                >
+                  <div className="w-11 h-11 rounded-full bg-gradient-to-br from-brand-500 via-teal-600 to-teal-700 flex items-center justify-center flex-shrink-0 shadow-md shadow-brand-500/20 ring-2 ring-white">
+                    <span className="text-white font-bold text-sm tracking-tight">
+                      {member.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
+                    </span>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        {/* Delete Confirmation Modal */}
-        <ConfirmationModal
-          isOpen={!!deleteConfirm}
-          onClose={() => setDeleteConfirm(null)}
-          onConfirm={handleDelete}
-          title="Remove Team Member"
-          message={`Are you sure you want to remove "${deleteConfirm?.name}" from your team? This action cannot be undone.`}
-          details={deleteConfirm && (
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-gradient-to-br from-brand-500 to-teal-700 rounded-full flex items-center justify-center flex-shrink-0">
-                <span className="text-white font-bold text-xs">{deleteConfirm.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</span>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-stone-900">{deleteConfirm.name}</p>
-                <p className="text-xs text-stone-500">{deleteConfirm.email}</p>
-              </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-bold text-stone-900 truncate tracking-tight">{member.name}</p>
+                      <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-lg ${roleColors[member.role] || 'bg-stone-100 text-stone-600'}`}>
+                        {member.role === 'SPOC' ? 'SPOC' : member.role}
+                      </span>
+                      {member.invitedMe && (
+                        <span className="badge-success text-[10px]" title="This person invited you to their team">
+                          Invited you
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
+                      <p className="text-xs text-stone-500 flex items-center gap-1.5 min-w-0">
+                        <Mail size={12} className="text-stone-400 flex-shrink-0" />
+                        <span className="truncate">{member.email}</span>
+                      </p>
+                      {member.phone && (
+                        <p className="text-xs text-stone-400 flex items-center gap-1.5">
+                          <Phone size={12} className="flex-shrink-0" /> {member.phone}
+                        </p>
+                      )}
+                      {member.department && (
+                        <p className="text-xs text-stone-400 flex items-center gap-1.5">
+                          <Building2 size={12} className="flex-shrink-0" /> {member.department}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {!member.invitedMe && (
+                    <div className="flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(member)}
+                        className="p-2.5 rounded-xl text-brand-600 hover:bg-brand-50 transition-colors touch-target"
+                        title="Edit"
+                        aria-label={`Edit ${member.name}`}
+                      >
+                        <Edit2 size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => confirmDelete(member)}
+                        disabled={deletingId === member._id}
+                        className="p-2.5 rounded-xl text-red-500 hover:bg-red-50 transition-colors touch-target"
+                        title="Remove"
+                        aria-label={`Remove ${member.name}`}
+                      >
+                        {deletingId === member._id
+                          ? <Loader2 size={15} className="animate-spin" />
+                          : <Trash2 size={15} />}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
-          confirmText="Remove Member"
-          type="delete"
-          isLoading={!!deletingId}
-        />
-      </div>
-    </>
+        </div>
+      )}
+
+      <ConfirmationModal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handleDelete}
+        title="Remove Team Member"
+        message={`Are you sure you want to remove "${deleteConfirm?.name}" from your team? This action cannot be undone.`}
+        details={deleteConfirm && (
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-brand-500 to-teal-700 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
+              <span className="text-white font-bold text-xs">
+                {deleteConfirm.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
+              </span>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-stone-900">{deleteConfirm.name}</p>
+              <p className="text-xs text-stone-500">{deleteConfirm.email}</p>
+            </div>
+          </div>
+        )}
+        confirmText="Remove Member"
+        type="delete"
+        isLoading={!!deletingId}
+      />
+    </div>
   );
 };
 

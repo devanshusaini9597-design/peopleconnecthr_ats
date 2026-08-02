@@ -36,16 +36,31 @@ const RoleModal = ({ open, initial, onClose, onSave, saving }) => {
     }));
   };
 
+  const toggleGroup = (perms) => {
+    setForm((f) => {
+      const allOn = perms.every((p) => f.permissions.includes(p));
+      if (allOn) {
+        return { ...f, permissions: f.permissions.filter((p) => !perms.includes(p)) };
+      }
+      return { ...f, permissions: [...new Set([...f.permissions, ...perms])] };
+    });
+  };
+
+  const selectedCount = form.permissions.length;
+
   return (
     <Modal
       open={open}
       onClose={onClose}
       title={initial ? 'Edit Role' : 'New Custom Role'}
-      description="Choose a name and the permissions this role grants."
+      description="Name the role and pick the permissions it grants."
       size="lg"
       footer={
         <>
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <span className="hidden sm:inline text-xs font-medium text-stone-400 mr-auto self-center">
+            {selectedCount} permission{selectedCount !== 1 ? 's' : ''} selected
+          </span>
+          <button type="button" onClick={onClose} className="btn-secondary" disabled={saving}>Cancel</button>
           <button
             type="button"
             onClick={() => onSave(form)}
@@ -57,47 +72,92 @@ const RoleModal = ({ open, initial, onClose, onSave, saving }) => {
         </>
       }
     >
-      <div className="space-y-4">
-        <div>
-          <label className="label-ats">Role name</label>
-          <input
-            value={form.name}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            className="input-ats"
-            placeholder="e.g. Senior Recruiter"
-            autoFocus
-          />
+      <div className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="label-ats">Role name *</label>
+            <input
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              className="input-ats"
+              placeholder="e.g. Senior Recruiter"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="label-ats">Description</label>
+            <input
+              value={form.description}
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+              className="input-ats"
+              placeholder="Optional"
+            />
+          </div>
         </div>
+
         <div>
-          <label className="label-ats">Description</label>
-          <input
-            value={form.description}
-            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-            className="input-ats"
-            placeholder="Optional"
-          />
-        </div>
-        <div>
-          <label className="label-ats mb-2">Permissions</label>
-          <div className="space-y-4">
-            {Object.entries(PERMISSION_GROUPS).map(([group, perms]) => (
-              <div key={group}>
-                <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1.5">{group}</div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {perms.map((perm) => (
-                    <label key={perm} className="flex items-center gap-2.5 text-sm text-stone-700 cursor-pointer min-h-[44px] sm:min-h-0 py-1">
-                      <input
-                        type="checkbox"
-                        checked={form.permissions.includes(perm)}
-                        onChange={() => togglePermission(perm)}
-                        className="rounded border-stone-300 text-brand-600 focus:ring-brand-500/30"
-                      />
-                      {perm.split('.')[1]}
-                    </label>
-                  ))}
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <label className="label-ats !mb-0">Permissions</label>
+            <span className="text-[11px] font-semibold text-stone-400 sm:hidden">
+              {selectedCount} selected
+            </span>
+          </div>
+          <div className="rounded-xl border border-stone-200 overflow-hidden divide-y divide-stone-100">
+            {Object.entries(PERMISSION_GROUPS).map(([group, perms]) => {
+              const allOn = perms.every((p) => form.permissions.includes(p));
+              const someOn = !allOn && perms.some((p) => form.permissions.includes(p));
+              return (
+                <div key={group} className="bg-white">
+                  <div className="flex items-center justify-between gap-2 px-3 py-2 bg-stone-50/90 border-b border-stone-100/80">
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(perms)}
+                      className="flex items-center gap-2 text-left min-w-0"
+                    >
+                      <span
+                        className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 text-[10px] font-bold ${
+                          allOn
+                            ? 'bg-brand-600 border-brand-600 text-white'
+                            : someOn
+                              ? 'bg-brand-100 border-brand-400 text-brand-700'
+                              : 'bg-white border-stone-300 text-transparent'
+                        }`}
+                        aria-hidden
+                      >
+                        {allOn ? '✓' : someOn ? '–' : ''}
+                      </span>
+                      <span className="text-xs font-bold text-stone-700 uppercase tracking-wide">{group}</span>
+                    </button>
+                    <span className="text-[10px] font-semibold text-stone-400 tabular-nums">
+                      {perms.filter((p) => form.permissions.includes(p)).length}/{perms.length}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-0">
+                    {perms.map((perm) => {
+                      const checked = form.permissions.includes(perm);
+                      return (
+                        <label
+                          key={perm}
+                          className={`flex items-center gap-2 text-sm cursor-pointer px-3 py-2 border-stone-50 transition-colors ${
+                            checked
+                              ? 'bg-brand-50/70 text-brand-800'
+                              : 'text-stone-600 hover:bg-stone-50'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => togglePermission(perm)}
+                            className="rounded border-stone-300 text-brand-600 focus:ring-brand-500/30 w-3.5 h-3.5"
+                          />
+                          <span className="font-medium capitalize text-[13px] truncate">{perm.split('.')[1]}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -184,10 +244,24 @@ const CustomRolesPage = () => {
 
   if (loading) {
     return (
-      <div className="page-shell-ats">
-        <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3">
-          <Loader2 className="w-8 h-8 text-brand-600 animate-spin" />
-          <p className="text-sm text-stone-500 font-medium">Loading custom roles…</p>
+      <div className="page-shell-ats animate-page-enter">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-2xl skeleton-ats flex-shrink-0" />
+          <div className="space-y-2 flex-1 pt-1">
+            <div className="h-7 w-48 skeleton-ats rounded-lg" />
+            <div className="h-4 w-72 max-w-full skeleton-ats rounded-lg" />
+          </div>
+        </div>
+        <div className="card-ats-bordered overflow-hidden mt-2 divide-y divide-stone-100">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="p-5 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl skeleton-ats" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 w-40 skeleton-ats rounded-lg" />
+                <div className="h-3 w-56 skeleton-ats rounded-lg" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -195,7 +269,7 @@ const CustomRolesPage = () => {
 
   if (upgradeRequired) {
     return (
-      <div className="page-shell-ats">
+      <div className="page-shell-ats animate-page-enter">
         <div className="min-h-[60vh] flex items-center justify-center px-4">
           <div className="max-w-md w-full text-center card-ats-bordered border-amber-200/80 bg-amber-50/40 p-8 sm:p-10 animate-slide-up">
             <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto mb-4 ring-4 ring-amber-100/60">
@@ -203,7 +277,7 @@ const CustomRolesPage = () => {
             </div>
             <h2 className="text-xl font-bold text-stone-900 tracking-tight">Custom Roles is an Enterprise feature</h2>
             <p className="text-stone-500 mt-2 text-sm leading-relaxed">
-              Upgrade to Enterprise to build fine-grained permission sets beyond the standard 5 roles.
+              Upgrade to Enterprise to build fine-grained permission sets beyond the standard roles.
             </p>
             <a href="/billing" className="btn-primary inline-flex mt-6">View Plans</a>
           </div>
@@ -213,23 +287,24 @@ const CustomRolesPage = () => {
   }
 
   return (
-    <div className="page-shell-ats max-w-4xl">
+    <div className="page-shell-ats animate-page-enter">
       <PageHeader
         icon={ShieldPlus}
         title="Custom Roles"
         subtitle="Define fine-grained permission sets and assign them to team members."
         gradientTitle
       >
-        <button type="button" onClick={openCreate} className="btn-primary">
+        <button type="button" onClick={openCreate} className="btn-primary flex-1 sm:flex-none">
           <Plus className="w-4 h-4" /> New Role
         </button>
       </PageHeader>
 
-      <div className="card-ats-bordered divide-y divide-stone-100 overflow-hidden">
-        {roles.length === 0 ? (
+      {roles.length === 0 ? (
+        <div className="card-ats-bordered">
           <EmptyState
             icon={ShieldPlus}
-            message="No custom roles yet."
+            tone="violet"
+            message="No custom roles yet"
             subMessage="Create one to give team members a permission set beyond the standard roles."
             action={
               <button type="button" onClick={openCreate} className="btn-primary">
@@ -237,41 +312,57 @@ const CustomRolesPage = () => {
               </button>
             }
           />
-        ) : roles.map((role) => (
-          <div key={role._id} className="p-4 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-brand-50/20 transition-colors">
-            <div className="min-w-0">
-              <div className="font-semibold text-stone-900">{role.name}</div>
-              {role.description && <div className="text-sm text-stone-500 mt-0.5">{role.description}</div>}
-              <span className="badge-neutral mt-2 inline-flex">
-                {role.permissions.length} permission{role.permissions.length !== 1 ? 's' : ''}
-              </span>
-            </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <button
-                type="button"
-                onClick={() => openEdit(role)}
-                className="p-2.5 hover:bg-stone-100 rounded-xl text-stone-500 hover:text-brand-600 transition-colors touch-target"
-                title="Edit role"
-              >
-                <Edit2 className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setDeleteTarget(role)}
-                className="p-2.5 hover:bg-red-50 rounded-xl text-stone-400 hover:text-red-500 transition-colors touch-target"
-                title="Delete role"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <p className="text-xs text-stone-400 leading-relaxed">
-        Role assignment: use <code className="text-stone-500">PUT /api/custom-roles/assign/:userId</code> (Team UI integration is pending —
-        see the User/TeamMember model note in the productization blueprint).
-      </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 stagger-children">
+          {roles.map((role) => (
+            <article
+              key={role._id}
+              className="card-ats-bordered p-5 relative overflow-hidden group flex flex-col"
+            >
+              <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-500 to-teal-700 text-white flex items-center justify-center shadow-md shadow-brand-500/20 flex-shrink-0">
+                  <ShieldPlus className="w-5 h-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-bold text-stone-900 tracking-tight truncate">{role.name}</h3>
+                  {role.description ? (
+                    <p className="text-sm text-stone-500 mt-0.5 line-clamp-2">{role.description}</p>
+                  ) : (
+                    <p className="text-sm text-stone-400 mt-0.5 italic">No description</p>
+                  )}
+                </div>
+              </div>
+              <div className="mt-auto flex items-center justify-between gap-2 pt-3 border-t border-stone-100">
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full border bg-brand-50 text-brand-700 border-brand-100">
+                  {role.permissions?.length || 0} permission{(role.permissions?.length || 0) !== 1 ? 's' : ''}
+                </span>
+                <div className="flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => openEdit(role)}
+                    className="p-2.5 rounded-xl text-brand-600 hover:bg-brand-50 transition-colors touch-target"
+                    title="Edit role"
+                    aria-label={`Edit ${role.name}`}
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteTarget(role)}
+                    className="p-2.5 rounded-xl text-red-500 hover:bg-red-50 transition-colors touch-target"
+                    title="Delete role"
+                    aria-label={`Delete ${role.name}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
 
       <RoleModal
         open={showModal}

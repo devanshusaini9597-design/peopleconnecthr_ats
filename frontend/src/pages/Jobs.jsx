@@ -364,6 +364,7 @@ const Jobs = () => {
         <div className="card-ats-bordered">
           <EmptyState
             icon={Briefcase}
+            tone="violet"
             message="No job openings yet"
             subMessage="Post your first role to start receiving applications."
             action={
@@ -377,6 +378,7 @@ const Jobs = () => {
         <div className="card-ats-bordered">
           <EmptyState
             icon={Search}
+            tone="amber"
             message="No matching jobs"
             subMessage="Try adjusting your search or status filter."
             action={

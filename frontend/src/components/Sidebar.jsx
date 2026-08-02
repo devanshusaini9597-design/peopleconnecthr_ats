@@ -29,11 +29,12 @@ import {
   ClipboardList,
   Palette,
   Chrome,
-  Home
+  Home,
+  Sparkles
 } from 'lucide-react';
 import { handleLogout } from '../utils/authUtils';
 import { useAuth } from '../context/AuthContext';
-import { planHasFeature } from '../config/planFeatures';
+import { planHasFeature, planHasAnyIntegration } from '../config/planFeatures';
 
 const getUserData = () => {
   try {
@@ -84,6 +85,7 @@ const SECTIONS = [
       { label: 'Resume Parsing', path: '/resume-parsing', icon: FileText, roles: ['owner', 'admin', 'recruiter'] },
       { label: 'Talent Pools', path: '/talent-pools', icon: Layers, roles: ['owner', 'admin', 'recruiter'], feature: 'candidates.talentPools' },
       { label: 'Assessments', path: '/assessments', icon: ClipboardList, roles: ['owner', 'admin', 'recruiter'], feature: 'assessments' },
+      { label: 'AI Tools', path: '/ai-tools', icon: Sparkles, roles: ['owner', 'admin', 'recruiter'], feature: 'ai.jdGenerator' },
     ]
   },
   {
@@ -103,14 +105,17 @@ const SECTIONS = [
     items: [
       { label: 'Team', path: '/team', icon: UserCog, roles: ['owner', 'admin'] },
       { label: 'Organization', path: '/organization', icon: Building2, roles: ['owner', 'admin'] },
-      { label: 'Integrations', path: '/organization/integrations', icon: Plug, roles: ['owner', 'admin'], feature: 'integrations.byoEmail' },
+      { label: 'Integrations', path: '/organization/integrations', icon: Plug, roles: ['owner', 'admin'], anyIntegration: true },
       { label: 'Audit Log', path: '/organization/audit-log', icon: ScrollText, roles: ['owner', 'admin'], feature: 'audit.log' },
       { label: 'Custom Roles', path: '/organization/custom-roles', icon: ShieldPlus, roles: ['owner', 'admin'], feature: 'team.customRoles' },
       { label: 'Single Sign-On', path: '/organization/sso', icon: KeyRound, roles: ['owner', 'admin'], feature: 'sso' },
+      { label: 'Security', path: '/organization/security', icon: KeyRound, roles: ['owner', 'admin'], feature: 'security.mfa' },
       { label: 'Webhooks & API', path: '/organization/webhooks-api', icon: Webhook, roles: ['owner', 'admin'], feature: 'integrations.webhooksReadOnly' },
       { label: 'Scheduled Reports', path: '/organization/scheduled-reports', icon: CalendarClock, roles: ['owner', 'admin'], feature: 'reports.custom' },
       { label: 'White-Label Kit', path: '/organization/white-label', icon: Palette, roles: ['owner', 'admin'] },
       { label: 'Chrome Extension', path: '/organization/chrome-extension', icon: Chrome, roles: ['owner', 'admin'] },
+      { label: 'Referrals', path: '/organization/referrals', icon: Users, roles: ['owner', 'admin'], feature: 'referrals.program' },
+      { label: 'Approvals', path: '/organization/approvals', icon: ClipboardList, roles: ['owner', 'admin'], feature: 'workflows.approvals' },
     ]
   },
   {
@@ -166,7 +171,12 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
       .map((section) => ({
         ...section,
         items: section.items.filter(
-          (item) => item.roles.includes(userRole) && (!item.feature || planHasFeature(orgPlan, item.feature))
+          (item) => {
+            if (!item.roles.includes(userRole)) return false;
+            if (item.anyIntegration) return planHasAnyIntegration(orgPlan);
+            if (item.feature) return planHasFeature(orgPlan, item.feature);
+            return true;
+          }
         )
       }))
       .filter((section) => section.items.length > 0)

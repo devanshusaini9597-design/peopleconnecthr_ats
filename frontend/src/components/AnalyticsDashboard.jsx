@@ -2,10 +2,13 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
-import { TrendingUp, TrendingDown, Users, Users2, CheckCircle, AlertCircle, Award, Download, Share2, FileText, Calendar, Briefcase, MapPin, Target, BarChart3, Clock, ArrowUpRight, RefreshCw, FileSpreadsheet, ClipboardList, Building2, GitBranch, Filter, Eye, X, Send, Mail } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { TrendingUp, TrendingDown, Users, Users2, CheckCircle, AlertCircle, Download, Share2, Calendar, Briefcase, MapPin, Target, BarChart3, Clock, ArrowUpRight, RefreshCw, FileSpreadsheet, ClipboardList, Building2, GitBranch, Eye, Send, ArrowRight, FileText, Check } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import BASE_API_URL from '../config';
 import { useToast } from './Toast';
+import PageHeader from './ui/PageHeader';
+import Modal from './ui/Modal';
+import EmptyState from './ui/EmptyState';
 import DEIAnalyticsSection from './DEIAnalyticsSection';
 
 const PIPELINE_COLORS = {
@@ -15,8 +18,39 @@ const PIPELINE_COLORS = {
 };
 const PIE_COLORS = ['#4f46e5', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#6b7280'];
 
+const KpiCard = ({ icon: Icon, label, value, sub, gradient, onClick, trend }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="relative card-ats-bordered p-5 text-left w-full overflow-hidden group transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-lg hover:shadow-stone-200/60 hover:border-transparent"
+  >
+    <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${gradient} transition-all duration-300 group-hover:h-1.5`} />
+    <div className="flex items-center justify-between mb-3">
+      <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">{label}</span>
+      <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center shadow-md transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3`}>
+        <Icon size={18} className="text-white" />
+      </div>
+    </div>
+    <p className="text-3xl font-bold text-stone-900 tracking-tight tabular-nums">{value}</p>
+    {trend !== undefined && trend !== null ? (
+      <div className="flex items-center gap-1 mt-1.5">
+        {trend >= 0 ? <TrendingUp size={14} className="text-emerald-600" /> : <TrendingDown size={14} className="text-red-500" />}
+        <span className={`text-xs font-semibold ${trend >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+          {trend >= 0 ? '+' : ''}{trend}% vs last month
+        </span>
+      </div>
+    ) : (
+      <p className="text-xs text-stone-500 mt-1.5">{sub}</p>
+    )}
+    <div className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-stone-400 opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+      Explore <ArrowRight size={12} />
+    </div>
+  </button>
+);
+
 const AnalyticsDashboard = () => {
   const toast = useToast();
+  const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -220,145 +254,125 @@ const AnalyticsDashboard = () => {
 
   if (loading) {
     return (
-      <>
-        <div className="flex items-center justify-center h-96">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-10 w-10 border-2 border-brand-600 border-t-transparent mx-auto mb-3"></div>
-            <p className="text-sm text-stone-500 font-medium">Loading analytics...</p>
+      <div className="page-shell-ats animate-page-enter">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-2xl skeleton-ats flex-shrink-0" />
+          <div className="space-y-2 flex-1 pt-1">
+            <div className="h-7 w-52 skeleton-ats rounded-lg" />
+            <div className="h-4 w-72 max-w-full skeleton-ats rounded-lg" />
           </div>
         </div>
-      </>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
+          {[1, 2, 3, 4].map((i) => <div key={i} className="h-32 skeleton-ats rounded-2xl" />)}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-2">
+          <div className="lg:col-span-2 h-64 skeleton-ats rounded-2xl" />
+          <div className="h-64 skeleton-ats rounded-2xl" />
+        </div>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <>
-        <div className="m-8 p-6 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-center gap-3">
-          <AlertCircle size={20} />
-          <div>
-            <p className="font-semibold">Unable to load analytics</p>
-            <p className="text-sm text-red-600">{error}</p>
+      <div className="page-shell-ats animate-page-enter">
+        <div className="card-ats-bordered p-6 flex flex-col sm:flex-row sm:items-center gap-4 border-red-200 bg-red-50/40">
+          <div className="w-11 h-11 rounded-xl bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0">
+            <AlertCircle size={20} />
           </div>
-          <button onClick={() => { setLoading(true); fetchStats(); }} className="ml-auto px-4 py-2 bg-red-100 hover:bg-red-200 rounded-lg text-sm font-semibold transition">Retry</button>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-stone-900">Unable to load analytics</p>
+            <p className="text-sm text-red-600 mt-0.5">{error}</p>
+          </div>
+          <button type="button" onClick={() => { setLoading(true); fetchStats(); }} className="btn-primary">Retry</button>
         </div>
-      </>
+      </div>
     );
   }
 
   return (
     <>
-      <div className="page-shell-ats">
-        {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-2">
-          <div className="flex items-start gap-4">
-            <div className="icon-box-ats">
-              <BarChart3 strokeWidth={2.5} />
-            </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gradient tracking-tight" style={{ letterSpacing: '-0.025em' }}>Reports & Analytics</h1>
-              <p className="text-sm text-stone-500 mt-1.5 font-medium">Recruitment performance overview and data exports</p>
-            </div>
-          </div>
-          <button
-            onClick={() => fetchStats(true)}
-            disabled={refreshing}
-            className="btn-secondary"
-          >
+      <div className="page-shell-ats animate-page-enter">
+        <PageHeader
+          icon={BarChart3}
+          title="Reports & Analytics"
+          subtitle="Recruitment performance overview and data exports."
+          gradientTitle
+        >
+          <button type="button" onClick={() => fetchStats(true)} disabled={refreshing} className="btn-secondary">
             <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
             Refresh
           </button>
-        </div>
+        </PageHeader>
 
-        {/* Tab Navigation */}
-        <div className="flex gap-6 mb-6 border-b border-stone-200">
-          <button
-            onClick={() => setSearchParams({ tab: 'analytics' })}
-            className={`pb-3 text-sm font-semibold transition-all border-b-2 ${
-              activeTab === 'analytics' ? 'text-brand-700 border-brand-500' : 'text-stone-500 border-transparent hover:text-stone-800'
-            }`}
-          >
-            <span className="flex items-center gap-2"><BarChart3 size={16} /> Analytics</span>
-          </button>
-          <button
-            onClick={() => setSearchParams({ tab: 'export' })}
-            className={`pb-3 text-sm font-semibold transition-all border-b-2 ${
-              activeTab === 'export' ? 'text-brand-700 border-brand-500' : 'text-stone-500 border-transparent hover:text-stone-800'
-            }`}
-          >
-            <span className="flex items-center gap-2"><Download size={16} /> Export Data</span>
-          </button>
+        <div className="flex items-center gap-1 p-1 bg-stone-100/80 rounded-xl w-full sm:w-auto overflow-x-auto">
+          {[
+            { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+            { id: 'export', label: 'Export Data', icon: Download },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setSearchParams({ tab: tab.id })}
+                className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
+                  active ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'
+                }`}
+              >
+                <Icon className={`w-4 h-4 ${active ? 'text-brand-600' : ''}`} />
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
 
         {/* ═══════════════ ANALYTICS TAB ═══════════════ */}
         {activeTab === 'analytics' && stats && (
           <div className="space-y-6">
 
-            {/* ── Row 1: KPI Cards ── */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Total Candidates */}
-              <div className="card-ats-bordered p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Total Candidates</span>
-                  <div className="w-9 h-9 rounded-lg bg-brand-50 flex items-center justify-center">
-                    <Users size={18} className="text-brand-600" />
-                  </div>
-                </div>
-                <p className="text-3xl font-bold text-stone-900">{stats.totalCandidates?.toLocaleString() || 0}</p>
-                <p className="text-xs text-stone-500 mt-1">{totalActive} active in pipeline</p>
-              </div>
-
-              {/* This Month */}
-              <div className="card-ats-bordered p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Added This Month</span>
-                  <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center">
-                    <Calendar size={18} className="text-green-600" />
-                  </div>
-                </div>
-                <p className="text-3xl font-bold text-stone-900">{stats.thisMonth || 0}</p>
-                <div className="flex items-center gap-1 mt-1">
-                  {stats.candidateTrend >= 0
-                    ? <TrendingUp size={14} className="text-green-600" />
-                    : <TrendingDown size={14} className="text-red-500" />}
-                  <span className={`text-xs font-semibold ${stats.candidateTrend >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                    {stats.candidateTrend >= 0 ? '+' : ''}{stats.candidateTrend}% vs last month
-                  </span>
-                </div>
-              </div>
-
-              {/* Conversion Rate */}
-              <div className="card-ats-bordered p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Conversion Rate</span>
-                  <div className="w-9 h-9 rounded-lg bg-cyan-50 flex items-center justify-center">
-                    <Target size={18} className="text-cyan-600" />
-                  </div>
-                </div>
-                <p className="text-3xl font-bold text-stone-900">{stats.conversionRate || 0}%</p>
-                <p className="text-xs text-stone-500 mt-1">Offer + Hired + Joined</p>
-              </div>
-
-              {/* Pending Review */}
-              <div className="card-ats-bordered p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Pending Review</span>
-                  <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center">
-                    <Clock size={18} className="text-amber-600" />
-                  </div>
-                </div>
-                <p className="text-3xl font-bold text-stone-900">{stats.pendingReview || 0}</p>
-                <p className="text-xs text-stone-500 mt-1">Applied + Screening</p>
-              </div>
+              <KpiCard
+                icon={Users}
+                label="Total Candidates"
+                value={stats.totalCandidates?.toLocaleString() || 0}
+                sub={`${totalActive} active in pipeline`}
+                gradient="from-brand-500 to-teal-400"
+                onClick={() => navigate('/ats')}
+              />
+              <KpiCard
+                icon={Calendar}
+                label="Added This Month"
+                value={stats.thisMonth || 0}
+                trend={stats.candidateTrend}
+                gradient="from-emerald-500 to-lime-400"
+                onClick={() => navigate('/ats')}
+              />
+              <KpiCard
+                icon={Target}
+                label="Conversion Rate"
+                value={`${stats.conversionRate || 0}%`}
+                sub="Offer + Hired + Joined"
+                gradient="from-cyan-500 to-sky-400"
+                onClick={() => navigate('/applications')}
+              />
+              <KpiCard
+                icon={Clock}
+                label="Pending Review"
+                value={stats.pendingReview || 0}
+                sub="Applied + Screening"
+                gradient="from-amber-500 to-orange-400"
+                onClick={() => navigate('/pending-review')}
+              />
             </div>
 
-            {/* ── Row 2: Daily Trend + Pipeline Funnel ── */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Daily Submissions Chart */}
-              <div className="lg:col-span-2 card-ats-bordered p-6">
+              <div className="lg:col-span-2 card-ats-bordered p-5 sm:p-6 relative overflow-hidden transition-shadow duration-300 hover:shadow-md">
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
                 <div className="flex items-center justify-between mb-5">
                   <div>
-                    <h3 className="text-sm font-bold text-stone-900">Daily CV Submissions</h3>
+                    <h3 className="text-sm font-bold text-stone-900 tracking-tight">Daily CV Submissions</h3>
                     <p className="text-xs text-stone-500 mt-0.5">Last 7 days activity</p>
                   </div>
                 </div>
@@ -381,30 +395,44 @@ const AnalyticsDashboard = () => {
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="flex items-center justify-center h-48 text-stone-400 text-sm">No submission data for the last 7 days</div>
+                  <EmptyState
+                    icon={BarChart3}
+                    tone="violet"
+                    compact
+                    message="No submission data"
+                    subMessage="No candidate submissions in the last 7 days."
+                    className="h-48"
+                  />
                 )}
               </div>
 
-              {/* Pipeline Funnel */}
-              <div className="card-ats-bordered p-6">
-                <h3 className="text-sm font-bold text-stone-900 mb-5">Pipeline Overview</h3>
+              <div className="card-ats-bordered p-5 sm:p-6 relative overflow-hidden transition-shadow duration-300 hover:shadow-md">
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-500 to-fuchsia-400" />
+                <div className="flex items-center justify-between mb-5">
+                  <h3 className="text-sm font-bold text-stone-900 tracking-tight">Pipeline Overview</h3>
+                  <button type="button" onClick={() => navigate('/recruitment')} className="text-xs font-semibold text-brand-600 hover:text-brand-700 flex items-center gap-1 transition-all hover:gap-1.5">
+                    Board <ArrowRight size={12} />
+                  </button>
+                </div>
                 <div className="space-y-3">
                   {stats.pipeline?.map((stage) => {
                     const percent = stats.totalCandidates > 0 ? Math.round((stage.count / stats.totalCandidates) * 100) : 0;
                     const color = PIPELINE_COLORS[stage.stage] || '#6b7280';
+                    const route = ['Applied', 'Screening'].includes(stage.stage) ? '/pending-review'
+                      : ['Interview', 'Offer', 'Hired', 'Joined'].includes(stage.stage) ? '/applications' : '/ats';
                     return (
-                      <div key={stage.stage}>
+                      <button key={stage.stage} type="button" onClick={() => navigate(route)} className="w-full text-left group/stage rounded-lg p-1 -mx-1 hover:bg-stone-50 transition-colors">
                         <div className="flex justify-between items-center mb-1">
                           <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }}></div>
-                            <span className="text-xs font-medium text-stone-700">{stage.stage}</span>
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                            <span className="text-xs font-medium text-stone-700 group-hover/stage:text-stone-900">{stage.stage}</span>
                           </div>
                           <span className="text-xs font-bold text-stone-900">{stage.count}</span>
                         </div>
                         <div className="w-full bg-stone-100 rounded-full h-1.5">
-                          <div className="h-1.5 rounded-full transition-all" style={{ width: `${Math.max(percent, 2)}%`, backgroundColor: color }} />
+                          <div className="h-1.5 rounded-full transition-all duration-500" style={{ width: `${Math.max(percent, 2)}%`, backgroundColor: color }} />
                         </div>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -424,74 +452,94 @@ const AnalyticsDashboard = () => {
               </div>
             </div>
 
-            {/* ── Row 3: Top Positions + Sources + Locations ── */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Top Positions */}
-              <div className="card-ats-bordered p-6">
-                <div className="flex items-center gap-2 mb-5">
-                  <Briefcase size={16} className="text-brand-600" />
-                  <h3 className="text-sm font-bold text-stone-900">Top Positions</h3>
+              <div className="card-ats-bordered p-5 sm:p-6 relative overflow-hidden transition-shadow duration-300 hover:shadow-md">
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 to-teal-400" />
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Briefcase size={16} className="text-brand-600" />
+                    <h3 className="text-sm font-bold text-stone-900">Top Positions</h3>
+                  </div>
+                  <button type="button" onClick={() => navigate('/manage-positions')} className="text-xs font-semibold text-brand-600 hover:text-brand-700">Manage</button>
                 </div>
-                {stats.topPositions && stats.topPositions.length > 0 ? (
-                  <div className="space-y-2.5">
+                {stats.topPositions?.length > 0 ? (
+                  <div className="space-y-1">
                     {stats.topPositions.map((pos, idx) => (
-                      <div key={pos.position} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-stone-50 transition">
-                        <div className="flex items-center gap-3">
-                          <span className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 text-xs font-bold flex items-center justify-center">{idx + 1}</span>
-                          <span className="text-sm font-medium text-stone-800 truncate max-w-[150px]">{pos.position}</span>
+                      <button
+                        key={pos.position}
+                        type="button"
+                        onClick={() => navigate(`/ats?q=${encodeURIComponent(pos.position)}`)}
+                        className="w-full flex items-center justify-between py-2.5 px-3 rounded-xl hover:bg-brand-50/60 transition-all duration-200 group"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="w-6 h-6 rounded-lg bg-brand-100 text-brand-700 text-xs font-bold flex items-center justify-center transition-transform group-hover:scale-110">{idx + 1}</span>
+                          <span className="text-sm font-medium text-stone-800 truncate">{pos.position}</span>
                         </div>
                         <span className="text-xs font-bold text-stone-600 bg-stone-100 px-2.5 py-1 rounded-full">{pos.count}</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-stone-400 text-sm text-center py-6">No data yet</p>
+                  <EmptyState icon={Briefcase} tone="violet" compact message="No position data yet" subMessage="Hiring by role will show up here." />
                 )}
               </div>
 
-              {/* Top Sources */}
-              <div className="card-ats-bordered p-6">
-                <div className="flex items-center gap-2 mb-5">
-                  <ArrowUpRight size={16} className="text-green-600" />
-                  <h3 className="text-sm font-bold text-stone-900">Top Sources</h3>
+              <div className="card-ats-bordered p-5 sm:p-6 relative overflow-hidden transition-shadow duration-300 hover:shadow-md">
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 to-lime-400" />
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <ArrowUpRight size={16} className="text-emerald-600" />
+                    <h3 className="text-sm font-bold text-stone-900">Top Sources</h3>
+                  </div>
+                  <button type="button" onClick={() => navigate('/manage-sources')} className="text-xs font-semibold text-brand-600 hover:text-brand-700">Manage</button>
                 </div>
-                {stats.topSources && stats.topSources.length > 0 ? (
-                  <div className="space-y-2.5">
+                {stats.topSources?.length > 0 ? (
+                  <div className="space-y-1">
                     {stats.topSources.map((src, idx) => (
-                      <div key={src.source} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-stone-50 transition">
-                        <div className="flex items-center gap-3">
-                          <span className="w-6 h-6 rounded-full bg-green-100 text-green-700 text-xs font-bold flex items-center justify-center">{idx + 1}</span>
-                          <span className="text-sm font-medium text-stone-800 truncate max-w-[150px]">{src.source}</span>
+                      <button
+                        key={src.source}
+                        type="button"
+                        onClick={() => navigate(`/ats?q=${encodeURIComponent(src.source)}`)}
+                        className="w-full flex items-center justify-between py-2.5 px-3 rounded-xl hover:bg-emerald-50/60 transition-all duration-200 group"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 text-xs font-bold flex items-center justify-center transition-transform group-hover:scale-110">{idx + 1}</span>
+                          <span className="text-sm font-medium text-stone-800 truncate">{src.source}</span>
                         </div>
                         <span className="text-xs font-bold text-stone-600 bg-stone-100 px-2.5 py-1 rounded-full">{src.count}</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-stone-400 text-sm text-center py-6">No data yet</p>
+                  <EmptyState icon={Target} tone="emerald" compact message="No source data yet" subMessage="Track referrals, job boards, and channels here." />
                 )}
               </div>
 
-              {/* Location Breakdown */}
-              <div className="card-ats-bordered p-6">
-                <div className="flex items-center gap-2 mb-5">
-                  <MapPin size={16} className="text-purple-600" />
+              <div className="card-ats-bordered p-5 sm:p-6 relative overflow-hidden transition-shadow duration-300 hover:shadow-md">
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-500 to-fuchsia-400" />
+                <div className="flex items-center gap-2 mb-4">
+                  <MapPin size={16} className="text-violet-600" />
                   <h3 className="text-sm font-bold text-stone-900">Top Locations</h3>
                 </div>
-                {stats.locationBreakdown && stats.locationBreakdown.length > 0 ? (
-                  <div className="space-y-2.5">
+                {stats.locationBreakdown?.length > 0 ? (
+                  <div className="space-y-1">
                     {stats.locationBreakdown.map((loc, idx) => (
-                      <div key={loc.location} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-stone-50 transition">
-                        <div className="flex items-center gap-3">
-                          <span className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 text-xs font-bold flex items-center justify-center">{idx + 1}</span>
-                          <span className="text-sm font-medium text-stone-800 truncate max-w-[150px]">{loc.location}</span>
+                      <button
+                        key={loc.location}
+                        type="button"
+                        onClick={() => navigate(`/ats?q=${encodeURIComponent(loc.location)}`)}
+                        className="w-full flex items-center justify-between py-2.5 px-3 rounded-xl hover:bg-violet-50/60 transition-all duration-200 group"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="w-6 h-6 rounded-lg bg-violet-100 text-violet-700 text-xs font-bold flex items-center justify-center transition-transform group-hover:scale-110">{idx + 1}</span>
+                          <span className="text-sm font-medium text-stone-800 truncate">{loc.location}</span>
                         </div>
                         <span className="text-xs font-bold text-stone-600 bg-stone-100 px-2.5 py-1 rounded-full">{loc.count}</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-stone-400 text-sm text-center py-6">No location data</p>
+                  <EmptyState icon={MapPin} tone="sky" compact message="No location data" subMessage="Candidate locations will appear as you add profiles." />
                 )}
               </div>
             </div>
@@ -548,13 +596,17 @@ const AnalyticsDashboard = () => {
             </div>
 
             {/* ── Row 5: Recent Activity Table ── */}
-            {stats.recentCandidates && stats.recentCandidates.length > 0 && (
-              <div className="table-shell-ats">
-                <div className="px-6 py-4 border-b border-stone-100 flex items-center justify-between">
+            {stats.recentCandidates?.length > 0 && (
+              <div className="table-shell-ats relative overflow-hidden">
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+                <div className="px-5 sm:px-6 py-4 border-b border-stone-100 flex items-center justify-between">
                   <div>
                     <h3 className="text-sm font-bold text-stone-900">Recent Activity</h3>
                     <p className="text-xs text-stone-500 mt-0.5">Latest candidates added to the system</p>
                   </div>
+                  <button type="button" onClick={() => navigate('/ats')} className="text-xs font-semibold text-brand-600 hover:text-brand-700 flex items-center gap-1 transition-all hover:gap-1.5">
+                    View all <ArrowRight size={12} />
+                  </button>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
@@ -569,10 +621,14 @@ const AnalyticsDashboard = () => {
                     </thead>
                     <tbody className="divide-y divide-stone-100">
                       {stats.recentCandidates.map((c, idx) => (
-                        <tr key={idx} className="hover:bg-stone-50/60 transition">
+                        <tr
+                          key={c.id || idx}
+                          className="hover:bg-brand-50/40 transition-colors cursor-pointer"
+                          onClick={() => navigate(c.name ? `/ats?q=${encodeURIComponent(c.name)}` : '/ats')}
+                        >
                           <td className="px-6 py-3.5">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold">
+                              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-100 to-teal-100 text-brand-700 flex items-center justify-center text-xs font-bold">
                                 {c.name?.charAt(0)?.toUpperCase()}
                               </div>
                               <span className="text-sm font-semibold text-stone-900">{c.name}</span>
@@ -582,9 +638,9 @@ const AnalyticsDashboard = () => {
                           <td className="px-6 py-3.5 text-sm text-stone-600">{c.source || '—'}</td>
                           <td className="px-6 py-3.5">
                             <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
-                              c.status === 'Hired' || c.status === 'Joined' ? 'bg-green-100 text-green-700' :
+                              c.status === 'Hired' || c.status === 'Joined' ? 'bg-emerald-100 text-emerald-700' :
                               c.status === 'Offer' ? 'bg-cyan-100 text-cyan-700' :
-                              c.status === 'Interview' ? 'bg-purple-100 text-purple-700' :
+                              c.status === 'Interview' ? 'bg-violet-100 text-violet-700' :
                               c.status === 'Rejected' || c.status === 'Dropped' ? 'bg-red-100 text-red-700' :
                               'bg-amber-100 text-amber-700'
                             }`}>{c.status}</span>
@@ -609,65 +665,60 @@ const AnalyticsDashboard = () => {
           </div>
         )}
 
-        {/* ═══════════════ EXPORT TAB ═══════════════ */}
         {activeTab === 'export' && (
           <div className="space-y-6">
-
-            {/* Success banner */}
             {exportSuccess && (
-              <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-xl text-green-800 text-sm font-medium">
-                <CheckCircle size={18} className="text-green-600 flex-shrink-0" />
-                Report exported successfully! Check your downloads folder.
+              <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-sm font-semibold">
+                <CheckCircle size={18} className="text-emerald-600 flex-shrink-0" />
+                Report exported successfully — check your downloads.
               </div>
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-              {/* ── Left Column: Report Type Selection ── */}
               <div className="lg:col-span-2 space-y-6">
-
-                {/* Report Type */}
-                <div className="card-ats-bordered p-6">
-                  <div className="flex items-center gap-2 mb-1">
-                    <ClipboardList size={16} className="text-brand-600" />
-                    <h3 className="text-sm font-bold text-stone-900">Select Report Type</h3>
+                <div className="card-ats-bordered p-5 sm:p-6 relative overflow-hidden">
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+                  <div className="flex items-center gap-2.5 mb-1">
+                    <div className="w-9 h-9 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center">
+                      <ClipboardList size={16} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-stone-900 tracking-tight">Select report type</h3>
+                      <p className="text-xs text-stone-500">Choose what to generate and download</p>
+                    </div>
                   </div>
-                  <p className="text-xs text-stone-500 mb-5">Choose the type of report you want to generate and download</p>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-5">
                     {[
-                      { value: 'recruitment-summary', label: 'Recruitment Summary', desc: 'Pipeline breakdown, conversion rate, rejection rate, and key hiring metrics overview', icon: BarChart3, color: 'brand' },
-                      { value: 'source-performance', label: 'Source Performance', desc: 'Source-wise analysis — total candidates, stage distribution, and conversion % per source', icon: ArrowUpRight, color: 'green' },
-                      { value: 'position-report', label: 'Position-wise Report', desc: 'Breakdown by job position — applications, interviews, offers, hires, and fill rate %', icon: Briefcase, color: 'purple' },
-                      { value: 'client-report', label: 'Client Report', desc: 'Client-wise candidate count, interview stage, offers, hires, and success rate analysis', icon: Building2, color: 'amber' },
-                      { value: 'pipeline-status', label: 'Pipeline Status Export', desc: 'All candidates sorted by current pipeline status with key details for tracking progress', icon: GitBranch, color: 'rose' },
+                      { value: 'recruitment-summary', label: 'Recruitment Summary', desc: 'Pipeline, conversion, and key hiring metrics', icon: BarChart3, tone: 'bg-brand-50 text-brand-600', ring: 'ring-brand-400 bg-brand-50/80' },
+                      { value: 'source-performance', label: 'Source Performance', desc: 'Channel ROI and conversion by source', icon: ArrowUpRight, tone: 'bg-emerald-50 text-emerald-600', ring: 'ring-emerald-400 bg-emerald-50/80' },
+                      { value: 'position-report', label: 'Position-wise Report', desc: 'Applications, offers, and fill rate by role', icon: Briefcase, tone: 'bg-violet-50 text-violet-600', ring: 'ring-violet-400 bg-violet-50/80' },
+                      { value: 'client-report', label: 'Client Report', desc: 'Client-wise pipeline and success rates', icon: Building2, tone: 'bg-amber-50 text-amber-600', ring: 'ring-amber-400 bg-amber-50/80' },
+                      { value: 'pipeline-status', label: 'Pipeline Status', desc: 'All candidates sorted by current stage', icon: GitBranch, tone: 'bg-rose-50 text-rose-600', ring: 'ring-rose-400 bg-rose-50/80' },
                     ].map((opt) => {
                       const Icon = opt.icon;
                       const isSelected = reportType === opt.value;
-                      const colorMap = {
-                        brand: { bg: 'bg-brand-50', ring: 'ring-brand-500', icon: 'text-brand-600', iconBg: 'bg-brand-100' },
-                        cyan: { bg: 'bg-cyan-50', ring: 'ring-cyan-500', icon: 'text-cyan-600', iconBg: 'bg-cyan-100' },
-                        green: { bg: 'bg-green-50', ring: 'ring-green-500', icon: 'text-green-600', iconBg: 'bg-green-100' },
-                        purple: { bg: 'bg-purple-50', ring: 'ring-purple-500', icon: 'text-purple-600', iconBg: 'bg-purple-100' },
-                        amber: { bg: 'bg-amber-50', ring: 'ring-amber-500', icon: 'text-amber-600', iconBg: 'bg-amber-100' },
-                        rose: { bg: 'bg-rose-50', ring: 'ring-rose-500', icon: 'text-rose-600', iconBg: 'bg-rose-100' },
-                      };
-                      const c = colorMap[opt.color];
                       return (
                         <button
                           key={opt.value}
+                          type="button"
                           onClick={() => setReportType(opt.value)}
-                          className={`flex items-start gap-3 p-4 rounded-xl border-2 text-left transition-all ${
+                          className={`relative flex items-start gap-3 p-4 rounded-xl border text-left transition-all duration-200 ${
                             isSelected
-                              ? `${c.bg} border-transparent ring-2 ${c.ring}`
-                              : 'border-stone-200 bg-white hover:border-stone-300 hover:shadow-sm'
+                              ? `border-transparent ring-2 ${opt.ring} shadow-sm`
+                              : 'border-stone-200 bg-white hover:border-stone-300 hover:shadow-sm hover:-translate-y-0.5'
                           }`}
                         >
-                          <div className={`w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center ${isSelected ? c.iconBg : 'bg-stone-100'}`}>
-                            <Icon size={18} className={isSelected ? c.icon : 'text-stone-500'} />
+                          {isSelected && (
+                            <span className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-brand-600 text-white flex items-center justify-center">
+                              <Check size={12} strokeWidth={3} />
+                            </span>
+                          )}
+                          <div className={`w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center transition-transform ${isSelected ? 'scale-105' : ''} ${opt.tone}`}>
+                            <Icon size={18} />
                           </div>
-                          <div className="min-w-0">
-                            <h4 className="text-sm font-semibold text-stone-900">{opt.label}</h4>
+                          <div className="min-w-0 pr-4">
+                            <h4 className="text-sm font-bold text-stone-900 tracking-tight">{opt.label}</h4>
                             <p className="text-[11px] text-stone-500 mt-0.5 leading-relaxed">{opt.desc}</p>
                           </div>
                         </button>
@@ -676,15 +727,19 @@ const AnalyticsDashboard = () => {
                   </div>
                 </div>
 
-                {/* Date Range */}
-                <div className="card-ats-bordered p-6">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Calendar size={16} className="text-brand-600" />
-                    <h3 className="text-sm font-bold text-stone-900">Date Range</h3>
+                <div className="card-ats-bordered p-5 sm:p-6 relative overflow-hidden">
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-sky-500 to-cyan-400" />
+                  <div className="flex items-center gap-2.5 mb-1">
+                    <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
+                      <Calendar size={16} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-stone-900 tracking-tight">Date range</h3>
+                      <p className="text-xs text-stone-500">Filter the report period</p>
+                    </div>
                   </div>
-                  <p className="text-xs text-stone-500 mb-5">Filter data by time period, or set a custom date range</p>
 
-                  <div className="flex flex-wrap gap-2 mb-4">
+                  <div className="flex flex-wrap gap-2 mt-5">
                     {[
                       { value: 'all', label: 'All Time' },
                       { value: 'today', label: 'Today' },
@@ -693,12 +748,13 @@ const AnalyticsDashboard = () => {
                       { value: 'month', label: 'This Month' },
                       { value: 'quarter', label: 'This Quarter' },
                       { value: 'year', label: 'This Year' },
-                      { value: 'custom', label: 'Custom Range' },
+                      { value: 'custom', label: 'Custom' },
                     ].map((opt) => (
                       <button
                         key={opt.value}
+                        type="button"
                         onClick={() => setDateRange(opt.value)}
-                        className={`px-3.5 py-2 rounded-lg border text-sm font-medium transition-all ${
+                        className={`px-3.5 py-2 rounded-xl border text-sm font-semibold transition-all duration-200 ${
                           dateRange === opt.value
                             ? 'border-brand-500 bg-brand-600 text-white shadow-sm'
                             : 'border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50'
@@ -709,153 +765,112 @@ const AnalyticsDashboard = () => {
                     ))}
                   </div>
 
-                  {/* Custom date inputs */}
                   {dateRange === 'custom' && (
-                    <div className="flex flex-wrap items-center gap-3 p-4 bg-stone-50 rounded-lg border border-stone-200">
+                    <div className="flex flex-wrap items-end gap-3 p-4 bg-stone-50 rounded-xl border border-stone-200 mt-4">
                       <div className="flex flex-col">
-                        <label className="text-[11px] font-semibold text-stone-500 uppercase mb-1">From</label>
-                        <input
-                          type="date"
-                          value={customFrom}
-                          onChange={(e) => setCustomFrom(e.target.value)}
-                          className="px-3 py-2 border border-stone-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-                        />
+                        <label className="label-ats">From</label>
+                        <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="input-ats" />
                       </div>
-                      <span className="text-stone-400 font-medium mt-4">to</span>
+                      <span className="text-stone-400 font-medium pb-2.5">to</span>
                       <div className="flex flex-col">
-                        <label className="text-[11px] font-semibold text-stone-500 uppercase mb-1">To</label>
-                        <input
-                          type="date"
-                          value={customTo}
-                          onChange={(e) => setCustomTo(e.target.value)}
-                          className="px-3 py-2 border border-stone-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
-                        />
+                        <label className="label-ats">To</label>
+                        <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="input-ats" />
                       </div>
-                      {customFrom && customTo && (
-                        <span className="text-xs text-brand-600 font-medium mt-4">
-                          {Math.ceil((new Date(customTo) - new Date(customFrom)) / (1000 * 60 * 60 * 24)) + 1} days selected
-                        </span>
-                      )}
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* ── Right Column: Format + Actions ── */}
-              <div className="space-y-6">
-
-                {/* Export Format */}
-                <div className="card-ats-bordered p-6">
-                  <div className="flex items-center gap-2 mb-1">
-                    <FileSpreadsheet size={16} className="text-brand-600" />
-                    <h3 className="text-sm font-bold text-stone-900">File Format</h3>
+              <div className="space-y-4">
+                <div className="card-ats-bordered p-5 relative overflow-hidden">
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-500 to-fuchsia-400" />
+                  <div className="flex items-center gap-2.5 mb-4">
+                    <div className="w-9 h-9 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center">
+                      <FileSpreadsheet size={16} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-stone-900 tracking-tight">File format</h3>
+                      <p className="text-xs text-stone-500">Output type</p>
+                    </div>
                   </div>
-                  <p className="text-xs text-stone-500 mb-4">Choose output format</p>
-
-                  <div className="space-y-2">
-                    {[
-                      { value: 'pdf', label: 'PDF (.pdf)', desc: 'Professional branded report with charts', icon: '📋' },
-                    ].map((opt) => (
-                      <button
-                        key={opt.value}
-                        onClick={() => setExportFormat(opt.value)}
-                        className={`w-full flex items-center gap-3 p-3.5 rounded-lg border-2 text-left transition-all ${
-                          exportFormat === opt.value
-                            ? 'border-brand-500 bg-brand-50'
-                            : 'border-stone-200 bg-white hover:border-stone-300'
-                        }`}
-                      >
-                        <span className="text-xl">{opt.icon}</span>
-                        <div>
-                          <h4 className="text-sm font-semibold text-stone-900">{opt.label}</h4>
-                          <p className="text-[11px] text-stone-500">{opt.desc}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setExportFormat('pdf')}
+                    className={`w-full flex items-center gap-3 p-3.5 rounded-xl border-2 text-left transition-all ${
+                      exportFormat === 'pdf' ? 'border-brand-500 bg-brand-50' : 'border-stone-200 hover:border-stone-300'
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center flex-shrink-0">
+                      <FileText size={18} />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="text-sm font-bold text-stone-900">PDF</h4>
+                      <p className="text-[11px] text-stone-500">Branded report with charts</p>
+                    </div>
+                    {exportFormat === 'pdf' && <Check size={16} className="text-brand-600 ml-auto" />}
+                  </button>
                 </div>
 
-                {/* Export Summary & Button */}
-                <div className="card-ats-bordered p-6">
-                  <h3 className="text-sm font-bold text-stone-900 mb-4">Export Summary</h3>
-                  <div className="space-y-3 mb-5">
-                    <div className="flex justify-between items-center text-sm">
+                <div className="card-ats-bordered p-5 relative overflow-hidden">
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+                  <h3 className="text-sm font-bold text-stone-900 tracking-tight mb-4">Export summary</h3>
+                  <div className="space-y-3 mb-5 text-sm">
+                    <div className="flex justify-between gap-3">
                       <span className="text-stone-500">Report</span>
-                      <span className="font-semibold text-stone-900 text-right text-xs max-w-[140px] truncate">
+                      <span className="font-semibold text-stone-900 text-right text-xs max-w-[150px] truncate">
                         {{ 'recruitment-summary': 'Recruitment Summary', 'source-performance': 'Source Performance', 'position-report': 'Position Report', 'client-report': 'Client Report', 'pipeline-status': 'Pipeline Status' }[reportType]}
                       </span>
                     </div>
-                    <div className="flex justify-between items-center text-sm">
+                    <div className="flex justify-between gap-3">
                       <span className="text-stone-500">Format</span>
-                      <span className="font-semibold text-stone-900">{exportFormat === 'pdf' ? 'PDF' : 'Excel'}</span>
+                      <span className="font-semibold text-stone-900">PDF</span>
                     </div>
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-stone-500">Date Range</span>
-                      <span className="font-semibold text-stone-900 text-xs">
+                    <div className="flex justify-between gap-3">
+                      <span className="text-stone-500">Range</span>
+                      <span className="font-semibold text-stone-900 text-xs text-right">
                         {dateRange === 'custom' && customFrom && customTo
                           ? `${new Date(customFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} – ${new Date(customTo).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
                           : { all: 'All Time', today: 'Today', yesterday: 'Yesterday', week: 'Last 7 Days', month: 'This Month', quarter: 'This Quarter', year: 'This Year', custom: 'Custom' }[dateRange]}
                       </span>
                     </div>
-                    <div className="border-t border-stone-100 pt-3">
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-stone-500">Total Candidates</span>
-                        <span className="font-bold text-brand-600">{(filteredCandidateCount !== null ? filteredCandidateCount : stats?.totalCandidates)?.toLocaleString() || 0}</span>
-                      </div>
+                    <div className="border-t border-stone-100 pt-3 flex justify-between">
+                      <span className="text-stone-500">Candidates</span>
+                      <span className="font-bold text-brand-600">
+                        {(filteredCandidateCount !== null ? filteredCandidateCount : stats?.totalCandidates)?.toLocaleString() || 0}
+                      </span>
                     </div>
                   </div>
 
-                  <div className="flex gap-2 mb-2">
-                    <button
-                      onClick={handlePreview}
-                      disabled={previewLoading || (dateRange === 'custom' && (!customFrom || !customTo))}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-brand-200 bg-brand-50 hover:bg-brand-100 text-brand-700 font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                    >
-                      {previewLoading ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-brand-500 border-t-transparent"></div>
-                          Loading...
-                        </>
-                      ) : (
-                        <>
-                          <Eye size={16} />
-                          Preview
-                        </>
-                      )}
-                    </button>
-                  </div>
-
+                  <button
+                    type="button"
+                    onClick={handlePreview}
+                    disabled={previewLoading || (dateRange === 'custom' && (!customFrom || !customTo))}
+                    className="btn-secondary w-full mb-2 disabled:opacity-50"
+                  >
+                    {previewLoading ? <RefreshCw size={16} className="animate-spin" /> : <Eye size={16} />}
+                    {previewLoading ? 'Loading…' : 'Preview'}
+                  </button>
                   <div className="grid grid-cols-2 gap-2">
                     <button
+                      type="button"
                       onClick={handleExport}
                       disabled={isExporting || (dateRange === 'custom' && (!customFrom || !customTo))}
-                      className="flex items-center justify-center gap-2 px-4 py-3 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                      className="btn-primary disabled:opacity-50"
                     >
-                      {isExporting ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                          Exporting...
-                        </>
-                      ) : (
-                        <>
-                          <Download size={16} />
-                          Export
-                        </>
-                      )}
+                      {isExporting ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
+                      {isExporting ? '…' : 'Export'}
                     </button>
-
                     <button
+                      type="button"
                       onClick={openShareModal}
                       disabled={dateRange === 'custom' && (!customFrom || !customTo)}
-                      className="flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-50"
                     >
-                      <Share2 size={16} />
-                      Share
+                      <Share2 size={16} /> Share
                     </button>
                   </div>
-
                   {dateRange === 'custom' && (!customFrom || !customTo) && (
-                    <p className="text-[11px] text-amber-600 font-medium mt-2 text-center">Please select both From and To dates</p>
+                    <p className="text-[11px] text-amber-600 font-medium mt-2 text-center">Select both From and To dates</p>
                   )}
                 </div>
               </div>
@@ -864,193 +879,188 @@ const AnalyticsDashboard = () => {
         )}
       </div>
 
-      {/* ═══════════════ PREVIEW MODAL ═══════════════ */}
-      {showPreview && previewData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50/80 flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-brand-100 flex items-center justify-center">
-                  <Eye size={18} className="text-brand-600" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-stone-900">{previewData.title}</h3>
-                  <p className="text-xs text-stone-500">Report Preview — {previewData.rows?.length || 0} rows</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => { setShowPreview(false); handleExport(); }}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-lg transition-all"
-                >
-                  <Download size={14} />
-                  Download {exportFormat === 'pdf' ? 'PDF' : 'Excel'}
-                </button>
-                <button onClick={() => setShowPreview(false)} className="p-2 hover:bg-gray-200 rounded-lg transition-colors">
-                  <X size={18} className="text-stone-500" />
-                </button>
-              </div>
-            </div>
-
-            {/* Summary Cards */}
-            {previewData.summary && previewData.summary.length > 0 && (
-              <div className="px-6 py-3 border-b border-stone-100 flex-shrink-0">
-                <div className="flex gap-3 overflow-x-auto">
-                  {previewData.summary.map((card, i) => (
-                    <div key={i} className="flex-shrink-0 bg-stone-50 border border-stone-200 rounded-lg px-4 py-2.5 min-w-[120px]">
-                      <p className="text-[10px] font-semibold text-stone-500 uppercase tracking-wider">{card.label}</p>
-                      <p className="text-lg font-bold text-stone-900">{card.value}</p>
+      <Modal
+        open={showPreview && !!previewData}
+        onClose={() => setShowPreview(false)}
+        title={previewData?.title || 'Report Preview'}
+        description={`${previewData?.rows?.length || 0} row${(previewData?.rows?.length || 0) === 1 ? '' : 's'} in this preview`}
+        size="xl"
+        footer={
+          <>
+            <p className="text-[11px] text-stone-400 mr-auto hidden sm:block">Confidential — SkillNix PCHR</p>
+            <button type="button" onClick={() => setShowPreview(false)} className="btn-secondary">Close</button>
+            <button
+              type="button"
+              onClick={() => { setShowPreview(false); handleExport(); }}
+              className="btn-primary"
+            >
+              <Download size={16} /> Download {exportFormat === 'pdf' ? 'PDF' : 'Excel'}
+            </button>
+          </>
+        }
+      >
+        {previewData && (
+          <div className="space-y-4">
+            {previewData.summary?.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                {previewData.summary.map((card, i) => {
+                  const tones = [
+                    'from-brand-50 to-teal-50 border-brand-100 text-brand-700',
+                    'from-violet-50 to-fuchsia-50 border-violet-100 text-violet-700',
+                    'from-emerald-50 to-lime-50 border-emerald-100 text-emerald-700',
+                    'from-amber-50 to-orange-50 border-amber-100 text-amber-700',
+                  ];
+                  const tone = tones[i % tones.length];
+                  return (
+                    <div
+                      key={i}
+                      className={`rounded-xl border bg-gradient-to-br px-3.5 py-3 min-w-0 ${tone}`}
+                    >
+                      <p className="text-[10px] font-bold uppercase tracking-wider opacity-70">{card.label}</p>
+                      <p className="text-xl font-bold text-stone-900 tabular-nums mt-0.5 tracking-tight">{card.value}</p>
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
             )}
 
-            {/* Table */}
-            <div className="overflow-auto flex-1">
-              <table className="w-full text-sm">
-                <thead className="bg-stone-50 sticky top-0">
-                  <tr>
-                    {previewData.headers?.map((h, i) => (
-                      <th key={i} className="px-4 py-3 text-left text-xs font-bold text-stone-600 uppercase tracking-wider border-b border-stone-200">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {previewData.rows?.map((row, ri) => (
-                    <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-stone-50/50'}>
-                      {row.map((cell, ci) => (
-                        <td key={ci} className="px-4 py-2.5 text-sm text-stone-700 border-b border-stone-100 whitespace-nowrap">{cell}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {previewData.totalRows && previewData.totalRows > (previewData.rows?.length || 0) && (
-                <div className="px-4 py-3 bg-amber-50 border-t border-amber-200 text-xs text-amber-700 font-medium">
-                  Showing {previewData.rows?.length} of {previewData.totalRows} total rows. Download the full report for complete data.
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="px-6 py-3 border-t border-stone-200 bg-stone-50/80 flex items-center justify-between flex-shrink-0">
-              <p className="text-[11px] text-stone-400">Confidential — SkillNix PCHR</p>
-              <button onClick={() => setShowPreview(false)} className="text-sm text-stone-500 hover:text-stone-700 font-medium">Close</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════════ SHARE REPORT MODAL ═══════════════ */}
-      {showShareModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50/80 flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center">
-                  <Share2 size={18} className="text-emerald-600" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-stone-900">Share Report</h3>
-                  <p className="text-xs text-stone-500">Send report to team members</p>
-                </div>
-              </div>
-              <button onClick={() => setShowShareModal(false)} className="p-2 hover:bg-gray-200 rounded-lg transition-colors">
-                <X size={18} className="text-stone-500" />
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className="overflow-y-auto flex-1 p-6 space-y-5">
-              {/* Team Members Selection */}
-              <div>
-                <label className="block text-sm font-semibold text-stone-700 mb-3">Select Team Members</label>
-                {isLoadingMembers ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-emerald-500 border-t-transparent"></div>
-                  </div>
-                ) : teamMembers.length === 0 ? (
-                  <p className="text-sm text-stone-500 py-4 text-center">No team members found</p>
-                ) : (
-                  <div className="space-y-2 max-h-48 overflow-y-auto border border-stone-200 rounded-lg p-3 bg-stone-50">
-                    {teamMembers.map((member) => (
-                      <label key={member._id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-white cursor-pointer transition">
-                        <input
-                          type="checkbox"
-                          checked={selectedMembers.some(m => m._id === member._id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedMembers([...selectedMembers, member]);
-                            } else {
-                              setSelectedMembers(selectedMembers.filter(m => m._id !== member._id));
-                            }
-                          }}
-                          className="w-4 h-4 text-emerald-600 rounded focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-stone-900 truncate">{member.name}</p>
-                          <p className="text-xs text-stone-500 truncate">{member.email}</p>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Message */}
-              <div>
-                <label className="block text-sm font-semibold text-stone-700 mb-2">Message (Optional)</label>
-                <textarea
-                  value={shareMessage}
-                  onChange={(e) => setShareMessage(e.target.value)}
-                  placeholder="Add a message for the recipients..."
-                  rows="3"
-                  className="w-full px-3 py-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm resize-none"
+            {!previewData.rows?.length ? (
+              <div className="rounded-xl border border-dashed border-stone-200 bg-stone-50/50">
+                <EmptyState
+                  icon={BarChart3}
+                  tone="brand"
+                  compact
+                  message="No data for this report"
+                  subMessage="Try a wider date range, or add candidates with positions to populate this preview."
+                  action={
+                    <button type="button" onClick={() => { setShowPreview(false); navigate('/ats?add=1'); }} className="btn-secondary !text-xs">
+                      Add Candidate
+                    </button>
+                  }
                 />
               </div>
-
-              {/* Selected Members Count */}
-              {selectedMembers.length > 0 && (
-                <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
-                  <p className="text-xs font-semibold text-emerald-700">
-                    {selectedMembers.length === 1 ? '1 team member' : `${selectedMembers.length} team members`} selected
-                  </p>
+            ) : (
+              <div className="rounded-xl border border-stone-200 overflow-hidden">
+                <div className="overflow-x-auto max-h-[40vh]">
+                  <table className="w-full text-sm">
+                    <thead className="bg-stone-50 sticky top-0 z-10">
+                      <tr>
+                        {previewData.headers?.map((h, i) => (
+                          <th key={i} className="px-4 py-3 text-left text-[11px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-200 whitespace-nowrap">
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100">
+                      {previewData.rows.map((row, ri) => (
+                        <tr key={ri} className="hover:bg-brand-50/30 transition-colors">
+                          {row.map((cell, ci) => (
+                            <td key={ci} className="px-4 py-2.5 text-sm text-stone-700 whitespace-nowrap">{cell}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-stone-200 bg-stone-50/80 flex-shrink-0">
-              <button
-                onClick={() => setShowShareModal(false)}
-                className="px-4 py-2.5 text-sm font-semibold text-stone-600 hover:bg-gray-200 rounded-lg transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleShareReport}
-                disabled={isSharingReport || selectedMembers.length === 0}
-                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSharingReport ? (
-                  <>
-                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
-                    Sharing...
-                  </>
-                ) : (
-                  <>
-                    <Send size={16} />
-                    Share Report
-                  </>
+                {previewData.totalRows > (previewData.rows?.length || 0) && (
+                  <div className="px-4 py-2.5 bg-amber-50 border-t border-amber-200 text-xs text-amber-700 font-medium">
+                    Showing {previewData.rows.length} of {previewData.totalRows} rows — download for the full report.
+                  </div>
                 )}
-              </button>
-            </div>
+              </div>
+            )}
           </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        title="Share Report"
+        description="Send this report to team members by email."
+        size="md"
+        footer={
+          <>
+            <button type="button" onClick={() => setShowShareModal(false)} className="btn-secondary">Cancel</button>
+            <button
+              type="button"
+              onClick={handleShareReport}
+              disabled={isSharingReport || selectedMembers.length === 0}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-50"
+            >
+              {isSharingReport ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
+              {isSharingReport ? 'Sharing…' : 'Share Report'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="label-ats">Team members</label>
+            {isLoadingMembers ? (
+              <div className="flex items-center justify-center py-8">
+                <RefreshCw size={20} className="animate-spin text-emerald-500" />
+              </div>
+            ) : teamMembers.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                tone="emerald"
+                compact
+                message="No team members"
+                subMessage="Invite teammates to share reports with them."
+              />
+            ) : (
+              <div className="space-y-1 max-h-48 overflow-y-auto border border-stone-200 rounded-xl p-2 bg-stone-50/60">
+                {teamMembers.map((member) => {
+                  const checked = selectedMembers.some((m) => m._id === member._id);
+                  return (
+                    <label
+                      key={member._id}
+                      className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all ${
+                        checked ? 'bg-emerald-50 border border-emerald-200' : 'hover:bg-white border border-transparent'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedMembers([...selectedMembers, member]);
+                          else setSelectedMembers(selectedMembers.filter((m) => m._id !== member._id));
+                        }}
+                        className="w-4 h-4 text-emerald-600 rounded focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-stone-900 truncate">{member.name}</p>
+                        <p className="text-xs text-stone-500 truncate">{member.email}</p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="label-ats">Message (optional)</label>
+            <textarea
+              value={shareMessage}
+              onChange={(e) => setShareMessage(e.target.value)}
+              placeholder="Add a note for recipients…"
+              rows={3}
+              className="input-ats resize-none"
+            />
+          </div>
+
+          {selectedMembers.length > 0 && (
+            <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+              <p className="text-xs font-semibold text-emerald-700">
+                {selectedMembers.length} member{selectedMembers.length === 1 ? '' : 's'} selected
+              </p>
+            </div>
+          )}
         </div>
-      )}
+      </Modal>
     </>
   );
 };

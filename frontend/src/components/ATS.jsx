@@ -5,7 +5,7 @@ import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { 
   Plus, Search, Mail, MessageCircle, Upload, 
-  Filter, CheckSquare, Square, FileText, Cpu, Trash2, Edit, X, Briefcase, BarChart3, AlertCircle, RefreshCw, Download, Eye, Info, Share2, Megaphone, Users, ArrowUpDown, Building2, MapPin, User, ChevronDown, Database
+  Filter, CheckSquare, Square, FileText, Cpu, Trash2, Edit, X, Briefcase, BarChart3, AlertCircle, RefreshCw, Download, Eye, Info, Share2, Megaphone, Users, ArrowUpDown, Building2, MapPin, User, ChevronDown, Database, Sparkles, GitMerge
 } from 'lucide-react';
 import { useParsing } from '../hooks/useParsing';
 import PhoneInput from 'react-phone-input-2';
@@ -23,12 +23,17 @@ import EmptyState from './ui/EmptyState';
 import PremiumSelect from './ui/PremiumSelect';
 import { ctcRanges, ctcLpaBreakpoints, expectedCtcOptions, noticePeriodOptions } from '../utils/ctcRanges';
 import { dedupeByName } from '../utils/dedupeMasterData';
+import { useAuth } from '../context/AuthContext';
+import { planHasFeature } from '../config/planFeatures';
+import FeatureGate from './FeatureGate';
 
 
 const ATS = forwardRef((props, ref) => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const toast = useToast();
+  const { organization } = useAuth();
+  const orgPlan = organization?.plan;
   const fileInputRef = useRef(null);
   const autoUploadInputRef = useRef(null);
   const { onImportComplete } = props || {};
@@ -141,6 +146,12 @@ const ATS = forwardRef((props, ref) => {
 
   // Confirmation Modal States
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: 'warning', title: '', message: '', details: null, confirmText: 'Confirm', onConfirm: () => {}, isLoading: false });
+  const [aiScoreLoading, setAiScoreLoading] = useState(false);
+  const [aiScoreResult, setAiScoreResult] = useState(null);
+  const [jdForScore, setJdForScore] = useState('');
+  const [dedupeLoading, setDedupeLoading] = useState(false);
+  const [dedupeResults, setDedupeResults] = useState(null);
+  const [showDedupeModal, setShowDedupeModal] = useState(false);
 
   // ✅ Advanced Search Panel (inline, above table)
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
@@ -192,6 +203,26 @@ const ATS = forwardRef((props, ref) => {
   const [countryCode, setCountryCode] = useState('+91');
   const [countryIso, setCountryIso] = useState('IN');
   const countryCodes = useCountries();
+
+  // Deep-link search from dashboard / other pages (?q=)
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q) setSearchQuery(q);
+  }, [searchParams]);
+
+  // Open Add Candidate modal from dashboard / deep links (?add=1)
+  useEffect(() => {
+    if (searchParams.get('add') !== '1') return;
+    setEditId(null);
+    setFormData(initialFormState);
+    setFormErrors({});
+    setCountryCode('+91');
+    setCountryIso('IN');
+    setShowModal(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('add');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   // Fetch master data for modal dropdowns
   useEffect(() => {
@@ -1327,6 +1358,8 @@ const handleDelete = (id) => {
       if (response.ok) {
         const freshCandidate = await response.json();
         setEditId(freshCandidate._id);
+        setAiScoreResult(null);
+        setJdForScore('');
         setFormData({ 
           ...freshCandidate, 
           resume: null,
@@ -1345,6 +1378,49 @@ const handleDelete = (id) => {
     } catch (error) {
       console.error('Error fetching candidate:', error);
       toast.error('Error loading candidate details.');
+    }
+  };
+
+  const handleAiScore = async () => {
+    if (!editId || !jdForScore.trim()) {
+      toast.warning('Paste a job description to score against.');
+      return;
+    }
+    setAiScoreLoading(true);
+    setAiScoreResult(null);
+    try {
+      const res = await authenticatedFetch(`${BASE_API_URL}/api/ai/score`, {
+        method: 'POST',
+        body: JSON.stringify({ candidateId: editId, jobDescription: jdForScore }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Scoring failed');
+      setAiScoreResult(data.data);
+      toast.success('LLM score ready');
+    } catch (err) {
+      toast.error(err.message || 'AI scoring failed');
+    } finally {
+      setAiScoreLoading(false);
+    }
+  };
+
+  const handleFindDuplicates = async () => {
+    setDedupeLoading(true);
+    setDedupeResults(null);
+    try {
+      const res = await authenticatedFetch(`${BASE_API_URL}/api/ai/dedupe`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Dedupe failed');
+      setDedupeResults(data.data);
+      setShowDedupeModal(true);
+      if (!data.data?.groups?.length) toast.info('No likely duplicates found');
+    } catch (err) {
+      toast.error(err.message || 'Duplicate search failed');
+    } finally {
+      setDedupeLoading(false);
     }
   };
 
@@ -2877,6 +2953,18 @@ const handleAddCandidate = async (e) => {
             </>
           )}
         </div>
+        <FeatureGate feature="candidates.dedupe">
+          <button
+            type="button"
+            onClick={handleFindDuplicates}
+            disabled={dedupeLoading}
+            className="btn-secondary flex-1 sm:flex-none"
+            title="Find duplicate candidates by email, phone, or name"
+          >
+            {dedupeLoading ? <RefreshCw size={16} className="animate-spin" /> : <GitMerge size={16} />}
+            Find duplicates
+          </button>
+        </FeatureGate>
         <button
           type="button"
           onClick={() => {
@@ -3252,12 +3340,13 @@ const handleAddCandidate = async (e) => {
                 <tr>
                   <td colSpan={orderedColumns.length + 1} className="border border-stone-200">
                     {viewMode === 'shared' ? (
-                      <EmptyState icon={Share2} message="No shared candidates yet" subMessage="When team members share candidates with you, they will appear here." />
+                      <EmptyState icon={Share2} tone="sky" message="No shared candidates yet" subMessage="When team members share candidates with you, they will appear here." />
                     ) : searchQuery || Object.values(advancedSearchFilters).some(Boolean) ? (
-                      <EmptyState icon={Search} message="No candidates match your filters" subMessage="Try different keywords or clear advanced filters." />
+                      <EmptyState icon={Search} tone="amber" message="No candidates match your filters" subMessage="Try different keywords or clear advanced filters." />
                     ) : (
                       <EmptyState
                         icon={Users}
+                        tone="brand"
                         message="No candidates yet"
                         subMessage="Add candidates manually or import from Excel to get started."
                         action={
@@ -3389,6 +3478,45 @@ const handleAddCandidate = async (e) => {
                 <X size={18} />
               </button>
             </div>
+
+            {editId && planHasFeature(orgPlan, 'integrations.aiScoring') && (
+              <div className="mx-5 sm:mx-6 mt-4 rounded-2xl border border-violet-200 bg-violet-50/50 p-4 flex-shrink-0">
+                <div className="flex items-center gap-2 mb-2">
+                  <Sparkles size={16} className="text-violet-600" />
+                  <h3 className="text-sm font-bold text-violet-900">Score with AI</h3>
+                  <span className="text-[10px] uppercase tracking-wide text-violet-600/80 font-semibold">LLM scoring</span>
+                </div>
+                <p className="text-xs text-violet-800/80 mb-2">Uses your configured LLM provider. Resume text was extracted via regex/OCR, not AI.</p>
+                <textarea
+                  className="w-full input-ats min-h-[72px] text-sm mb-2 bg-white"
+                  placeholder="Paste job description to score this resume…"
+                  value={jdForScore}
+                  onChange={(e) => setJdForScore(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={handleAiScore}
+                  disabled={aiScoreLoading || !jdForScore.trim()}
+                  className="btn-primary text-sm py-2"
+                >
+                  {aiScoreLoading ? <><RefreshCw size={14} className="animate-spin" /> Scoring…</> : 'Score with AI'}
+                </button>
+                {aiScoreResult && (
+                  <div className="mt-3 p-3 rounded-xl bg-white border border-violet-100 text-sm">
+                    {aiScoreResult.score != null && (
+                      <p className="text-lg font-bold text-violet-900 mb-1">Score: {aiScoreResult.score}/100</p>
+                    )}
+                    {aiScoreResult.summary && <p className="text-stone-700 mb-2">{aiScoreResult.summary}</p>}
+                    {aiScoreResult.strengths?.length > 0 && (
+                      <p className="text-emerald-700 text-xs"><strong>Strengths:</strong> {aiScoreResult.strengths.join('; ')}</p>
+                    )}
+                    {aiScoreResult.gaps?.length > 0 && (
+                      <p className="text-amber-700 text-xs mt-1"><strong>Gaps:</strong> {aiScoreResult.gaps.join('; ')}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             <form id="candidate-form" onSubmit={handleAddCandidate} className="overflow-y-auto flex-1 min-h-0 px-5 sm:px-6 py-5 space-y-5">
               {/* Resume upload — compact strip */}
@@ -4812,7 +4940,15 @@ const handleAddCandidate = async (e) => {
                 }
                 
                 if (!categoryData || categoryData.length === 0) {
-                  return <p className="text-stone-400 text-center py-12 text-sm">No records in this category</p>;
+                  return (
+                    <EmptyState
+                      icon={FileText}
+                      tone="sky"
+                      compact
+                      message="No records in this category"
+                      subMessage="Switch category or upload a new file."
+                    />
+                  );
                 }
 
                 return (
@@ -5253,7 +5389,13 @@ const handleAddCandidate = async (e) => {
                   </label>
                 ))
               ) : (
-                <p className="text-sm text-stone-500 text-center py-4">No team members available</p>
+                <EmptyState
+                  icon={Users}
+                  tone="emerald"
+                  compact
+                  message="No team members available"
+                  subMessage="Invite colleagues to share candidates with them."
+                />
               )}
             </div>
 
@@ -5341,6 +5483,41 @@ const handleAddCandidate = async (e) => {
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDedupeModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-900/55 backdrop-blur-sm p-4" onClick={() => setShowDedupeModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100">
+              <div>
+                <h3 className="text-lg font-bold text-stone-900">Likely duplicates</h3>
+                <p className="text-xs text-stone-500 mt-0.5">Matched by normalized email, phone, or name — not LLM</p>
+              </div>
+              <button type="button" onClick={() => setShowDedupeModal(false)} className="p-2 rounded-lg hover:bg-stone-100"><X size={18} /></button>
+            </div>
+            <div className="overflow-y-auto p-5 space-y-4 flex-1">
+              {dedupeResults?.groups?.length ? dedupeResults.groups.map((group, gi) => (
+                <div key={gi} className="rounded-xl border border-amber-200 bg-amber-50/40 p-4">
+                  <p className="text-xs font-semibold text-amber-800 mb-2">Group {gi + 1} ({group.members.length} candidates)</p>
+                  <ul className="space-y-2">
+                    {group.members.map((m) => (
+                      <li key={m._id} className="text-sm flex flex-wrap gap-x-3 gap-y-1">
+                        <span className="font-medium text-stone-900">{m.name}</span>
+                        <span className="text-stone-500">{m.email}</span>
+                        {(m.contact || m.phone) && <span className="text-stone-500">{m.contact || m.phone}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )) : (
+                <p className="text-sm text-stone-500 text-center py-8">No duplicate groups found.</p>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-stone-100 text-right">
+              <button type="button" onClick={() => setShowDedupeModal(false)} className="btn-secondary">Close</button>
             </div>
           </div>
         </div>

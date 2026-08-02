@@ -4,6 +4,7 @@ import { useNavigate, useBlocker, useLocation } from 'react-router-dom';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import ConfirmationModal from './ConfirmationModal';
+import EmptyState from './ui/EmptyState';
 import BASE_API_URL from '../config';
 import { ctcRanges, expectedCtcOptions, noticePeriodOptions } from '../utils/ctcRanges';
 import { formatNameForInput } from '../utils/textFormatter';
@@ -712,10 +713,13 @@ const AutoImportPage = () => {
               {/* Data Table */}
               <div className="overflow-x-auto">
                 {paginatedRecords.length === 0 ? (
-                  <div className="text-center py-16 text-gray-500">
-                    <FileText size={36} className="mx-auto text-gray-300 mb-3" />
-                    <p className="text-sm font-medium">{searchQuery ? 'No matching records found' : 'No records in this category'}</p>
-                  </div>
+                  <EmptyState
+                    icon={searchQuery ? Search : FileText}
+                    tone={searchQuery ? 'amber' : 'sky'}
+                    compact
+                    message={searchQuery ? 'No matching records found' : 'No records in this category'}
+                    subMessage={searchQuery ? 'Try a different search term.' : 'Upload a file or switch category to see records.'}
+                  />
                 ) : (
                   <table className="w-full border-collapse text-xs">
                     <thead className="sticky top-0 z-10">

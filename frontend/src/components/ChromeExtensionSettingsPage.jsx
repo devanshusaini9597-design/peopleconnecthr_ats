@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Chrome, RefreshCw, Trash2, Copy, Loader2, Download, CheckCircle2 } from 'lucide-react';
+import { Chrome, RefreshCw, Trash2, Copy, Loader2, Download, CheckCircle2, Check, Link2, KeyRound } from 'lucide-react';
 import PageHeader from './ui/PageHeader';
 import Modal from './ui/Modal';
 import ConfirmationModal from './ConfirmationModal';
@@ -8,14 +8,24 @@ import { useToast } from './Toast';
 
 const SecretRevealModal = ({ open, label, value, domain, onClose }) => {
   const [copied, setCopied] = useState(false);
-  const copy = () => {
-    navigator.clipboard?.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+  const [copiedDomain, setCopiedDomain] = useState(false);
+
+  const copy = (text, which = 'token') => {
+    navigator.clipboard?.writeText(text);
+    if (which === 'domain') {
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 1500);
+    } else {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
   };
 
   useEffect(() => {
-    if (open) setCopied(false);
+    if (open) {
+      setCopied(false);
+      setCopiedDomain(false);
+    }
   }, [open]);
 
   return (
@@ -29,21 +39,25 @@ const SecretRevealModal = ({ open, label, value, domain, onClose }) => {
         <button type="button" onClick={onClose} className="btn-primary w-full sm:w-auto">Done</button>
       }
     >
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 bg-stone-50 border border-stone-200 rounded-xl p-3">
-          <code className="text-sm text-stone-800 break-all flex-1 font-mono">{value}</code>
-          <button type="button" onClick={copy} className="p-2.5 hover:bg-stone-200 rounded-xl shrink-0 touch-target" title="Copy">
-            <Copy className="w-4 h-4 text-stone-600" />
-          </button>
-        </div>
-        {copied && <p className="text-xs text-emerald-600 font-medium">Copied to clipboard</p>}
+      <div className="space-y-3">
         <div>
-          <p className="text-sm text-stone-500 leading-relaxed">
-            Open the extension&apos;s popup, paste this token, and set the API domain to:
-          </p>
-          <div className="mt-2 flex items-center gap-2 bg-stone-50 border border-stone-200 rounded-xl p-3">
-            <code className="text-sm text-stone-800 break-all flex-1 font-mono">{domain}</code>
+          <label className="label-ats">Extension token</label>
+          <div className="flex items-center gap-2 bg-stone-50 border border-stone-200 rounded-xl p-3">
+            <code className="text-sm text-stone-800 break-all flex-1 font-mono leading-relaxed">{value}</code>
+            <button type="button" onClick={() => copy(value)} className="btn-secondary !px-3 shrink-0" title="Copy">
+              {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+            </button>
           </div>
+        </div>
+        <div>
+          <label className="label-ats">API domain</label>
+          <div className="flex items-center gap-2 bg-stone-50 border border-stone-200 rounded-xl p-3">
+            <code className="text-sm text-stone-800 break-all flex-1 font-mono">{domain}</code>
+            <button type="button" onClick={() => copy(domain, 'domain')} className="btn-secondary !px-3 shrink-0" title="Copy domain">
+              {copiedDomain ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+            </button>
+          </div>
+          <p className="text-xs text-stone-400 mt-1.5">Paste both into the extension popup to connect.</p>
         </div>
       </div>
     </Modal>
@@ -58,6 +72,7 @@ const ChromeExtensionSettingsPage = () => {
   const [revealed, setRevealed] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const [copiedDomain, setCopiedDomain] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -139,76 +154,117 @@ const ChromeExtensionSettingsPage = () => {
     }
   };
 
+  const copyDomain = () => {
+    navigator.clipboard?.writeText(BASE_API_URL);
+    setCopiedDomain(true);
+    setTimeout(() => setCopiedDomain(false), 1500);
+  };
+
   if (loading) {
     return (
-      <div className="page-shell-ats">
-        <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3">
-          <Loader2 className="w-8 h-8 text-brand-600 animate-spin" />
-          <p className="text-sm text-stone-500 font-medium">Loading extension settings…</p>
+      <div className="page-shell-ats animate-page-enter">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-2xl skeleton-ats flex-shrink-0" />
+          <div className="space-y-2 flex-1 pt-1">
+            <div className="h-7 w-48 skeleton-ats rounded-lg" />
+            <div className="h-4 w-72 max-w-full skeleton-ats rounded-lg" />
+          </div>
+        </div>
+        <div className="card-ats-bordered p-6 space-y-4 mt-2">
+          <div className="h-20 skeleton-ats rounded-xl" />
+          <div className="h-14 skeleton-ats rounded-xl" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="page-shell-ats max-w-2xl">
+    <div className="page-shell-ats animate-page-enter max-w-3xl">
       <PageHeader
         icon={Chrome}
         title="Chrome Extension"
-        subtitle="One-click import candidates straight from LinkedIn profiles — available on every plan."
+        subtitle="One-click import candidates from LinkedIn — available on every plan."
         gradientTitle
       />
 
-      <div className="card-ats-bordered p-5 sm:p-6 space-y-5">
-        <div className="flex items-start gap-3 bg-brand-50 border border-brand-100 rounded-xl p-4">
-          <Download className="w-5 h-5 text-brand-600 mt-0.5 shrink-0" />
-          <div className="text-sm text-brand-800">
-            <p className="font-semibold">1. Install the extension</p>
-            <p className="mt-1 leading-relaxed">
-              Download the <code className="text-brand-700">chrome-extension/</code> folder from your installation files, then in Chrome go to
-              <code className="mx-1 text-brand-700">chrome://extensions</code>, enable Developer Mode, and click &quot;Load unpacked&quot;.
-            </p>
+      <div className="card-ats-bordered p-5 sm:p-6 space-y-5 relative overflow-hidden">
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+
+        <div>
+          <h3 className="section-title-ats !mb-3">
+            <Download className="w-4 h-4 text-brand-600" />
+            1. Install the extension
+          </h3>
+          <div className="rounded-xl border border-brand-100 bg-brand-50/60 p-4 text-sm text-brand-900 leading-relaxed">
+            Download the <code className="font-mono text-brand-700 bg-white/70 px-1.5 py-0.5 rounded-md">chrome-extension/</code> folder,
+            then open <code className="font-mono text-brand-700 bg-white/70 px-1.5 py-0.5 rounded-md mx-0.5">chrome://extensions</code>,
+            enable Developer Mode, and click <strong>Load unpacked</strong>.
           </div>
         </div>
 
         <div>
-          <p className="text-sm font-semibold text-stone-900 mb-2">2. Connect it to your organization</p>
+          <h3 className="section-title-ats !mb-3">
+            <KeyRound className="w-4 h-4 text-brand-600" />
+            2. Connect to your organization
+          </h3>
+
           {tokenInfo ? (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-stone-50 border border-stone-200 rounded-xl p-3 sm:p-4">
-              <div className="flex items-center gap-2 text-sm text-stone-700 min-w-0">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>
-                  Token active — <code className="font-mono">{tokenInfo.tokenPrefix}…</code>
+            <div className="rounded-xl border border-stone-200 bg-stone-50/60 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center flex-shrink-0">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-stone-900">Token active</p>
+                  <p className="text-xs text-stone-500 mt-0.5 font-mono truncate">{tokenInfo.tokenPrefix}…</p>
                   {tokenInfo.importCount > 0 && (
-                    <span className="text-stone-400"> · {tokenInfo.importCount} import{tokenInfo.importCount === 1 ? '' : 's'}</span>
+                    <p className="text-xs text-stone-400 mt-1">
+                      {tokenInfo.importCount} import{tokenInfo.importCount === 1 ? '' : 's'} via extension
+                    </p>
                   )}
-                </span>
+                </div>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={handleGenerate}
                   disabled={generating}
-                  className="p-2.5 hover:bg-stone-200 rounded-xl text-stone-500 transition-colors touch-target"
+                  className="btn-secondary !text-sm !px-3"
                   title="Regenerate"
                 >
                   <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
+                  Replace
                 </button>
                 <button
                   type="button"
                   onClick={handleRevoke}
-                  className="p-2.5 hover:bg-red-50 rounded-xl text-red-500 transition-colors touch-target"
+                  className="btn-ghost !text-red-600 hover:!bg-red-50 !text-sm !px-3"
                   title="Revoke"
                 >
                   <Trash2 className="w-4 h-4" />
+                  Revoke
                 </button>
               </div>
             </div>
           ) : (
-            <button type="button" onClick={handleGenerate} disabled={generating} className="btn-primary">
+            <button type="button" onClick={handleGenerate} disabled={generating} className="btn-primary w-full sm:w-auto">
               {generating ? <><Loader2 size={16} className="animate-spin" /> Generating…</> : 'Generate Extension Token'}
             </button>
           )}
+        </div>
+
+        <div>
+          <h3 className="section-title-ats !mb-3">
+            <Link2 className="w-4 h-4 text-brand-600" />
+            3. API domain
+          </h3>
+          <div className="flex items-center gap-2">
+            <input readOnly value={BASE_API_URL} className="input-ats font-mono !text-xs flex-1 min-w-0" />
+            <button type="button" onClick={copyDomain} className="btn-secondary !px-3 shrink-0" title="Copy domain">
+              {copiedDomain ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+            </button>
+          </div>
+          <p className="text-xs text-stone-400 mt-1.5">Paste this as the API domain in the extension settings.</p>
         </div>
       </div>
 

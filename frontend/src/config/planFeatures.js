@@ -10,6 +10,9 @@
  * here too — the backend is the enforcement source of truth (every protected
  * route re-checks via requireFeature), this file only controls what the UI
  * shows/hides.
+ *
+ * NOT gated: Trust Center, public status page, SOC 2 materials, candidate
+ * GDPR self-service, Chrome LinkedIn-import extension.
  */
 
 const PLAN_ORDER = ['starter', 'professional', 'enterprise'];
@@ -45,19 +48,56 @@ const FEATURES = {
   'integrations.webhooksFull': 'enterprise',
   'integrations.zapier': 'enterprise',
   'integrations.esign': 'enterprise',
+  'integrations.whatsapp': 'enterprise',
+
+  'integrations.video': 'professional',
+  'integrations.storage': 'enterprise',
+  'integrations.crm': 'enterprise',
+  'integrations.hris': 'enterprise',
+  'integrations.siem': 'enterprise',
+  'integrations.dataWarehouse': 'enterprise',
+  'integrations.slackApp': 'professional',
 
   'agency.multiClient': 'professional',
   'agency.clientSharing': 'enterprise',
   'agency.clientPortal': 'enterprise',
 
   'sso': 'enterprise',
+  'sso.scim': 'enterprise',
 
-  // ── Add-ons ──
   'candidates.talentPools': 'professional',
   'analytics.dei': 'enterprise',
-  'integrations.whatsapp': 'enterprise',
   'assessments': 'professional',
-  'whiteLabel': 'enterprise'
+  'whiteLabel': 'enterprise',
+
+  'security.mfa': 'starter',
+  'candidates.dedupe': 'starter',
+  'candidates.surveys': 'starter',
+  'portal.localization': 'starter',
+
+  'ai.semanticSearch': 'professional',
+  'ai.jdGenerator': 'professional',
+  'ai.interviewQuestions': 'professional',
+  'ai.booleanGenerator': 'professional',
+  'ai.emailDrafting': 'professional',
+  'candidates.anonymize': 'professional',
+  'security.mfaEnforcement': 'professional',
+  'security.sessionPolicy': 'professional',
+  'scheduling.selfBook': 'professional',
+  'careers.pageBuilder': 'professional',
+  'referrals.program': 'professional',
+
+  'security.byokEncryption': 'enterprise',
+  'security.ipAllowlist': 'enterprise',
+  'compliance.retentionPolicy': 'enterprise',
+  'compliance.legalHold': 'enterprise',
+  'ai.interviewTranscription': 'enterprise',
+  'ai.biasFlagging': 'enterprise',
+  'ai.narrativeAnalytics': 'enterprise',
+  'workflows.approvals': 'enterprise',
+  'offers.templates': 'enterprise',
+  'careers.whiteLabelBuilder': 'enterprise',
+  'deployment.dedicated': 'enterprise'
 };
 
 const rankOf = (plan) => {
@@ -74,5 +114,28 @@ export const planHasFeature = (plan, featureKey) => {
 export const getEntitlements = (plan) => {
   return Object.keys(FEATURES).filter((key) => planHasFeature(plan, key));
 };
+
+/** Any integration category entitlement — used to show Integrations nav. */
+export const INTEGRATION_NAV_FEATURES = [
+  'integrations.byoEmail',
+  'integrations.calendar',
+  'integrations.aiScoring',
+  'integrations.video',
+  'integrations.sms',
+  'integrations.whatsapp',
+  'integrations.jobBoard',
+  'integrations.backgroundCheck',
+  'integrations.esign',
+  'integrations.storage',
+  'integrations.crm',
+  'integrations.hris',
+  'integrations.siem',
+  'integrations.dataWarehouse',
+  'integrations.slackApp',
+  'integrations.webhooksReadOnly'
+];
+
+export const planHasAnyIntegration = (plan) =>
+  INTEGRATION_NAV_FEATURES.some((key) => planHasFeature(plan, key));
 
 export { PLAN_ORDER, FEATURES };
