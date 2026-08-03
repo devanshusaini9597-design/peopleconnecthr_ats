@@ -27,14 +27,28 @@ import {
   LogOut,
   Layers,
   ClipboardList,
+  ListChecks,
   Palette,
   Chrome,
   Home,
-  Sparkles
+  Sparkles,
+  Shield,
+  Gift
 } from 'lucide-react';
 import { handleLogout } from '../utils/authUtils';
 import { useAuth } from '../context/AuthContext';
 import { planHasFeature, planHasAnyIntegration } from '../config/planFeatures';
+
+const AI_NAV_FEATURES = [
+  'ai.jdGenerator',
+  'ai.interviewQuestions',
+  'ai.booleanGenerator',
+  'ai.emailDrafting',
+  'ai.semanticSearch',
+];
+
+const planHasAnyAiFeature = (plan) =>
+  AI_NAV_FEATURES.some((key) => planHasFeature(plan, key));
 
 const getUserData = () => {
   try {
@@ -85,7 +99,7 @@ const SECTIONS = [
       { label: 'Resume Parsing', path: '/resume-parsing', icon: FileText, roles: ['owner', 'admin', 'recruiter'] },
       { label: 'Talent Pools', path: '/talent-pools', icon: Layers, roles: ['owner', 'admin', 'recruiter'], feature: 'candidates.talentPools' },
       { label: 'Assessments', path: '/assessments', icon: ClipboardList, roles: ['owner', 'admin', 'recruiter'], feature: 'assessments' },
-      { label: 'AI Tools', path: '/ai-tools', icon: Sparkles, roles: ['owner', 'admin', 'recruiter'], feature: 'ai.jdGenerator' },
+      { label: 'AI Tools', path: '/ai-tools', icon: Sparkles, roles: ['owner', 'admin', 'recruiter'], anyAi: true },
     ]
   },
   {
@@ -109,13 +123,13 @@ const SECTIONS = [
       { label: 'Audit Log', path: '/organization/audit-log', icon: ScrollText, roles: ['owner', 'admin'], feature: 'audit.log' },
       { label: 'Custom Roles', path: '/organization/custom-roles', icon: ShieldPlus, roles: ['owner', 'admin'], feature: 'team.customRoles' },
       { label: 'Single Sign-On', path: '/organization/sso', icon: KeyRound, roles: ['owner', 'admin'], feature: 'sso' },
-      { label: 'Security', path: '/organization/security', icon: KeyRound, roles: ['owner', 'admin'], feature: 'security.mfa' },
+      { label: 'Security', path: '/organization/security', icon: Shield, roles: ['owner', 'admin'], feature: 'security.mfa' },
       { label: 'Webhooks & API', path: '/organization/webhooks-api', icon: Webhook, roles: ['owner', 'admin'], feature: 'integrations.webhooksReadOnly' },
       { label: 'Scheduled Reports', path: '/organization/scheduled-reports', icon: CalendarClock, roles: ['owner', 'admin'], feature: 'reports.custom' },
       { label: 'White-Label Kit', path: '/organization/white-label', icon: Palette, roles: ['owner', 'admin'] },
       { label: 'Chrome Extension', path: '/organization/chrome-extension', icon: Chrome, roles: ['owner', 'admin'] },
-      { label: 'Referrals', path: '/organization/referrals', icon: Users, roles: ['owner', 'admin'], feature: 'referrals.program' },
-      { label: 'Approvals', path: '/organization/approvals', icon: ClipboardList, roles: ['owner', 'admin'], feature: 'workflows.approvals' },
+      { label: 'Referrals', path: '/organization/referrals', icon: Gift, roles: ['owner', 'admin'], feature: 'referrals.program' },
+      { label: 'Approvals', path: '/organization/approvals', icon: ListChecks, roles: ['owner', 'admin'], feature: 'workflows.approvals' },
     ]
   },
   {
@@ -174,6 +188,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
           (item) => {
             if (!item.roles.includes(userRole)) return false;
             if (item.anyIntegration) return planHasAnyIntegration(orgPlan);
+            if (item.anyAi) return planHasAnyAiFeature(orgPlan);
             if (item.feature) return planHasFeature(orgPlan, item.feature);
             return true;
           }

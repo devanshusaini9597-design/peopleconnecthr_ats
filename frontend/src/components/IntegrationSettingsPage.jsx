@@ -32,7 +32,7 @@ const AI_PROVIDERS = [
   card('openai', 'OpenAI', 'GPT models for scoring and generation', 'ai', Bot, 'text-emerald-600', 'bg-emerald-50', 'integrations.aiScoring', ['apiKey', 'model']),
   card('anthropic', 'Anthropic', 'Claude models for ATS intelligence', 'ai', Bot, 'text-amber-600', 'bg-amber-50', 'integrations.aiScoring', ['apiKey', 'model']),
   card('azure_openai', 'Azure OpenAI', 'Enterprise OpenAI on Azure', 'ai', Bot, 'text-blue-600', 'bg-blue-50', 'integrations.aiScoring', ['endpoint', 'apiKey', 'deploymentName', 'embeddingDeployment']),
-  card('gemini', 'Google Gemini', 'Gemini models for matching and scoring', 'ai', Bot, 'text-violet-600', 'bg-violet-50', 'integrations.aiScoring', ['apiKey', 'model']),
+  card('gemini', 'Google Gemini', 'Gemini models for matching and scoring', 'ai', Bot, 'text-teal-600', 'bg-teal-50', 'integrations.aiScoring', ['apiKey', 'model']),
   card('bedrock', 'AWS Bedrock', 'Foundation models via AWS Bedrock', 'ai', Bot, 'text-orange-600', 'bg-orange-50', 'integrations.aiScoring', ['accessKeyId', 'secretAccessKey', 'region', 'model'])
 ];
 
@@ -56,8 +56,8 @@ const JOB_BOARD_PROVIDERS = [
   card('webhook', 'Custom Relay / Zapier', 'Push jobs to middleware or partner endpoint', 'job_board', Briefcase, 'text-teal-600', 'bg-teal-50', 'integrations.jobBoard', ['webhookUrl']),
   card('linkedin', 'LinkedIn', 'Direct job posting to LinkedIn', 'job_board', Briefcase, 'text-sky-700', 'bg-sky-50', 'integrations.jobBoard', ['accessToken', 'organizationUrn']),
   card('ziprecruiter', 'ZipRecruiter', 'Post jobs to ZipRecruiter', 'job_board', Briefcase, 'text-green-700', 'bg-green-50', 'integrations.jobBoard', ['apiKey', 'employerId']),
-  card('naukri', 'Naukri', 'Post jobs to Naukri.com', 'job_board', Briefcase, 'text-indigo-600', 'bg-indigo-50', 'integrations.jobBoard', ['apiKey', 'recruiterId']),
-  card('monster', 'Monster', 'Post jobs to Monster', 'job_board', Briefcase, 'text-purple-600', 'bg-purple-50', 'integrations.jobBoard', ['clientId', 'clientSecret', 'boardId'])
+  card('naukri', 'Naukri', 'Post jobs to Naukri.com', 'job_board', Briefcase, 'text-brand-600', 'bg-brand-50', 'integrations.jobBoard', ['apiKey', 'recruiterId']),
+  card('monster', 'Monster', 'Post jobs to Monster', 'job_board', Briefcase, 'text-stone-700', 'bg-stone-100', 'integrations.jobBoard', ['clientId', 'clientSecret', 'boardId'])
 ];
 
 const BACKGROUND_CHECK_PROVIDERS = [
@@ -67,7 +67,7 @@ const BACKGROUND_CHECK_PROVIDERS = [
   card('goodhire', 'GoodHire', 'SMB-friendly background checks', 'background_check', ShieldCheck, 'text-teal-600', 'bg-teal-50', 'integrations.backgroundCheck', ['apiKey', 'packageId']),
   card('springverify', 'SpringVerify', 'India background verification', 'background_check', ShieldCheck, 'text-orange-600', 'bg-orange-50', 'integrations.backgroundCheck', ['apiKey', 'packageId', 'baseUrl']),
   card('authbridge', 'AuthBridge', 'India compliance screening', 'background_check', ShieldCheck, 'text-red-600', 'bg-red-50', 'integrations.backgroundCheck', ['apiKey', 'clientCode', 'packageCode', 'baseUrl']),
-  card('idfy', 'IDfy', 'Identity and background verification', 'background_check', ShieldCheck, 'text-violet-600', 'bg-violet-50', 'integrations.backgroundCheck', ['apiKey', 'accountId', 'taskId', 'baseUrl'])
+  card('idfy', 'IDfy', 'Identity and background verification', 'background_check', ShieldCheck, 'text-brand-600', 'bg-brand-50', 'integrations.backgroundCheck', ['apiKey', 'accountId', 'taskId', 'baseUrl'])
 ];
 
 const ESIGN_PROVIDERS = [
@@ -108,7 +108,7 @@ const HRIS_PROVIDERS = [
 
 const SIEM_PROVIDERS = [
   card('splunk', 'Splunk', 'Ship audit events to Splunk HEC', 'siem', Activity, 'text-green-700', 'bg-green-50', 'integrations.siem', ['hecUrl', 'hecToken', 'index', 'sourcetype']),
-  card('datadog', 'Datadog', 'Ship logs to Datadog', 'siem', Activity, 'text-purple-600', 'bg-purple-50', 'integrations.siem', ['apiKey', 'site', 'service', 'source', 'env'])
+  card('datadog', 'Datadog', 'Ship logs to Datadog', 'siem', Activity, 'text-stone-700', 'bg-stone-100', 'integrations.siem', ['apiKey', 'site', 'service', 'source', 'env'])
 ];
 
 const DATA_WAREHOUSE_PROVIDERS = [
@@ -159,7 +159,7 @@ const SECRET_FIELDS = new Set([
 ]);
 
 const SLACK_PROVIDERS = [
-  card('slack', 'Slack App', 'Slash commands: /skillnix help, /skillnix candidates search', 'slack_app', Plug, 'text-purple-600', 'bg-purple-50', 'integrations.slackApp', ['botToken', 'signingSecret', 'teamId']),
+  card('slack', 'Slack App', 'Slash commands: /skillnix help, /skillnix candidates search', 'slack_app', Plug, 'text-brand-600', 'bg-brand-50', 'integrations.slackApp', ['botToken', 'signingSecret', 'teamId']),
   card('teams', 'Microsoft Teams', 'Outgoing webhook for candidate search stub', 'slack_app', Plug, 'text-sky-600', 'bg-sky-50', 'integrations.slackApp', ['botToken', 'signingSecret'])
 ];
 
@@ -227,6 +227,7 @@ export default function IntegrationSettingsPage() {
   const [feedback, setFeedback] = useState(null);
   const [disconnectTarget, setDisconnectTarget] = useState(null);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const authHeaders = useMemo(
     () => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }),
@@ -368,7 +369,7 @@ export default function IntegrationSettingsPage() {
         key={provider.id}
         className="card-ats-bordered overflow-hidden flex flex-col relative group h-full"
       >
-        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 opacity-70" />
         <div className="p-5 flex flex-col flex-1">
           <div className="flex justify-between items-start gap-3 mb-3">
             <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${provider.bg || 'bg-stone-100'} ${provider.color || 'text-stone-500'} ring-1 ring-black/5`}>
@@ -423,11 +424,32 @@ export default function IntegrationSettingsPage() {
         <LoadingSkeleton />
       ) : (
         <div className="space-y-8">
-          {SECTIONS.map(({ title, icon, providers }) => (
-            <Section key={title} title={title} icon={icon}>
-              {providers.map(renderCard)}
-            </Section>
-          ))}
+          <div>
+            <label className="label-ats">Search providers</label>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Filter by name or category…"
+              className="input-ats max-w-md"
+            />
+          </div>
+          {SECTIONS.map(({ title, icon, providers }) => {
+            const q = searchQuery.trim().toLowerCase();
+            const filtered = q
+              ? providers.filter((p) =>
+                  p.name.toLowerCase().includes(q)
+                  || p.desc.toLowerCase().includes(q)
+                  || p.category.toLowerCase().includes(q)
+                )
+              : providers;
+            if (filtered.length === 0) return null;
+            return (
+              <Section key={title} title={title} icon={icon}>
+                {filtered.map(renderCard)}
+              </Section>
+            );
+          })}
         </div>
       )}
 
@@ -438,28 +460,28 @@ export default function IntegrationSettingsPage() {
         description={activeProvider?.desc}
         size="md"
         footer={
-          <>
+          <div className="flex flex-col-reverse sm:flex-row sm:flex-wrap sm:justify-end gap-2 w-full">
             {activeConfig && (
               <button
                 type="button"
                 onClick={() => setDisconnectTarget(activeProvider)}
-                className="btn-ghost !text-red-600 hover:!bg-red-50 mr-auto"
+                className="btn-ghost !text-red-600 hover:!bg-red-50 sm:mr-auto w-full sm:w-auto"
                 disabled={saving || testing}
               >
                 <Unlink className="w-4 h-4" /> Disconnect
               </button>
             )}
-            <button type="button" onClick={closeConfigure} className="btn-secondary" disabled={saving || testing}>
+            <button type="button" onClick={closeConfigure} className="btn-secondary w-full sm:w-auto" disabled={saving || testing}>
               Cancel
             </button>
-            <button type="button" onClick={handleTest} className="btn-secondary" disabled={testing || saving || !activeConfig}>
+            <button type="button" onClick={handleTest} className="btn-secondary w-full sm:w-auto" disabled={testing || saving || !activeConfig}>
               {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Test'}
             </button>
-            <button type="button" onClick={handleSave} className="btn-primary" disabled={saving || testing}>
+            <button type="button" onClick={handleSave} className="btn-primary w-full sm:w-auto" disabled={saving || testing}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               {saving ? 'Saving…' : 'Save'}
             </button>
-          </>
+          </div>
         }
       >
         {activeProvider && (

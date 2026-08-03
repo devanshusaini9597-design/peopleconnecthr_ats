@@ -100,7 +100,7 @@ export default function ReferralsPage() {
 
   return (
     <FeatureGate feature="referrals.program" fallback={<UpgradeFallback />}>
-      <div className="page-shell-ats animate-page-enter pb-32 sm:pb-28">
+      <div className="page-shell-ats animate-page-enter">
         <PageHeader
           title="Referrals"
           subtitle="Track referral codes, candidate links, and reward status."
@@ -127,7 +127,7 @@ export default function ReferralsPage() {
               subMessage="Create a code and share it with employees."
               tone="brand"
               action={
-                <button type="button" onClick={createCode} disabled={creating} className="btn-primary">
+                <button type="button" onClick={createCode} disabled={creating} className="btn-primary w-full sm:w-auto">
                   {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                   Create first code
                 </button>
@@ -139,7 +139,8 @@ export default function ReferralsPage() {
             {/* Mobile card layout */}
             <div className="md:hidden space-y-3">
               {referrals.map((r) => (
-                <div key={r._id} className="card-ats-bordered p-4 space-y-3">
+                <div key={r._id} className="card-ats-bordered p-4 space-y-3 relative overflow-hidden">
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-mono font-bold text-stone-900">{r.code}</p>

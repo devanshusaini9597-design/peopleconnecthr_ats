@@ -6,7 +6,27 @@ import {
 import { authenticatedFetch, readApiJson } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import PageHeader from './ui/PageHeader';
+import EmptyState from './ui/EmptyState';
 import FeatureGate from './FeatureGate';
+
+const SegmentedControl = ({ value, onChange, options }) => (
+  <div className="flex gap-1 p-1 bg-stone-100/90 rounded-2xl w-fit max-w-full overflow-x-auto scrollbar-hide">
+    {options.map((opt) => (
+      <button
+        key={opt.value}
+        type="button"
+        onClick={() => onChange(opt.value)}
+        className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
+          value === opt.value
+            ? 'bg-white text-brand-700 shadow-sm ring-1 ring-stone-200/80'
+            : 'text-stone-500 hover:text-stone-700'
+        }`}
+      >
+        {opt.label}
+      </button>
+    ))}
+  </div>
+);
 
 const TABS = [
   { id: 'jd', label: 'JD Generator', icon: FileText, feature: 'ai.jdGenerator' },
@@ -96,17 +116,13 @@ const AiToolsPage = () => {
   const tab = TABS.find((t) => t.id === activeTab);
 
   return (
-    <div className="page-shell-ats animate-page-enter pb-32 sm:pb-28">
+    <div className="page-shell-ats animate-page-enter">
       <PageHeader
         icon={Sparkles}
         title="AI Tools"
-        subtitle="LLM-powered recruiting assistants. Resume parsing elsewhere uses regex/OCR only."
+        subtitle="LLM-powered recruiting assistants. Scoring and generation use your configured LLM provider; resume text extraction is regex/OCR-based, not AI."
         gradientTitle
       />
-
-      <p className="text-xs text-stone-500 -mt-2 leading-relaxed">
-        Scoring and generation features use your configured LLM provider. Resume text extraction is regex/OCR-based, not AI.
-      </p>
 
       <div className="flex overflow-x-auto scrollbar-hide gap-2 pb-1 -mx-1 px-1">
         {TABS.map((t) => (
@@ -216,13 +232,16 @@ const AiToolsPage = () => {
 
             {activeTab === 'email' && (
               <>
-                <div className="flex flex-wrap gap-4 text-sm">
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="radio" checked={emailType === 'rejection'} onChange={() => setEmailType('rejection')} className="accent-brand-600" /> Rejection
-                  </label>
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="radio" checked={emailType === 'offer'} onChange={() => setEmailType('offer')} className="accent-brand-600" /> Offer
-                  </label>
+                <div>
+                  <label className="label-ats">Email type</label>
+                  <SegmentedControl
+                    value={emailType}
+                    onChange={setEmailType}
+                    options={[
+                      { value: 'rejection', label: 'Rejection' },
+                      { value: 'offer', label: 'Offer' },
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className="label-ats">Context (candidate name, role, notes…)</label>
@@ -251,13 +270,16 @@ const AiToolsPage = () => {
 
             {activeTab === 'bias' && (
               <>
-                <div className="flex flex-wrap gap-4 text-sm">
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="radio" checked={biasType === 'jd'} onChange={() => setBiasType('jd')} className="accent-brand-600" /> Job description
-                  </label>
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="radio" checked={biasType === 'scorecard'} onChange={() => setBiasType('scorecard')} className="accent-brand-600" /> Scorecard
-                  </label>
+                <div>
+                  <label className="label-ats">Content type</label>
+                  <SegmentedControl
+                    value={biasType}
+                    onChange={setBiasType}
+                    options={[
+                      { value: 'jd', label: 'Job description' },
+                      { value: 'scorecard', label: 'Scorecard' },
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className="label-ats">Text to review</label>
@@ -267,23 +289,25 @@ const AiToolsPage = () => {
                   {loading ? <><Loader2 size={16} className="animate-spin" /> Checking…</> : 'Check for Bias'}
                 </button>
                 {result && (
-                  <div className="mt-4 space-y-3">
-                    {result.overallRisk && (
-                      <span className={`inline-block text-xs font-bold uppercase px-2.5 py-1 rounded-lg ${
-                        result.overallRisk === 'high' ? 'badge-danger' : result.overallRisk === 'medium' ? 'badge-warning' : 'badge-success'
-                      }`}>
-                        Risk: {result.overallRisk}
-                      </span>
-                    )}
-                    {result.summary && <p className="text-sm text-stone-700 leading-relaxed">{result.summary}</p>}
-                    {result.flags?.map((f, i) => (
-                      <div key={i} className="p-3.5 rounded-xl bg-amber-50 border border-amber-100 text-sm">
-                        <p className="font-semibold text-amber-900">&ldquo;{f.phrase}&rdquo;</p>
-                        <p className="text-amber-800 mt-1">{f.issue}</p>
-                        {f.suggestion && <p className="text-stone-600 mt-1">→ {f.suggestion}</p>}
-                      </div>
-                    ))}
-                  </div>
+                  <ResultPanel label="Bias check results">
+                    <div className="space-y-3">
+                      {result.overallRisk && (
+                        <span className={`inline-block text-xs font-bold uppercase px-2.5 py-1 rounded-lg ${
+                          result.overallRisk === 'high' ? 'badge-danger' : result.overallRisk === 'medium' ? 'badge-warning' : 'badge-success'
+                        }`}>
+                          Risk: {result.overallRisk}
+                        </span>
+                      )}
+                      {result.summary && <p className="text-sm text-stone-700 leading-relaxed">{result.summary}</p>}
+                      {result.flags?.map((f, i) => (
+                        <div key={i} className="p-3.5 rounded-xl bg-amber-50 border border-amber-100 text-sm">
+                          <p className="font-semibold text-amber-900">&ldquo;{f.phrase}&rdquo;</p>
+                          <p className="text-amber-800 mt-1">{f.issue}</p>
+                          {f.suggestion && <p className="text-stone-600 mt-1">→ {f.suggestion}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </ResultPanel>
                 )}
               </>
             )}
@@ -309,7 +333,18 @@ const AiToolsPage = () => {
                 </button>
                 {result?.results?.length > 0 && (
                   <ResultPanel label="Search results">
-                    <div className="overflow-x-auto -mx-1 px-1">
+                    <div className="md:hidden space-y-2">
+                      {result.results.map((r) => (
+                        <div key={r.candidateId} className="p-3.5 rounded-xl border border-stone-200 bg-stone-50/50">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-semibold text-stone-900">{r.name}</p>
+                            <span className="badge-brand">{(r.similarity * 100).toFixed(1)}%</span>
+                          </div>
+                          <p className="text-sm text-stone-600 mt-1">{r.position || '—'}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="hidden md:block table-shell-ats overflow-x-auto -mx-1 px-1">
                       <table className="w-full text-sm min-w-[320px]">
                         <thead>
                           <tr className="text-left text-stone-500 border-b border-stone-200">
@@ -334,7 +369,13 @@ const AiToolsPage = () => {
                   </ResultPanel>
                 )}
                 {result?.results?.length === 0 && (
-                  <p className="text-sm text-stone-500 mt-4">No embedded candidates matched. Embed candidates first.</p>
+                  <EmptyState
+                    icon={Search}
+                    message="No matches found"
+                    subMessage="No embedded candidates matched. Embed candidates first."
+                    tone="brand"
+                    compact
+                  />
                 )}
               </>
             )}

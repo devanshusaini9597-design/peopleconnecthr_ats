@@ -2,6 +2,28 @@ import React, { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Calendar, Clock, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
 import API_URL from '../config';
+import EmptyState from './ui/EmptyState';
+
+const PublicHeader = () => (
+  <header className="bg-white border-b border-stone-200 sticky top-0 z-10">
+    <div className="max-w-lg mx-auto px-4 sm:px-6 py-4 sm:py-5">
+      <Link to="/" className="flex items-center gap-2.5 text-stone-900 font-semibold">
+        <img src="/atslogo.jpg" alt="SkillNix" className="w-8 h-8 rounded-lg flex-shrink-0" />
+        <span className="text-sm sm:text-base">SkillNix</span>
+      </Link>
+    </div>
+  </header>
+);
+
+const PublicFooter = () => (
+  <footer className="border-t border-stone-200 bg-white py-6 mt-auto">
+    <div className="max-w-lg mx-auto px-4 sm:px-6 text-center">
+      <Link to="/" className="text-sm text-stone-500 hover:text-brand-700 font-medium transition-colors">
+        ← Back to SkillNix
+      </Link>
+    </div>
+  </footer>
+);
 
 export default function SelfBookPage() {
   const { tokenOrSlug } = useParams();
@@ -62,38 +84,25 @@ export default function SelfBookPage() {
 
   if (error && !data) {
     return (
-      <div className="min-h-screen bg-stone-50">
-        <header className="bg-white border-b border-stone-200">
-          <div className="max-w-lg mx-auto px-4 sm:px-6 py-4 sm:py-5">
-            <Link to="/" className="flex items-center gap-2.5 text-stone-900 font-semibold">
-              <img src="/atslogo.jpg" alt="SkillNix" className="w-8 h-8 rounded-lg flex-shrink-0" />
-              <span className="text-sm sm:text-base">SkillNix</span>
-            </Link>
-          </div>
-        </header>
-        <div className="flex items-center justify-center px-4 sm:px-6 py-16">
-          <div className="max-w-md w-full card-ats-bordered p-8 text-center relative overflow-hidden">
+      <div className="min-h-screen bg-stone-50 overflow-x-hidden flex flex-col">
+        <PublicHeader />
+        <div className="flex items-center justify-center px-4 sm:px-6 py-16 flex-1">
+          <div className="max-w-md w-full card-ats-bordered p-8 sm:p-10 text-center relative overflow-hidden">
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
             <AlertCircle className="w-10 h-10 text-red-500 mx-auto mb-4" />
             <p className="text-stone-800 font-semibold">{error}</p>
           </div>
         </div>
+        <PublicFooter />
       </div>
     );
   }
 
   if (booked) {
     return (
-      <div className="min-h-screen bg-stone-50">
-        <header className="bg-white border-b border-stone-200">
-          <div className="max-w-lg mx-auto px-4 sm:px-6 py-4 sm:py-5">
-            <Link to="/" className="flex items-center gap-2.5 text-stone-900 font-semibold">
-              <img src="/atslogo.jpg" alt="SkillNix" className="w-8 h-8 rounded-lg flex-shrink-0" />
-              <span className="text-sm sm:text-base">SkillNix</span>
-            </Link>
-          </div>
-        </header>
-        <div className="flex items-center justify-center px-4 sm:px-6 py-12 sm:py-16 animate-page-enter">
+      <div className="min-h-screen bg-stone-50 overflow-x-hidden flex flex-col">
+        <PublicHeader />
+        <div className="flex items-center justify-center px-4 sm:px-6 py-12 sm:py-16 animate-page-enter flex-1">
           <div className="max-w-md w-full card-ats-bordered p-8 sm:p-10 text-center relative overflow-hidden">
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
             <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200/70 flex items-center justify-center mx-auto mb-5">
@@ -115,22 +124,16 @@ export default function SelfBookPage() {
             )}
           </div>
         </div>
+        <PublicFooter />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-stone-50 overflow-x-hidden">
-      <header className="bg-white border-b border-stone-200">
-        <div className="max-w-lg mx-auto px-4 sm:px-6 py-4 sm:py-5">
-          <Link to="/" className="flex items-center gap-2.5 text-stone-900 font-semibold">
-            <img src="/atslogo.jpg" alt="SkillNix" className="w-8 h-8 rounded-lg flex-shrink-0" />
-            <span className="text-sm sm:text-base">SkillNix</span>
-          </Link>
-        </div>
-      </header>
+    <div className="min-h-screen bg-stone-50 overflow-x-hidden flex flex-col">
+      <PublicHeader />
 
-      <main className="max-w-lg mx-auto px-4 sm:px-6 py-8 sm:py-12 animate-page-enter">
+      <main className="max-w-lg mx-auto px-4 sm:px-6 py-8 sm:py-12 animate-page-enter flex-1 w-full">
         <div className="text-center mb-6 sm:mb-8">
           <h1 className="text-2xl sm:text-3xl font-bold text-stone-900 tracking-tight">Schedule your interview</h1>
           {data?.organizationName && (
@@ -147,31 +150,38 @@ export default function SelfBookPage() {
 
           <div>
             <label className="label-ats">Select a time</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-0.5">
-              {(data?.slots || []).map((slot) => (
-                <button
-                  key={slot.start}
-                  type="button"
-                  onClick={() => setSelectedSlot(slot.start)}
-                  className={`p-3 text-sm rounded-xl border text-left transition-colors touch-target ${
-                    selectedSlot === slot.start
-                      ? 'border-brand-500 bg-brand-50 text-brand-700 ring-2 ring-brand-500/20 font-medium'
-                      : 'border-stone-200 bg-white hover:border-brand-300 text-stone-700'
-                  }`}
-                >
-                  <Calendar className="w-3.5 h-3.5 inline mr-1.5 text-brand-600" />
-                  {new Date(slot.start).toLocaleString(undefined, {
-                    weekday: 'short',
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </button>
-              ))}
-            </div>
-            {(data?.slots || []).length === 0 && (
-              <p className="text-sm text-stone-500 mt-2">No available slots at this time.</p>
+            {(data?.slots || []).length === 0 ? (
+              <EmptyState
+                icon={Calendar}
+                message="No available slots"
+                subMessage="Check back later or contact the recruiter for other times."
+                tone="brand"
+                compact
+              />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-0.5">
+                {(data?.slots || []).map((slot) => (
+                  <button
+                    key={slot.start}
+                    type="button"
+                    onClick={() => setSelectedSlot(slot.start)}
+                    className={`p-3 text-sm rounded-xl border text-left transition-colors touch-target ${
+                      selectedSlot === slot.start
+                        ? 'border-brand-500 bg-brand-50 text-brand-700 ring-2 ring-brand-500/20 font-medium'
+                        : 'border-stone-200 bg-white hover:border-brand-300 text-stone-700'
+                    }`}
+                  >
+                    <Calendar className="w-3.5 h-3.5 inline mr-1.5 text-brand-600" />
+                    {new Date(slot.start).toLocaleString(undefined, {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
 
@@ -217,6 +227,8 @@ export default function SelfBookPage() {
           </button>
         </div>
       </main>
+
+      <PublicFooter />
     </div>
   );
 }

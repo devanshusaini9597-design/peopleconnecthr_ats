@@ -570,7 +570,7 @@ const Login = () => {
                 {mfaStep === 'mfa' ? (
                   <form onSubmit={handleMfaVerify} className="space-y-5" noValidate>
                     <div>
-                      <label htmlFor="mfa-code" className="block text-sm font-medium text-gray-700 mb-1.5">
+                      <label htmlFor="mfa-code" className="label-ats">
                         Authentication code
                       </label>
                       <input
@@ -581,36 +581,39 @@ const Login = () => {
                         value={mfaCode}
                         onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                         placeholder="000000"
-                        className="w-full px-4 py-3 rounded-xl bg-slate-50/70 border border-gray-200 text-gray-900 font-mono tracking-widest text-center text-lg outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500"
+                        className="input-ats font-mono tracking-widest text-center text-lg"
                       />
                     </div>
-                    <button type="submit" disabled={isSubmitting} className="w-full py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-60 flex items-center justify-center gap-2">
+                    <button type="submit" disabled={isSubmitting} className="btn-primary w-full">
                       {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Verify & sign in'}
                     </button>
-                    <button type="button" onClick={() => { setMfaStep('login'); setMfaCode(''); setError(''); }} className="w-full text-sm text-gray-500 hover:text-gray-700">
+                    <button type="button" onClick={() => { setMfaStep('login'); setMfaCode(''); setError(''); }} className="btn-ghost w-full text-sm text-stone-500">
                       Back to sign in
                     </button>
                   </form>
                 ) : mfaStep === 'enroll' ? (
                   <div className="space-y-5">
                     {!mfaSetup ? (
-                      <button type="button" onClick={startEnrollmentSetup} disabled={isSubmitting} className="w-full py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-60 flex items-center justify-center gap-2">
+                      <button type="button" onClick={startEnrollmentSetup} disabled={isSubmitting} className="btn-primary w-full">
                         {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Begin MFA setup'}
                       </button>
                     ) : (
                       <form onSubmit={completeEnrollment} className="space-y-4">
-                        <p className="text-sm text-gray-600">Add this secret to your authenticator app:</p>
-                        <code className="block text-xs font-mono bg-slate-100 rounded-lg p-3 break-all">{mfaSetup.secret}</code>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={mfaCode}
-                          onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                          placeholder="000000"
-                          className="w-full px-4 py-3 rounded-xl border border-gray-200 font-mono tracking-widest text-center"
-                        />
-                        <button type="submit" disabled={isSubmitting} className="w-full py-3 rounded-xl bg-indigo-600 text-white font-semibold">
-                          {isSubmitting ? 'Verifying…' : 'Verify & continue'}
+                        <p className="text-sm text-stone-600">Add this secret to your authenticator app:</p>
+                        <code className="block text-xs font-mono bg-stone-50 border border-stone-200 rounded-xl p-3 break-all">{mfaSetup.secret}</code>
+                        <div>
+                          <label className="label-ats">Verification code</label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={mfaCode}
+                            onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                            placeholder="000000"
+                            className="input-ats font-mono tracking-widest text-center"
+                          />
+                        </div>
+                        <button type="submit" disabled={isSubmitting} className="btn-primary w-full">
+                          {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying…</> : 'Verify & continue'}
                         </button>
                       </form>
                     )}
@@ -624,11 +627,11 @@ const Login = () => {
                 ) : (
                 <form onSubmit={handleSubmit} className="space-y-5" noValidate>
                   <div>
-                    <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 mb-1.5">
+                    <label htmlFor="login-email" className="label-ats">
                       Email address
                     </label>
                     <div className="relative">
-                      <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
                       <input
                         id="login-email"
                         type="email"
@@ -639,31 +642,29 @@ const Login = () => {
                         placeholder="you@company.com"
                         aria-invalid={!!fieldErrors.email}
                         aria-describedby={fieldErrors.email ? 'login-email-error' : undefined}
-                        className={`w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50/70 border text-gray-900 placeholder-gray-400 outline-none transition-colors
-                          focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white
-                          ${fieldErrors.email ? 'border-red-400' : 'border-gray-200'}`}
+                        className={`input-ats !pl-10 ${fieldErrors.email ? 'input-ats-error' : ''}`}
                       />
                     </div>
                     {fieldErrors.email && (
-                      <p id="login-email-error" className="text-sm mt-1.5 text-red-600">{fieldErrors.email}</p>
+                      <p id="login-email-error" className="field-error">{fieldErrors.email}</p>
                     )}
                   </div>
 
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <label htmlFor="login-password" className="block text-sm font-medium text-gray-700">
+                      <label htmlFor="login-password" className="label-ats !mb-0">
                         Password
                       </label>
                       <button
                         type="button"
                         onClick={() => setMode('forgot')}
-                        className="text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                        className="text-xs font-semibold text-brand-700 hover:text-brand-800 transition-colors"
                       >
                         Forgot password?
                       </button>
                     </div>
                     <div className="relative">
-                      <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
                       <input
                         id="login-password"
                         type={showPassword ? 'text' : 'password'}
@@ -672,12 +673,12 @@ const Login = () => {
                         value={formData.password}
                         onChange={handleChange}
                         placeholder="••••••••"
-                        className="w-full pl-10 pr-11 py-3 rounded-xl bg-slate-50/70 border border-gray-200 text-gray-900 placeholder-gray-400 outline-none transition-colors focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white"
+                        className="input-ats !pl-10 !pr-11"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-400 hover:text-gray-600 transition-colors"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md text-stone-400 hover:text-stone-600 transition-colors"
                         aria-label={showPassword ? 'Hide password' : 'Show password'}
                         tabIndex={-1}
                       >
@@ -691,7 +692,7 @@ const Login = () => {
                       whileTap={{ scale: 0.97 }}
                       type="submit"
                       disabled={isSubmitting || isDemoLoggingIn}
-                      className="w-full flex items-center justify-center gap-2 text-white font-semibold py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/35"
+                      className="btn-primary w-full !py-3"
                     >
                       {isSubmitting ? (
                         <>
@@ -709,10 +710,10 @@ const Login = () => {
 
                   <div className="relative py-1">
                     <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                      <div className="w-full border-t border-gray-200" />
+                      <div className="w-full border-t border-stone-200" />
                     </div>
                     <div className="relative flex justify-center">
-                      <span className="bg-white px-3 text-xs text-gray-400 uppercase tracking-wider">or</span>
+                      <span className="bg-white px-3 text-xs text-stone-400 uppercase tracking-wider">or</span>
                     </div>
                   </div>
 
@@ -720,7 +721,7 @@ const Login = () => {
                     type="button"
                     onClick={handleDemoLogin}
                     disabled={isSubmitting || isDemoLoggingIn}
-                    className="w-full inline-flex items-center justify-center gap-2 border border-blue-200 text-blue-700 font-semibold py-3 rounded-xl bg-white hover:bg-blue-50 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                    className="btn-secondary w-full !py-3 !border-brand-200 !text-brand-700 hover:!bg-brand-50"
                   >
                     {isDemoLoggingIn ? (
                       <>
@@ -787,11 +788,11 @@ const Login = () => {
                 {recoveryStatus !== 'sent' && (
                   <form onSubmit={handleForgotSubmit} className="space-y-5" noValidate>
                     <div>
-                      <label htmlFor="recovery-email" className="block text-sm font-medium text-gray-700 mb-1.5">
+                      <label htmlFor="recovery-email" className="label-ats">
                         Email address
                       </label>
                       <div className="relative">
-                        <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
                         <input
                           id="recovery-email"
                           type="email"
@@ -799,7 +800,7 @@ const Login = () => {
                           value={recoveryEmail}
                           onChange={(e) => setRecoveryEmail(e.target.value)}
                           placeholder="you@company.com"
-                          className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50/70 border border-gray-200 text-gray-900 placeholder-gray-400 outline-none transition-colors focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white"
+                          className="input-ats !pl-10"
                         />
                       </div>
                     </div>
@@ -809,7 +810,7 @@ const Login = () => {
                         whileTap={{ scale: 0.97 }}
                         type="submit"
                         disabled={recoveryStatus === 'sending'}
-                        className="w-full flex items-center justify-center gap-2 text-white font-semibold py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/35"
+                        className="btn-primary w-full !py-3"
                       >
                         {recoveryStatus === 'sending' ? (
                           <>
@@ -827,7 +828,7 @@ const Login = () => {
                 {recoveryStatus === 'sent' && (
                   <button
                     onClick={backToLogin}
-                    className="w-full text-center px-6 py-3 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors font-medium text-gray-700"
+                    className="btn-secondary w-full !py-3"
                   >
                     Back to sign in
                   </button>
@@ -852,7 +853,7 @@ const Login = () => {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               transition={{ type: 'spring', stiffness: 350, damping: 28 }}
-              className="w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-200"
+              className="w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden border border-stone-200"
             >
               <div className="px-6 pt-6 pb-4">
                 <div className="flex items-start justify-between">
@@ -861,36 +862,36 @@ const Login = () => {
                       <AlertCircle size={20} className="text-amber-600" />
                     </div>
                     <div>
-                      <h3 className="text-base font-semibold text-gray-900">Account not found</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">No account exists with this email</p>
+                      <h3 className="text-base font-semibold text-stone-900">Account not found</h3>
+                      <p className="text-xs text-stone-500 mt-0.5">No account exists with this email</p>
                     </div>
                   </div>
                   <button
                     onClick={() => setShowSignupModal(false)}
-                    className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                    className="p-1 hover:bg-stone-100 rounded-lg transition-colors"
                     aria-label="Close"
                   >
-                    <X size={18} className="text-gray-400" />
+                    <X size={18} className="text-stone-400" />
                   </button>
                 </div>
               </div>
 
               <div className="px-6 pb-4">
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+                <div className="bg-stone-50 border border-stone-200 rounded-xl p-3">
                   <div className="flex items-center gap-2">
-                    <Mail size={14} className="text-gray-400 flex-shrink-0" />
-                    <span className="text-sm font-medium text-gray-800 truncate">{unmatchedEmail}</span>
+                    <Mail size={14} className="text-stone-400 flex-shrink-0" />
+                    <span className="text-sm font-medium text-stone-800 truncate">{unmatchedEmail}</span>
                   </div>
                 </div>
-                <p className="text-sm text-gray-500 mt-3">
+                <p className="text-sm text-stone-500 mt-3">
                   Want to create a new account with this email address?
                 </p>
               </div>
 
-              <div className="px-6 pb-6 flex gap-3">
+              <div className="px-6 pb-6 flex flex-col-reverse sm:flex-row gap-3">
                 <button
                   onClick={() => setShowSignupModal(false)}
-                  className="flex-1 px-4 py-2.5 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
+                  className="btn-secondary flex-1"
                 >
                   Try again
                 </button>
@@ -899,7 +900,7 @@ const Login = () => {
                     setShowSignupModal(false);
                     navigate('/register');
                   }}
-                  className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-colors flex items-center justify-center gap-1.5"
+                  className="btn-primary flex-1"
                 >
                   <UserPlus size={16} />
                   Create account

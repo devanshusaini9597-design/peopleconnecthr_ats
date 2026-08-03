@@ -94,9 +94,9 @@ const OfferTemplatesSection = () => {
         title="New offer template"
         footer={
           <>
-            <button type="button" onClick={() => setModalOpen(false)} className="btn-secondary">Cancel</button>
-            <button type="button" onClick={handleSave} disabled={saving || !form.name} className="btn-primary">
-              {saving ? 'Saving…' : 'Create'}
+            <button type="button" onClick={() => setModalOpen(false)} className="btn-secondary w-full sm:w-auto">Cancel</button>
+            <button type="button" onClick={handleSave} disabled={saving || !form.name} className="btn-primary w-full sm:w-auto">
+              {saving ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : 'Create'}
             </button>
           </>
         }
@@ -205,7 +205,7 @@ export default function ApprovalsPage() {
 
   return (
     <FeatureGate feature="workflows.approvals" fallback={<UpgradeFallback />}>
-      <div className="page-shell-ats animate-page-enter pb-32 sm:pb-28">
+      <div className="page-shell-ats animate-page-enter">
         <PageHeader
           title="Approval workflows"
           subtitle="Define multi-step approvals for job requisitions and offers."
@@ -226,7 +226,7 @@ export default function ApprovalsPage() {
           <div className="space-y-8">
             <section className="card-ats-bordered p-5 sm:p-6 relative overflow-hidden">
               <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-              <h2 className="section-title-ats">
+              <h2 className="section-title-ats !mb-0 !pb-0 !border-0">
                 <ClipboardList className="w-4 h-4 text-brand-600" />
                 Workflows
               </h2>
@@ -262,7 +262,7 @@ export default function ApprovalsPage() {
 
             <section className="card-ats-bordered p-5 sm:p-6 relative overflow-hidden">
               <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-              <h2 className="section-title-ats">
+              <h2 className="section-title-ats !mb-0 !pb-0 !border-0">
                 <Check className="w-4 h-4 text-brand-600" />
                 Pending approvals
               </h2>
@@ -296,7 +296,7 @@ export default function ApprovalsPage() {
                           <button
                             type="button"
                             onClick={() => actOnInstance(inst._id, 'reject')}
-                            className="btn-secondary text-sm py-2.5 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 w-full sm:w-auto"
+                            className="btn-danger text-sm py-2.5 w-full sm:w-auto"
                           >
                             <X className="w-4 h-4" /> Reject
                           </button>
@@ -310,7 +310,21 @@ export default function ApprovalsPage() {
           </div>
         )}
 
-        <FeatureGate feature="offers.templates">
+        <FeatureGate
+          feature="offers.templates"
+          fallback={
+            <div className="card-ats-bordered border-amber-200/80 bg-amber-50/40 p-6 sm:p-8 text-center relative overflow-hidden">
+              <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto mb-3 ring-4 ring-amber-100/60">
+                <Lock className="w-6 h-6 text-amber-600" />
+              </div>
+              <h3 className="text-base font-bold text-stone-900 tracking-tight">Offer templates</h3>
+              <p className="text-stone-500 mt-1.5 text-sm leading-relaxed max-w-sm mx-auto">
+                Upgrade to create reusable offer letter and email templates with merge fields.
+              </p>
+              <a href="/billing" className="btn-primary inline-flex mt-4 w-full sm:w-auto">View Plans</a>
+            </div>
+          }
+        >
           <OfferTemplatesSection />
         </FeatureGate>
 
@@ -320,9 +334,9 @@ export default function ApprovalsPage() {
           title="New approval workflow"
           footer={
             <>
-              <button type="button" onClick={() => setWfModal(false)} className="btn-secondary">Cancel</button>
-              <button type="button" onClick={saveWorkflow} disabled={saving || !wfForm.name} className="btn-primary">
-                {saving ? 'Saving…' : 'Create'}
+              <button type="button" onClick={() => setWfModal(false)} className="btn-secondary w-full sm:w-auto">Cancel</button>
+              <button type="button" onClick={saveWorkflow} disabled={saving || !wfForm.name} className="btn-primary w-full sm:w-auto">
+                {saving ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : 'Create'}
               </button>
             </>
           }

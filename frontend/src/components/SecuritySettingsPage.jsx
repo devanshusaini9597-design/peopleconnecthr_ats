@@ -24,6 +24,14 @@ const ToggleRow = ({ checked, onChange, disabled, label, description }) => (
   </label>
 );
 
+const UpgradeStrip = ({ message }) => (
+  <div className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-lg border border-amber-200/80 bg-amber-50/40 text-xs text-amber-900">
+    <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+    <span className="flex-1 min-w-0">{message}</span>
+    <a href="/billing" className="font-semibold text-amber-700 hover:text-amber-900 whitespace-nowrap">View Plans</a>
+  </div>
+);
+
 const SecuritySettingsPage = () => {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
@@ -38,6 +46,13 @@ const SecuritySettingsPage = () => {
   const [entitlements, setEntitlements] = useState({});
   const [deploymentTier, setDeploymentTier] = useState('shared');
   const [ipInput, setIpInput] = useState('');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    const onCollapse = (e) => setSidebarCollapsed(!!e.detail);
+    window.addEventListener('sidebarCollapsed', onCollapse);
+    return () => window.removeEventListener('sidebarCollapsed', onCollapse);
+  }, []);
 
   // MFA enrollment
   const [setupData, setSetupData] = useState(null);
@@ -230,7 +245,7 @@ const SecuritySettingsPage = () => {
               Protect your account with a time-based one-time password (TOTP) from Google Authenticator, Authy, or similar.
             </p>
             {!setupData ? (
-              <button type="button" onClick={startMfaSetup} disabled={enrolling} className="btn-primary">
+              <button type="button" onClick={startMfaSetup} disabled={enrolling} className="btn-primary w-full sm:w-auto">
                 {enrolling ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Set up MFA'}
               </button>
             ) : (
@@ -257,7 +272,7 @@ const SecuritySettingsPage = () => {
                     inputMode="numeric"
                   />
                 </div>
-                <button type="button" onClick={confirmMfaSetup} disabled={enrolling} className="btn-primary">
+                <button type="button" onClick={confirmMfaSetup} disabled={enrolling} className="btn-primary w-full sm:w-auto">
                   {enrolling ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Verify & enable'}
                 </button>
               </div>
@@ -276,12 +291,16 @@ const SecuritySettingsPage = () => {
       </div>
 
       {/* Org policies */}
-      <div className="card-ats-bordered p-5 sm:p-6 space-y-5 relative overflow-hidden mt-6">
+      <div className="card-ats-bordered p-5 sm:p-6 space-y-5 relative overflow-hidden">
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 opacity-60" />
         <h3 className="section-title-ats !mb-0 !pb-0 !border-0">
           <Lock className="w-4 h-4 text-brand-600" />
           Organization policies
         </h3>
+
+        {!entitlements.mfaEnforcement && (
+          <UpgradeStrip message="MFA enforcement requires Professional or higher." />
+        )}
 
         <ToggleRow
           checked={settings.mfaEnforced}
@@ -290,6 +309,10 @@ const SecuritySettingsPage = () => {
           label="Require MFA for all users"
           description={entitlements.mfaEnforcement ? 'Users must enroll MFA before accessing the app (Professional+).' : 'Upgrade to Professional to enforce MFA.'}
         />
+
+        {!entitlements.sessionPolicy && (
+          <UpgradeStrip message="Session policies require Professional or higher." />
+        )}
 
         <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${!entitlements.sessionPolicy ? 'opacity-50' : ''}`}>
           <div>
@@ -320,6 +343,10 @@ const SecuritySettingsPage = () => {
           </div>
         </div>
 
+        {!entitlements.ipAllowlist && (
+          <UpgradeStrip message="IP allowlist requires Enterprise." />
+        )}
+
         <div className={!entitlements.ipAllowlist ? 'opacity-50' : ''}>
           <label className="label-ats flex items-center gap-1.5">
             <Globe className="w-3.5 h-3.5" /> IP allowlist (Enterprise)
@@ -332,14 +359,14 @@ const SecuritySettingsPage = () => {
               className="input-ats flex-1 font-mono text-sm"
               placeholder="203.0.113.10 or 10.0.0.0/8"
             />
-            <button type="button" onClick={addIp} disabled={!entitlements.ipAllowlist} className="btn-secondary">Add</button>
+            <button type="button" onClick={addIp} disabled={!entitlements.ipAllowlist} className="btn-secondary w-full sm:w-auto shrink-0">Add</button>
           </div>
           {settings.ipAllowlist.length > 0 && (
             <ul className="space-y-1">
               {settings.ipAllowlist.map((ip) => (
                 <li key={ip} className="flex items-center justify-between text-sm font-mono bg-stone-50 rounded-lg px-3 py-2">
                   {ip}
-                  <button type="button" onClick={() => removeIp(ip)} className="text-red-600 text-xs font-semibold">Remove</button>
+                  <button type="button" onClick={() => removeIp(ip)} className="btn-ghost !text-red-600 hover:!bg-red-50 text-xs font-semibold shrink-0">Remove</button>
                 </li>
               ))}
             </ul>
@@ -358,12 +385,16 @@ const SecuritySettingsPage = () => {
         </div>
       </div>
 
-      <div className="fixed bottom-0 right-0 z-40 left-0 lg:left-[280px]">
+      <div
+        className={`fixed bottom-0 right-0 z-40 left-0 ${sidebarCollapsed ? 'lg:left-20' : 'lg:left-[280px]'}`}
+      >
         <div className="border-t border-stone-200/80 bg-white/95 backdrop-blur-xl shadow-[0_-8px_30px_-12px_rgba(0,0,0,0.08)] pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-          <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex justify-end">
-            <button type="button" onClick={saveOrgSettings} disabled={saving} className="btn-primary">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Save className="w-4 h-4" /> Save policies</>}
-            </button>
+          <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3">
+            <div className="grid grid-cols-1 gap-2 sm:flex sm:justify-end">
+              <button type="button" onClick={saveOrgSettings} disabled={saving} className="btn-primary w-full sm:w-auto">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Save className="w-4 h-4" /> Save policies</>}
+              </button>
+            </div>
           </div>
         </div>
       </div>

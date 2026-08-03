@@ -3,6 +3,27 @@ import { Link, useParams } from 'react-router-dom';
 import { Loader2, Star, AlertCircle, CheckCircle } from 'lucide-react';
 import API_URL from '../config';
 
+const PublicHeader = () => (
+  <header className="bg-white border-b border-stone-200 sticky top-0 z-10">
+    <div className="max-w-lg mx-auto px-4 sm:px-6 py-4 sm:py-5">
+      <Link to="/" className="flex items-center gap-2.5 text-stone-900 font-semibold">
+        <img src="/atslogo.jpg" alt="SkillNix" className="w-8 h-8 rounded-lg flex-shrink-0" />
+        <span className="text-sm sm:text-base">SkillNix</span>
+      </Link>
+    </div>
+  </header>
+);
+
+const PublicFooter = () => (
+  <footer className="border-t border-stone-200 bg-white py-6 mt-auto">
+    <div className="max-w-lg mx-auto px-4 sm:px-6 text-center">
+      <Link to="/" className="text-sm text-stone-500 hover:text-brand-700 font-medium transition-colors">
+        ← Back to SkillNix
+      </Link>
+    </div>
+  </footer>
+);
+
 export default function SurveyTakePage() {
   const { token } = useParams();
   const [survey, setSurvey] = useState(null);
@@ -59,42 +80,29 @@ export default function SurveyTakePage() {
 
   if (error && !survey && !submitted) {
     return (
-      <div className="min-h-screen bg-stone-50">
-        <header className="bg-white border-b border-stone-200">
-          <div className="max-w-lg mx-auto px-4 sm:px-6 py-4 sm:py-5">
-            <Link to="/" className="flex items-center gap-2.5 text-stone-900 font-semibold">
-              <img src="/atslogo.jpg" alt="SkillNix" className="w-8 h-8 rounded-lg flex-shrink-0" />
-              <span className="text-sm sm:text-base">SkillNix</span>
-            </Link>
-          </div>
-        </header>
-        <div className="flex items-center justify-center px-4 sm:px-6 py-16">
-          <div className="max-w-md w-full card-ats-bordered p-8 text-center relative overflow-hidden">
+      <div className="min-h-screen bg-stone-50 overflow-x-hidden flex flex-col">
+        <PublicHeader />
+        <div className="flex items-center justify-center px-4 sm:px-6 py-16 flex-1">
+          <div className="max-w-md w-full card-ats-bordered p-8 sm:p-10 text-center relative overflow-hidden">
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
             <AlertCircle className="w-10 h-10 text-red-500 mx-auto mb-4" />
             <p className="text-stone-800 font-semibold">{error}</p>
           </div>
         </div>
+        <PublicFooter />
       </div>
     );
   }
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-stone-50">
-        <header className="bg-white border-b border-stone-200">
-          <div className="max-w-lg mx-auto px-4 sm:px-6 py-4 sm:py-5">
-            <Link to="/" className="flex items-center gap-2.5 text-stone-900 font-semibold">
-              <img src="/atslogo.jpg" alt="SkillNix" className="w-8 h-8 rounded-lg flex-shrink-0" />
-              <span className="text-sm sm:text-base">SkillNix</span>
-            </Link>
-          </div>
-        </header>
-        <div className="flex items-center justify-center px-4 sm:px-6 py-12 sm:py-16 animate-page-enter">
+      <div className="min-h-screen bg-stone-50 overflow-x-hidden flex flex-col">
+        <PublicHeader />
+        <div className="flex items-center justify-center px-4 sm:px-6 py-12 sm:py-16 animate-page-enter flex-1">
           <div className="max-w-md w-full card-ats-bordered p-8 sm:p-10 text-center relative overflow-hidden">
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-            <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200/70 flex items-center justify-center mx-auto mb-5">
-              <CheckCircle className="w-7 h-7 text-amber-500" />
+            <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200/70 flex items-center justify-center mx-auto mb-5">
+              <CheckCircle className="w-7 h-7 text-emerald-600" />
             </div>
             <h1 className="text-xl sm:text-2xl font-bold text-stone-900 tracking-tight">Thank you!</h1>
             <p className="text-stone-500 mt-2 text-sm sm:text-base leading-relaxed">
@@ -102,22 +110,16 @@ export default function SurveyTakePage() {
             </p>
           </div>
         </div>
+        <PublicFooter />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-stone-50 overflow-x-hidden">
-      <header className="bg-white border-b border-stone-200">
-        <div className="max-w-lg mx-auto px-4 sm:px-6 py-4 sm:py-5">
-          <Link to="/" className="flex items-center gap-2.5 text-stone-900 font-semibold">
-            <img src="/atslogo.jpg" alt="SkillNix" className="w-8 h-8 rounded-lg flex-shrink-0" />
-            <span className="text-sm sm:text-base">SkillNix</span>
-          </Link>
-        </div>
-      </header>
+    <div className="min-h-screen bg-stone-50 overflow-x-hidden flex flex-col">
+      <PublicHeader />
 
-      <main className="max-w-lg mx-auto px-4 sm:px-6 py-8 sm:py-12 animate-page-enter">
+      <main className="max-w-lg mx-auto px-4 sm:px-6 py-8 sm:py-12 animate-page-enter flex-1 w-full">
         <form onSubmit={handleSubmit} className="card-ats-bordered p-5 sm:p-8 relative overflow-hidden">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
 
@@ -142,14 +144,22 @@ export default function SurveyTakePage() {
                     onChange={(e) => setAnswers({ ...answers, [i]: e.target.value })}
                   />
                 ) : q.type === 'nps' ? (
-                  <input
-                    type="number"
-                    min={0}
-                    max={10}
-                    className="input-ats w-24"
-                    value={answers[i] || ''}
-                    onChange={(e) => setAnswers({ ...answers, [i]: e.target.value })}
-                  />
+                  <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                    {Array.from({ length: 11 }, (_, n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setAnswers({ ...answers, [i]: n })}
+                        className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl border text-sm font-semibold transition-colors touch-target ${
+                          Number(answers[i]) === n
+                            ? 'border-brand-500 bg-brand-50 text-brand-700 ring-2 ring-brand-500/20'
+                            : 'border-stone-200 bg-white hover:border-brand-300 text-stone-700'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {[1, 2, 3, 4, 5].map((n) => (
@@ -192,6 +202,8 @@ export default function SurveyTakePage() {
           </button>
         </form>
       </main>
+
+      <PublicFooter />
     </div>
   );
 }

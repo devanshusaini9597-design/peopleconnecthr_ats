@@ -2,6 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle, AlertTriangle, XCircle, Clock, Loader2 } from 'lucide-react';
 import API_URL from '../config';
+import EmptyState from './ui/EmptyState';
+
+const PublicFooter = () => (
+  <footer className="border-t border-stone-200 bg-white py-6 mt-auto">
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
+      <Link to="/" className="text-sm text-stone-500 hover:text-brand-700 font-medium transition-colors">
+        ← Back to SkillNix
+      </Link>
+    </div>
+  </footer>
+);
 
 const STATUS_ICON = {
   operational: CheckCircle,
@@ -47,7 +58,7 @@ export default function StatusPage() {
   const Icon = STATUS_ICON[overall.status] || CheckCircle;
 
   return (
-    <div className="min-h-screen bg-stone-50 overflow-x-hidden">
+    <div className="min-h-screen bg-stone-50 overflow-x-hidden flex flex-col">
       <header className="bg-white border-b border-stone-200 sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between gap-4">
           <Link to="/" className="flex items-center gap-2.5 text-stone-900 font-semibold min-w-0">
@@ -60,7 +71,7 @@ export default function StatusPage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8 sm:space-y-10 animate-page-enter">
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8 sm:space-y-10 animate-page-enter flex-1 w-full">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <Loader2 className="w-8 h-8 animate-spin text-brand-600" />
@@ -125,9 +136,15 @@ export default function StatusPage() {
                 Incident history (90 days)
               </h2>
               {history.length === 0 ? (
-                <div className="card-ats-bordered p-6 text-center">
-                  <CheckCircle className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                  <p className="text-sm text-stone-600 font-medium">No incidents in the last 90 days.</p>
+                <div className="card-ats-bordered relative overflow-hidden">
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+                  <EmptyState
+                    icon={CheckCircle}
+                    message="No incidents in the last 90 days"
+                    subMessage="All systems have been running smoothly."
+                    tone="emerald"
+                    compact
+                  />
                 </div>
               ) : (
                 <ul className="space-y-3">
@@ -152,6 +169,8 @@ export default function StatusPage() {
           </>
         )}
       </main>
+
+      <PublicFooter />
     </div>
   );
 }
