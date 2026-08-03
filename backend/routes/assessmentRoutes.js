@@ -18,6 +18,9 @@ const { requireOrganization, tenantScope } = require('../middleware/tenantMiddle
 const { requireRecruiterOrAbove } = require('../middleware/rbacMiddleware');
 const { requireFeature } = require('../middleware/featureMiddleware');
 const { sendEmail } = require('../services/emailService');
+const { planHasFeature } = require('../config/planFeatures');
+const Organization = require('../models/Organization');
+const { computeRiskScore, summarizeEvents } = require('../utils/proctoring');
 
 // ── Candidate-facing (token auth, no session) ─────────────────────────
 
@@ -61,9 +64,67 @@ router.get('/take/:token', async (req, res) => {
         description: assessment.description,
         durationMinutes: assessment.durationMinutes,
         questions: safeQuestions,
-        expiresAt: invite.expiresAt
+        expiresAt: invite.expiresAt,
+        proctoring: {
+          enabled: !!assessment.proctoring?.enabled,
+          strictness: assessment.proctoring?.strictness || 'standard',
+          trackTabSwitch: assessment.proctoring?.trackTabSwitch !== false,
+          trackCopyPaste: assessment.proctoring?.trackCopyPaste !== false,
+          trackFullscreen: assessment.proctoring?.trackFullscreen !== false
+        }
       }
     });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/** POST /api/assessments/take/:token/events — proctoring events (public token) */
+router.post('/take/:token/events', async (req, res) => {
+  try {
+    const invite = await AssessmentInvite.findOne({ token: req.params.token }).populate('assessmentId');
+    if (!invite) return res.status(404).json({ success: false, message: 'Invalid assessment link' });
+    if (!invite.assessmentId?.proctoring?.enabled) {
+      return res.json({ success: true, ignored: true });
+    }
+    if (invite.status === 'submitted' || invite.status === 'graded' || invite.status === 'expired') {
+      return res.status(400).json({ success: false, message: 'Assessment already closed' });
+    }
+
+    const events = Array.isArray(req.body.events) ? req.body.events : [req.body];
+    const allowed = new Set(['tab_switch', 'window_blur', 'copy', 'paste', 'fullscreen_exit', 'start', 'submit', 'snapshot']);
+    const toAdd = events
+      .filter((e) => e && allowed.has(e.type))
+      .slice(0, 50)
+      .map((e) => {
+        let meta = e.meta || undefined;
+        // Cap snapshot payloads so Mongo docs stay lean
+        if (e.type === 'snapshot' && meta?.image && String(meta.image).length > 120000) {
+          meta = { ...meta, image: String(meta.image).slice(0, 120000), truncated: true };
+        }
+        return {
+          type: e.type,
+          at: e.at ? new Date(e.at) : new Date(),
+          questionId: e.questionId ? String(e.questionId) : '',
+          meta
+        };
+      });
+
+    if (!invite.proctoring) invite.proctoring = { events: [] };
+    invite.proctoring.events = [...(invite.proctoring.events || []), ...toAdd].slice(-500);
+
+    const counts = summarizeEvents(invite.proctoring.events);
+    Object.assign(invite.proctoring, counts);
+    const { riskScore, flagged } = computeRiskScore({
+      ...counts,
+      strictness: invite.assessmentId.proctoring?.strictness || 'standard'
+    });
+    invite.proctoring.riskScore = riskScore;
+    invite.proctoring.flagged = flagged;
+    invite.markModified('proctoring');
+    await invite.save();
+
+    res.json({ success: true, data: { riskScore, flagged, ...counts } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -102,6 +163,19 @@ router.post('/take/:token/submit', async (req, res) => {
     invite.maxScore = assessment.maxScore;
     // Provisional score = sum of auto-graded MCQ only; manual questions add in once graded.
     invite.totalScore = autoScoreTotal;
+
+    if (assessment.proctoring?.enabled && invite.proctoring?.events?.length) {
+      const counts = summarizeEvents(invite.proctoring.events);
+      Object.assign(invite.proctoring, counts);
+      const { riskScore, flagged } = computeRiskScore({
+        ...counts,
+        strictness: assessment.proctoring?.strictness || 'standard'
+      });
+      invite.proctoring.riskScore = riskScore;
+      invite.proctoring.flagged = flagged;
+      invite.markModified('proctoring');
+    }
+
     await invite.save();
 
     res.json({ success: true, message: 'Assessment submitted. The hiring team will review your answers.' });
@@ -124,10 +198,30 @@ router.get('/', async (req, res) => {
 
 router.post('/', requireRecruiterOrAbove, async (req, res) => {
   try {
-    const { title, description = '', durationMinutes = 45, questions = [] } = req.body;
+    const { title, description = '', durationMinutes = 45, questions = [], proctoring } = req.body;
     if (!title || !title.trim()) return res.status(400).json({ success: false, message: 'Title is required' });
     if (!Array.isArray(questions) || questions.length === 0) {
       return res.status(400).json({ success: false, message: 'At least one question is required' });
+    }
+
+    let proctoringConfig = { enabled: false };
+    if (proctoring?.enabled) {
+      const org = await Organization.findById(req.user.organizationId).select('plan');
+      if (!planHasFeature(org?.plan, 'assessments.proctoring')) {
+        return res.status(403).json({
+          success: false,
+          code: 'UPGRADE_REQUIRED',
+          message: 'Assessment proctoring requires a Professional plan or higher.',
+          feature: 'assessments.proctoring'
+        });
+      }
+      proctoringConfig = {
+        enabled: true,
+        strictness: ['off', 'standard', 'strict'].includes(proctoring.strictness) ? proctoring.strictness : 'standard',
+        trackTabSwitch: proctoring.trackTabSwitch !== false,
+        trackCopyPaste: proctoring.trackCopyPaste !== false,
+        trackFullscreen: proctoring.trackFullscreen !== false
+      };
     }
 
     const assessment = await Assessment.create({
@@ -136,6 +230,7 @@ router.post('/', requireRecruiterOrAbove, async (req, res) => {
       description,
       durationMinutes,
       questions,
+      proctoring: proctoringConfig,
       createdBy: req.user.id
     });
     res.status(201).json({ success: true, data: assessment });
@@ -146,13 +241,34 @@ router.post('/', requireRecruiterOrAbove, async (req, res) => {
 
 router.put('/:id', requireRecruiterOrAbove, async (req, res) => {
   try {
-    const { title, description, durationMinutes, questions, isActive } = req.body;
+    const { title, description, durationMinutes, questions, isActive, proctoring } = req.body;
     const update = {};
     if (title !== undefined) update.title = title.trim();
     if (description !== undefined) update.description = description;
     if (durationMinutes !== undefined) update.durationMinutes = durationMinutes;
     if (questions !== undefined) update.questions = questions;
     if (isActive !== undefined) update.isActive = isActive;
+
+    if (proctoring !== undefined) {
+      if (proctoring?.enabled) {
+        const org = await Organization.findById(req.user.organizationId).select('plan');
+        if (!planHasFeature(org?.plan, 'assessments.proctoring')) {
+          return res.status(403).json({
+            success: false,
+            code: 'UPGRADE_REQUIRED',
+            message: 'Assessment proctoring requires a Professional plan or higher.',
+            feature: 'assessments.proctoring'
+          });
+        }
+      }
+      update.proctoring = {
+        enabled: !!proctoring?.enabled,
+        strictness: ['off', 'standard', 'strict'].includes(proctoring?.strictness) ? proctoring.strictness : 'standard',
+        trackTabSwitch: proctoring?.trackTabSwitch !== false,
+        trackCopyPaste: proctoring?.trackCopyPaste !== false,
+        trackFullscreen: proctoring?.trackFullscreen !== false
+      };
+    }
 
     const assessment = await Assessment.findOneAndUpdate(
       { _id: req.params.id, organizationId: req.user.organizationId },
@@ -242,6 +358,31 @@ router.get('/invites/:id', async (req, res) => {
       .populate('assessmentId');
     if (!invite) return res.status(404).json({ success: false, message: 'Invite not found' });
     res.json({ success: true, data: invite });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/** GET /api/assessments/invites/:id/integrity — proctoring report (plan-gated) */
+router.get('/invites/:id/integrity', requireFeature('assessments.proctoring'), async (req, res) => {
+  try {
+    const invite = await AssessmentInvite.findOne({
+      _id: req.params.id,
+      organizationId: req.user.organizationId
+    })
+      .populate('candidateId', 'name email')
+      .populate('assessmentId', 'title proctoring')
+      .lean();
+    if (!invite) return res.status(404).json({ success: false, message: 'Invite not found' });
+    res.json({
+      success: true,
+      data: {
+        candidate: invite.candidateId,
+        assessment: invite.assessmentId,
+        status: invite.status,
+        proctoring: invite.proctoring || {}
+      }
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

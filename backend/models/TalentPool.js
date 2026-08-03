@@ -21,6 +21,9 @@ const talentPoolSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   description: { type: String, default: '', trim: true },
   color: { type: String, default: '#6366f1' }, // hex, used as a chip color in the UI
+  // Automation (candidates.talentPoolAutomation)
+  addOnReject: { type: Boolean, default: false }, // silver-medalist: auto-add on reject
+  isDefaultRejectPool: { type: Boolean, default: false },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 

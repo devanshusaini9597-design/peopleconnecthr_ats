@@ -56,9 +56,11 @@ const eventTypes = require('./events/eventTypes');
 const { initNotificationListeners } = require('./events/listeners/notificationListener');
 const { initAuditListeners } = require('./events/listeners/auditListener');
 const { registerIntegrationHandoffListeners } = require('./events/listeners/integrationHandoffListener');
+const { initSequenceTriggerListeners } = require('./events/listeners/sequenceTriggerListener');
 initNotificationListeners();
 initAuditListeners();
 registerIntegrationHandoffListeners();
+initSequenceTriggerListeners();
 
 // ── Routes ───────────────────────────────────────────────────────────
 const homeRoutes = require('./routes/home');
@@ -99,6 +101,22 @@ const esignRoutes = require('./routes/esignRoutes');
 const reportScheduleRoutes = require('./routes/reportScheduleRoutes');
 const clientPortalRoutes = require('./routes/clientPortalRoutes');
 const talentPoolRoutes = require('./routes/talentPoolRoutes');
+const skillsRoutes = require('./routes/skillsRoutes');
+const inboxRoutes = require('./routes/inboxRoutes');
+const sequenceRoutes = require('./routes/sequenceRoutes');
+const deiRoutes = require('./routes/deiRoutes');
+const formBuilderRoutes = require('./routes/formBuilderRoutes');
+const chatbotRoutes = require('./routes/chatbotRoutes');
+const savedSearchRoutes = require('./routes/savedSearchRoutes');
+const scorecardTemplateRoutes = require('./routes/scorecardTemplateRoutes');
+const commentRoutes = require('./routes/commentRoutes');
+const announcementRoutes = require('./routes/announcementRoutes');
+const globalSearchRoutes = require('./routes/globalSearchRoutes');
+const transcriptRoutes = require('./routes/transcriptRoutes');
+const consentRoutes = require('./routes/consentRoutes');
+const pushRoutes = require('./routes/pushRoutes');
+const companyBrandRoutes = require('./routes/companyBrandRoutes');
+const reportsStudioRoutes = require('./routes/reportsStudioRoutes');
 const whatsappRoutes = require('./routes/whatsappRoutes');
 const assessmentRoutes = require('./routes/assessmentRoutes');
 const whiteLabelRoutes = require('./routes/whiteLabelRoutes');
@@ -337,6 +355,22 @@ app.use('/api/company-email-settings', verifyToken, companyEmailSettingsRoutes);
 app.use('/api/notifications', verifyToken, notificationRoutes);
 app.use('/api/team', teamRoutes);
 app.use('/api/talent-pools', verifyToken, talentPoolRoutes); // internally applies requireFeature('candidates.talentPools')
+app.use('/api/skills', verifyToken, skillsRoutes); // requireFeature('candidates.skillsTaxonomy')
+app.use('/api/inbox', verifyToken, inboxRoutes); // requireFeature('messaging.inbox')
+app.use('/api/sequences', verifyToken, sequenceRoutes); // requireFeature('messaging.sequences')
+app.use('/api/dei', verifyToken, deiRoutes); // requireFeature('analytics.dei')
+app.use('/api/forms', formBuilderRoutes); // verifyToken + requireFeature('careers.formBuilder')
+app.use('/api/chatbot', chatbotRoutes); // public ask/config + gated admin settings
+app.use('/api/saved-searches', verifyToken, savedSearchRoutes);
+app.use('/api/scorecard-templates', verifyToken, scorecardTemplateRoutes);
+app.use('/api/comments', verifyToken, commentRoutes);
+app.use('/api/announcements', verifyToken, announcementRoutes);
+app.use('/api/search', verifyToken, globalSearchRoutes);
+app.use('/api/transcripts', verifyToken, transcriptRoutes);
+app.use('/api/consent', consentRoutes); // public + authenticated (feature-gated inside for auth routes)
+app.use('/api/push', verifyToken, pushRoutes);
+app.use('/api/company-brand', verifyToken, companyBrandRoutes);
+app.use('/api/reports-studio', verifyToken, reportsStudioRoutes);
 app.use('/api/whatsapp', whatsappRoutes); // internally applies verifyToken + requireFeature('integrations.whatsapp')
 app.use('/api/assessments', assessmentRoutes); // internally applies verifyToken + requireFeature('assessments') for recruiter routes; candidate-facing routes are token-gated, not session-gated
 app.use('/api/white-label', whiteLabelRoutes); // internally applies verifyToken + requireFeature('whiteLabel')
@@ -388,7 +422,7 @@ app.use('/uploads', (req, res, next) => {
 // ── Health Check ─────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ 
   status: 'ok', 
-  version: 'v3-saas-talent-assess', 
+  version: 'v3-saas-enterprise-byok', 
   timestamp: new Date().toISOString() 
 }));
 

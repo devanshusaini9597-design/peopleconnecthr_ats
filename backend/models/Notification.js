@@ -22,7 +22,11 @@ const NotificationSchema = new mongoose.Schema({
       'share_accepted',     // When someone accepts your share request
       'share_declined',    // When someone declines your share request
       'invitation_accepted', // When someone accepts your invitation
-      'invitation_declined' // When someone declines your invitation
+      'invitation_declined', // When someone declines your invitation
+      'mention',            // @mention on candidate collaboration
+      'candidate_hired',
+      'interview_reminder',
+      'announcement'
     ],
     required: true 
   },

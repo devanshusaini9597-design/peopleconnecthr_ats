@@ -50,6 +50,13 @@ const organizationSchema = new mongoose.Schema({
     defaultRetentionDays: { type: Number, default: 730 },
     legalHoldEnabled: { type: Boolean, default: false }
   },
+  // DEI product controls (analytics.dei) — blind screening, slate alerts, self-ID.
+  deiSettings: {
+    blindScreeningEnabled: { type: Boolean, default: false },
+    diverseSlateAlerts: { type: Boolean, default: false },
+    selfIdFormEnabled: { type: Boolean, default: true },
+    minDiverseShortlist: { type: Number, default: 2 }
+  },
   // shared = multi-tenant SaaS; dedicated = single-tenant/VPC SKU (ops provisions infra).
   deploymentTier: {
     type: String,
@@ -94,6 +101,30 @@ const organizationSchema = new mongoose.Schema({
       enabled: { type: Boolean, default: false },
       defaultLocale: { type: String, default: 'en' },
       supportedLocales: { type: [String], default: ['en'] }
+    },
+    // Careers chatbot (careers.chatbot) — FAQs + greeting
+    chatbot: {
+      enabled: { type: Boolean, default: false },
+      greeting: { type: String, default: 'Hi! Ask me about open roles or how to apply.' },
+      faqs: [{
+        question: { type: String, trim: true },
+        answer: { type: String, trim: true }
+      }]
+    },
+    companyBrand: {
+      tagline: { type: String, default: '' },
+      benefits: [{ title: String, description: String }],
+      teamMembers: [{ name: String, role: String, photoUrl: String }],
+      socialLinks: {
+        linkedin: { type: String, default: '' },
+        twitter: { type: String, default: '' },
+        facebook: { type: String, default: '' },
+        github: { type: String, default: '' },
+        website: { type: String, default: '' }
+      },
+      seoTitle: { type: String, default: '' },
+      seoDescription: { type: String, default: '' },
+      customCss: { type: String, default: '' }
     }
   },
   billingCustomerId: { type: String, default: '' },

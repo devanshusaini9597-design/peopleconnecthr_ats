@@ -28,6 +28,14 @@ const assessmentSchema = new mongoose.Schema({
   description: { type: String, default: '', trim: true },
   durationMinutes: { type: Number, default: 45, min: 5 },
   questions: [questionSchema],
+  // Proctoring (assessments.proctoring) — only honored when plan is entitled
+  proctoring: {
+    enabled: { type: Boolean, default: false },
+    strictness: { type: String, enum: ['off', 'standard', 'strict'], default: 'standard' },
+    trackTabSwitch: { type: Boolean, default: true },
+    trackCopyPaste: { type: Boolean, default: true },
+    trackFullscreen: { type: Boolean, default: true }
+  },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   isActive: { type: Boolean, default: true }
 }, { timestamps: true });

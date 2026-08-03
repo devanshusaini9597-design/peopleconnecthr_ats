@@ -124,8 +124,44 @@ router.get('/:orgSlug/jobs/:jobId', async (req, res) => {
     const job = await Job.findOne({ _id: req.params.jobId, organizationId: org._id, isPublished: true, status: 'Open' })
       .select('title department location description skills employmentType salaryRange');
     if (!job) return res.status(404).json({ success: false, message: 'Job not found' });
+
+    let applicationForm = null;
+    if (planHasFeature(org.plan, 'careers.formBuilder')) {
+      const JobApplicationForm = require('../models/JobApplicationForm');
+      const form = await JobApplicationForm.findOne({
+        organizationId: org._id,
+        jobId: job._id,
+        isActive: true
+      }).lean();
+      if (form) {
+        applicationForm = {
+          title: form.title,
+          fields: (form.fields || []).map((f) => ({
+            key: f.key,
+            label: f.label,
+            type: f.type,
+            required: f.required,
+            placeholder: f.placeholder,
+            options: f.options,
+            order: f.order,
+            showWhen: f.showWhen || null
+          }))
+        };
+      }
+    }
     
-    res.json({ success: true, data: job });
+    res.json({
+      success: true,
+      data: job,
+      job,
+      organization: {
+        name: org.name,
+        logo: org.logo,
+        brandColor: org.atsSettings?.brandColor || '#0d9488',
+        slug: org.slug
+      },
+      applicationForm
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -143,18 +179,48 @@ router.post('/:orgSlug/jobs/:jobId/apply', async (req, res) => {
     const job = await Job.findOne({ _id: req.params.jobId, organizationId: org._id, isPublished: true });
     if (!job) return res.status(404).json({ success: false, message: 'Job not available' });
     
-    const { name, email, phone, resume, coverLetter, source } = req.body;
+    const { name, email, phone, resume, coverLetter, source, customResponses, firstName, lastName } = req.body;
+    const resolvedName = name || [firstName, lastName].filter(Boolean).join(' ').trim();
+    if (!resolvedName || !email) {
+      return res.status(400).json({ success: false, message: 'Name and email are required' });
+    }
+
+    // Validate required custom form fields when form builder is entitled
+    if (planHasFeature(org.plan, 'careers.formBuilder') && customResponses && typeof customResponses === 'object') {
+      const JobApplicationForm = require('../models/JobApplicationForm');
+      const form = await JobApplicationForm.findOne({
+        organizationId: org._id,
+        jobId: job._id,
+        isActive: true
+      }).lean();
+      if (form) {
+        for (const field of form.fields || []) {
+          if (!field.required) continue;
+          const val = customResponses[field.key];
+          if (val == null || String(val).trim() === '') {
+            return res.status(400).json({
+              success: false,
+              message: `${field.label} is required`
+            });
+          }
+        }
+      }
+    }
     
-    let candidate = await Candidate.findOne({ email, organizationId: org._id });
+    let candidate = await Candidate.findOne({ email: String(email).toLowerCase().trim(), organizationId: org._id });
     if (!candidate) {
-      // Check plan limit logic would typically go here
       candidate = new Candidate({
         organizationId: org._id,
-        name,
-        email,
-        phone,
-        resume
+        name: resolvedName,
+        email: String(email).toLowerCase().trim(),
+        phone: phone || '',
+        contact: phone || '',
+        resume,
+        customFields: customResponses && typeof customResponses === 'object' ? customResponses : {}
       });
+      await candidate.save();
+    } else if (customResponses && typeof customResponses === 'object') {
+      candidate.customFields = { ...(candidate.customFields || {}), ...customResponses };
       await candidate.save();
     }
     

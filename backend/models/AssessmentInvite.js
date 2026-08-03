@@ -31,7 +31,22 @@ const assessmentInviteSchema = new mongoose.Schema({
   sentAt: { type: Date, default: Date.now },
   startedAt: { type: Date },
   submittedAt: { type: Date },
-  expiresAt: { type: Date, required: true }
+  expiresAt: { type: Date, required: true },
+  // Integrity / proctoring session (assessments.proctoring)
+  proctoring: {
+    events: [{
+      type: { type: String },
+      at: { type: Date, default: Date.now },
+      questionId: { type: String, default: '' },
+      meta: { type: mongoose.Schema.Types.Mixed }
+    }],
+    tabSwitchCount: { type: Number, default: 0 },
+    copyPasteCount: { type: Number, default: 0 },
+    blurCount: { type: Number, default: 0 },
+    fullscreenExits: { type: Number, default: 0 },
+    riskScore: { type: Number, default: 0 },
+    flagged: { type: Boolean, default: false }
+  }
 }, { timestamps: true });
 
 assessmentInviteSchema.index({ organizationId: 1, assessmentId: 1, createdAt: -1 });

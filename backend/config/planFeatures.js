@@ -81,8 +81,22 @@ const FEATURES = {
 
   // Add-ons
   'candidates.talentPools': 'professional',
+  'candidates.talentPoolAutomation': 'professional',
+  'candidates.skillsTaxonomy': 'professional',
+  'messaging.inbox': 'professional',
+  'messaging.sequences': 'professional',
   'analytics.dei': 'enterprise',
   'assessments': 'professional',
+  'assessments.proctoring': 'professional',
+  'careers.formBuilder': 'professional',
+  'careers.chatbot': 'professional',
+  'careers.companyBrand': 'professional',
+  'candidates.collaboration': 'professional',
+  'scorecards.templates': 'professional',
+  'messaging.consent': 'professional',
+  'announcements': 'professional',
+  'search.global': 'starter',
+  'push.notifications': 'professional',
   'whiteLabel': 'enterprise',
 
   // Starter — trust-building / PLG

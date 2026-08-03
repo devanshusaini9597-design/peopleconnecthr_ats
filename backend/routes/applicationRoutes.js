@@ -249,6 +249,29 @@ router.put('/:id/reject', requireRecruiterOrAbove, async (req, res) => {
         jobId: application.jobId,
         reason
       });
+
+      // Silver-medalist: auto-add to talent pools marked addOnReject / isDefaultRejectPool
+      try {
+        const { planHasFeature } = require('../config/planFeatures');
+        const Organization = require('../models/Organization');
+        const TalentPool = require('../models/TalentPool');
+        const Candidate = require('../models/Candidate');
+        const org = await Organization.findById(req.user.organizationId).select('plan');
+        if (planHasFeature(org?.plan, 'candidates.talentPoolAutomation') && application.candidateId) {
+          const pools = await TalentPool.find({
+            organizationId: req.user.organizationId,
+            $or: [{ addOnReject: true }, { isDefaultRejectPool: true }]
+          }).select('_id');
+          if (pools.length) {
+            await Candidate.updateOne(
+              { _id: application.candidateId, organizationId: req.user.organizationId },
+              { $addToSet: { talentPoolIds: { $each: pools.map((p) => p._id) } } }
+            );
+          }
+        }
+      } catch (poolErr) {
+        console.warn('[reject] talent pool automation skipped:', poolErr.message);
+      }
     }
     res.json({ success: true, data: application });
   } catch (error) {

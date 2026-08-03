@@ -108,6 +108,20 @@ const CandidateSchema = new mongoose.Schema({
     declinedToSelfIdentify: { type: Boolean, default: false }
   },
 
+  // ── Messaging consent (TCPA / WhatsApp / email opt-in) ──────────────
+  messagingConsent: {
+    email: { type: Boolean, default: true },
+    sms: { type: Boolean, default: false },
+    whatsapp: { type: Boolean, default: false },
+    updatedAt: { type: Date }
+  },
+  phoneVerifiedAt: { type: Date },
+  // Talent pool outreach consent
+  talentPoolConsent: {
+    optedIn: { type: Boolean, default: true },
+    updatedAt: { type: Date }
+  },
+
   // ── GDPR self-service (always available, no plan gate) ─────────────
   gdprErasedAt: { type: Date },
   legalHold: { type: Boolean, default: false },
