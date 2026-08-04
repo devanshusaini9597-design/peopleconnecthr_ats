@@ -221,6 +221,56 @@ router.post('/match', async (req, res) => {
   }
 });
 
+// PATCH /api/skills/:id — rename / recategorize org custom skills only
+router.patch('/:id', requireRecruiterOrAbove, async (req, res) => {
+  try {
+    const orgId = req.user.organizationId;
+    const skill = await Skill.findOne({
+      _id: req.params.id,
+      organizationId: orgId,
+      isSystem: false
+    });
+    if (!skill) {
+      const maybeSystem = await Skill.findById(req.params.id).select('isSystem').lean();
+      if (maybeSystem?.isSystem) {
+        return res.status(403).json({ success: false, message: 'System skills cannot be edited' });
+      }
+      return res.status(404).json({ success: false, message: 'Custom skill not found' });
+    }
+
+    const name = req.body.name != null ? String(req.body.name).trim() : skill.name;
+    const category = req.body.category != null
+      ? (String(req.body.category).trim() || 'Custom')
+      : skill.category;
+    if (!name) return res.status(400).json({ success: false, message: 'Skill name is required' });
+
+    const nextSlug = orgSkillSlug(orgId, name);
+    if (nextSlug !== skill.slug) {
+      const conflict = await Skill.findOne({
+        _id: { $ne: skill._id },
+        $or: [
+          { slug: nextSlug, organizationId: orgId },
+          { isSystem: true, slug: slugify(name) }
+        ]
+      });
+      if (conflict) {
+        return res.status(409).json({ success: false, message: 'Skill already exists' });
+      }
+      skill.slug = nextSlug;
+    }
+
+    skill.name = name;
+    skill.category = category;
+    await skill.save();
+    res.json({ success: true, data: skill });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ success: false, message: 'Skill already exists' });
+    }
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // DELETE /api/skills/:id — only org custom skills
 router.delete('/:id', requireRecruiterOrAbove, async (req, res) => {
   try {
