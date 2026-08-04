@@ -255,11 +255,19 @@ router.post('/send', async (req, res) => {
         const senderEmail = req.user.email || '';
         const currentYear = new Date().getFullYear();
 
-        // Parse body into structured content blocks
-        const bodyLines = emailBody.split('\n');
+        const looksLikeHtml = /<[a-z][\s\S]*>/i.test(emailBody);
         let htmlContent = '';
-        let inList = false;
         const isSubscribeInvite = template.name === 'Subscribe for Updates' && template.category === 'marketing';
+
+        if (looksLikeHtml) {
+          // Rich-text templates: use authored HTML as content (already includes formatting)
+          htmlContent = emailBody
+            .replace(/Subscribe now:\s*/gi, '')
+            .replace(/\{\{subscribeLink\}\}/gi, '');
+        } else {
+        // Parse plain-text body into structured content blocks
+        const bodyLines = emailBody.split('\n');
+        let inList = false;
 
         bodyLines.forEach((line, idx) => {
           const trimmed = line.trim();
@@ -300,7 +308,7 @@ router.post('/send', async (req, res) => {
         if (inList) htmlContent += '</ul>';
         // Close sign-off div if opened
         if (htmlContent.includes('border-top: 1px solid #e5e7eb')) htmlContent += '</div>';
-
+        }
         const unsubscribeUrl = (isMarketing && vars.unsubscribeLink && vars.unsubscribeLink !== '#unsubscribe') ? vars.unsubscribeLink : '';
         const unsubscribeFooterHtml = (unsubscribeUrl && !isSubscribeInvite)
           ? `<p style="margin: 0 0 8px 0; font-size: 11px;"><a href="${unsubscribeUrl}" style="color: #6366f1; text-decoration: underline;">Unsubscribe</a> or <a href="${unsubscribeUrl}" style="color: #6366f1; text-decoration: underline;">update email preferences</a></p>`
