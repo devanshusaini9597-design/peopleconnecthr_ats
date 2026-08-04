@@ -18,29 +18,63 @@ router.use(requireFeature('candidates.skillsTaxonomy'));
 
 const slugify = slugifySkill;
 
-// GET /api/skills
+function buildSkillsFilter(orgId, { q = '', category = '', source = 'all' } = {}) {
+  const filter = {};
+  if (source === 'system') {
+    filter.isSystem = true;
+  } else if (source === 'custom') {
+    filter.organizationId = orgId;
+    filter.isSystem = false;
+  } else {
+    filter.$or = [{ isSystem: true }, { organizationId: orgId }];
+  }
+  if (category) filter.category = category;
+  if (String(q).trim()) {
+    filter.name = { $regex: String(q).trim(), $options: 'i' };
+  }
+  return filter;
+}
+
+// GET /api/skills — paginated catalog (page + limit)
 router.get('/', async (req, res) => {
   try {
-    const { q = '', category = '', limit = 200 } = req.query;
+    const { q = '', category = '', source = 'all' } = req.query;
     const orgId = req.user.organizationId;
-    const filter = {
-      $or: [{ isSystem: true }, { organizationId: orgId }]
-    };
-    if (category) filter.category = category;
-    if (q.trim()) {
-      filter.name = { $regex: q.trim(), $options: 'i' };
-    }
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const safeSource = ['all', 'system', 'custom'].includes(source) ? source : 'all';
 
-    const skills = await Skill.find(filter)
-      .sort({ category: 1, name: 1 })
-      .limit(Math.min(Number(limit) || 200, 500))
-      .lean();
+    const filter = buildSkillsFilter(orgId, { q, category, source: safeSource });
+    const baseScope = { $or: [{ isSystem: true }, { organizationId: orgId }] };
 
-    const categories = await Skill.distinct('category', {
-      $or: [{ isSystem: true }, { organizationId: orgId }]
+    const [total, skills, categories, countAll, countSystem, countCustom] = await Promise.all([
+      Skill.countDocuments(filter),
+      Skill.find(filter)
+        .sort({ category: 1, name: 1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Skill.distinct('category', baseScope),
+      Skill.countDocuments(buildSkillsFilter(orgId, { q, category, source: 'all' })),
+      Skill.countDocuments(buildSkillsFilter(orgId, { q, category, source: 'system' })),
+      Skill.countDocuments(buildSkillsFilter(orgId, { q, category, source: 'custom' }))
+    ]);
+
+    const pages = Math.max(1, Math.ceil(total / limit));
+    res.json({
+      success: true,
+      data: skills,
+      total,
+      categories: categories.sort(),
+      counts: { total: countAll, system: countSystem, custom: countCustom },
+      pagination: {
+        page,
+        limit,
+        total,
+        pages,
+        hasMore: page < pages
+      }
     });
-
-    res.json({ success: true, data: skills, total: skills.length, categories: categories.sort() });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
