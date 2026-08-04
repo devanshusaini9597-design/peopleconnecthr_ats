@@ -17,7 +17,7 @@ router.get('/', async (req, res) => {
     const rows = await Announcement.find({
       organizationId: req.user.organizationId,
       isActive: true,
-      audience: { $in: audienceFilter },
+      audience: { $in: audienceFilter }, // never includes 'public' (careers site only)
       startsAt: { $lte: now },
       $or: [{ endsAt: null }, { endsAt: { $gt: now } }],
       dismissedBy: { $ne: req.user.id || req.user._id }
@@ -45,12 +45,14 @@ router.post('/', requireAdmin, async (req, res) => {
     if (!title?.trim() || !body?.trim()) {
       return res.status(400).json({ success: false, message: 'Title and body required' });
     }
+    const allowedAudience = ['all', 'admins', 'recruiters', 'public'];
+    const safeAudience = allowedAudience.includes(audience) ? audience : 'all';
     const row = await Announcement.create({
       organizationId: req.user.organizationId,
       title: title.trim(),
       body: body.trim(),
       severity,
-      audience,
+      audience: safeAudience,
       endsAt: endsAt ? new Date(endsAt) : undefined,
       createdBy: req.user.id || req.user._id
     });
@@ -67,6 +69,37 @@ router.post('/:id/dismiss', requireRecruiterOrAbove, async (req, res) => {
       { $addToSet: { dismissedBy: req.user.id || req.user._id } }
     );
     res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.patch('/:id', requireAdmin, async (req, res) => {
+  try {
+    const { title, body, severity, audience, endsAt, isActive } = req.body;
+    const update = {};
+    if (typeof title === 'string' && title.trim()) update.title = title.trim();
+    if (typeof body === 'string' && body.trim()) update.body = body.trim();
+    if (severity && ['info', 'success', 'warning', 'critical'].includes(severity)) {
+      update.severity = severity;
+    }
+    if (audience && ['all', 'admins', 'recruiters', 'public'].includes(audience)) {
+      update.audience = audience;
+    }
+    if (endsAt !== undefined) update.endsAt = endsAt ? new Date(endsAt) : null;
+    if (typeof isActive === 'boolean') update.isActive = isActive;
+
+    if (!Object.keys(update).length) {
+      return res.status(400).json({ success: false, message: 'No valid fields to update' });
+    }
+
+    const row = await Announcement.findOneAndUpdate(
+      { _id: req.params.id, organizationId: req.user.organizationId },
+      { $set: update },
+      { new: true }
+    );
+    if (!row) return res.status(404).json({ success: false, message: 'Announcement not found' });
+    res.json({ success: true, data: row });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

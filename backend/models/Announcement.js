@@ -5,7 +5,7 @@ const announcementSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true },
   body: { type: String, required: true, trim: true },
   severity: { type: String, enum: ['info', 'success', 'warning', 'critical'], default: 'info' },
-  audience: { type: String, enum: ['all', 'admins', 'recruiters'], default: 'all' },
+  audience: { type: String, enum: ['all', 'admins', 'recruiters', 'public'], default: 'all' },
   startsAt: { type: Date, default: Date.now },
   endsAt: { type: Date },
   isActive: { type: Boolean, default: true },

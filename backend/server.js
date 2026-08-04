@@ -111,6 +111,7 @@ const savedSearchRoutes = require('./routes/savedSearchRoutes');
 const scorecardTemplateRoutes = require('./routes/scorecardTemplateRoutes');
 const commentRoutes = require('./routes/commentRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
+const publicAnnouncementRoutes = require('./routes/publicAnnouncementRoutes');
 const globalSearchRoutes = require('./routes/globalSearchRoutes');
 const transcriptRoutes = require('./routes/transcriptRoutes');
 const consentRoutes = require('./routes/consentRoutes');
@@ -364,6 +365,7 @@ app.use('/api/chatbot', chatbotRoutes); // public ask/config + gated admin setti
 app.use('/api/saved-searches', verifyToken, savedSearchRoutes);
 app.use('/api/scorecard-templates', verifyToken, scorecardTemplateRoutes);
 app.use('/api/comments', verifyToken, commentRoutes);
+app.use('/api/public/announcements', publicAnnouncementRoutes); // careers-site banners (no auth)
 app.use('/api/announcements', verifyToken, announcementRoutes);
 app.use('/api/search', verifyToken, globalSearchRoutes);
 app.use('/api/transcripts', verifyToken, transcriptRoutes);
