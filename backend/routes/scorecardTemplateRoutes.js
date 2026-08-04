@@ -4,8 +4,7 @@ const ScorecardTemplate = require('../models/ScorecardTemplate');
 const { requireFeature } = require('../middleware/featureMiddleware');
 const { requireRecruiterOrAbove } = require('../middleware/rbacMiddleware');
 
-router.use(requireFeature('scorecards.templates'));
-
+/** List templates for scorecard filling — available to authenticated org users */
 router.get('/', async (req, res) => {
   try {
     const rows = await ScorecardTemplate.find({ organizationId: req.user.organizationId }).sort({ isDefault: -1, name: 1 }).lean();
@@ -14,6 +13,8 @@ router.get('/', async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
+router.use(requireFeature('scorecards.templates'));
 
 router.post('/', requireRecruiterOrAbove, async (req, res) => {
   try {

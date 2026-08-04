@@ -9,9 +9,12 @@ const scorecardSchema = new mongoose.Schema({
   applicationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Application', required: true, index: true },
   interviewId: { type: mongoose.Schema.Types.ObjectId, ref: 'Interview', required: true, index: true },
   interviewerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  /** Optional library template used for this evaluation */
+  templateId: { type: mongoose.Schema.Types.ObjectId, ref: 'ScorecardTemplate', default: null, index: true },
   criteria: [{
     name: { type: String, required: true },
     rating: { type: Number, min: 1, max: 5, required: true },
+    weight: { type: Number, default: 1, min: 0.5, max: 5 },
     comment: { type: String, default: '' }
   }],
   overallRating: { type: Number, min: 1, max: 5, required: true },

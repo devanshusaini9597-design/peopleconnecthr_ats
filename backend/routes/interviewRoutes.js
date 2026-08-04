@@ -194,14 +194,24 @@ router.post('/:interviewId/scorecard', async (req, res) => {
     const isAssigned = interview.interviewers.some(i => i.userId.toString() === req.user.id.toString());
     if (!isAssigned) return res.status(403).json({ success: false, message: 'Only assigned interviewers can submit scorecards' });
     
-    const { criteria, overallRating, recommendation, strengths, concerns, notes, isDraft } = req.body;
-    
+    const { criteria, overallRating, recommendation, strengths, concerns, notes, isDraft, templateId } = req.body;
+
+    const normalizedCriteria = Array.isArray(criteria)
+      ? criteria.map((c) => ({
+          name: c.name,
+          rating: Number(c.rating) || 3,
+          weight: Math.min(5, Math.max(0.5, Number(c.weight) || 1)),
+          comment: c.comment || ''
+        }))
+      : [];
+
     const scorecard = new Scorecard({
       organizationId: req.user.organizationId,
       interviewId: req.params.interviewId,
-      applicationId: interview.applicationId,
+      applicationId: interview.applicationId || req.body.applicationId,
       interviewerId: req.user.id,
-      criteria,
+      templateId: templateId || null,
+      criteria: normalizedCriteria,
       overallRating,
       recommendation,
       strengths,
