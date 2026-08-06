@@ -1,22 +1,20 @@
 // LOCALHOST: npm run dev uses local backend (http://localhost:5000).
 // Set VITE_USE_LIVE_BACKEND=true in .env.local to point at the live backend.
+// PRODUCTION: prefer same-origin "" so Vercel rewrites /api → Railway (cookies work).
 const defaultDev = 'http://localhost:5000';
 const isDev = import.meta.env.DEV;
 const useLiveInDev = import.meta.env.VITE_USE_LIVE_BACKEND === 'true' || import.meta.env.VITE_USE_LIVE_BACKEND === '1';
 
 const configured = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
-if (!isDev && !configured) {
-  console.error('⚠️ VITE_API_URL not set in production build!');
-}
 
 const API_URL = (
   isDev
     ? (useLiveInDev ? (configured || defaultDev) : defaultDev)
-    : (configured || defaultDev)
+    : configured // empty = same-origin /api (Vercel rewrite)
 ).replace(/\/$/, '');
 
 if (isDev) {
-  console.log('🔗 API base:', API_URL, useLiveInDev ? '(live backend)' : '(local backend – start backend with npm start in /backend)');
+  console.log('🔗 API base:', API_URL || '(same-origin)', useLiveInDev ? '(live backend)' : '(local backend – start backend with npm start in /backend)');
 }
 
 export default API_URL;

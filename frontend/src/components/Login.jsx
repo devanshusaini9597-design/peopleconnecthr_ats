@@ -291,6 +291,19 @@ const Login = () => {
 
       localStorage.removeItem('token');
       acceptSession(data);
+
+      // Confirm the HttpOnly cookie is usable before entering the app
+      const profileRes = await fetch(`${API_URL}/api/profile`, { credentials: 'include' });
+      if (!profileRes.ok) {
+        throw new Error('Demo session could not be verified. Please try again.');
+      }
+      const profileData = await profileRes.json();
+      acceptSession({
+        user: profileData.user,
+        organization: profileData.organization,
+        entitlements: profileData.entitlements,
+      });
+
       setSuccess('Demo account signed in — taking you in.');
       sessionStorage.setItem('showWelcomeModal', '1');
       setTimeout(() => navigate('/dashboard', { replace: true }), 400);
