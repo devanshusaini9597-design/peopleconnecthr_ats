@@ -1,10 +1,41 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Chrome, RefreshCw, Trash2, Copy, Loader2, Download, CheckCircle2, Check, Link2, KeyRound } from 'lucide-react';
+import {
+  Chrome, RefreshCw, Trash2, Copy, Loader2, Download, CheckCircle2, Check, Link2, KeyRound
+} from 'lucide-react';
 import PageHeader from './ui/PageHeader';
 import Modal from './ui/Modal';
 import ConfirmationModal from './ConfirmationModal';
+import ProductTour from './ui/ProductTour';
+import TourHelpFab from './ui/TourHelpFab';
+import usePageTour from '../hooks/usePageTour';
 import { authenticatedFetch, handleUnauthorized, BASE_API_URL } from '../utils/fetchUtils';
 import { useToast } from './Toast';
+
+const EXT_TOUR_KEY = 'skillnix_tour_chrome_extension_v1';
+const EXT_TOUR_STEPS = [
+  {
+    title: 'Chrome Extension',
+    body: 'Import candidates from LinkedIn into your ATS with a one-click browser extension.',
+  },
+  {
+    target: '[data-tour="ext-install"]',
+    title: 'Install',
+    body: 'Load the unpacked chrome-extension folder in Chrome Developer Mode.',
+    placement: 'bottom',
+  },
+  {
+    target: '[data-tour="ext-token"]',
+    title: 'Generate a token',
+    body: 'Create an org token, copy it once, and paste it into the extension popup with the API domain.',
+    placement: 'top',
+  },
+  {
+    target: '[data-tour="ext-domain"]',
+    title: 'API domain',
+    body: 'This is your backend URL — the extension needs it to talk to your ATS.',
+    placement: 'top',
+  },
+];
 
 const SecretRevealModal = ({ open, label, value, domain, onClose }) => {
   const [copied, setCopied] = useState(false);
@@ -35,9 +66,9 @@ const SecretRevealModal = ({ open, label, value, domain, onClose }) => {
       title={label}
       description="Copy this now — it will never be shown again."
       size="md"
-      footer={
+      footer={(
         <button type="button" onClick={onClose} className="btn-primary w-full sm:w-auto">Done</button>
-      }
+      )}
     >
       <div className="space-y-3">
         <div>
@@ -64,8 +95,9 @@ const SecretRevealModal = ({ open, label, value, domain, onClose }) => {
   );
 };
 
-const ChromeExtensionSettingsPage = () => {
+export default function ChromeExtensionSettingsPage() {
   const toast = useToast();
+  const [tourOpen, setTourOpen] = usePageTour(EXT_TOUR_KEY);
   const [loading, setLoading] = useState(true);
   const [tokenInfo, setTokenInfo] = useState(null);
   const [generating, setGenerating] = useState(false);
@@ -135,6 +167,7 @@ const ChromeExtensionSettingsPage = () => {
             return;
           }
           toast?.success?.('Token revoked');
+          setTokenInfo(null);
           load();
         } catch {
           toast?.error?.('Failed to revoke token');
@@ -163,109 +196,145 @@ const ChromeExtensionSettingsPage = () => {
   if (loading) {
     return (
       <div className="page-shell-ats animate-page-enter">
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-2xl skeleton-ats flex-shrink-0" />
-          <div className="space-y-2 flex-1 pt-1">
-            <div className="h-7 w-48 skeleton-ats rounded-lg" />
-            <div className="h-4 w-72 max-w-full skeleton-ats rounded-lg" />
-          </div>
-        </div>
-        <div className="card-ats-bordered p-6 space-y-4 mt-2">
-          <div className="h-20 skeleton-ats rounded-xl" />
-          <div className="h-14 skeleton-ats rounded-xl" />
-        </div>
+        <div className="h-7 w-56 skeleton-ats rounded-lg" />
+        <div className="h-64 skeleton-ats rounded-2xl mt-4" />
       </div>
     );
   }
 
   return (
-    <div className="page-shell-ats animate-page-enter max-w-3xl">
+    <div className="page-shell-ats animate-page-enter">
       <PageHeader
         icon={Chrome}
         title="Chrome Extension"
         subtitle="One-click import candidates from LinkedIn — available on every plan."
         gradientTitle
-      />
+      >
+        <button type="button" onClick={load} className="btn-secondary w-full sm:w-auto">
+          <RefreshCw className="w-4 h-4" /> Refresh
+        </button>
+      </PageHeader>
 
-      <div className="card-ats-bordered p-5 sm:p-6 space-y-5 relative overflow-hidden">
-        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+      <div className="rounded-xl border border-brand-200/60 bg-gradient-to-r from-brand-50/70 via-white to-teal-50/40 px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed">
+        Install the extension, generate a token, and paste the API domain — no coding required.
+        Press <span className="font-semibold text-stone-800">?</span> bottom-right for a tour.
+      </div>
 
-        <div>
-          <h3 className="section-title-ats !mb-3">
-            <Download className="w-4 h-4 text-brand-600" />
-            1. Install the extension
-          </h3>
-          <div className="rounded-xl border border-brand-100 bg-brand-50/60 p-4 text-sm text-brand-900 leading-relaxed">
-            Download the <code className="font-mono text-brand-700 bg-white/70 px-1.5 py-0.5 rounded-md">chrome-extension/</code> folder,
-            then open <code className="font-mono text-brand-700 bg-white/70 px-1.5 py-0.5 rounded-md mx-0.5">chrome://extensions</code>,
-            enable Developer Mode, and click <strong>Load unpacked</strong>.
-          </div>
-        </div>
-
-        <div>
-          <h3 className="section-title-ats !mb-3">
-            <KeyRound className="w-4 h-4 text-brand-600" />
-            2. Connect to your organization
-          </h3>
-
-          {tokenInfo ? (
-            <div className="rounded-xl border border-stone-200 bg-stone-50/60 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-start gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center flex-shrink-0">
-                  <CheckCircle2 className="w-5 h-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-stone-900">Token active</p>
-                  <p className="text-xs text-stone-500 mt-0.5 font-mono truncate">{tokenInfo.tokenPrefix}…</p>
-                  {tokenInfo.importCount > 0 && (
-                    <p className="text-xs text-stone-400 mt-1">
-                      {tokenInfo.importCount} import{tokenInfo.importCount === 1 ? '' : 's'} via extension
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={handleGenerate}
-                  disabled={generating}
-                  className="btn-secondary !text-sm !px-3"
-                  title="Regenerate"
-                >
-                  <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
-                  Replace
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRevoke}
-                  className="btn-ghost !text-red-600 hover:!bg-red-50 !text-sm !px-3"
-                  title="Revoke"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Revoke
-                </button>
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+        <div className="lg:col-span-8 space-y-4 min-w-0">
+          <section
+            data-tour="ext-install"
+            className="card-ats-bordered relative overflow-hidden p-4 sm:p-5 flex flex-col gap-3"
+          >
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+            <h2 className="relative flex items-center gap-2 text-[15px] font-bold text-stone-900 tracking-tight">
+              <Download className="w-4 h-4 text-brand-600 shrink-0" /> 1. Install the extension
+            </h2>
+            <div className="relative rounded-2xl border border-brand-100 bg-brand-50/50 p-4 text-sm text-stone-700 leading-relaxed space-y-2">
+              <p>
+                Use the <code className="font-mono text-brand-800 bg-white/80 px-1.5 py-0.5 rounded-md text-xs">chrome-extension/</code> folder from your project.
+              </p>
+              <ol className="list-decimal list-inside space-y-1 text-[13px] text-stone-600">
+                <li>Open <code className="font-mono text-xs bg-white/80 px-1 rounded">chrome://extensions</code></li>
+                <li>Turn on <span className="font-semibold">Developer mode</span></li>
+                <li>Click <span className="font-semibold">Load unpacked</span> and select that folder</li>
+              </ol>
             </div>
-          ) : (
-            <button type="button" onClick={handleGenerate} disabled={generating} className="btn-primary w-full sm:w-auto">
-              {generating ? <><Loader2 size={16} className="animate-spin" /> Generating…</> : 'Generate Extension Token'}
-            </button>
-          )}
+          </section>
+
+          <section
+            data-tour="ext-token"
+            className="card-ats-bordered relative overflow-hidden p-4 sm:p-5 flex flex-col gap-3"
+          >
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+            <h2 className="relative flex items-center gap-2 text-[15px] font-bold text-stone-900 tracking-tight">
+              <KeyRound className="w-4 h-4 text-brand-600 shrink-0" /> 2. Connect with a token
+            </h2>
+
+            {tokenInfo ? (
+              <div className="relative rounded-2xl border border-stone-200/80 bg-white p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center flex-shrink-0">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-stone-900">Token active</p>
+                    <p className="text-xs text-stone-500 mt-0.5 font-mono truncate">{tokenInfo.tokenPrefix}…</p>
+                    {tokenInfo.importCount > 0 && (
+                      <p className="text-[11px] text-stone-400 mt-1">
+                        {tokenInfo.importCount} import{tokenInfo.importCount === 1 ? '' : 's'} via extension
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleGenerate}
+                    disabled={generating}
+                    className="btn-secondary !text-sm !px-3"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
+                    Replace
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRevoke}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-[12px] font-semibold text-stone-600 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Revoke
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="relative">
+                <button type="button" onClick={handleGenerate} disabled={generating} className="btn-primary w-full sm:w-auto">
+                  {generating ? <Loader2 size={16} className="animate-spin" /> : <KeyRound className="w-4 h-4" />}
+                  Generate extension token
+                </button>
+              </div>
+            )}
+          </section>
+
+          <section
+            data-tour="ext-domain"
+            className="card-ats-bordered relative overflow-hidden p-4 sm:p-5 flex flex-col gap-3"
+          >
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+            <h2 className="relative flex items-center gap-2 text-[15px] font-bold text-stone-900 tracking-tight">
+              <Link2 className="w-4 h-4 text-brand-600 shrink-0" /> 3. API domain
+            </h2>
+            <div className="relative flex items-center gap-2">
+              <input readOnly value={BASE_API_URL} className="input-ats font-mono !text-xs flex-1 min-w-0" />
+              <button type="button" onClick={copyDomain} className="btn-secondary !px-3 shrink-0" title="Copy domain">
+                {copiedDomain ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="relative text-[11px] text-stone-400">Paste this as the API domain in the extension settings.</p>
+          </section>
         </div>
 
-        <div>
-          <h3 className="section-title-ats !mb-3">
-            <Link2 className="w-4 h-4 text-brand-600" />
-            3. API domain
-          </h3>
-          <div className="flex items-center gap-2">
-            <input readOnly value={BASE_API_URL} className="input-ats font-mono !text-xs flex-1 min-w-0" />
-            <button type="button" onClick={copyDomain} className="btn-secondary !px-3 shrink-0" title="Copy domain">
-              {copiedDomain ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-            </button>
+        <aside className="lg:col-span-4 min-w-0 lg:sticky lg:top-4">
+          <div className="card-ats-bordered relative overflow-hidden p-4 sm:p-5 space-y-3 min-h-[16rem]">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+            <h2 className="relative text-[15px] font-bold text-stone-900 tracking-tight">How it works</h2>
+            <ol className="relative space-y-3 text-sm text-stone-600">
+              <li className="rounded-xl border border-stone-100 bg-stone-50/80 px-3 py-2.5">
+                <span className="font-semibold text-stone-900">Install</span>
+                <p className="text-[11px] text-stone-500 mt-0.5">Load the extension in Chrome once.</p>
+              </li>
+              <li className="rounded-xl border border-stone-100 bg-stone-50/80 px-3 py-2.5">
+                <span className="font-semibold text-stone-900">Connect</span>
+                <p className="text-[11px] text-stone-500 mt-0.5">Paste token + API domain in the popup.</p>
+              </li>
+              <li className="rounded-xl border border-stone-100 bg-stone-50/80 px-3 py-2.5">
+                <span className="font-semibold text-stone-900">Import</span>
+                <p className="text-[11px] text-stone-500 mt-0.5">On LinkedIn profiles, import into your ATS.</p>
+              </li>
+            </ol>
           </div>
-          <p className="text-xs text-stone-400 mt-1.5">Paste this as the API domain in the extension settings.</p>
-        </div>
+        </aside>
       </div>
 
       <SecretRevealModal
@@ -285,8 +354,9 @@ const ChromeExtensionSettingsPage = () => {
         type={confirmAction?.type || 'warning'}
         isLoading={confirmLoading || generating}
       />
+
+      <TourHelpFab onClick={() => setTourOpen(true)} label="Take a tour" title="Take a tour of Chrome Extension" />
+      <ProductTour open={tourOpen} onClose={() => setTourOpen(false)} steps={EXT_TOUR_STEPS} storageKey={EXT_TOUR_KEY} />
     </div>
   );
-};
-
-export default ChromeExtensionSettingsPage;
+}

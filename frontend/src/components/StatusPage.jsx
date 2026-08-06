@@ -8,7 +8,7 @@ const PublicFooter = () => (
   <footer className="border-t border-stone-200 bg-white py-6 mt-auto">
     <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
       <Link to="/" className="text-sm text-stone-500 hover:text-brand-700 font-medium transition-colors">
-        ← Back to SkillNix
+        ← Back to People Connect HR
       </Link>
     </div>
   </footer>
@@ -62,8 +62,8 @@ export default function StatusPage() {
       <header className="bg-white border-b border-stone-200 sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between gap-4">
           <Link to="/" className="flex items-center gap-2.5 text-stone-900 font-semibold min-w-0">
-            <img src="/atslogo.jpg" alt="SkillNix" className="w-8 h-8 rounded-lg flex-shrink-0" />
-            <span className="truncate text-sm sm:text-base">SkillNix Status</span>
+            <img src="/logo.png" alt="People Connect HR" className="w-8 h-8 rounded-lg flex-shrink-0" />
+            <span className="truncate text-sm sm:text-base">People Connect HR Status</span>
           </Link>
           <Link to="/trust" className="text-sm text-brand-700 hover:text-brand-800 font-medium whitespace-nowrap flex-shrink-0">
             Trust Center →

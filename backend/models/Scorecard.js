@@ -35,4 +35,6 @@ scorecardSchema.index({ interviewId: 1, interviewerId: 1 }, { unique: true });
 scorecardSchema.index({ applicationId: 1 });
 scorecardSchema.index({ organizationId: 1, submittedAt: -1 });
 
+scorecardSchema.plugin(require('../utils/tenantPlugin'));
+
 module.exports = mongoose.model('Scorecard', scorecardSchema);

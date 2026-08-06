@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const mongoose = require('mongoose');
 const { encrypt, decrypt, isEncrypted } = require('../utils/encryption');
 
@@ -76,7 +77,7 @@ integrationConfigSchema.methods.getDecryptedCredentials = function () {
   try {
     return decrypt(this.credentials) || {};
   } catch (err) {
-    console.error(`[IntegrationConfig] Failed to decrypt credentials for ${this._id}:`, err.message);
+    logger.error(`[IntegrationConfig] Failed to decrypt credentials for ${this._id}:`, err.message);
     return {};
   }
 };

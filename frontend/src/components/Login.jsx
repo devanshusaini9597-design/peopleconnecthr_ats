@@ -1,94 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence, useMotionValue, useMotionTemplate, useSpring, useReducedMotion } from 'motion/react';
+import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { motion, useMotionValue, useMotionTemplate, useReducedMotion } from 'motion/react';
 import {
-  Briefcase, Mail, Lock, Eye, EyeOff, ArrowRight, ArrowLeft,
-  AlertCircle, X, UserPlus, Loader2, CheckCircle2, Sparkles
+  ArrowLeft, ShieldCheck, Zap, Clock
 } from 'lucide-react';
 import API_URL from '../config';
 
-const PIPELINE_STAGES = ['Sourced', 'Screening', 'Interview', 'Offer', 'Hired'];
-
-// Illustrative rows for the sign-in panel's "live pipeline" signature visual.
-// Sample data only — not real candidates.
-const PIPELINE_SEED = [
-  { name: 'A. Sharma', role: 'Frontend Engineer', stage: 2 },
-  { name: 'R. Iyer', role: 'Product Designer', stage: 1 },
-  { name: 'M. Chen', role: 'Data Analyst', stage: 3 },
-  { name: 'T. Osei', role: 'Sales Lead', stage: 4 },
-];
-
-const DISPLAY_FONT = "'Sora', 'Segoe UI', sans-serif";
-
-const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 24 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] } },
-};
-
-const staggerContainer = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.08, delayChildren: 0.1 } },
-};
-
-/** Wraps a button/link and gently pulls it toward the cursor. */
-const Magnetic = ({ children, strength = 0.25, className = '' }) => {
-  const prefersReduced = useReducedMotion();
-  const ref = React.useRef(null);
-  const x = useMotionValue(0);
-  const y = useMotionValue(0);
-  const springX = useSpring(x, { stiffness: 200, damping: 16, mass: 0.2 });
-  const springY = useSpring(y, { stiffness: 200, damping: 16, mass: 0.2 });
-
-  const handleMouseMove = (e) => {
-    if (prefersReduced || !ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    x.set((e.clientX - rect.left - rect.width / 2) * strength);
-    y.set((e.clientY - rect.top - rect.height / 2) * strength);
-  };
-  const handleMouseLeave = () => { x.set(0); y.set(0); };
-
-  return (
-    <motion.div
-      ref={ref}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      style={prefersReduced ? undefined : { x: springX, y: springY }}
-      className={`inline-block ${className}`}
-    >
-      {children}
-    </motion.div>
-  );
-};
-
-/** One row of the "live pipeline" signature visual — name/role plus a segmented stage track. */
-const PipelineRow = ({ name, role, stage }) => (
-  <div className="flex items-center justify-between gap-4 py-3 border-b border-white/[0.06] last:border-0">
-    <div className="min-w-0">
-      <p className="text-sm font-medium text-white truncate">{name}</p>
-      <p className="text-xs text-slate-400 truncate">{role}</p>
-    </div>
-    <div className="flex items-center gap-1.5 shrink-0" aria-hidden="true">
-      {PIPELINE_STAGES.map((label, i) => (
-        <span
-          key={label}
-          title={label}
-          className={`h-1.5 rounded-full transition-all duration-700 ease-out ${
-            i === stage
-              ? 'w-5 bg-gradient-to-r from-sky-400 to-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.8)]'
-              : i < stage
-                ? 'w-1.5 bg-indigo-400/40'
-                : 'w-1.5 bg-white/10'
-          }`}
-        />
-      ))}
-    </div>
-  </div>
-);
+import { PIPELINE_STAGES, PIPELINE_SEED, staggerContainer, validateEmail } from './login/loginConstants';
+import SignupPromptModal from './login/SignupPromptModal';
+import LoginBrandPanel from './login/LoginBrandPanel';
+import LoginAuthCard from './login/LoginAuthCard';
 
 const Login = () => {
-  const navigate = useNavigate();
+  const { t } = useTranslation();
   const prefersReduced = useReducedMotion();
 
   // ----- Sign-in state -----
@@ -139,7 +64,7 @@ const Login = () => {
     mouseX.set(e.clientX - rect.left);
     mouseY.set(e.clientY - rect.top);
   };
-  const panelGlow = useMotionTemplate`radial-gradient(600px circle at ${mouseX}px ${mouseY}px, rgba(37,99,235,0.05), transparent 70%)`;
+  const panelGlow = useMotionTemplate`radial-gradient(600px circle at ${mouseX}px ${mouseY}px, rgba(13,148,136,0.06), transparent 70%)`;
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -158,11 +83,11 @@ const Login = () => {
     const { email, password } = formData;
 
     if (!email || !password) {
-      setError('Enter your email and password to continue.');
+      setError(t('auth.enterCredentials'));
       return;
     }
     if (!validateEmail(email)) {
-      setFieldErrors({ email: 'Enter a valid email address.' });
+      setFieldErrors({ email: t('auth.invalidEmail') });
       return;
     }
 
@@ -191,7 +116,8 @@ const Login = () => {
           return;
         }
 
-        localStorage.setItem('token', data.token);
+        // Auth is HttpOnly cookie — do not store JWT in localStorage
+        localStorage.removeItem('token');
         localStorage.setItem('userEmail', email);
         localStorage.setItem('userName', data.user?.name || '');
         localStorage.setItem('isLoggedIn', 'true');
@@ -199,10 +125,14 @@ const Login = () => {
         if (data.user) {
           localStorage.setItem('userData', JSON.stringify(data.user));
           localStorage.setItem('userRole', data.user.role || 'recruiter');
+          if (data.user.organizationId) {
+            localStorage.setItem('orgId', data.user.organizationId);
+          }
         }
         if (data.organization) {
           localStorage.setItem('orgData', JSON.stringify(data.organization));
           localStorage.setItem('orgName', data.organization.name || '');
+          if (data.organization._id) localStorage.setItem('orgId', data.organization._id);
         }
 
         setSuccess('Signed in — taking you in.');
@@ -216,11 +146,12 @@ const Login = () => {
           }
         }, 700);
       } else {
-        if (data.message === 'email_not_found') {
-          setUnmatchedEmail(email);
-          setShowSignupModal(true);
+        if (data.message === 'invalid_credentials') {
+          setError(t('auth.invalidCredentials'));
+        } else if (data.message === 'password_upgrade_required') {
+          setError(t('auth.passwordUpgradeRequired'));
         } else {
-          setError("That email and password don't match. Try again, or reset your password below.");
+          setError(t('auth.loginFailed'));
         }
         setIsSubmitting(false);
       }
@@ -251,17 +182,19 @@ const Login = () => {
         setIsSubmitting(false);
         return;
       }
-      localStorage.setItem('token', data.token);
+      localStorage.removeItem('token');
       localStorage.setItem('userEmail', data.user?.email || formData.email);
       localStorage.setItem('userName', data.user?.name || '');
       localStorage.setItem('isLoggedIn', 'true');
       if (data.user) {
         localStorage.setItem('userData', JSON.stringify(data.user));
         localStorage.setItem('userRole', data.user.role || 'recruiter');
+        if (data.user.organizationId) localStorage.setItem('orgId', data.user.organizationId);
       }
       if (data.organization) {
         localStorage.setItem('orgData', JSON.stringify(data.organization));
         localStorage.setItem('orgName', data.organization.name || '');
+        if (data.organization._id) localStorage.setItem('orgId', data.organization._id);
       }
       setSuccess('Signed in — taking you in.');
       setTimeout(() => { window.location.href = '/dashboard'; }, 700);
@@ -320,15 +253,16 @@ const Login = () => {
         return;
       }
       setBackupCodes(data.backupCodes || []);
-      if (data.token) {
-        localStorage.setItem('token', data.token);
-        sessionStorage.removeItem('mfaEnrollmentToken');
-        localStorage.setItem('isLoggedIn', 'true');
-        if (data.user) localStorage.setItem('userData', JSON.stringify(data.user));
-        if (data.organization) localStorage.setItem('orgData', JSON.stringify(data.organization));
-        setSuccess('MFA enabled — taking you in.');
-        setTimeout(() => { window.location.href = '/dashboard'; }, 1200);
+      sessionStorage.removeItem('mfaEnrollmentToken');
+      localStorage.removeItem('token');
+      localStorage.setItem('isLoggedIn', 'true');
+      if (data.user) localStorage.setItem('userData', JSON.stringify(data.user));
+      if (data.organization) {
+        localStorage.setItem('orgData', JSON.stringify(data.organization));
+        if (data.organization._id) localStorage.setItem('orgId', data.organization._id);
       }
+      setSuccess('MFA enabled — taking you in.');
+      setTimeout(() => { window.location.href = '/dashboard'; }, 1200);
     } catch (_err) {
       setError('Failed to complete MFA enrollment.');
       setIsSubmitting(false);
@@ -352,17 +286,20 @@ const Login = () => {
         throw new Error(data.message || 'Demo login failed');
       }
 
-      localStorage.setItem('token', data.token);
+      // Demo login unchanged as a feature; session via HttpOnly cookie (token still returned by API for compat)
+      localStorage.removeItem('token');
       localStorage.setItem('userEmail', data.user?.email || '');
       localStorage.setItem('userName', data.user?.name || 'Demo User');
       localStorage.setItem('isLoggedIn', 'true');
       if (data.user) {
         localStorage.setItem('userData', JSON.stringify(data.user));
         localStorage.setItem('userRole', data.user.role || 'recruiter');
+        if (data.user.organizationId) localStorage.setItem('orgId', data.user.organizationId);
       }
       if (data.organization) {
         localStorage.setItem('orgData', JSON.stringify(data.organization));
         localStorage.setItem('orgName', data.organization.name || 'Demo Organization');
+        if (data.organization._id) localStorage.setItem('orgId', data.organization._id);
       }
 
       setSuccess('Demo account signed in — taking you in.');
@@ -414,502 +351,88 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex bg-white text-slate-900">
-      {/* ============ LEFT: brand panel (desktop only) ============ */}
-      <div className="hidden lg:flex lg:w-[46%] xl:w-[42%] relative flex-col overflow-hidden bg-[#080b16] px-12 xl:px-16 py-10">
-        {/* Fine grid texture */}
-        <svg className="absolute inset-0 h-full w-full opacity-[0.06]" aria-hidden="true">
-          <defs>
-            <pattern id="loginGrid" width="42" height="42" patternUnits="userSpaceOnUse">
-              <path d="M 42 0 L 0 0 0 42" fill="none" stroke="white" strokeWidth="1" />
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#loginGrid)" />
-        </svg>
-        {/* Single ambient glow, restrained */}
-        <div className="absolute -top-24 -left-16 w-[26rem] h-[26rem] rounded-full bg-indigo-600/20 blur-[110px]" aria-hidden="true" />
-        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#080b16] to-transparent" aria-hidden="true" />
+    <div className="auth-page-shell flex flex-col bg-stone-50 text-stone-900">
+      {/* Full-width glass header — back only */}
+      <header className="auth-header-bar">
+        <Link to="/" className="auth-back-link-btn">
+          <span className="auth-back-icon" aria-hidden="true">
+            <ArrowLeft size={14} strokeWidth={2.5} />
+          </span>
+          Back to website
+        </Link>
+      </header>
 
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="relative z-10"
-        >
-          <Link to="/" className="inline-flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
-              <Briefcase className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-lg font-bold text-white tracking-tight" style={{ fontFamily: DISPLAY_FONT }}>
-              SkillNix
-            </span>
-          </Link>
-        </motion.div>
-
-        <div className="relative z-10 flex-1 flex flex-col justify-center py-10">
-          <motion.div initial="hidden" animate="show" variants={staggerContainer}>
-            <motion.p
-              variants={fadeUp}
-              className="text-xs font-semibold tracking-[0.2em] text-indigo-300/80 uppercase mb-5"
-            >
-              Applicant tracking, simplified
-            </motion.p>
-            <motion.h1
-              variants={fadeUp}
-              style={{ fontFamily: DISPLAY_FONT }}
-              className="text-4xl xl:text-[2.7rem] font-bold leading-[1.15] text-white mb-5"
-            >
-              Every candidate,<br />exactly where they<br />are in your pipeline.
-            </motion.h1>
-            <motion.p variants={fadeUp} className="text-slate-400 text-[15px] leading-relaxed max-w-sm mb-10">
-              Sign in to review today's pipeline, move candidates forward, and keep every hire on track.
-            </motion.p>
-
-            <motion.div
-              variants={fadeUp}
-              className="rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-sm p-5 max-w-sm"
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
-                </span>
-                <span className="text-[11px] font-semibold tracking-wider text-slate-300 uppercase">
-                  Live pipeline
-                </span>
-              </div>
-              <div>
-                {PIPELINE_SEED.map((p, i) => (
-                  <PipelineRow key={p.name} name={p.name} role={p.role} stage={pipelineStages[i]} />
-                ))}
-              </div>
-            </motion.div>
-          </motion.div>
-        </div>
-
-        <div className="relative z-10 text-xs text-slate-500">
-          © {new Date().getFullYear()} SkillNix Inc. — built for recruiting teams who move fast.
-        </div>
-      </div>
+      <div className="flex flex-1 flex-col lg:flex-row min-w-0 w-full">
+      <LoginBrandPanel pipelineStages={pipelineStages} />
 
       {/* ============ RIGHT: sign-in form ============ */}
       <motion.div
         onMouseMove={handlePanelMouseMove}
-        className="relative flex-1 flex flex-col items-center justify-center px-6 sm:px-10 py-12"
+        className="relative flex-1 flex flex-col min-h-[min(100%,70dvh)] lg:min-h-0 auth-form-side"
       >
-        <motion.div className="pointer-events-none absolute inset-0" style={{ background: panelGlow }} aria-hidden="true" />
+        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+          <div className="absolute inset-0 landing-dot-grid opacity-40" />
+          <div className="absolute -top-24 -right-16 w-72 h-72 rounded-full bg-brand-300/25 blur-3xl" />
+          <div className="absolute -bottom-28 -left-20 w-80 h-80 rounded-full bg-teal-200/30 blur-3xl" />
+          <div className="absolute top-1/3 right-8 w-40 h-40 rounded-full bg-emerald-200/20 blur-2xl hidden lg:block" />
+          <motion.div className="absolute inset-0" style={{ background: panelGlow }} />
+        </div>
 
-        {/* Mobile-only wordmark */}
-        <Link to="/" className="lg:hidden flex items-center gap-2.5 mb-10 relative z-10">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-sm">
-            <Briefcase className="w-5 h-5 text-white" />
-          </div>
-          <span className="text-lg font-bold text-gray-900" style={{ fontFamily: DISPLAY_FONT }}>SkillNix</span>
-        </Link>
-
-        <motion.div
-          initial="hidden"
-          animate="show"
-          variants={staggerContainer}
-          className="w-full max-w-sm relative z-10"
-        >
-          <AnimatePresence mode="wait">
-            {mode === 'login' ? (
-              <motion.div
-                key="login"
-                initial={{ opacity: 0, x: prefersReduced ? 0 : -16 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: prefersReduced ? 0 : 16 }}
-                transition={{ duration: 0.25, ease: 'easeInOut' }}
-              >
-                <div className="mb-8">
-                  <h1 style={{ fontFamily: DISPLAY_FONT }} className="text-[28px] font-bold text-gray-900">
-                    {mfaStep === 'mfa' ? 'Two-factor authentication' : mfaStep === 'enroll' ? 'Set up MFA' : 'Welcome back'}
-                  </h1>
-                  <p className="text-sm text-gray-500 mt-1.5">
-                    {mfaStep === 'mfa'
-                      ? 'Enter the code from your authenticator app.'
-                      : mfaStep === 'enroll'
-                        ? 'Your organization requires MFA before you can sign in.'
-                        : 'Sign in to your SkillNix account to continue.'}
-                  </p>
-                </div>
-
-                {/* Status messages */}
-                <div aria-live="polite">
-                  <AnimatePresence>
-                    {error && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="mb-4 flex items-start gap-2 p-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-700">
-                          <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                          <span>{error}</span>
-                        </div>
-                      </motion.div>
-                    )}
-                    {success && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="mb-4 flex items-center gap-2 p-3 rounded-lg text-sm bg-emerald-50 border border-emerald-200 text-emerald-700">
-                          <CheckCircle2 size={16} className="shrink-0" />
-                          <span>{success}</span>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {mfaStep === 'mfa' ? (
-                  <form onSubmit={handleMfaVerify} className="space-y-5" noValidate>
-                    <div>
-                      <label htmlFor="mfa-code" className="label-ats">
-                        Authentication code
-                      </label>
-                      <input
-                        id="mfa-code"
-                        type="text"
-                        inputMode="numeric"
-                        autoComplete="one-time-code"
-                        value={mfaCode}
-                        onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                        placeholder="000000"
-                        className="input-ats font-mono tracking-widest text-center text-lg"
-                      />
-                    </div>
-                    <button type="submit" disabled={isSubmitting} className="btn-primary w-full">
-                      {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Verify & sign in'}
-                    </button>
-                    <button type="button" onClick={() => { setMfaStep('login'); setMfaCode(''); setError(''); }} className="btn-ghost w-full text-sm text-stone-500">
-                      Back to sign in
-                    </button>
-                  </form>
-                ) : mfaStep === 'enroll' ? (
-                  <div className="space-y-5">
-                    {!mfaSetup ? (
-                      <button type="button" onClick={startEnrollmentSetup} disabled={isSubmitting} className="btn-primary w-full">
-                        {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Begin MFA setup'}
-                      </button>
-                    ) : (
-                      <form onSubmit={completeEnrollment} className="space-y-4">
-                        <p className="text-sm text-stone-600">Add this secret to your authenticator app:</p>
-                        <code className="block text-xs font-mono bg-stone-50 border border-stone-200 rounded-xl p-3 break-all">{mfaSetup.secret}</code>
-                        <div>
-                          <label className="label-ats">Verification code</label>
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            value={mfaCode}
-                            onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                            placeholder="000000"
-                            className="input-ats font-mono tracking-widest text-center"
-                          />
-                        </div>
-                        <button type="submit" disabled={isSubmitting} className="btn-primary w-full">
-                          {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying…</> : 'Verify & continue'}
-                        </button>
-                      </form>
-                    )}
-                    {backupCodes?.length > 0 && (
-                      <div className="text-xs bg-amber-50 border border-amber-200 rounded-lg p-3">
-                        <p className="font-semibold text-amber-900 mb-1">Save backup codes:</p>
-                        <div className="grid grid-cols-2 gap-1 font-mono">{backupCodes.map((c) => <span key={c}>{c}</span>)}</div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-                  <div>
-                    <label htmlFor="login-email" className="label-ats">
-                      Email address
-                    </label>
-                    <div className="relative">
-                      <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
-                      <input
-                        id="login-email"
-                        type="email"
-                        name="email"
-                        autoComplete="email"
-                        value={formData.email}
-                        onChange={handleChange}
-                        placeholder="you@company.com"
-                        aria-invalid={!!fieldErrors.email}
-                        aria-describedby={fieldErrors.email ? 'login-email-error' : undefined}
-                        className={`input-ats !pl-10 ${fieldErrors.email ? 'input-ats-error' : ''}`}
-                      />
-                    </div>
-                    {fieldErrors.email && (
-                      <p id="login-email-error" className="field-error">{fieldErrors.email}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label htmlFor="login-password" className="label-ats !mb-0">
-                        Password
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setMode('forgot')}
-                        className="text-xs font-semibold text-brand-700 hover:text-brand-800 transition-colors"
-                      >
-                        Forgot password?
-                      </button>
-                    </div>
-                    <div className="relative">
-                      <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
-                      <input
-                        id="login-password"
-                        type={showPassword ? 'text' : 'password'}
-                        name="password"
-                        autoComplete="current-password"
-                        value={formData.password}
-                        onChange={handleChange}
-                        placeholder="••••••••"
-                        className="input-ats !pl-10 !pr-11"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md text-stone-400 hover:text-stone-600 transition-colors"
-                        aria-label={showPassword ? 'Hide password' : 'Show password'}
-                        tabIndex={-1}
-                      >
-                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <Magnetic strength={0.15} className="w-full">
-                    <motion.button
-                      whileTap={{ scale: 0.97 }}
-                      type="submit"
-                      disabled={isSubmitting || isDemoLoggingIn}
-                      className="btn-primary w-full !py-3"
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <Loader2 size={18} className="animate-spin" />
-                          Signing in…
-                        </>
-                      ) : (
-                        <>
-                          Sign in
-                          <ArrowRight size={16} />
-                        </>
-                      )}
-                    </motion.button>
-                  </Magnetic>
-
-                  <div className="relative py-1">
-                    <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                      <div className="w-full border-t border-stone-200" />
-                    </div>
-                    <div className="relative flex justify-center">
-                      <span className="bg-white px-3 text-xs text-stone-400 uppercase tracking-wider">or</span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleDemoLogin}
-                    disabled={isSubmitting || isDemoLoggingIn}
-                    className="btn-secondary w-full !py-3 !border-brand-200 !text-brand-700 hover:!bg-brand-50"
-                  >
-                    {isDemoLoggingIn ? (
-                      <>
-                        <Loader2 size={18} className="animate-spin" />
-                        Entering demo…
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles size={16} />
-                        Try demo account
-                      </>
-                    )}
-                  </button>
-
-                  <p className="text-center text-sm mt-6 text-gray-500">
-                    New to SkillNix?{' '}
-                    <Link to="/register" className="font-semibold text-blue-600 hover:text-blue-700">
-                      Start your free trial
-                    </Link>
-                  </p>
-                </form>
-                )}
-              </motion.div>
-            ) : (
-              <motion.div
-                key="forgot"
-                initial={{ opacity: 0, x: prefersReduced ? 0 : 16 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: prefersReduced ? 0 : -16 }}
-                transition={{ duration: 0.25, ease: 'easeInOut' }}
-              >
-                <button
-                  onClick={backToLogin}
-                  className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors mb-6"
-                >
-                  <ArrowLeft size={15} />
-                  Back to sign in
-                </button>
-
-                <div className="mb-6">
-                  <h1 style={{ fontFamily: DISPLAY_FONT }} className="text-2xl font-bold text-gray-900">
-                    Reset your password
-                  </h1>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Enter the email on your account and we'll send a link to reset it.
-                  </p>
-                </div>
-
-                <div aria-live="polite">
-                  {recoveryStatus === 'sent' && (
-                    <div className="mb-4 flex items-start gap-2 p-3 rounded-lg text-sm bg-emerald-50 border border-emerald-200 text-emerald-700">
-                      <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-                      <span>{recoveryMessage}</span>
-                    </div>
-                  )}
-                  {recoveryStatus === 'error' && (
-                    <div className="mb-4 flex items-start gap-2 p-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-700">
-                      <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                      <span>{recoveryMessage}</span>
-                    </div>
-                  )}
-                </div>
-
-                {recoveryStatus !== 'sent' && (
-                  <form onSubmit={handleForgotSubmit} className="space-y-5" noValidate>
-                    <div>
-                      <label htmlFor="recovery-email" className="label-ats">
-                        Email address
-                      </label>
-                      <div className="relative">
-                        <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
-                        <input
-                          id="recovery-email"
-                          type="email"
-                          autoComplete="email"
-                          value={recoveryEmail}
-                          onChange={(e) => setRecoveryEmail(e.target.value)}
-                          placeholder="you@company.com"
-                          className="input-ats !pl-10"
-                        />
-                      </div>
-                    </div>
-
-                    <Magnetic strength={0.15} className="w-full">
-                      <motion.button
-                        whileTap={{ scale: 0.97 }}
-                        type="submit"
-                        disabled={recoveryStatus === 'sending'}
-                        className="btn-primary w-full !py-3"
-                      >
-                        {recoveryStatus === 'sending' ? (
-                          <>
-                            <Loader2 size={18} className="animate-spin" />
-                            Sending link…
-                          </>
-                        ) : (
-                          'Send reset link'
-                        )}
-                      </motion.button>
-                    </Magnetic>
-                  </form>
-                )}
-
-                {recoveryStatus === 'sent' && (
-                  <button
-                    onClick={backToLogin}
-                    className="btn-secondary w-full !py-3"
-                  >
-                    Back to sign in
-                  </button>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-      </motion.div>
-
-      {/* Account-not-found modal */}
-      <AnimatePresence>
-        {showSignupModal && (
+        <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-4 sm:px-6 md:px-10 py-8 sm:py-10 w-full min-w-0">
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+            initial="hidden"
+            animate="show"
+            variants={staggerContainer}
+            className="w-full max-w-md min-w-0"
           >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              transition={{ type: 'spring', stiffness: 350, damping: 28 }}
-              className="w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden border border-stone-200"
-            >
-              <div className="px-6 pt-6 pb-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-center">
-                      <AlertCircle size={20} className="text-amber-600" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-semibold text-stone-900">Account not found</h3>
-                      <p className="text-xs text-stone-500 mt-0.5">No account exists with this email</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setShowSignupModal(false)}
-                    className="p-1 hover:bg-stone-100 rounded-lg transition-colors"
-                    aria-label="Close"
-                  >
-                    <X size={18} className="text-stone-400" />
-                  </button>
-                </div>
-              </div>
+          <LoginAuthCard
+            prefersReduced={prefersReduced}
+            mode={mode}
+            mfaStep={mfaStep}
+            formData={formData}
+            fieldErrors={fieldErrors}
+            error={error}
+            success={success}
+            showPassword={showPassword}
+            setShowPassword={setShowPassword}
+            isSubmitting={isSubmitting}
+            isDemoLoggingIn={isDemoLoggingIn}
+            mfaCode={mfaCode}
+            setMfaCode={setMfaCode}
+            mfaSetup={mfaSetup}
+            backupCodes={backupCodes}
+            recoveryEmail={recoveryEmail}
+            setRecoveryEmail={setRecoveryEmail}
+            recoveryStatus={recoveryStatus}
+            recoveryMessage={recoveryMessage}
+            onChange={handleChange}
+            onSubmit={handleSubmit}
+            onMfaVerify={handleMfaVerify}
+            onStartEnrollment={startEnrollmentSetup}
+            onCompleteEnrollment={completeEnrollment}
+            onDemoLogin={handleDemoLogin}
+            onForgotSubmit={handleForgotSubmit}
+            onBackToLogin={backToLogin}
+            onForgotMode={() => setMode('forgot')}
+            onBackFromMfa={() => { setMfaStep('login'); setMfaCode(''); setError(''); }}
+          />
 
-              <div className="px-6 pb-4">
-                <div className="bg-stone-50 border border-stone-200 rounded-xl p-3">
-                  <div className="flex items-center gap-2">
-                    <Mail size={14} className="text-stone-400 flex-shrink-0" />
-                    <span className="text-sm font-medium text-stone-800 truncate">{unmatchedEmail}</span>
-                  </div>
-                </div>
-                <p className="text-sm text-stone-500 mt-3">
-                  Want to create a new account with this email address?
-                </p>
-              </div>
-
-              <div className="px-6 pb-6 flex flex-col-reverse sm:flex-row gap-3">
-                <button
-                  onClick={() => setShowSignupModal(false)}
-                  className="btn-secondary flex-1"
-                >
-                  Try again
-                </button>
-                <button
-                  onClick={() => {
-                    setShowSignupModal(false);
-                    navigate('/register');
-                  }}
-                  className="btn-primary flex-1"
-                >
-                  <UserPlus size={16} />
-                  Create account
-                </button>
-              </div>
-            </motion.div>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <span className="auth-trust-chip"><ShieldCheck className="w-3.5 h-3.5 text-brand-600" /> SOC 2 ready</span>
+            <span className="auth-trust-chip"><Zap className="w-3.5 h-3.5 text-brand-600" /> Live in minutes</span>
+            <span className="auth-trust-chip"><Clock className="w-3.5 h-3.5 text-brand-600" /> 14-day free trial</span>
+          </div>
           </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      </motion.div>
+      </div>
+
+      <SignupPromptModal
+        open={showSignupModal}
+        unmatchedEmail={unmatchedEmail}
+        onClose={() => setShowSignupModal(false)}
+      />
+
     </div>
   );
 };

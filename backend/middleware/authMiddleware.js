@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const { validateSession, touchSession } = require('../services/sessionService');
@@ -7,12 +8,12 @@ const { getClientIp } = require('../utils/clientIp');
 // FAIL CLOSED: No hardcoded fallback in production
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
-  console.error('FATAL: JWT_SECRET environment variable is required in production');
+  logger.error('FATAL: JWT_SECRET environment variable is required in production');
   process.exit(1);
 }
 const SECRET = JWT_SECRET || 'dev-only-secret-CHANGE-IN-PRODUCTION';
 if (!JWT_SECRET) {
-  console.warn('⚠️  WARNING: Using development JWT secret. Set JWT_SECRET env var for production.');
+  logger.warn('⚠️  WARNING: Using development JWT secret. Set JWT_SECRET env var for production.');
 }
 
 /**
@@ -24,6 +25,8 @@ const verifyToken = async (req, res, next) => {
   
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     token = req.headers.authorization.split(' ')[1];
+  } else if (req.cookies && req.cookies.ats_token) {
+    token = req.cookies.ats_token;
   } else if (req.cookies && req.cookies.token) {
     token = req.cookies.token;
   }
@@ -37,7 +40,7 @@ const verifyToken = async (req, res, next) => {
     
     // Check if user still exists in DB
     const User = mongoose.model('User');
-    const user = await User.findById(decoded.id).select('+isActive +role +organizationId +email +name +mfaEnabled');
+    const user = await User.findById(decoded.id).select('+isActive +role +organizationId +email +name +mfaEnabled +customRoleId');
     
     if (!user) {
       return res.status(401).json({ success: false, message: 'The user belonging to this token no longer exists.' });
@@ -107,6 +110,7 @@ const verifyToken = async (req, res, next) => {
       role: user.role,
       email: user.email,
       name: user.name,
+      customRoleId: user.customRoleId || null,
       jti: decoded.jti
     };
     
@@ -124,6 +128,8 @@ const optionalAuth = async (req, res, next) => {
   
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     token = req.headers.authorization.split(' ')[1];
+  } else if (req.cookies && req.cookies.ats_token) {
+    token = req.cookies.ats_token;
   } else if (req.cookies && req.cookies.token) {
     token = req.cookies.token;
   }

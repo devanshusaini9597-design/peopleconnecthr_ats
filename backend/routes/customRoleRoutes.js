@@ -7,7 +7,7 @@ const { verifyToken } = require('../middleware/authMiddleware');
 const { requireAdmin } = require('../middleware/rbacMiddleware');
 const { requireFeature } = require('../middleware/featureMiddleware');
 const { tenantScope, requireOrganization } = require('../middleware/tenantMiddleware');
-const { PERMISSIONS } = require('../config/permissions');
+const { PERMISSIONS, PERMISSION_CATALOG } = require('../config/permissions');
 const CustomRole = require('../models/CustomRole');
 const User = require('../models/User');
 const eventBus = require('../events/eventBus');
@@ -16,10 +16,10 @@ const eventTypes = require('../events/eventTypes');
 router.use(verifyToken, requireOrganization, tenantScope, requireAdmin, requireFeature('team.customRoles'));
 
 /**
- * GET /permissions — the full catalog, for building the UI's checkbox list.
+ * GET /permissions — flat keys + grouped catalog for the Custom Roles UI.
  */
 router.get('/permissions', (req, res) => {
-  res.json({ success: true, data: PERMISSIONS });
+  res.json({ success: true, data: PERMISSIONS, catalog: PERMISSION_CATALOG });
 });
 
 /**

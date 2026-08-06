@@ -8,67 +8,93 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [organization, setOrganization] = useState(null);
   const [entitlements, setEntitlements] = useState([]);
-  const [token, setToken] = useState(localStorage.getItem('token') || null);
+  // Session auth is HttpOnly ats_token cookie only — no JWT in localStorage.
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  const clearLocalAuth = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('orgId');
+    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('userName');
+    localStorage.removeItem('userData');
+    localStorage.removeItem('orgData');
+    localStorage.removeItem('userRole');
+    localStorage.removeItem('orgName');
+    setUser(null);
+    setOrganization(null);
+    setEntitlements([]);
+    setIsAuthenticated(false);
+  };
+
   const fetchProfile = useCallback(async () => {
-    if (!token) {
-      setIsLoading(false);
-      return;
-    }
-    
     try {
       const response = await fetch(`${BASE_API_URL}/api/profile`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        credentials: 'include',
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch profile');
       }
-      
+
       const data = await response.json();
       setUser(data.user);
       setOrganization(data.organization);
       setEntitlements(data.entitlements || []);
       setIsAuthenticated(true);
+      if (data.organization?._id) {
+        localStorage.setItem('orgId', data.organization._id);
+      }
     } catch (error) {
       console.error('Auth verification failed:', error);
-      logout();
+      clearLocalAuth();
     } finally {
       setIsLoading(false);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
+    // Clear any legacy JWT left in localStorage from older builds
+    localStorage.removeItem('token');
     fetchProfile();
   }, [fetchProfile]);
+
+  useEffect(() => {
+    const handleUnauth = () => {
+      clearLocalAuth();
+      window.location.href = '/login';
+    };
+    window.addEventListener('auth:unauthorized', handleUnauth);
+    window.addEventListener('auth:session-expired', handleUnauth);
+    return () => {
+      window.removeEventListener('auth:unauthorized', handleUnauth);
+      window.removeEventListener('auth:session-expired', handleUnauth);
+    };
+  }, []);
 
   const login = async (email, password) => {
     const response = await fetch(`${BASE_API_URL}/api/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
+      credentials: 'include',
+      body: JSON.stringify({ email, password }),
     });
-    
+
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data.message || 'Login failed');
     }
-    
-    localStorage.setItem('token', data.token);
+
     if (data.organization && data.organization._id) {
       localStorage.setItem('orgId', data.organization._id);
     }
-    
-    setToken(data.token);
+
     setUser(data.user);
     setOrganization(data.organization);
     setEntitlements(data.entitlements || []);
     setIsAuthenticated(true);
-    
+
     return data;
   };
 
@@ -76,34 +102,34 @@ export const AuthProvider = ({ children }) => {
     const response = await fetch(`${BASE_API_URL}/api/onboarding/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      credentials: 'include',
+      body: JSON.stringify(data),
     });
-    
+
     const resData = await response.json();
     if (!response.ok) {
       throw new Error(resData.message || 'Registration failed');
     }
-    
+
     return resData;
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('orgId');
-    localStorage.removeItem('isLoggedIn');
-    localStorage.removeItem('userEmail');
-    localStorage.removeItem('userName');
-    setToken(null);
-    setUser(null);
-    setOrganization(null);
-    setEntitlements([]);
-    setIsAuthenticated(false);
+  const logout = async () => {
+    try {
+      await fetch(`${BASE_API_URL}/api/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch (e) {
+      /* ignore network errors on logout */
+    }
+    clearLocalAuth();
     window.location.href = '/login';
   };
 
-  const updateUser = (data) => setUser(prev => ({ ...prev, ...data }));
+  const updateUser = (data) => setUser((prev) => ({ ...prev, ...data }));
   const updateOrganization = (data) => {
-    setOrganization(prev => {
+    setOrganization((prev) => {
       const next = { ...prev, ...data };
       if (data.plan) setEntitlements(getEntitlements(next.plan));
       return next;
@@ -115,7 +141,7 @@ export const AuthProvider = ({ children }) => {
     user,
     organization,
     entitlements,
-    token,
+    token: null,
     isAuthenticated,
     isLoading,
     login,
@@ -123,14 +149,10 @@ export const AuthProvider = ({ children }) => {
     logout,
     updateUser,
     updateOrganization,
-    refreshProfile
+    refreshProfile,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {

@@ -1,3 +1,4 @@
+const logger = require('../../utils/logger');
 /**
  * Enterprise BYOK handoffs: on hire → HRIS + CRM; optional SIEM ship for audit-ish events.
  */
@@ -36,9 +37,9 @@ function registerIntegrationHandoffListeners() {
       if (hris && typeof hris.pushHire === 'function') {
         try {
           await hris.pushHire(hirePayload);
-          console.log('[HRIS] pushHire succeeded for candidate', candidateId);
+          logger.info('[HRIS] pushHire succeeded for candidate', candidateId);
         } catch (err) {
-          console.warn('[HRIS] pushHire failed:', err.message);
+          logger.warn('[HRIS] pushHire failed:', err.message);
         }
       }
 
@@ -54,9 +55,9 @@ function registerIntegrationHandoffListeners() {
             company: hirePayload.department,
             ...hirePayload
           });
-          console.log('[CRM] upsertCandidate succeeded for candidate', candidateId);
+          logger.info('[CRM] upsertCandidate succeeded for candidate', candidateId);
         } catch (err) {
-          console.warn('[CRM] upsertCandidate failed:', err.message);
+          logger.warn('[CRM] upsertCandidate failed:', err.message);
         }
       }
 
@@ -71,11 +72,11 @@ function registerIntegrationHandoffListeners() {
             organizationId: String(organizationId)
           }]);
         } catch (err) {
-          console.warn('[SIEM] shipEvents failed:', err.message);
+          logger.warn('[SIEM] shipEvents failed:', err.message);
         }
       }
     } catch (err) {
-      console.error('[integrationHandoff] CANDIDATE_HIRED handler error:', err.message);
+      logger.error('[integrationHandoff] CANDIDATE_HIRED handler error:', err.message);
     }
   });
 }

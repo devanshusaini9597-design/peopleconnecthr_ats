@@ -113,6 +113,50 @@ const cancelSubscription = async (org) => {
 };
 
 /**
+ * Lightweight subscription snapshot for the Billing UI.
+ */
+const getSubscriptionSummary = async (org) => {
+  if (!org.billingSubscriptionId || !isStripeConfigured()) return null;
+  try {
+    const stripe = getStripe();
+    const sub = await stripe.subscriptions.retrieve(org.billingSubscriptionId);
+    return {
+      status: sub.status,
+      cancelAtPeriodEnd: !!sub.cancel_at_period_end,
+      currentPeriodEnd: sub.current_period_end
+        ? new Date(sub.current_period_end * 1000).toISOString()
+        : null,
+    };
+  } catch (err) {
+    console.warn('[billing] getSubscriptionSummary:', err.message);
+    return null;
+  }
+};
+
+/**
+ * Recent invoices for the org's Stripe customer (newest first).
+ */
+const listInvoices = async (org, { limit = 8 } = {}) => {
+  if (!org.billingCustomerId || !isStripeConfigured()) return [];
+  const stripe = getStripe();
+  const list = await stripe.invoices.list({
+    customer: org.billingCustomerId,
+    limit: Math.min(20, Math.max(1, limit)),
+  });
+  return (list.data || []).map((inv) => ({
+    id: inv.id,
+    number: inv.number,
+    status: inv.status,
+    amountDue: inv.amount_due,
+    amountPaid: inv.amount_paid,
+    currency: inv.currency,
+    created: inv.created ? new Date(inv.created * 1000).toISOString() : null,
+    hostedInvoiceUrl: inv.hosted_invoice_url || null,
+    invoicePdf: inv.invoice_pdf || null,
+  }));
+};
+
+/**
  * Verifies and parses a Stripe webhook payload.
  * @param {Buffer} rawBody
  * @param {string} signature — the `stripe-signature` header
@@ -135,5 +179,7 @@ module.exports = {
   createCheckoutSession,
   createPortalSession,
   cancelSubscription,
+  getSubscriptionSummary,
+  listInvoices,
   constructWebhookEvent
 };

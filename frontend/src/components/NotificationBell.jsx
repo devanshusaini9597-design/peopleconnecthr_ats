@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Bell, X, Check, CheckCheck, Clock, AlertTriangle, Calendar, Phone, ChevronRight, Trash2, RefreshCw, User, Mail, ExternalLink, Eye, Users, Share2, UserPlus, UserX, Loader2 } from 'lucide-react';
+import { Bell, X, CheckCheck, Trash2, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { authenticatedFetch } from '../utils/fetchUtils';
 import EmptyState from './ui/EmptyState';
 import { BASE_API_URL } from '../config';
+import NotificationDetail from './notificationBell/NotificationDetail';
+import NotificationListItem from './notificationBell/NotificationListItem';
 
 const NotificationBell = () => {
   const navigate = useNavigate();
@@ -175,50 +177,6 @@ const NotificationBell = () => {
     navigator.clipboard.writeText(phone).catch(() => {});
   };
 
-  // Get notification type icon
-  const NotifTypeIcon = ({ type, priority }) => {
-    if (type === 'invitation') return <UserPlus size={16} className="text-blue-500 flex-shrink-0" />;
-    if (type === 'invitation_accepted') return <Check size={16} className="text-green-500 flex-shrink-0" />;
-    if (type === 'invitation_declined') return <UserX size={16} className="text-red-500 flex-shrink-0" />;
-    if (type === 'share_request') return <Share2 size={16} className="text-emerald-500 flex-shrink-0" />;
-    if (priority === 'urgent') return <AlertTriangle size={16} className="text-red-500 flex-shrink-0" />;
-    if (priority === 'high') return <Clock size={16} className="text-orange-500 flex-shrink-0" />;
-    return <Calendar size={16} className="text-blue-500 flex-shrink-0" />;
-  };
-
-  // Priority badge
-  const PriorityBadge = ({ priority }) => {
-    const styles = {
-      urgent: 'bg-red-100 text-red-700 border-red-200',
-      high: 'bg-orange-100 text-orange-700 border-orange-200',
-      medium: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-      low: 'bg-blue-100 text-blue-700 border-blue-200'
-    };
-    return (
-      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${styles[priority] || styles.low}`}>
-        {priority}
-      </span>
-    );
-  };
-
-  // Priority icon
-  const PriorityIcon = ({ priority }) => {
-    if (priority === 'urgent') return <AlertTriangle size={16} className="text-red-500 flex-shrink-0" />;
-    if (priority === 'high') return <Clock size={16} className="text-orange-500 flex-shrink-0" />;
-    return <Calendar size={16} className="text-blue-500 flex-shrink-0" />;
-  };
-
-  // Time ago formatter
-  const timeAgo = (dateStr) => {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    const days = Math.floor(hrs / 24);
-    return `${days}d ago`;
-  };
 
   return (
     <div className="relative">
@@ -334,248 +292,17 @@ const NotificationBell = () => {
           <div className="flex-1 overflow-y-auto">
             {/* Detail View — when a notification is clicked */}
             {selectedNotif ? (
-              <div className="p-4" style={{ animation: 'fadeInDown 0.15s ease-out' }}>
-                {/* Back button */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedNotif(null)}
-                  className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-700 font-semibold mb-3"
-                >
-                  <ChevronRight size={12} className="rotate-180" />
-                  Back to all notifications
-                </button>
-
-                {/* Type Header Bar */}
-                <div className={`rounded-lg p-3 mb-4 ${
-                  selectedNotif.type === 'invitation' ? 'bg-blue-50 border border-blue-200' :
-                  selectedNotif.type === 'share_request' ? 'bg-emerald-50 border border-emerald-200' :
-                  selectedNotif.type === 'invitation_accepted' ? 'bg-green-50 border border-green-200' :
-                  selectedNotif.type === 'invitation_declined' ? 'bg-red-50 border border-red-200' :
-                  selectedNotif.priority === 'urgent' ? 'bg-red-50 border border-red-200' :
-                  selectedNotif.priority === 'high' ? 'bg-orange-50 border border-orange-200' :
-                  selectedNotif.priority === 'medium' ? 'bg-yellow-50 border border-yellow-200' :
-                  'bg-blue-50 border border-blue-200'
-                }`}>
-                  <div className="flex items-center gap-2">
-                    <NotifTypeIcon type={selectedNotif.type} priority={selectedNotif.priority} />
-                    <span className={`text-xs font-bold uppercase ${
-                      selectedNotif.type === 'invitation' ? 'text-blue-700' :
-                      selectedNotif.type === 'share_request' ? 'text-emerald-700' :
-                      selectedNotif.type === 'invitation_accepted' ? 'text-green-700' :
-                      selectedNotif.type === 'invitation_declined' ? 'text-red-700' :
-                      selectedNotif.priority === 'urgent' ? 'text-red-700' :
-                      selectedNotif.priority === 'high' ? 'text-orange-700' :
-                      'text-blue-700'
-                    }`}>
-                      {selectedNotif.type === 'invitation' ? (selectedNotif.status === 'accepted' ? 'Accepted' : selectedNotif.status === 'declined' ? 'Declined' : 'Team Invitation') :
-                       selectedNotif.type === 'share_request' ? 'Shared Candidates' :
-                       selectedNotif.type === 'invitation_accepted' ? 'Invitation Accepted' :
-                       selectedNotif.type === 'invitation_declined' ? 'Invitation Declined' :
-                       `${selectedNotif.priority} priority`}
-                    </span>
-                    {selectedNotif.daysRemaining !== undefined && (
-                      <span className={`ml-auto text-xs font-bold px-2 py-0.5 rounded-full ${
-                        selectedNotif.daysRemaining <= 0 ? 'bg-red-200 text-red-800' :
-                        selectedNotif.daysRemaining <= 2 ? 'bg-orange-200 text-orange-800' :
-                        'bg-gray-200 text-gray-700'
-                      }`}>
-                        {selectedNotif.daysRemaining < 0 ? `${Math.abs(selectedNotif.daysRemaining)} day(s) overdue` :
-                         selectedNotif.daysRemaining === 0 ? 'DUE TODAY' :
-                         `${selectedNotif.daysRemaining} day(s) remaining`}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Info Card - Contextual based on type */}
-                <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
-                  {/* Invitation / Team notifications */}
-                  {(selectedNotif.type === 'invitation' || selectedNotif.type === 'invitation_accepted' || selectedNotif.type === 'invitation_declined') && (
-                    <>
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
-                          <Users size={18} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-gray-900">{selectedNotif.title}</p>
-                          <p className="text-xs text-gray-500">From: {selectedNotif.senderName || 'Unknown'}</p>
-                        </div>
-                      </div>
-                      <div className="space-y-2 text-sm">
-                        {selectedNotif.relatedEmail && (
-                          <div className="flex items-center justify-between py-1.5 border-b border-gray-50">
-                            <span className="flex items-center gap-2 text-gray-500"><Mail size={13} /> Inviter</span>
-                            <span className="font-medium text-gray-900">{selectedNotif.relatedEmail}</span>
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between py-1.5">
-                          <span className="flex items-center gap-2 text-gray-500"><Clock size={13} /> Received</span>
-                          <span className="font-medium text-gray-500 text-xs">{timeAgo(selectedNotif.createdAt)}</span>
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {/* Share request notification */}
-                  {selectedNotif.type === 'share_request' && (
-                    <>
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
-                          <Share2 size={18} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-gray-900">{selectedNotif.title}</p>
-                          <p className="text-xs text-gray-500">From: {selectedNotif.senderName || 'Unknown'}</p>
-                        </div>
-                      </div>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center justify-between py-1.5">
-                          <span className="flex items-center gap-2 text-gray-500"><Clock size={13} /> Shared</span>
-                          <span className="font-medium text-gray-500 text-xs">{timeAgo(selectedNotif.createdAt)}</span>
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {/* Callback-type notifications (original) */}
-                  {(selectedNotif.type === 'callback_reminder' || selectedNotif.type === 'callback_today' || selectedNotif.type === 'callback_overdue') && (
-                    <>
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
-                          {(selectedNotif.candidateName || 'N')[0].toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-gray-900">{selectedNotif.candidateName}</p>
-                          <p className="text-xs text-gray-500">{selectedNotif.candidatePosition || 'No position'}</p>
-                        </div>
-                      </div>
-                      <div className="space-y-2 text-sm">
-                        {selectedNotif.candidateContact && (
-                          <div className="flex items-center justify-between py-1.5 border-b border-gray-50">
-                            <span className="flex items-center gap-2 text-gray-500"><Phone size={13} /> Contact</span>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-gray-900">{selectedNotif.candidateContact}</span>
-                              <button onClick={() => copyPhone(selectedNotif.candidateContact)} className="text-[10px] text-blue-600 hover:text-blue-700 font-medium px-1.5 py-0.5 hover:bg-blue-50 rounded">Copy</button>
-                            </div>
-                          </div>
-                        )}
-                        {selectedNotif.callBackDate && (
-                          <div className="flex items-center justify-between py-1.5 border-b border-gray-50">
-                            <span className="flex items-center gap-2 text-gray-500"><Calendar size={13} /> Callback Date</span>
-                            <span className="font-medium text-gray-900">{selectedNotif.callBackDate}</span>
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between py-1.5">
-                          <span className="flex items-center gap-2 text-gray-500"><Clock size={13} /> Notified</span>
-                          <span className="font-medium text-gray-500 text-xs">{timeAgo(selectedNotif.createdAt)}</span>
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {/* Generic / System notifications */}
-                  {!['invitation', 'invitation_accepted', 'invitation_declined', 'share_request', 'callback_reminder', 'callback_today', 'callback_overdue'].includes(selectedNotif.type) && (
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center justify-between py-1.5">
-                        <span className="flex items-center gap-2 text-gray-500"><Clock size={13} /> Notified</span>
-                        <span className="font-medium text-gray-500 text-xs">{timeAgo(selectedNotif.createdAt)}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Message */}
-                <div className="bg-gray-50 rounded-lg p-3 mb-4">
-                  <p className="text-xs text-gray-600 leading-relaxed">{selectedNotif.message}</p>
-                </div>
-
-                {/* Quick Actions */}
-                <div className="space-y-2">
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Quick Actions</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {/* Invitation-specific actions */}
-                    {selectedNotif.type === 'invitation' && selectedNotif.status === 'pending' && selectedNotif.actionRequired && (
-                      <>
-                        <button
-                          onClick={() => { handleAcceptInvitation(selectedNotif); setSelectedNotif(null); }}
-                          disabled={!!processingAction}
-                          className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium transition-colors disabled:opacity-50 col-span-1"
-                        >
-                          <UserPlus size={13} />
-                          Accept Invitation
-                        </button>
-                        <button
-                          onClick={() => { handleDeclineInvitation(selectedNotif); setSelectedNotif(null); }}
-                          disabled={!!processingAction}
-                          className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition-colors disabled:opacity-50 col-span-1"
-                        >
-                          <UserX size={13} />
-                          Decline
-                        </button>
-                      </>
-                    )}
-                    
-                    {/* Share / Invitation result - view team */}
-                    {(selectedNotif.type === 'invitation_accepted' || selectedNotif.type === 'invitation_declined' || selectedNotif.type === 'invitation') && (
-                      <button
-                        onClick={viewTeam}
-                        className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
-                      >
-                        <Users size={13} />
-                        View Team
-                      </button>
-                    )}
-                    
-                    {/* Share notification - view shared candidates in ATS */}
-                    {selectedNotif.type === 'share_request' && (
-                      <button
-                        onClick={() => viewCandidate(true)}
-                        className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
-                      >
-                        <Eye size={13} />
-                        View Shared Candidates
-                      </button>
-                    )}
-                    
-                    {/* Callback reminder - view in ATS + call */}
-                    {(selectedNotif.type === 'callback_reminder' || selectedNotif.type === 'callback_today' || selectedNotif.type === 'callback_overdue') && (
-                      <>
-                        <button
-                          onClick={viewCandidate}
-                          className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
-                        >
-                          <Eye size={13} />
-                          View in ATS
-                        </button>
-                        {selectedNotif.candidateContact && (
-                          <a
-                            href={`tel:${selectedNotif.candidateContact}`}
-                            className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium transition-colors"
-                          >
-                            <Phone size={13} />
-                            Call Now
-                          </a>
-                        )}
-                      </>
-                    )}
-                    
-                    <button
-                      onClick={() => { dismiss(selectedNotif._id); setSelectedNotif(null); }}
-                      className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-medium transition-colors"
-                    >
-                      <Check size={13} />
-                      Dismiss
-                    </button>
-                    <button
-                      onClick={() => { dismiss(selectedNotif._id); setSelectedNotif(null); }}
-                      className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-medium transition-colors"
-                    >
-                      <X size={13} />
-                      Done / Handled
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <NotificationDetail
+                selectedNotif={selectedNotif}
+                processingAction={processingAction}
+                onBack={() => setSelectedNotif(null)}
+                onAccept={(n) => { handleAcceptInvitation(n); setSelectedNotif(null); }}
+                onDecline={(n) => { handleDeclineInvitation(n); setSelectedNotif(null); }}
+                onViewTeam={viewTeam}
+                onViewCandidate={viewCandidate}
+                onDismiss={(id) => { dismiss(id); setSelectedNotif(null); }}
+                copyPhone={copyPhone}
+              />
             ) : (
             /* Normal list view */
             loading && notifications.length === 0 ? (
@@ -601,120 +328,15 @@ const NotificationBell = () => {
             ) : (
               <div className="divide-y divide-stone-100">
                 {notifications.map((notif) => (
-                  <div
+                  <NotificationListItem
                     key={notif._id}
-                    className={`px-4 py-3.5 hover:bg-brand-50/40 transition-colors cursor-pointer group relative ${
-                      !notif.isRead ? 'bg-brand-50/30' : ''
-                    }`}
+                    notif={notif}
+                    processingAction={processingAction}
                     onClick={() => handleNotifClick(notif)}
-                  >
-                    {!notif.isRead && (
-                      <span className="absolute left-0 top-3 bottom-3 w-0.5 rounded-r-full bg-brand-500" />
-                    )}
-                    <div className="flex gap-3">
-                      {/* Icon */}
-                      <div className="mt-0.5">
-                        <NotifTypeIcon type={notif.type} priority={notif.priority} />
-                      </div>
-                      
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className={`text-sm leading-snug ${!notif.isRead ? 'font-semibold text-stone-900' : 'font-medium text-stone-700'}`}>
-                            {notif.title}
-                          </p>
-                          {notif.type === 'invitation' && notif.status === 'pending' ? (
-                            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border bg-blue-100 text-blue-700 border-blue-200">
-                              Action Required
-                            </span>
-                          ) : notif.type === 'invitation' && notif.status === 'accepted' ? (
-                            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border bg-green-100 text-green-700 border-green-200">
-                              Accepted
-                            </span>
-                          ) : notif.type === 'invitation' && notif.status === 'declined' ? (
-                            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border bg-red-100 text-red-700 border-red-200">
-                              Declined
-                            </span>
-                          ) : (
-                            <PriorityBadge priority={notif.priority} />
-                          )}
-                        </div>
-                        
-                        <p className="text-xs text-stone-500 mt-1 line-clamp-2 leading-relaxed">{notif.message}</p>
-                        
-                        {/* Action buttons for invitations */}
-                        {notif.type === 'invitation' && notif.actionRequired && notif.status === 'pending' && (
-                          <div className="flex items-center gap-2 mt-2.5" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={() => handleAcceptInvitation(notif)}
-                              disabled={processingAction === notif._id + '_accept' || processingAction === notif._id + '_decline'}
-                              className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-md text-xs font-medium transition-colors disabled:opacity-50"
-                            >
-                              {processingAction === notif._id + '_accept' ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                              Accept
-                            </button>
-                            <button
-                              onClick={() => handleDeclineInvitation(notif)}
-                              disabled={processingAction === notif._id + '_accept' || processingAction === notif._id + '_decline'}
-                              className="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-md text-xs font-medium transition-colors disabled:opacity-50"
-                            >
-                              {processingAction === notif._id + '_decline' ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
-                              Decline
-                            </button>
-                          </div>
-                        )}
-                        
-                        {/* Meta row */}
-                        <div className="flex items-center gap-3 mt-2">
-                          {notif.senderName && (notif.type === 'invitation' || notif.type === 'share_request') && (
-                            <span className="flex items-center gap-1 text-[11px] text-gray-400">
-                              <User size={11} />
-                              {notif.senderName}
-                            </span>
-                          )}
-                          {notif.callBackDate && (
-                            <span className="flex items-center gap-1 text-[11px] text-gray-400">
-                              <Calendar size={11} />
-                              {notif.callBackDate}
-                            </span>
-                          )}
-                          {notif.candidateContact && (
-                            <span className="flex items-center gap-1 text-[11px] text-gray-400">
-                              <Phone size={11} />
-                              {notif.candidateContact}
-                            </span>
-                          )}
-                          <span className="text-[11px] text-gray-400">{timeAgo(notif.createdAt)}</span>
-                          
-                          {/* Days badge */}
-                          {notif.daysRemaining !== undefined && (
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                              notif.daysRemaining <= 0 ? 'bg-red-100 text-red-700' :
-                              notif.daysRemaining <= 2 ? 'bg-orange-100 text-orange-700' :
-                              'bg-gray-100 text-gray-600'
-                            }`}>
-                              {notif.daysRemaining < 0 ? `${Math.abs(notif.daysRemaining)}d overdue` :
-                               notif.daysRemaining === 0 ? 'TODAY' :
-                               `${notif.daysRemaining}d left`}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      
-                      {/* Dismiss button */}
-                      <div className="flex flex-col items-center gap-1 self-start">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); dismiss(notif._id); }}
-                          className="p-1.5 opacity-0 group-hover:opacity-100 hover:bg-stone-200/80 rounded-lg transition-all text-stone-400 hover:text-stone-700"
-                          title="Dismiss"
-                        >
-                          <X size={14} />
-                        </button>
-                        <ChevronRight size={14} className="text-stone-300 group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all" />
-                      </div>
-                    </div>
-                  </div>
+                    onAccept={handleAcceptInvitation}
+                    onDecline={handleDeclineInvitation}
+                    onDismiss={dismiss}
+                  />
                 ))}
               </div>
             )

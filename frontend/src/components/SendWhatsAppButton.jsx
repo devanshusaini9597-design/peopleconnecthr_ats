@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Bot, X, Send, AlertCircle } from 'lucide-react';
+import { X, Send, AlertCircle } from 'lucide-react';
 import { authenticatedFetch } from '../utils/fetchUtils';
 import { useAuth } from '../context/AuthContext';
 import { planHasFeature } from '../config/planFeatures';
+import { WhatsAppIcon } from './icons/BrandIcons';
 
 /**
  * Automated WhatsApp send (add-on, feature: integrations.whatsapp) — sends
@@ -43,12 +44,15 @@ const SendWhatsAppButton = ({ candidate, className, iconSize = 16 }) => {
   return (
     <>
       <button
+        type="button"
         onClick={() => setOpen(true)}
-        className={className || 'w-8 h-8 flex items-center justify-center rounded-full transition-all hover:scale-110'}
-        style={className ? undefined : { backgroundColor: '#ede9fe', color: '#7c3aed' }}
-        title="Send automated WhatsApp (Business API)"
+        className={className || 'h-8 w-8 inline-flex items-center justify-center rounded-lg border border-violet-100 bg-violet-50/80 text-[#128C7E] shadow-sm hover:bg-violet-100 hover:border-violet-200 transition-all'}
+        title="Send via WhatsApp Business API"
       >
-        <Bot size={iconSize} />
+        <span className="relative inline-flex">
+          <WhatsAppIcon size={iconSize} />
+          <span className="absolute -right-1 -bottom-1 h-2 w-2 rounded-full bg-violet-600 ring-1 ring-white" aria-hidden />
+        </span>
       </button>
 
       {open && (

@@ -1,3 +1,4 @@
+const logger = require('../../utils/logger');
 /**
  * Audit Listener
  * Listens for all events and creates AuditLog entries.
@@ -37,7 +38,7 @@ const initAuditListeners = () => {
           userAgent: metadata.userAgent || null
         });
       } catch (error) {
-        console.error(`Failed to create audit log for event ${eventType}`, error);
+        logger.error(`Failed to create audit log for event ${eventType}`, error);
       }
     });
   });

@@ -107,8 +107,11 @@ export const ToastProvider = ({ children }) => {
   const addToast = useCallback((type, message, duration = 4000) => {
     const id = ++toastIdCounter;
     const safeMessage = message != null ? String(message) : '';
-    const newToast = { id, type, message: safeMessage };
-    setToasts((prev) => [...prev.slice(-4), newToast]); // max 5 toasts
+    // Avoid stacking identical messages (e.g. repeated API failures)
+    setToasts((prev) => {
+      if (prev.some((t) => t.type === type && t.message === safeMessage)) return prev;
+      return [...prev.slice(-3), { id, type, message: safeMessage }];
+    });
     timersRef.current[id] = setTimeout(() => dismiss(id), duration);
     return id;
   }, [dismiss]);

@@ -7,8 +7,8 @@ const PublicHeader = () => (
   <header className="bg-white border-b border-stone-200 sticky top-0 z-10">
     <div className="max-w-lg mx-auto px-4 sm:px-6 py-4 sm:py-5">
       <Link to="/" className="flex items-center gap-2.5 text-stone-900 font-semibold">
-        <img src="/atslogo.jpg" alt="SkillNix" className="w-8 h-8 rounded-lg flex-shrink-0" />
-        <span className="text-sm sm:text-base">SkillNix</span>
+        <img src="/logo.png" alt="People Connect HR" className="w-8 h-8 rounded-lg flex-shrink-0" />
+        <span className="text-sm sm:text-base">People Connect HR</span>
       </Link>
     </div>
   </header>
@@ -18,7 +18,7 @@ const PublicFooter = () => (
   <footer className="border-t border-stone-200 bg-white py-6 mt-auto">
     <div className="max-w-lg mx-auto px-4 sm:px-6 text-center">
       <Link to="/" className="text-sm text-stone-500 hover:text-brand-700 font-medium transition-colors">
-        ← Back to SkillNix
+        ← Back to People Connect HR
       </Link>
     </div>
   </footer>

@@ -227,4 +227,6 @@ CandidateSchema.pre('findOneAndUpdate', function(next) {
   next();
 });
 
+CandidateSchema.plugin(require('../utils/tenantPlugin'));
+
 module.exports = mongoose.model('Candidate', CandidateSchema);

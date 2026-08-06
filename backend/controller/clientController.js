@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Client = require('../models/Client');
 const { normalizeText, escapeRegex } = require('../utils/textNormalize');
 const { planHasFeature } = require('../config/planFeatures');
+const logger = require('../utils/logger');
 
 // Tenant scope: prefer organizationId (multi-tenant safe); fall back to
 // createdBy only for legacy users somehow without an org.
@@ -40,7 +41,7 @@ const getClients = async (req, res) => {
     const clients = await Client.find(filter).sort({ name: 1 });
     res.json(clients);
   } catch (error) {
-    console.error('Error fetching clients:', error);
+    logger.error('Error fetching clients:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -60,7 +61,7 @@ const setClientSharing = async (req, res) => {
     await client.save();
     res.json(client);
   } catch (error) {
-    console.error('Error setting client sharing:', error);
+    logger.error('Error setting client sharing:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -74,7 +75,7 @@ const getAllClients = async (req, res) => {
     const withOwner = clients.map(c => ({ ...c, isMine: c.createdBy?.toString() === userIdStr }));
     res.json(withOwner);
   } catch (error) {
-    console.error('Error fetching all clients:', error);
+    logger.error('Error fetching all clients:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -114,7 +115,7 @@ const createClient = async (req, res) => {
     await client.save();
     res.status(201).json(client);
   } catch (error) {
-    console.error('Error creating client:', error);
+    logger.error('Error creating client:', error);
     if (error.code === 11000) {
       return res.status(400).json({ message: 'Client already exists' });
     }
@@ -161,7 +162,7 @@ const updateClient = async (req, res) => {
 
     res.json(client);
   } catch (error) {
-    console.error('Error updating client:', error);
+    logger.error('Error updating client:', error);
     if (error.code === 11000) {
       return res.status(400).json({ message: 'Client name already exists' });
     }
@@ -182,7 +183,7 @@ const deleteClient = async (req, res) => {
 
     res.json({ message: 'Client deleted successfully' });
   } catch (error) {
-    console.error('Error deleting client:', error);
+    logger.error('Error deleting client:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -203,7 +204,7 @@ const enableClientPortal = async (req, res) => {
 
     res.json({ ...client.toObject(), portalUrl: `${process.env.FRONTEND_URL || ''}/client-portal/${client.portal.token}` });
   } catch (error) {
-    console.error('Error enabling client portal:', error);
+    logger.error('Error enabling client portal:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };

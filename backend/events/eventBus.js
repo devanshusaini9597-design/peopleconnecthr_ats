@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 /**
  * Internal Event Bus for SkillNix
  * 
@@ -25,12 +26,12 @@ class EventBus extends EventEmitter {
    * @param {any} data 
    */
   emit(eventName, data) {
-    console.log(`[EventBus] Emitting event: ${eventName} at ${new Date().toISOString()}`);
+    logger.info(`[EventBus] Emitting event: ${eventName} at ${new Date().toISOString()}`);
     // Wrap super.emit in try-catch just in case the synchronous part of emitter throws
     try {
       return super.emit(eventName, data);
     } catch (error) {
-      console.error(`[EventBus] Error emitting event ${eventName}:`, error);
+      logger.error(`[EventBus] Error emitting event ${eventName}:`, error);
       return false;
     }
   }
@@ -45,7 +46,7 @@ class EventBus extends EventEmitter {
       try {
         await listener(...args);
       } catch (error) {
-        console.error(`[EventBus] Error in listener for event ${eventName}:`, error);
+        logger.error(`[EventBus] Error in listener for event ${eventName}:`, error);
       }
     };
     
@@ -65,7 +66,7 @@ class EventBus extends EventEmitter {
       try {
         await listener(...args);
       } catch (error) {
-        console.error(`[EventBus] Error in once listener for event ${eventName}:`, error);
+        logger.error(`[EventBus] Error in once listener for event ${eventName}:`, error);
       }
     };
     

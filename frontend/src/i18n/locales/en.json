@@ -1,0 +1,89 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "loading": "Loading...",
+    "search": "Search",
+    "export": "Export",
+    "import": "Import",
+    "filter": "Filter",
+    "edit": "Edit",
+    "close": "Close",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "submit": "Submit",
+    "reset": "Reset"
+  },
+  "auth": {
+    "login": "Log In",
+    "register": "Register",
+    "logout": "Log Out",
+    "forgotPassword": "Forgot Password",
+    "resetPassword": "Reset Password",
+    "invalidCredentials": "Login failed. Please check your credentials.",
+    "passwordUpgradeRequired": "Your account requires a password upgrade.",
+    "loginFailed": "Login Failed",
+    "sessionExpired": "Your session has expired. Please log in again."
+  },
+  "candidates": {
+    "title": "Candidates",
+    "addNew": "Add New Candidate",
+    "noResults": "No candidates found",
+    "totalCandidates": "Total Candidates",
+    "importCandidates": "Import Candidates",
+    "exportCandidates": "Export Candidates",
+    "bulkDelete": "Bulk Delete",
+    "stage": "Stage",
+    "status": "Status",
+    "resume": "Resume",
+    "email": "Email",
+    "phone": "Phone",
+    "name": "Name",
+    "experience": "Experience",
+    "skills": "Skills",
+    "actions": "Actions"
+  },
+  "jobs": {
+    "title": "Jobs",
+    "addNew": "Add New Job",
+    "edit": "Edit Job",
+    "delete": "Delete Job",
+    "publish": "Publish",
+    "unpublish": "Unpublish",
+    "closed": "Closed",
+    "active": "Active",
+    "draft": "Draft"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "overview": "Overview",
+    "recentActivity": "Recent Activity",
+    "quickStats": "Quick Stats"
+  },
+  "settings": {
+    "title": "Settings",
+    "profile": "Profile",
+    "organization": "Organization",
+    "security": "Security",
+    "billing": "Billing",
+    "email": "Email",
+    "team": "Team",
+    "integrations": "Integrations"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark All as Read",
+    "noNotifications": "You have no notifications"
+  },
+  "errors": {
+    "generic": "An error occurred",
+    "networkError": "A network error occurred. Please try again.",
+    "notFound": "The requested resource was not found.",
+    "serverError": "A server error occurred.",
+    "unauthorized": "You are not authorized to perform this action.",
+    "forbidden": "Access forbidden.",
+    "validationFailed": "Validation failed. Please check your input."
+  }
+}

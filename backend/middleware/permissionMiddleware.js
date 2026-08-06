@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 /**
  * Fine-grained permission middleware (Enterprise custom roles).
  *
@@ -20,7 +21,7 @@ const getEffectivePermissions = async (user) => {
       const role = await CustomRole.findOne({ _id: user.customRoleId, organizationId: user.organizationId }).lean();
       if (role) return role.permissions || [];
     } catch (err) {
-      console.warn('[permissionMiddleware] Failed to resolve CustomRole, falling back to default role permissions:', err.message);
+      logger.warn('[permissionMiddleware] Failed to resolve CustomRole, falling back to default role permissions:', err.message);
     }
   }
   return DEFAULT_ROLE_PERMISSIONS[user.role] || [];

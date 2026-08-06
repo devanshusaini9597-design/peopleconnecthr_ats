@@ -1,29 +1,29 @@
+const logger = require('../utils/logger');
 /**
  * Webhook Dispatcher — delivers outbound webhooks whenever eventBus emits
  * any event type, to every active WebhookEndpoint in that org subscribed to
  * that event.
  *
- * Plan gating: which event *categories* an org may subscribe to at all is
- * enforced in routes/webhookRoutes.js (requireFeature) when the endpoint is
- * created/updated — this dispatcher just delivers whatever's already stored,
- * trusting that boundary the same way getAdapter() trusts IntegrationConfig.
- *
- * Signing: HMAC-SHA256 over the raw JSON body using the endpoint's secret,
- * sent as `X-SkillNix-Signature: sha256=<hex>` — the same verification
- * pattern as Stripe/GitHub webhooks, so customers can verify authenticity.
+ * Delivery is enqueued via BullMQ when Redis is available (retryable),
+ * otherwise runs inline so the product never depends on Redis.
  */
 const crypto = require('crypto');
 const axios = require('axios');
 const mongoose = require('mongoose');
 const eventBus = require('../events/eventBus');
 const eventTypes = require('../events/eventTypes');
+const { enqueueWebhook } = require('../jobs/queue');
 
-const MAX_CONSECUTIVE_FAILURES = 10; // auto-disable a dead endpoint after this many failures in a row
+const MAX_CONSECUTIVE_FAILURES = 10;
 const DELIVERY_TIMEOUT_MS = 10000;
 
 const signPayload = (secret, rawBody) =>
   crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
 
+/**
+ * Deliver one webhook event to one endpoint and record the result.
+ * Used by both the inline path and the BullMQ worker.
+ */
 const deliverToEndpoint = async (endpoint, eventType, data) => {
   const WebhookDelivery = mongoose.model('WebhookDelivery');
   const started = Date.now();
@@ -39,10 +39,10 @@ const deliverToEndpoint = async (endpoint, eventType, data) => {
       headers: {
         'Content-Type': 'application/json',
         'X-SkillNix-Event': eventType,
-        'X-SkillNix-Signature': `sha256=${signPayload(secret, body)}`
+        'X-SkillNix-Signature': `sha256=${signPayload(secret, body)}`,
       },
       timeout: DELIVERY_TIMEOUT_MS,
-      validateStatus: () => true // we want to record non-2xx as a failed delivery, not throw
+      validateStatus: () => true,
     });
     responseStatus = response.status;
     success = response.status >= 200 && response.status < 300;
@@ -60,10 +60,10 @@ const deliverToEndpoint = async (endpoint, eventType, data) => {
       success,
       responseStatus,
       errorMessage,
-      durationMs: Date.now() - started
+      durationMs: Date.now() - started,
     });
   } catch (logErr) {
-    console.error('[webhookDispatcher] Failed to record delivery log:', logErr.message);
+    logger.error('[webhookDispatcher] Failed to record delivery log:', logErr.message);
   }
 
   endpoint.lastDeliveryAt = new Date();
@@ -71,9 +71,24 @@ const deliverToEndpoint = async (endpoint, eventType, data) => {
   endpoint.consecutiveFailures = success ? 0 : (endpoint.consecutiveFailures || 0) + 1;
   if (!success && endpoint.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
     endpoint.isActive = false;
-    console.warn(`[webhookDispatcher] Disabling endpoint ${endpoint._id} after ${endpoint.consecutiveFailures} consecutive failures`);
+    logger.warn(
+      `[webhookDispatcher] Disabling endpoint ${endpoint._id} after ${endpoint.consecutiveFailures} consecutive failures`
+    );
   }
   await endpoint.save();
+  return { success, responseStatus, errorMessage };
+};
+
+/**
+ * Resolve endpoint by id and deliver. Used by the worker / queue fallback.
+ */
+const deliverByEndpointId = async ({ endpointId, eventType, data }) => {
+  const WebhookEndpoint = mongoose.model('WebhookEndpoint');
+  const endpoint = await WebhookEndpoint.findById(endpointId);
+  if (!endpoint || !endpoint.isActive) {
+    return { skipped: true, reason: 'endpoint_inactive_or_missing' };
+  }
+  return deliverToEndpoint(endpoint, eventType, data);
 };
 
 const initWebhookDispatcher = () => {
@@ -86,20 +101,33 @@ const initWebhookDispatcher = () => {
         const endpoints = await WebhookEndpoint.find({
           organizationId: data.organizationId,
           isActive: true,
-          events: eventType
+          events: eventType,
         });
 
         for (const endpoint of endpoints) {
-          // Fire-and-forget per endpoint so a slow/dead endpoint never blocks others.
-          deliverToEndpoint(endpoint, eventType, data).catch((err) =>
-            console.error(`[webhookDispatcher] Unexpected error delivering to ${endpoint._id}:`, err.message)
+          const jobData = {
+            endpointId: endpoint._id.toString(),
+            eventType,
+            data,
+          };
+          // Queue when Redis is up; otherwise deliver inline (non-blocking).
+          enqueueWebhook(jobData, deliverByEndpointId).catch((err) =>
+            logger.error(
+              `[webhookDispatcher] Unexpected error delivering to ${endpoint._id}:`,
+              err.message
+            )
           );
         }
       } catch (err) {
-        console.error(`[webhookDispatcher] Error handling event ${eventType}:`, err.message);
+        logger.error(`[webhookDispatcher] Error handling event ${eventType}:`, err.message);
       }
     });
   });
 };
 
-module.exports = { initWebhookDispatcher };
+module.exports = {
+  initWebhookDispatcher,
+  deliverToEndpoint,
+  deliverByEndpointId,
+  signPayload,
+};

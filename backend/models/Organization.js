@@ -125,6 +125,26 @@ const organizationSchema = new mongoose.Schema({
       seoTitle: { type: String, default: '' },
       seoDescription: { type: String, default: '' },
       customCss: { type: String, default: '' }
+    },
+    // Per-org custom candidate fields (+ import mapper prefs)
+    candidateFields: [{
+      key: { type: String, required: true, trim: true },
+      label: { type: String, required: true, trim: true },
+      type: { type: String, enum: ['text', 'number', 'date', 'select', 'boolean'], default: 'text' },
+      required: { type: Boolean, default: false },
+      options: { type: [String], default: [] },
+      showInTable: { type: Boolean, default: true },
+      showInForm: { type: Boolean, default: true },
+      importAliases: { type: [String], default: [] },
+      order: { type: Number, default: 1000 }
+    }],
+    // Visibility overrides for core catalog keys
+    coreFieldPrefs: { type: mongoose.Schema.Types.Mixed, default: {} },
+    // Last Excel column mapping for bulk import
+    lastImportMapping: {
+      headers: { type: [String], default: [] },
+      map: { type: mongoose.Schema.Types.Mixed, default: {} },
+      savedAt: { type: Date }
     }
   },
   billingCustomerId: { type: String, default: '' },

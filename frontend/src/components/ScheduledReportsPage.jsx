@@ -1,152 +1,39 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { CalendarClock, Plus, Trash2, Lock, Loader2, Power, Mail, FileSpreadsheet } from 'lucide-react';
+import {
+  CalendarClock, Plus, Trash2, Lock, Loader2, Power, Mail,
+  Info, Search, Filter, X, Clock,
+} from 'lucide-react';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
-import Modal from './ui/Modal';
 import PremiumSelect from './ui/PremiumSelect';
 import ConfirmationModal from './ConfirmationModal';
+import ProductTour from './ui/ProductTour';
+import TourHelpFab from './ui/TourHelpFab';
+import usePageTour from '../hooks/usePageTour';
 import { authenticatedFetch, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
+import {
+  SCHED_TOUR_KEY, SCHED_TOUR_STEPS, REPORT_TYPES,
+  STATUS_FILTER_OPTIONS, reportLabel,
+} from './scheduledReports/scheduledReportsConstants';
+import ScheduleModal from './scheduledReports/ScheduleModal';
 
-const REPORT_TYPES = [
-  { id: 'recruitment-summary', label: 'Recruitment Summary', description: 'Overall hiring snapshot' },
-  { id: 'source-performance', label: 'Source Performance', description: 'Channel ROI' },
-  { id: 'position-report', label: 'Position-wise Report', description: 'By role' },
-  { id: 'client-report', label: 'Client Report', description: 'By client' },
-  { id: 'pipeline-status', label: 'Pipeline Status', description: 'Stage breakdown' },
-];
-
-const FORMAT_OPTIONS = [
-  { value: 'xlsx', label: 'Excel (.xlsx)', description: 'Spreadsheet', icon: FileSpreadsheet },
-  { value: 'pdf', label: 'PDF', description: 'Document', icon: FileSpreadsheet },
-];
-
-const RANGE_OPTIONS = [
-  { value: 'week', label: 'Last 7 days' },
-  { value: 'month', label: 'This month' },
-  { value: 'quarter', label: 'This quarter' },
-  { value: 'year', label: 'This year' },
-  { value: 'all', label: 'All time' },
-];
-
-const FREQ_OPTIONS = [
-  { value: 'daily', label: 'Daily' },
-  { value: 'weekly', label: 'Weekly' },
-  { value: 'monthly', label: 'Monthly' },
-];
-
-const emptyForm = { name: '', reportType: 'recruitment-summary', format: 'xlsx', dateRange: 'month', frequency: 'weekly', recipients: '' };
-
-const ScheduleModal = ({ open, onClose, onSave, saving }) => {
-  const [form, setForm] = useState(emptyForm);
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-
-  useEffect(() => {
-    if (open) setForm(emptyForm);
-  }, [open]);
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="New Scheduled Report"
-      description="Email a report to your team on a recurring cadence."
-      size="md"
-      footer={
-        <>
-          <button type="button" onClick={onClose} className="btn-secondary" disabled={saving}>Cancel</button>
-          <button
-            type="button"
-            onClick={() => onSave({ ...form, recipients: form.recipients.split(',').map((r) => r.trim()).filter(Boolean) })}
-            disabled={saving || !form.name.trim()}
-            className="btn-primary"
-          >
-            {saving ? <><Loader2 size={16} className="animate-spin" /> Creating…</> : 'Create Schedule'}
-          </button>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        <div>
-          <label className="label-ats">Schedule name *</label>
-          <input
-            value={form.name}
-            onChange={(e) => set('name', e.target.value)}
-            placeholder="e.g. Weekly recruiter summary"
-            className="input-ats"
-            autoFocus
-          />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="label-ats">Report</label>
-            <PremiumSelect
-              value={form.reportType}
-              onChange={(v) => set('reportType', v || 'recruitment-summary')}
-              options={REPORT_TYPES.map((r) => ({ value: r.id, label: r.label, description: r.description }))}
-              placeholder="Select report"
-              searchable
-              compact
-            />
-          </div>
-          <div>
-            <label className="label-ats">Format</label>
-            <PremiumSelect
-              value={form.format}
-              onChange={(v) => set('format', v || 'xlsx')}
-              options={FORMAT_OPTIONS}
-              placeholder="Format"
-              compact
-            />
-          </div>
-          <div>
-            <label className="label-ats">Date range</label>
-            <PremiumSelect
-              value={form.dateRange}
-              onChange={(v) => set('dateRange', v || 'month')}
-              options={RANGE_OPTIONS}
-              placeholder="Range"
-              compact
-            />
-          </div>
-          <div>
-            <label className="label-ats">Frequency</label>
-            <PremiumSelect
-              value={form.frequency}
-              onChange={(v) => set('frequency', v || 'weekly')}
-              options={FREQ_OPTIONS}
-              placeholder="Frequency"
-              compact
-            />
-          </div>
-        </div>
-        <div>
-          <label className="label-ats">Recipients</label>
-          <div className="relative">
-            <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
-            <input
-              value={form.recipients}
-              onChange={(e) => set('recipients', e.target.value)}
-              placeholder="hr@company.com, cfo@company.com"
-              className="input-ats !pl-10"
-            />
-          </div>
-          <p className="text-[11px] text-stone-400 mt-1.5 font-medium">Comma-separated email addresses</p>
-        </div>
-      </div>
-    </Modal>
-  );
-};
 
 export default function ScheduledReportsPage() {
   const toast = useToast();
+  const [tourOpen, setTourOpen] = usePageTour(SCHED_TOUR_KEY);
   const [loading, setLoading] = useState(true);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [schedules, setSchedules] = useState([]);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [members, setMembers] = useState([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [togglingId, setTogglingId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -154,7 +41,10 @@ export default function ScheduledReportsPage() {
       const res = await authenticatedFetch('/api/report-schedules');
       if (res.status === 401) return handleUnauthorized();
       const data = await res.json();
-      if (res.status === 403 && data.code === 'UPGRADE_REQUIRED') { setUpgradeRequired(true); return; }
+      if (res.status === 403 && data.code === 'UPGRADE_REQUIRED') {
+        setUpgradeRequired(true);
+        return;
+      }
       if (data.success) setSchedules(data.data || []);
     } catch (err) {
       toast?.error?.('Failed to load scheduled reports');
@@ -163,14 +53,65 @@ export default function ScheduledReportsPage() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { load(); }, [load]);
+  const loadMembers = useCallback(async () => {
+    setMembersLoading(true);
+    try {
+      const res = await authenticatedFetch('/api/organization/members');
+      if (res.status === 401) return handleUnauthorized();
+      if (!res.ok) return;
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (data?.data || []);
+      setMembers(
+        list
+          .filter((m) => m.email)
+          .map((m) => ({
+            _id: m._id,
+            name: m.name || '',
+            email: (m.email || '').toLowerCase(),
+            role: m.role || '',
+          }))
+          .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email))
+      );
+    } catch {
+      setMembers([]);
+    } finally {
+      setMembersLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); loadMembers(); }, [load, loadMembers]);
+
+  useEffect(() => {
+    if (showModal && members.length === 0 && !membersLoading) loadMembers();
+  }, [showModal, members.length, membersLoading, loadMembers]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return schedules.filter((s) => {
+      if (statusFilter === 'active' && !s.isActive) return false;
+      if (statusFilter === 'paused' && s.isActive) return false;
+      if (!q) return true;
+      const hay = `${s.name || ''} ${reportLabel(s.reportType)} ${(s.recipients || []).join(' ')}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [schedules, query, statusFilter]);
 
   const create = async (form) => {
+    if (!form.recipients?.length) {
+      toast?.error?.('Add at least one recipient');
+      return;
+    }
     setSaving(true);
     try {
-      const res = await authenticatedFetch('/api/report-schedules', { method: 'POST', body: JSON.stringify(form) });
+      const res = await authenticatedFetch('/api/report-schedules', {
+        method: 'POST',
+        body: JSON.stringify(form),
+      });
       const data = await res.json();
-      if (!res.ok || !data.success) { toast?.error?.(data.message || 'Failed to create schedule'); return; }
+      if (!res.ok || !data.success) {
+        toast?.error?.(data.message || 'Failed to create schedule');
+        return;
+      }
       toast?.success?.('Schedule created');
       setShowModal(false);
       load();
@@ -182,9 +123,24 @@ export default function ScheduledReportsPage() {
   };
 
   const toggle = async (schedule) => {
-    const res = await authenticatedFetch(`/api/report-schedules/${schedule._id}`, { method: 'PUT', body: JSON.stringify({ isActive: !schedule.isActive }) });
-    const data = await res.json();
-    if (data.success) load(); else toast?.error?.(data.message);
+    setTogglingId(schedule._id);
+    try {
+      const res = await authenticatedFetch(`/api/report-schedules/${schedule._id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ isActive: !schedule.isActive }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast?.success?.(schedule.isActive ? 'Schedule paused' : 'Schedule resumed');
+        load();
+      } else {
+        toast?.error?.(data.message);
+      }
+    } catch {
+      toast?.error?.('Failed to update schedule');
+    } finally {
+      setTogglingId(null);
+    }
   };
 
   const remove = async () => {
@@ -194,7 +150,7 @@ export default function ScheduledReportsPage() {
       const res = await authenticatedFetch(`/api/report-schedules/${deleteTarget._id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
-        toast?.success?.('Deleted');
+        toast?.success?.('Schedule deleted');
         setDeleteTarget(null);
         load();
       } else {
@@ -262,6 +218,51 @@ export default function ScheduledReportsPage() {
         </button>
       </PageHeader>
 
+      <div
+        data-tour="sched-tip"
+        className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed flex flex-wrap items-center gap-x-3 gap-y-1.5"
+      >
+        <span className="inline-flex items-center gap-1.5 text-brand-700 font-semibold">
+          <Info size={14} /> Tip
+        </span>
+        <span>
+          Recipients can be teammates (auto-suggested) or any external email. Pause anytime with the power control.
+          Press <span className="font-semibold text-stone-800">?</span> for a tour.
+        </span>
+      </div>
+
+      {schedules.length > 0 && (
+        <div
+          data-tour="sched-filters"
+          className="rounded-xl border border-stone-200/90 bg-white shadow-sm overflow-hidden"
+        >
+          <div className="h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+          <div className="p-3 sm:p-4 flex flex-col sm:flex-row gap-3 sm:items-center">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="input-ats input-ats-icon"
+                placeholder="Search schedules, reports, or emails…"
+                aria-label="Search schedules"
+              />
+            </div>
+            <div className="sm:w-44 flex-shrink-0">
+              <PremiumSelect
+                compact
+                value={statusFilter}
+                onChange={(v) => setStatusFilter(v || 'all')}
+                options={STATUS_FILTER_OPTIONS}
+                placeholder="Status"
+                icon={Filter}
+                variant="list"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {schedules.length === 0 ? (
         <div className="card-ats-bordered">
           <EmptyState
@@ -276,72 +277,121 @@ export default function ScheduledReportsPage() {
             }
           />
         </div>
+      ) : filtered.length === 0 ? (
+        <div className="card-ats-bordered">
+          <EmptyState
+            icon={Search}
+            message="No schedules match"
+            subMessage="Try a different search or status filter."
+          />
+        </div>
       ) : (
         <div className="card-ats-bordered overflow-hidden divide-y divide-stone-100 relative">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-          {schedules.map((s) => (
-            <div key={s._id} className="p-4 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-brand-50/20 transition-colors">
-              <div className="flex items-start gap-3 min-w-0 flex-1">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                  s.isActive ? 'bg-brand-50 text-brand-600 border border-brand-100' : 'bg-stone-100 text-stone-400 border border-stone-200'
-                }`}>
-                  <CalendarClock className="w-4 h-4" />
-                </div>
-                <div className="min-w-0">
-                  <div className="font-bold text-stone-900 text-sm tracking-tight">{s.name}</div>
-                  <div className="text-xs text-stone-400 mt-0.5 leading-relaxed">
-                    {REPORT_TYPES.find((r) => r.id === s.reportType)?.label || s.reportType}
-                    {' · '}
-                    <span className="capitalize">{s.frequency}</span>
-                    {s.recipients?.length ? ` · ${s.recipients.join(', ')}` : ''}
+          {filtered.map((s) => {
+            const recipientPreview = (s.recipients || []).slice(0, 2).join(', ');
+            const extra = (s.recipients || []).length > 2 ? ` +${s.recipients.length - 2}` : '';
+            return (
+              <div
+                key={s._id}
+                className="p-4 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-brand-50/20 transition-colors"
+              >
+                <div className="flex items-start gap-3 min-w-0 flex-1">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                    s.isActive
+                      ? 'bg-brand-50 text-brand-600 border border-brand-100'
+                      : 'bg-stone-100 text-stone-400 border border-stone-200'
+                  }`}>
+                    <CalendarClock className="w-4 h-4" />
                   </div>
-                  {s.lastRunAt && (
-                    <div className={`text-xs mt-1.5 font-medium ${s.lastRunStatus === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
-                      Last run: {s.lastRunStatus} · {new Date(s.lastRunAt).toLocaleString()}
+                  <div className="min-w-0">
+                    <div className="font-bold text-stone-900 text-sm tracking-tight truncate">{s.name}</div>
+                    <div className="text-xs text-stone-500 mt-0.5 leading-relaxed flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                      <span>{reportLabel(s.reportType)}</span>
+                      <span className="text-stone-300">·</span>
+                      <span className="capitalize">{s.frequency}</span>
+                      <span className="text-stone-300">·</span>
+                      <span className="uppercase tracking-wide text-[10px] font-bold text-stone-400">
+                        {s.format || 'xlsx'}
+                      </span>
                     </div>
-                  )}
+                    {(s.recipients || []).length > 0 && (
+                      <div className="text-[11px] text-stone-400 mt-1 flex items-center gap-1 min-w-0">
+                        <Mail size={11} className="flex-shrink-0" />
+                        <span className="truncate">{recipientPreview}{extra}</span>
+                      </div>
+                    )}
+                    {s.lastRunAt && (
+                      <div className={`text-[11px] mt-1.5 font-medium flex items-center gap-1 ${
+                        s.lastRunStatus === 'success' ? 'text-emerald-600' : 'text-red-600'
+                      }`}>
+                        <Clock size={11} />
+                        Last run: {s.lastRunStatus} · {new Date(s.lastRunAt).toLocaleString()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0 pl-12 sm:pl-0">
+                  <span className={`mr-1 text-[10px] font-bold px-2.5 py-1 rounded-full border ${
+                    s.isActive
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-stone-100 text-stone-500 border-stone-200'
+                  }`}>
+                    {s.isActive ? 'Active' : 'Paused'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => toggle(s)}
+                    disabled={togglingId === s._id}
+                    className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-500 hover:text-brand-600 hover:border-brand-300 disabled:opacity-50"
+                    title={s.isActive ? 'Pause' : 'Resume'}
+                    aria-label={s.isActive ? 'Pause schedule' : 'Resume schedule'}
+                  >
+                    {togglingId === s._id
+                      ? <Loader2 size={14} className="animate-spin" />
+                      : <Power size={14} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteTarget(s)}
+                    className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-400 hover:text-red-600 hover:border-red-200"
+                    title="Delete"
+                    aria-label="Delete schedule"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-1 shrink-0 pl-12 sm:pl-0">
-                <span className={`mr-1 text-[10px] font-bold px-2.5 py-1 rounded-full border ${
-                  s.isActive
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-stone-100 text-stone-500 border-stone-200'
-                }`}>
-                  {s.isActive ? 'Active' : 'Paused'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => toggle(s)}
-                  className="p-2 rounded-xl hover:bg-stone-100 text-stone-500 transition-colors"
-                  title={s.isActive ? 'Pause' : 'Resume'}
-                >
-                  <Power className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDeleteTarget(s)}
-                  className="p-2 rounded-xl hover:bg-red-50 text-red-500 transition-colors"
-                  title="Delete"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      <ScheduleModal open={showModal} onClose={() => setShowModal(false)} onSave={create} saving={saving} />
+      <ScheduleModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        onSave={create}
+        saving={saving}
+        members={members}
+        membersLoading={membersLoading}
+      />
       <ConfirmationModal
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={remove}
         title="Delete schedule?"
-        message={`Delete the "${deleteTarget?.name}" schedule?`}
+        message={`Delete the "${deleteTarget?.name}" schedule? Recipients will stop receiving this report.`}
         confirmText="Delete"
         type="delete"
         isLoading={deleting}
+      />
+
+      <TourHelpFab onClick={() => setTourOpen(true)} label="Take a tour" title="Take a tour of Scheduled Reports" />
+      <ProductTour
+        open={tourOpen}
+        onClose={() => setTourOpen(false)}
+        steps={SCHED_TOUR_STEPS}
+        storageKey={SCHED_TOUR_KEY}
       />
     </div>
   );

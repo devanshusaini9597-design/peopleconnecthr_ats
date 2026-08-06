@@ -1,6 +1,7 @@
 const nodemailer = require('nodemailer');
 const mongoose = require('mongoose');
 const axios = require('axios');
+const logger = require('../utils/logger');
 
 /**
  * EMAIL SERVICE
@@ -40,7 +41,7 @@ const initializeTransporter = () => {
     });
   }
 
-  console.log('📧 Email Service Initialized:', {
+  logger.info('📧 Email Service Initialized:', {
     provider: emailProvider,
     fromEmail: process.env.FROM_EMAIL || process.env.GMAIL_EMAIL
   });
@@ -138,7 +139,7 @@ const sendViaZohoZeptomail = async (to, subject, htmlBody, textBody, options = {
     const keyPreview = authHeader.length > 30 
       ? `${authHeader.substring(0, 25)}...${authHeader.substring(authHeader.length - 6)}`
       : authHeader;
-    console.log(`[ZeptoMail] POST ${apiEndpoint} | from=${fromEmail} | auth=${keyPreview} (${authHeader.length} chars)`);
+    logger.info(`[ZeptoMail] POST ${apiEndpoint} | from=${fromEmail} | auth=${keyPreview} (${authHeader.length} chars)`);
 
     const response = await axios.post(
       apiEndpoint,
@@ -153,9 +154,9 @@ const sendViaZohoZeptomail = async (to, subject, htmlBody, textBody, options = {
     );
 
     const messageId = response.data?.data?.message_id || 'zoho_' + Date.now();
-    console.log(`✅ Zoho Zeptomail accepted: to=${recipients.join(', ')} from=${fromEmail} messageId=${messageId}`);
-    if (cc) console.log(`   CC: ${Array.isArray(cc) ? cc.join(', ') : cc}`);
-    if (bcc) console.log(`   BCC: ${Array.isArray(bcc) ? bcc.join(', ') : bcc}`);
+    logger.info(`✅ Zoho Zeptomail accepted: to=${recipients.join(', ')} from=${fromEmail} messageId=${messageId}`);
+    if (cc) logger.info(`   CC: ${Array.isArray(cc) ? cc.join(', ') : cc}`);
+    if (bcc) logger.info(`   BCC: ${Array.isArray(bcc) ? bcc.join(', ') : bcc}`);
 
     return { 
       success: true, 
@@ -163,7 +164,7 @@ const sendViaZohoZeptomail = async (to, subject, htmlBody, textBody, options = {
       messageId
     };
   } catch (error) {
-    console.error('❌ Zoho Zeptomail Error:', {
+    logger.error('❌ Zoho Zeptomail Error:', {
       message: error.message,
       status: error.response?.status,
       data: JSON.stringify(error.response?.data, null, 2),
@@ -183,7 +184,7 @@ const sendViaZohoZeptomail = async (to, subject, htmlBody, textBody, options = {
     } else if (status === 401) {
       errorMsg = 'ZeptoMail: Invalid API key. Check your Send Mail Token in ZeptoMail dashboard.';
     } else if (status === 403) {
-      console.error('ZeptoMail 403 – IP may be blocked. Remove all IP restrictions in ZeptoMail > Agent > Settings > IP Restriction to allow all IPs.', { code: zohoCode, data: error.response?.data });
+      logger.error('ZeptoMail 403 – IP may be blocked. Remove all IP restrictions in ZeptoMail > Agent > Settings > IP Restriction to allow all IPs.', { code: zohoCode, data: error.response?.data });
       errorMsg = 'ZeptoMail 403: Request Denied. Go to ZeptoMail > your Agent > Settings > IP Restriction and remove all IPs (empty list = allow all).';
     } else if (status === 429) {
       errorMsg = 'ZeptoMail rate limit hit. Try again later or upgrade your plan.';
@@ -314,7 +315,7 @@ const getUserTransporter = async (userId) => {
       configSource: 'none'
     };
   } catch (err) {
-    console.error('getUserTransporter error:', err.message);
+    logger.error('getUserTransporter error:', err.message);
     return { transporter: null, fromEmail: null, userName: '', configured: false, provider: null, configSource: 'error' };
   }
 };
@@ -437,12 +438,12 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
 
   try {
     const info = await activeTransporter.sendMail(mailOptions);
-    console.log(`✅ Email sent to ${Array.isArray(to) ? to.join(', ') : to} (from: ${fromEmail})`);
-    if (cc) console.log(`   CC: ${Array.isArray(cc) ? cc.join(', ') : cc}`);
-    if (bcc) console.log(`   BCC: ${Array.isArray(bcc) ? bcc.join(', ') : bcc}`);
+    logger.info(`✅ Email sent to ${Array.isArray(to) ? to.join(', ') : to} (from: ${fromEmail})`);
+    if (cc) logger.info(`   CC: ${Array.isArray(cc) ? cc.join(', ') : cc}`);
+    if (bcc) logger.info(`   BCC: ${Array.isArray(bcc) ? bcc.join(', ') : bcc}`);
     return { success: true, email: to, messageId: info.messageId };
   } catch (error) {
-    console.error('❌ Email Error:', {
+    logger.error('❌ Email Error:', {
       message: error.message,
       email: to,
       from: fromEmail,
@@ -593,7 +594,7 @@ const sendBulkEmails = async (recipients, subject, htmlBody, textBody, options =
   }
   
   const successCount = results.filter(r => r.success).length;
-  console.log(`📊 Bulk Email Results: ${successCount}/${results.length} sent successfully`);
+  logger.info(`📊 Bulk Email Results: ${successCount}/${results.length} sent successfully`);
   
   return results;
 };
@@ -691,8 +692,24 @@ const canUserSendViaZepto = async (userId) => {
   }
 };
 
+/**
+ * Queue email when Redis is up; otherwise send inline.
+ * Prefer for invites / notifications where the HTTP response should not block on SMTP.
+ */
+const sendEmailQueued = async (to, subject, htmlBody, textBody, options = {}) => {
+  const { enqueueEmail } = require('../jobs/queue');
+  return enqueueEmail({
+    to,
+    subject,
+    html: htmlBody,
+    text: textBody,
+    meta: options,
+  });
+};
+
 module.exports = {
   sendEmail,
+  sendEmailQueued,
   sendInterviewEmail,
   sendRejectionEmail,
   sendDocumentEmail,

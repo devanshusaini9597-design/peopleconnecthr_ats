@@ -3,12 +3,14 @@ import { Menu, Search, ChevronDown, User, LogOut, Building2, CreditCard, Setting
 import { useNavigate } from 'react-router-dom';
 import { handleLogout } from '../utils/authUtils';
 import NotificationBell from './NotificationBell';
+import ConfirmationModal from './ConfirmationModal';
 import { authenticatedFetch } from '../utils/fetchUtils';
 import BASE_API_URL from '../config';
 
 const Header = ({ setSidebarOpen, sidebarOpen }) => {
   const navigate = useNavigate();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [profilePicture, setProfilePicture] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -192,7 +194,10 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
                 <div className="p-1.5 border-t border-stone-100">
                   <button
                     type="button"
-                    onClick={() => handleLogout(navigate)}
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      setShowLogoutConfirm(true);
+                    }}
                     className="w-full flex items-center gap-3 px-2.5 py-2.5 rounded-xl text-left transition-all duration-200 hover:bg-red-50 group"
                   >
                     <div className="w-9 h-9 rounded-xl bg-red-50 text-red-500 flex items-center justify-center flex-shrink-0 group-hover:bg-red-100 transition-colors">
@@ -209,6 +214,19 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
           </div>
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={showLogoutConfirm}
+        onClose={() => setShowLogoutConfirm(false)}
+        onConfirm={() => {
+          setShowLogoutConfirm(false);
+          handleLogout(navigate);
+        }}
+        title="Log out?"
+        message="End your session on this device? You’ll need to sign in again to continue."
+        confirmText="Log out"
+        type="danger"
+      />
     </header>
   );
 };

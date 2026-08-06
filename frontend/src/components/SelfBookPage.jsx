@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Calendar, Clock, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
+import { Calendar, Clock, CheckCircle, Loader2, AlertCircle, Mail, User } from 'lucide-react';
 import API_URL from '../config';
 import EmptyState from './ui/EmptyState';
 
@@ -8,8 +8,8 @@ const PublicHeader = () => (
   <header className="bg-white border-b border-stone-200 sticky top-0 z-10">
     <div className="max-w-lg mx-auto px-4 sm:px-6 py-4 sm:py-5">
       <Link to="/" className="flex items-center gap-2.5 text-stone-900 font-semibold">
-        <img src="/atslogo.jpg" alt="SkillNix" className="w-8 h-8 rounded-lg flex-shrink-0" />
-        <span className="text-sm sm:text-base">SkillNix</span>
+        <img src="/logo.png" alt="People Connect HR" className="w-8 h-8 rounded-lg flex-shrink-0" />
+        <span className="text-sm sm:text-base">People Connect HR</span>
       </Link>
     </div>
   </header>
@@ -19,7 +19,7 @@ const PublicFooter = () => (
   <footer className="border-t border-stone-200 bg-white py-6 mt-auto">
     <div className="max-w-lg mx-auto px-4 sm:px-6 text-center">
       <Link to="/" className="text-sm text-stone-500 hover:text-brand-700 font-medium transition-colors">
-        ← Back to SkillNix
+        ← Back to People Connect HR
       </Link>
     </div>
   </footer>
@@ -187,23 +187,29 @@ export default function SelfBookPage() {
 
           <div>
             <label className="label-ats">Your name</label>
-            <input
-              className="input-ats"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Jane Smith"
-            />
+            <div className="relative">
+              <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
+              <input
+                className="input-ats !pl-10"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Jane Smith"
+              />
+            </div>
           </div>
           <div>
             <label className="label-ats">Email *</label>
-            <input
-              type="email"
-              required
-              className="input-ats"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-            />
+            <div className="relative">
+              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
+              <input
+                type="email"
+                required
+                className="input-ats !pl-10"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+              />
+            </div>
           </div>
 
           {error && (

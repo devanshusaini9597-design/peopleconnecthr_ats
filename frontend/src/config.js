@@ -1,14 +1,18 @@
-// LOCALHOST: npm run dev uses local backend (http://localhost:5000) so you can test fully on localhost.
-// Set VITE_USE_LIVE_BACKEND=true in .env.local to point local frontend at the live Render backend instead.
-// LIVE SITE: Production build uses VITE_API_URL or https://peopleconnecthrats-production.up.railway.app so the deployed app works.
+// LOCALHOST: npm run dev uses local backend (http://localhost:5000).
+// Set VITE_USE_LIVE_BACKEND=true in .env.local to point at the live backend.
 const defaultDev = 'http://localhost:5000';
-const defaultProd = 'https://peopleconnecthrats-production.up.railway.app';
 const isDev = import.meta.env.DEV;
 const useLiveInDev = import.meta.env.VITE_USE_LIVE_BACKEND === 'true' || import.meta.env.VITE_USE_LIVE_BACKEND === '1';
+
+const configured = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+if (!isDev && !configured) {
+  console.error('⚠️ VITE_API_URL not set in production build!');
+}
+
 const API_URL = (
   isDev
-    ? (useLiveInDev ? (import.meta.env.VITE_API_URL || defaultProd) : defaultDev)
-    : (import.meta.env.VITE_API_URL || defaultProd)
+    ? (useLiveInDev ? (configured || defaultDev) : defaultDev)
+    : (configured || defaultDev)
 ).replace(/\/$/, '');
 
 if (isDev) {
@@ -19,5 +23,5 @@ export default API_URL;
 export const BASE_API_URL = API_URL;
 /** Only true in dev (Vite). Use to show "Local" vs "Live" badge. */
 export const IS_DEV = isDev;
-/** True when local frontend is pointed at live backend (VITE_USE_LIVE_BACKEND). All data/adds go to live DB. */
+/** True when local frontend is pointed at live backend (VITE_USE_LIVE_BACKEND). */
 export const USING_LIVE_BACKEND = isDev && useLiveInDev;

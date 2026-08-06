@@ -23,6 +23,7 @@
 const Notification = require('../models/Notification');
 const Candidate = require('../models/Candidate');
 const { sendEmail, checkUserEmailConfigured, getUserTransporter } = require('./emailService');
+const logger = require('../utils/logger');
 
 // ─── SCHEDULE CONFIG ─────────────────────────────────────────────
 const REMINDER_SCHEDULE = {
@@ -202,7 +203,7 @@ async function scanAndNotify() {
     const currentHour = now.getHours();
     const todayStr = now.toISOString().split('T')[0]; // yyyy-mm-dd
     
-    console.log(`\n🔔 [${now.toLocaleString()}] Callback Reminder Scan Started...`);
+    logger.info(`\n🔔 [${now.toLocaleString()}] Callback Reminder Scan Started...`);
     
     // Find all candidates with callBackDate set
     const candidates = await Candidate.find({
@@ -210,11 +211,11 @@ async function scanAndNotify() {
     }).lean();
     
     if (!candidates.length) {
-      console.log('   No candidates with callback dates found.');
+      logger.info('   No candidates with callback dates found.');
       return;
     }
     
-    console.log(`   Found ${candidates.length} candidates with callback dates.`);
+    logger.info(`   Found ${candidates.length} candidates with callback dates.`);
     
     // Group by user (createdBy)
     const userCandidates = {};
@@ -292,7 +293,7 @@ async function scanAndNotify() {
         } catch (err) {
           // Duplicate key error (11000) means already sent for this slot — skip
           if (err.code !== 11000) {
-            console.error(`   Error creating notification: ${err.message}`);
+            logger.error(`   Error creating notification: ${err.message}`);
           }
         }
       }
@@ -336,21 +337,21 @@ async function scanAndNotify() {
                   }).catch(() => {}); // Ignore dedup errors
                   
                   totalEmails++;
-                  console.log(`   📧 Email reminder sent to ${user.email}`);
+                  logger.info(`   📧 Email reminder sent to ${user.email}`);
                 }
               }
             }
           }
         } catch (emailErr) {
-          console.error(`   Email reminder failed for user ${userId}: ${emailErr.message}`);
+          logger.error(`   Email reminder failed for user ${userId}: ${emailErr.message}`);
         }
       }
     }
     
-    console.log(`   ✅ Scan complete: ${totalCreated} notifications created, ${totalEmails} emails sent.\n`);
+    logger.info(`   ✅ Scan complete: ${totalCreated} notifications created, ${totalEmails} emails sent.\n`);
     
   } catch (error) {
-    console.error('❌ Notification scan error:', error);
+    logger.error('❌ Notification scan error:', error);
   }
 }
 
@@ -365,10 +366,10 @@ async function cleanupOldNotifications() {
       ]
     });
     if (result.deletedCount > 0) {
-      console.log(`🧹 Cleaned up ${result.deletedCount} old notifications.`);
+      logger.info(`🧹 Cleaned up ${result.deletedCount} old notifications.`);
     }
   } catch (err) {
-    console.error('Cleanup error:', err.message);
+    logger.error('Cleanup error:', err.message);
   }
 }
 
@@ -377,7 +378,7 @@ let scanInterval = null;
 let cleanupInterval = null;
 
 function startNotificationScheduler() {
-  console.log('🔔 Callback Reminder Scheduler started.');
+  logger.info('🔔 Callback Reminder Scheduler started.');
   
   // Run initial scan after 10 seconds (let server fully boot)
   setTimeout(() => {
@@ -398,12 +399,186 @@ function startNotificationScheduler() {
 function stopNotificationScheduler() {
   if (scanInterval) clearInterval(scanInterval);
   if (cleanupInterval) clearInterval(cleanupInterval);
-  console.log('🔔 Callback Reminder Scheduler stopped.');
+  logger.info('🔔 Callback Reminder Scheduler stopped.');
+}
+
+// ─── HTTP route helpers (notificationRoutes) ────────────────────
+function httpError(message, statusCode = 400, extra = {}) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  Object.assign(err, extra);
+  return err;
+}
+
+const PRIORITY_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 };
+
+async function listNotifications(userId, { status, limit = 50, page = 1 } = {}) {
+  try {
+    const filter = { userId, isDismissed: false, type: { $ne: 'system' } };
+    if (status === 'unread') filter.isRead = false;
+    else if (status === 'read') filter.isRead = true;
+
+    const limitNum = parseInt(limit);
+    const pageNum = parseInt(page);
+    const skip = (pageNum - 1) * limitNum;
+
+    const [notifications, totalCount, unreadCount] = await Promise.all([
+      Notification.find(filter)
+        .sort({ priority: 1, createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      Notification.countDocuments(filter),
+      Notification.countDocuments({
+        userId,
+        isRead: false,
+        isDismissed: false,
+        type: { $ne: 'system' },
+      }),
+    ]);
+
+    notifications.sort((a, b) => {
+      const pDiff = (PRIORITY_ORDER[a.priority] || 3) - (PRIORITY_ORDER[b.priority] || 3);
+      if (pDiff !== 0) return pDiff;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
+    return {
+      notifications,
+      unreadCount,
+      totalCount,
+      page: pageNum,
+      totalPages: Math.ceil(totalCount / limitNum),
+    };
+  } catch (error) {
+    if (error.statusCode) throw error;
+    console.error('Fetch notifications error:', error);
+    throw httpError('Failed to fetch notifications', 500);
+  }
+}
+
+async function getNotificationCounts(userId) {
+  try {
+    const unreadCount = await Notification.countDocuments({
+      userId,
+      isRead: false,
+      isDismissed: false,
+      type: { $ne: 'system' },
+    });
+
+    const urgentCount = await Notification.countDocuments({
+      userId,
+      isRead: false,
+      isDismissed: false,
+      type: { $ne: 'system' },
+      priority: { $in: ['urgent', 'high'] },
+    });
+
+    return { unreadCount, urgentCount };
+  } catch (error) {
+    if (error.statusCode) throw error;
+    throw httpError('Failed to get count', 500);
+  }
+}
+
+async function getUpcomingCallbacks(userId) {
+  try {
+    const notifications = await Notification.find({
+      userId,
+      isDismissed: false,
+      type: { $in: ['callback_reminder', 'callback_today', 'callback_overdue'] },
+    })
+      .sort({ daysRemaining: 1 })
+      .lean();
+
+    const seen = new Map();
+    for (const n of notifications) {
+      const cid = n.candidateId?.toString();
+      if (!cid) continue;
+      if (!seen.has(cid) || (n.priority === 'urgent' && seen.get(cid).priority !== 'urgent')) {
+        seen.set(cid, n);
+      }
+    }
+
+    const callbacks = Array.from(seen.values())
+      .sort((a, b) => (a.daysRemaining || 0) - (b.daysRemaining || 0))
+      .slice(0, 10);
+
+    return { callbacks, total: seen.size };
+  } catch (error) {
+    if (error.statusCode) throw error;
+    throw httpError('Failed to fetch callbacks', 500);
+  }
+}
+
+async function markNotificationRead(userId, id) {
+  try {
+    const notification = await Notification.findOneAndUpdate(
+      { _id: id, userId },
+      { isRead: true },
+      { new: true }
+    );
+    if (!notification) throw httpError('Not found', 404);
+    return notification;
+  } catch (error) {
+    if (error.statusCode) throw error;
+    throw httpError('Failed to update', 500);
+  }
+}
+
+async function markAllNotificationsRead(userId) {
+  try {
+    await Notification.updateMany({ userId, isRead: false }, { isRead: true });
+  } catch (error) {
+    if (error.statusCode) throw error;
+    throw httpError('Failed to update', 500);
+  }
+}
+
+async function dismissNotification(userId, id) {
+  try {
+    const notification = await Notification.findOneAndUpdate(
+      { _id: id, userId },
+      { isDismissed: true },
+      { new: true }
+    );
+    if (!notification) throw httpError('Not found', 404);
+    return notification;
+  } catch (error) {
+    if (error.statusCode) throw error;
+    throw httpError('Failed to dismiss', 500);
+  }
+}
+
+async function clearReadNotifications(userId) {
+  try {
+    await Notification.updateMany({ userId, isRead: true }, { isDismissed: true });
+  } catch (error) {
+    if (error.statusCode) throw error;
+    throw httpError('Failed to clear', 500);
+  }
+}
+
+async function triggerNotificationScan() {
+  try {
+    await scanAndNotify();
+  } catch (error) {
+    if (error.statusCode) throw error;
+    throw httpError('Scan failed', 500);
+  }
 }
 
 module.exports = {
   startNotificationScheduler,
   stopNotificationScheduler,
   scanAndNotify,
-  cleanupOldNotifications
+  cleanupOldNotifications,
+  listNotifications,
+  getNotificationCounts,
+  getUpcomingCallbacks,
+  markNotificationRead,
+  markAllNotificationsRead,
+  dismissNotification,
+  clearReadNotifications,
+  triggerNotificationScan,
 };

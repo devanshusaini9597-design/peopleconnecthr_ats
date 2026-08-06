@@ -1,49 +1,32 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Plus, MapPin, BookOpen, UserCheck, Briefcase, IndianRupee, Globe2, Loader2,
-  Search, Pencil, Trash2, MoreHorizontal, X, Check, PauseCircle, Lock, Unlock,
-  Filter, Building2, BookmarkPlus
+  Search, Pencil, Trash2, PauseCircle, Lock, Unlock, Filter, Building2,
+  BookmarkPlus, Check, Share2, MoreHorizontal,
 } from 'lucide-react';
 import JDLibraryModal from '../components/JDLibraryModal';
 import PageHeader from '../components/ui/PageHeader';
 import EmptyState from '../components/ui/EmptyState';
 import Modal from '../components/ui/Modal';
+import PremiumSelect from '../components/ui/PremiumSelect';
+import ProductTour from '../components/ui/ProductTour';
+import TourHelpFab from '../components/ui/TourHelpFab';
+import usePageTour from '../hooks/usePageTour';
+import { useToast } from '../components/Toast';
 import BASE_API_URL from '../config';
 import { useAuth } from '../context/AuthContext';
 import { planHasFeature } from '../config/planFeatures';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
-
-const STATUS_OPTIONS = ['Open', 'On Hold', 'Closed', 'Draft'];
-const STATUS_STYLES = {
-  Open: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  'On Hold': 'bg-amber-50 text-amber-700 border-amber-200',
-  Closed: 'bg-stone-100 text-stone-600 border-stone-200',
-  Draft: 'bg-sky-50 text-sky-700 border-sky-200',
-  Cancelled: 'bg-red-50 text-red-700 border-red-200',
-};
-const DOT_STYLES = {
-  Open: 'bg-emerald-500',
-  'On Hold': 'bg-amber-500',
-  Closed: 'bg-stone-400',
-  Draft: 'bg-sky-500',
-  Cancelled: 'bg-red-500',
-};
-
-const managersList = ['hr@company.com', 'tech.lead@company.com', 'cto@company.com', 'product.mgr@company.com'];
-
-const initialForm = {
-  role: '',
-  location: '',
-  ctc: '',
-  experience: '',
-  skills: [],
-  description: '',
-  hiringManagers: [],
-  status: 'Open',
-};
+import {
+  JOBS_TOUR_KEY, JOBS_TOUR_STEPS, STATUS_OPTIONS, FILTER_OPTIONS,
+  JOB_BOARD_OPTIONS, STATUS_STYLES, DOT_STYLES, FALLBACK_MANAGERS, initialForm,
+} from '../components/jobs/jobsConstants';
+import JobFormModal from '../components/jobs/JobFormModal';
 
 const Jobs = () => {
   const API_URL = `${BASE_API_URL}/jobs`;
+  const toast = useToast();
+  const [tourOpen, setTourOpen] = usePageTour(JOBS_TOUR_KEY);
   const { organization } = useAuth();
   const hasJobBoard = planHasFeature(organization?.plan, 'integrations.jobBoard');
 
@@ -61,18 +44,27 @@ const Jobs = () => {
   const [statusFilter, setStatusFilter] = useState('All');
   const [skillsInput, setSkillsInput] = useState('');
   const [formData, setFormData] = useState(initialForm);
-  const [toast, setToast] = useState(null);
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [postTarget, setPostTarget] = useState(null);
+  const [postProvider, setPostProvider] = useState('indeed_feed');
 
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 2800);
-  };
+  const managerOptions = useMemo(() => {
+    if (teamMembers.length > 0) {
+      return teamMembers.map((m) => ({
+        email: m.email,
+        name: m.name || m.email?.split('@')[0] || 'Member',
+      }));
+    }
+    return FALLBACK_MANAGERS;
+  }, [teamMembers]);
 
   const fetchJobs = async () => {
     setLoading(true);
     try {
       const res = await authenticatedFetch(`${API_URL}?isTemplate=false`);
       if (isUnauthorized(res)) return handleUnauthorized();
+      if (!res.ok) throw new Error('Failed to load jobs');
       const data = await res.json();
       if (Array.isArray(data)) setJobs(data);
       else if (Array.isArray(data?.data)) setJobs(data.data);
@@ -80,9 +72,24 @@ const Jobs = () => {
     } catch (error) {
       console.error('Error fetching jobs:', error);
       setJobs([]);
-      showToast('Failed to load jobs', 'error');
+      toast.error('Jobs are unavailable right now. Retry when the API is back.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchTeamMembers = async () => {
+    if (teamMembers.length > 0) return;
+    setLoadingMembers(true);
+    try {
+      const res = await authenticatedFetch(`${BASE_API_URL}/api/team`);
+      if (isUnauthorized(res)) return handleUnauthorized();
+      const data = await res.json();
+      if (data.success) setTeamMembers(data.members || []);
+    } catch {
+      /* keep fallback managers */
+    } finally {
+      setLoadingMembers(false);
     }
   };
 
@@ -119,6 +126,7 @@ const Jobs = () => {
     setFormData(initialForm);
     setSkillsInput('');
     setShowModal(true);
+    fetchTeamMembers();
   };
 
   const openEdit = (job) => {
@@ -136,6 +144,7 @@ const Jobs = () => {
     setSkillsInput((job.skills || []).join(', '));
     setMenuOpenId(null);
     setShowModal(true);
+    fetchTeamMembers();
   };
 
   const handleSelectTemplate = (template) => {
@@ -152,6 +161,7 @@ const Jobs = () => {
     setSkillsInput((template.skills || []).join(', '));
     setShowLibrary(false);
     setShowModal(true);
+    fetchTeamMembers();
   };
 
   const parseSkills = (raw) =>
@@ -159,6 +169,15 @@ const Jobs = () => {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
+
+  const toggleManager = (email) => {
+    setFormData((prev) => {
+      const next = prev.hiringManagers.includes(email)
+        ? prev.hiringManagers.filter((e) => e !== email)
+        : [...prev.hiringManagers, email];
+      return { ...prev, hiringManagers: next };
+    });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -183,15 +202,15 @@ const Jobs = () => {
         setEditingJob(null);
         setFormData(initialForm);
         setSkillsInput('');
-        showToast(editingJob ? 'Job updated' : 'Job created');
+        toast.success(editingJob ? 'Job updated' : 'Job created');
         fetchJobs();
       } else {
         const err = await response.json().catch(() => ({}));
-        showToast(err.message || 'Failed to save job', 'error');
+        toast.error(err.message || 'Failed to save job');
       }
     } catch (error) {
       console.error('Save error:', error);
-      showToast('Failed to save job', 'error');
+      toast.error('Failed to save job. Please try again later.');
     } finally {
       setSaving(false);
     }
@@ -209,10 +228,10 @@ const Jobs = () => {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.message || 'Failed to update status');
       }
-      showToast(`Marked as ${status}`);
+      toast.success(`Marked as ${status}`);
       fetchJobs();
     } catch (error) {
-      showToast(error.message || 'Failed to update status', 'error');
+      toast.error(error.message || 'Failed to update status');
     }
   };
 
@@ -227,30 +246,35 @@ const Jobs = () => {
         throw new Error(err.message || 'Failed to delete job');
       }
       setDeleteTarget(null);
-      showToast('Job deleted');
+      toast.success('Job deleted');
       fetchJobs();
     } catch (error) {
-      showToast(error.message || 'Failed to delete job', 'error');
+      toast.error(error.message || 'Failed to delete job');
     } finally {
       setDeleting(false);
     }
   };
 
-  const handlePostToJobBoard = async (job) => {
-    const provider = window.prompt('Post to which job board provider? (indeed_feed / webhook)', 'indeed_feed');
-    if (!provider) return;
-    setPostingJobId(job._id);
+  const openPostModal = (job) => {
     setMenuOpenId(null);
+    setPostTarget(job);
+    setPostProvider('indeed_feed');
+  };
+
+  const handlePostToJobBoard = async () => {
+    if (!postTarget) return;
+    setPostingJobId(postTarget._id);
     try {
-      const res = await authenticatedFetch(`${BASE_API_URL}/api/job-board/jobs/${job._id}/post`, {
+      const res = await authenticatedFetch(`${BASE_API_URL}/api/job-board/jobs/${postTarget._id}/post`, {
         method: 'POST',
-        body: JSON.stringify({ provider }),
+        body: JSON.stringify({ provider: postProvider }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) throw new Error(data.message || 'Failed to post job');
-      showToast('Job posted to job board');
+      toast.success('Job posted to job board');
+      setPostTarget(null);
     } catch (error) {
-      showToast(error.message || 'Failed to post job', 'error');
+      toast.error(error.message || 'Job board posting unavailable right now.');
     } finally {
       setPostingJobId(null);
     }
@@ -279,9 +303,9 @@ const Jobs = () => {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.message || 'Failed to save template');
       }
-      showToast('Saved to JD Library');
+      toast.success('Saved to JD Library');
     } catch (error) {
-      showToast(error.message || 'Failed to save template', 'error');
+      toast.error(error.message || 'Failed to save template');
     }
   };
 
@@ -294,62 +318,102 @@ const Jobs = () => {
   };
 
   return (
-    <div className="page-shell-ats animate-fade-in">
+    <div className="page-shell-ats animate-page-enter">
       <PageHeader
         icon={Briefcase}
         title="Job Openings"
         subtitle="Create and manage open roles for your hiring pipeline."
         gradientTitle
       >
-        <button type="button" onClick={() => setShowLibrary(true)} className="btn-secondary flex-1 sm:flex-none">
-          <BookOpen size={16} />
-          <span className="whitespace-nowrap">JD Library</span>
-        </button>
-        <button type="button" onClick={openCreate} className="btn-primary flex-1 sm:flex-none">
-          <Plus size={16} />
-          <span className="whitespace-nowrap">Post New Job</span>
-        </button>
+        <div data-tour="jobs-actions" className="flex flex-1 sm:flex-none items-center gap-2 w-full sm:w-auto">
+          <button type="button" onClick={() => setShowLibrary(true)} className="btn-secondary flex-1 sm:flex-none">
+            <BookOpen size={16} />
+            <span className="whitespace-nowrap">JD Library</span>
+          </button>
+          <button type="button" onClick={openCreate} className="btn-primary flex-1 sm:flex-none">
+            <Plus size={16} />
+            <span className="whitespace-nowrap">Post New Job</span>
+          </button>
+        </div>
       </PageHeader>
 
-      {/* Toolbar */}
-      <div className="toolbar-ats flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-        <div className="relative flex-1 min-w-0 max-w-full sm:max-w-md">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search roles, location, skills…"
-            className="input-ats !pl-10"
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500 px-1">
-            <Filter size={14} /> Filter
+      <div data-tour="jobs-tip" className="rounded-xl border border-brand-200/60 bg-gradient-to-r from-brand-50/70 via-white to-teal-50/40 px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed">
+        Search and filter openings, reuse JD templates, and manage status from each card.
+        Press <span className="font-semibold text-stone-800">?</span> for a tour.
+      </div>
+
+      {/* Filters — one enterprise panel */}
+      <div data-tour="jobs-filters" className="card-ats-bordered p-4 sm:p-5 relative overflow-hidden">
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+        <div className="flex items-center gap-2 mb-4">
+          <span className="h-7 w-7 rounded-lg bg-brand-50 text-brand-700 border border-brand-100 inline-flex items-center justify-center">
+            <Filter size={13} strokeWidth={2} />
+          </span>
+          <div>
+            <p className="text-xs font-bold text-stone-800">Search & filters</p>
+            <p className="text-[11px] text-stone-400">Find roles by name, location, skills, or status</p>
           </div>
-          {['All', 'Open', 'On Hold', 'Closed'].map((s) => (
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+          <div className="sm:col-span-2 lg:col-span-2 min-w-0">
+            <label className="label-ats">Search</label>
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none z-[1]" />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search roles, location, skills…"
+                className="input-ats input-ats-icon"
+              />
+            </div>
+          </div>
+          <div className="min-w-0">
+            <label className="label-ats">Status</label>
+            <PremiumSelect
+              variant="list"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={FILTER_OPTIONS}
+              placeholder="All statuses"
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-stone-100">
+          {[
+            { key: 'All', label: 'All', count: counts.all },
+            { key: 'Open', label: 'Open', count: counts.open },
+            { key: 'On Hold', label: 'On Hold', count: counts.hold },
+            { key: 'Closed', label: 'Closed', count: counts.closed },
+          ].map((s) => (
             <button
-              key={s}
+              key={s.key}
               type="button"
-              onClick={() => setStatusFilter(s)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                statusFilter === s
-                  ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-500/20'
-                  : 'bg-white text-stone-600 border-stone-200 hover:border-brand-300 hover:bg-brand-50/50'
+              onClick={() => setStatusFilter(s.key)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                statusFilter === s.key
+                  ? 'bg-brand-50 text-brand-800 border-brand-200'
+                  : 'bg-white text-stone-600 border-stone-200 hover:border-stone-300 hover:bg-stone-50'
               }`}
             >
-              {s}
-              {s === 'All' && <span className="ml-1 opacity-70">{counts.all}</span>}
-              {s === 'Open' && <span className="ml-1 opacity-70">{counts.open}</span>}
-              {s === 'On Hold' && <span className="ml-1 opacity-70">{counts.hold}</span>}
-              {s === 'Closed' && <span className="ml-1 opacity-70">{counts.closed}</span>}
+              {s.label}
+              <span className={`tabular-nums ${statusFilter === s.key ? 'text-brand-600' : 'text-stone-400'}`}>{s.count}</span>
             </button>
           ))}
+          {(searchQuery || statusFilter !== 'All') && (
+            <button
+              type="button"
+              onClick={() => { setSearchQuery(''); setStatusFilter('All'); }}
+              className="text-xs font-semibold text-stone-500 hover:text-brand-700 ml-auto"
+            >
+              Clear
+            </button>
+          )}
         </div>
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
+        <div data-tour="jobs-list" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
           {[1, 2, 3].map((i) => (
             <div key={i} className="card-ats-bordered p-6 space-y-4">
               <div className="h-10 w-10 rounded-xl skeleton-ats" />
@@ -361,10 +425,10 @@ const Jobs = () => {
           ))}
         </div>
       ) : jobs.length === 0 ? (
-        <div className="card-ats-bordered">
+        <div data-tour="jobs-list" className="card-ats-bordered">
           <EmptyState
             icon={Briefcase}
-            tone="violet"
+            tone="brand"
             message="No job openings yet"
             subMessage="Post your first role to start receiving applications."
             action={
@@ -375,7 +439,7 @@ const Jobs = () => {
           />
         </div>
       ) : filteredJobs.length === 0 ? (
-        <div className="card-ats-bordered">
+        <div data-tour="jobs-list" className="card-ats-bordered">
           <EmptyState
             icon={Search}
             tone="amber"
@@ -393,67 +457,64 @@ const Jobs = () => {
           />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
+        <div data-tour="jobs-list" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
           {filteredJobs.map((job) => {
             const title = job.role || job.title || 'Untitled role';
             const status = job.status || 'Open';
             return (
               <article
                 key={job._id}
-                className="card-ats p-5 sm:p-6 relative overflow-visible group flex flex-col"
+                className="card-ats-bordered p-5 sm:p-6 relative overflow-visible group flex flex-col transition-shadow duration-300 hover:shadow-md"
               >
-                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 opacity-0 group-hover:opacity-100 transition-opacity rounded-t-2xl" />
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 rounded-t-2xl" />
 
                 <div className="flex items-start justify-between gap-3 mb-4">
                   <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-100 to-teal-100 border border-brand-200/70 flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
                     <Briefcase className="w-5 h-5 text-brand-600" />
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full border ${STATUS_STYLES[status] || STATUS_STYLES.Open}`}>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full border whitespace-nowrap ${STATUS_STYLES[status] || STATUS_STYLES.Open}`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${DOT_STYLES[status] || DOT_STYLES.Open}`} />
                       {status}
                     </span>
                     <div className="relative">
                       <button
                         type="button"
-                        aria-label="Job actions"
+                        aria-label="More job actions"
                         onClick={(e) => {
                           e.stopPropagation();
                           setMenuOpenId(menuOpenId === job._id ? null : job._id);
                         }}
-                        className="p-2 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
+                        className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-500 shadow-sm hover:bg-stone-50 hover:border-stone-300 transition-all"
                       >
-                        <MoreHorizontal size={18} />
+                        <MoreHorizontal size={15} strokeWidth={2} />
                       </button>
                       {menuOpenId === job._id && (
                         <div
-                          className="absolute right-0 top-full mt-1 z-20 w-48 rounded-xl border border-stone-200 bg-white shadow-xl py-1.5 animate-fade-in"
+                          className="absolute right-0 top-full mt-1 z-20 w-52 rounded-xl border border-stone-200 bg-white shadow-xl py-1.5 animate-fade-in"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <button type="button" onClick={() => openEdit(job)} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-50">
-                            <Pencil size={14} className="text-stone-400" /> Edit job
-                          </button>
                           {status !== 'Open' && (
-                            <button type="button" onClick={() => handleStatusChange(job, 'Open')} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-50">
+                            <button type="button" onClick={() => handleStatusChange(job, 'Open')} className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] font-medium text-stone-700 hover:bg-stone-50">
                               <Unlock size={14} className="text-emerald-500" /> Mark Open
                             </button>
                           )}
                           {status !== 'On Hold' && status !== 'Closed' && (
-                            <button type="button" onClick={() => handleStatusChange(job, 'On Hold')} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-50">
+                            <button type="button" onClick={() => handleStatusChange(job, 'On Hold')} className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] font-medium text-stone-700 hover:bg-stone-50">
                               <PauseCircle size={14} className="text-amber-500" /> Put On Hold
                             </button>
                           )}
                           {status !== 'Closed' && (
-                            <button type="button" onClick={() => handleStatusChange(job, 'Closed')} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-50">
+                            <button type="button" onClick={() => handleStatusChange(job, 'Closed')} className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] font-medium text-stone-700 hover:bg-stone-50">
                               <Lock size={14} className="text-stone-400" /> Close job
                             </button>
                           )}
                           {hasJobBoard && (
                             <button
                               type="button"
-                              onClick={() => handlePostToJobBoard(job)}
+                              onClick={() => openPostModal(job)}
                               disabled={postingJobId === job._id}
-                              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+                              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
                             >
                               {postingJobId === job._id ? <Loader2 size={14} className="animate-spin" /> : <Globe2 size={14} className="text-brand-500" />}
                               Post to Job Board
@@ -462,17 +523,9 @@ const Jobs = () => {
                           <button
                             type="button"
                             onClick={() => handleSaveAsTemplate(job)}
-                            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-50"
+                            className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] font-medium text-stone-700 hover:bg-stone-50"
                           >
                             <BookmarkPlus size={14} className="text-brand-500" /> Save as Template
-                          </button>
-                          <div className="my-1 border-t border-stone-100" />
-                          <button
-                            type="button"
-                            onClick={() => { setMenuOpenId(null); setDeleteTarget(job); }}
-                            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 size={14} /> Delete
                           </button>
                         </div>
                       )}
@@ -502,7 +555,7 @@ const Jobs = () => {
                 {job.skills?.length > 0 && (
                   <div className="mt-4 flex flex-wrap gap-1.5">
                     {job.skills.slice(0, 4).map((skill) => (
-                      <span key={skill} className="badge-brand !py-0.5 !text-[10px]">{skill}</span>
+                      <span key={skill} className="badge-brand !py-0.5 !text-[10px] whitespace-nowrap">{skill}</span>
                     ))}
                     {job.skills.length > 4 && (
                       <span className="badge-neutral !py-0.5 !text-[10px]">+{job.skills.length - 4}</span>
@@ -515,7 +568,7 @@ const Jobs = () => {
                   <div className="flex flex-wrap gap-1.5">
                     {job.hiringManagers?.length > 0 ? (
                       job.hiringManagers.map((email, idx) => (
-                        <span key={idx} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold bg-brand-50 text-brand-700 border border-brand-100">
+                        <span key={idx} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold bg-brand-50 text-brand-700 border border-brand-100 whitespace-nowrap">
                           <UserCheck size={11} /> {String(email).split('@')[0]}
                         </span>
                       ))
@@ -525,17 +578,40 @@ const Jobs = () => {
                   </div>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-stone-100 flex gap-2">
-                  <button type="button" onClick={() => openEdit(job)} className="btn-secondary flex-1 !py-2 !text-xs">
-                    <Pencil size={13} /> Edit
+                <div className="mt-4 pt-3 border-t border-stone-100 flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => openEdit(job)}
+                    className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-brand-100 bg-brand-50/80 text-brand-700 shadow-sm hover:bg-brand-100 hover:border-brand-200 transition-all"
+                    title="Edit job"
+                  >
+                    <Pencil size={15} strokeWidth={2} />
+                  </button>
+                  {hasJobBoard && (
+                    <button
+                      type="button"
+                      onClick={() => openPostModal(job)}
+                      className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-teal-100 bg-teal-50/80 text-teal-700 shadow-sm hover:bg-teal-100 hover:border-teal-200 transition-all"
+                      title="Post to job board"
+                    >
+                      <Share2 size={15} strokeWidth={2} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleSaveAsTemplate(job)}
+                    className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-sky-100 bg-sky-50/80 text-sky-700 shadow-sm hover:bg-sky-100 hover:border-sky-200 transition-all"
+                    title="Save as template"
+                  >
+                    <BookmarkPlus size={15} strokeWidth={2} />
                   </button>
                   <button
                     type="button"
                     onClick={() => setDeleteTarget(job)}
-                    className="btn-ghost !py-2 !px-3 !text-xs text-red-600 hover:!bg-red-50 hover:!text-red-700"
-                    aria-label="Delete job"
+                    className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-red-100 bg-red-50/70 text-red-600 shadow-sm hover:bg-red-100 hover:border-red-200 transition-all ml-auto"
+                    title="Delete job"
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={15} strokeWidth={2} />
                   </button>
                 </div>
               </article>
@@ -544,120 +620,60 @@ const Jobs = () => {
         </div>
       )}
 
+      <TourHelpFab onClick={() => setTourOpen(true)} label="Take a tour" title="Take a tour of Jobs" />
+      <ProductTour
+        open={tourOpen}
+        onClose={() => setTourOpen(false)}
+        steps={JOBS_TOUR_STEPS}
+        storageKey={JOBS_TOUR_KEY}
+      />
+
       <JDLibraryModal isOpen={showLibrary} onClose={() => setShowLibrary(false)} onSelectTemplate={handleSelectTemplate} />
 
+      <JobFormModal
+          open={showModal}
+          onClose={closeModal}
+          editingJob={editingJob}
+          formData={formData}
+          setFormData={setFormData}
+          skillsInput={skillsInput}
+          setSkillsInput={setSkillsInput}
+          saving={saving}
+          onSubmit={handleSubmit}
+          toggleManager={toggleManager}
+          managerOptions={managerOptions}
+          loadingMembers={loadingMembers}
+        />
+
       <Modal
-        open={showModal}
-        onClose={closeModal}
-        title={editingJob ? 'Edit Job Requisition' : 'Create New Job Requisition'}
-        description={editingJob ? 'Update role details and hiring assignments.' : 'Fill in the role details and assign hiring managers.'}
-        size="lg"
+        open={!!postTarget}
+        onClose={() => !postingJobId && setPostTarget(null)}
+        title="Post to Job Board"
+        description={postTarget ? `Publish “${postTarget.role || postTarget.title}” to an external board.` : ''}
+        size="sm"
         footer={
           <>
-            <button type="button" onClick={closeModal} className="btn-secondary" disabled={saving}>
+            <button type="button" className="btn-secondary" disabled={!!postingJobId} onClick={() => setPostTarget(null)}>
               Cancel
             </button>
-            <button type="submit" form="job-form" className="btn-primary" disabled={saving}>
-              {saving ? <Loader2 size={16} className="animate-spin" /> : editingJob ? <Check size={16} /> : <Plus size={16} />}
-              {saving ? 'Saving…' : editingJob ? 'Save Changes' : 'Create & Post Job'}
+            <button type="button" className="btn-primary" disabled={!!postingJobId} onClick={handlePostToJobBoard}>
+              {postingJobId ? <Loader2 size={16} className="animate-spin" /> : <Globe2 size={16} />}
+              {postingJobId ? 'Posting…' : 'Post Job'}
             </button>
           </>
         }
       >
-        <form id="job-form" onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2">
-              <label className="label-ats">Job Role *</label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. Senior Frontend Developer"
-                className="input-ats"
-                value={formData.role}
-                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="label-ats">Location *</label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. Pune / Remote"
-                className="input-ats"
-                value={formData.location}
-                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="label-ats">Experience Required</label>
-              <input
-                type="text"
-                placeholder="e.g. 3-5 Years"
-                className="input-ats"
-                value={formData.experience}
-                onChange={(e) => setFormData({ ...formData, experience: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="label-ats">CTC / Salary Range</label>
-              <input
-                type="text"
-                placeholder="e.g. 12 - 15 LPA"
-                className="input-ats"
-                value={formData.ctc}
-                onChange={(e) => setFormData({ ...formData, ctc: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="label-ats">Status</label>
-              <select
-                className="select-ats"
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-              >
-                {STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="label-ats">Skills (comma separated)</label>
-              <input
-                type="text"
-                placeholder="e.g. React, Node.js, TypeScript"
-                className="input-ats"
-                value={skillsInput}
-                onChange={(e) => setSkillsInput(e.target.value)}
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="label-ats">Assign Hiring Managers</label>
-              <select
-                multiple
-                className="input-ats h-28"
-                value={formData.hiringManagers}
-                onChange={(e) => {
-                  const values = Array.from(e.target.selectedOptions, (option) => option.value);
-                  setFormData({ ...formData, hiringManagers: values });
-                }}
-              >
-                {managersList.map((email) => (
-                  <option key={email} value={email} className="p-2">{email}</option>
-                ))}
-              </select>
-              <p className="text-[11px] mt-1.5 text-stone-400">Hold Ctrl (Win) or Cmd (Mac) to select multiple.</p>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="label-ats">Job Description</label>
-              <textarea
-                placeholder="Paste detailed JD here…"
-                className="textarea-ats h-32"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              />
-            </div>
-          </div>
-        </form>
+        <div>
+          <label className="label-ats">Provider</label>
+          <PremiumSelect
+            variant="list"
+            value={postProvider}
+            onChange={setPostProvider}
+            options={JOB_BOARD_OPTIONS}
+            icon={Globe2}
+            placeholder="Select provider"
+          />
+        </div>
       </Modal>
 
       <Modal
@@ -683,17 +699,6 @@ const Jobs = () => {
           <p>Applications linked to this role may become orphaned. Prefer closing the job if you only want to stop hiring.</p>
         </div>
       </Modal>
-
-      {toast && (
-        <div className="fixed bottom-4 right-4 left-4 sm:left-auto z-[100] animate-slide-up flex justify-end">
-          <div className={`px-4 py-3 rounded-xl shadow-lg flex items-center gap-2.5 text-sm font-medium max-w-sm ${
-            toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-stone-900 text-white'
-          }`}>
-            {toast.type === 'error' ? <X size={16} /> : <Check size={16} className="text-emerald-400" />}
-            {toast.message}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

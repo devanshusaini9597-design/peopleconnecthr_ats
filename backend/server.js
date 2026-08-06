@@ -14,23 +14,28 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
+const logger = require('./utils/logger');
+
 // ── Global crash handlers ────────────────────────────────────────────
 process.on('uncaughtException', (err) => {
-  console.error('⚠️ Uncaught Exception (server stayed alive):', err.message);
+  logger.fatal({ err }, 'FATAL: Uncaught Exception — crashing process');
+  // Give logger time to flush, then exit with failure code
+  setTimeout(() => process.exit(1), 1000);
 });
 process.on('unhandledRejection', (reason) => {
-  console.error('⚠️ Unhandled Rejection (server stayed alive):', reason?.message || reason);
+  logger.fatal({ err: reason }, 'FATAL: Unhandled Rejection — crashing process');
+  // Throw so it becomes uncaughtException and triggers the handler above
+  throw reason;
 });
 
 // ── Core imports ─────────────────────────────────────────────────────
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const fs = require('fs');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
 
 // ── Models ───────────────────────────────────────────────────────────
 const User = require('./models/User');
@@ -38,21 +43,12 @@ const Organization = require('./models/Organization');
 const Job = require('./models/Job');
 const Candidate = require('./models/Candidate');
 const Application = require('./models/Application');
-const Interview = require('./models/Interview');
-const Scorecard = require('./models/Scorecard');
-const IntegrationConfig = require('./models/IntegrationConfig');
-const AuditLog = require('./models/AuditLog');
-const JDTemplate = require('./models/JDTemplate');
 
 // ── Middleware ────────────────────────────────────────────────────────
-const { verifyToken, generateToken, optionalAuth, JWT_SECRET } = require('./middleware/authMiddleware');
-const { requireRole, requireOwner, requireAdmin, requireRecruiterOrAbove, checkPlanLimit } = require('./middleware/rbacMiddleware');
-const { tenantScope, requireOrganization } = require('./middleware/tenantMiddleware');
-const { getEntitlements, planHasFeature } = require('./config/planFeatures');
+const { verifyToken } = require('./middleware/authMiddleware');
 
 // ── Event Bus ────────────────────────────────────────────────────────
 const eventBus = require('./events/eventBus');
-const eventTypes = require('./events/eventTypes');
 const { initNotificationListeners } = require('./events/listeners/notificationListener');
 const { initAuditListeners } = require('./events/listeners/auditListener');
 const { registerIntegrationHandoffListeners } = require('./events/listeners/integrationHandoffListener');
@@ -136,12 +132,9 @@ const careerPageBuilderRoutes = require('./routes/careerPageBuilderRoutes');
 const referralRoutes = require('./routes/referralRoutes');
 const surveyRoutes = require('./routes/surveyRoutes');
 const slackAppRoutes = require('./routes/slackAppRoutes');
-const { issueAuthToken } = require('./services/sessionService');
 
 // ── Services ─────────────────────────────────────────────────────────
 const { startNotificationScheduler } = require('./services/notificationService');
-const { normalizeText } = require('./utils/textNormalize');
-const { sendEmail } = require('./services/emailService');
 const { initWebhookDispatcher } = require('./services/webhookDispatcher');
 const { startReportScheduler } = require('./services/reportScheduler');
 
@@ -152,113 +145,40 @@ app.set('trust proxy', 1);
 
 // ── Security Middleware ──────────────────────────────────────────────
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow file serving
-  contentSecurityPolicy: false // Disable CSP for now (enable in production with proper config)
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https:"],
+      connectSrc: ["'self'", process.env.FRONTEND_URL, "https://api.stripe.com"].filter(Boolean),
+      frameSrc: ["'self'", "https://js.stripe.com"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+    },
+  } : false,
 }));
 
 // ── Rate Limiting ────────────────────────────────────────────────────
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // 20 requests per window
-  message: { success: false, message: 'Too many attempts. Please try again after 15 minutes.' },
+// Auth rate limit lives in routes/authRoutes.js
+
+// Demo login kept available for sales demos (user request) — see routes/authRoutes.js
+const APP_FRONTEND_URL = process.env.FRONTEND_URL;
+if (!APP_FRONTEND_URL && process.env.NODE_ENV === 'production') {
+  logger.warn('FRONTEND_URL env var not set. CORS and redirects may not work correctly.');
+}
+
+// ── Global API Rate Limit ────────────────────────────────────────────
+const globalApiLimiter = rateLimit({
+  windowMs: 60 * 1000,     // 1 minute window
+  max: 300,                // 300 requests per minute per IP
+  message: { success: false, message: 'Too many requests. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
-});
-
-// SECURITY: demo login creates/logs into a known-credential account, so it's
-// off by default everywhere (including production) unless explicitly opted
-// into via ENABLE_DEMO_LOGIN=true. This is intentionally the opposite of the
-// old default (which was "on unless explicitly disabled", including in
-// production — that was the backdoor). Explicit opt-in only.
-const ENABLE_DEMO_LOGIN = process.env.ENABLE_DEMO_LOGIN === 'true';
-const APP_FRONTEND_URL = process.env.FRONTEND_URL || 'https://frontend-self-one-14.vercel.app';
-const DEMO_EMAIL = (process.env.DEMO_EMAIL || 'demo@skillnix.app').toLowerCase().trim();
-const DEMO_PASSWORD = process.env.DEMO_PASSWORD || 'Demo1234!';
-const DEMO_ORG_NAME = process.env.DEMO_ORG_NAME || 'SkillNix Demo';
-const DEMO_ORG_SLUG = process.env.DEMO_ORG_SLUG || 'skillnix-demo';
-
-const createDemoAccount = async () => {
-  let user = await User.findOne({ email: DEMO_EMAIL });
-  let organization = null;
-
-  if (!user) {
-    user = new User({
-      name: 'Demo Recruiter',
-      email: DEMO_EMAIL,
-      password: DEMO_PASSWORD,
-      role: 'owner',
-      isEmailVerified: true,
-      onboardingCompleted: true,
-      isActive: true
-    });
-    await user.save();
-  }
-
-  if (user.organizationId) {
-    organization = await Organization.findById(user.organizationId);
-  }
-
-  if (!organization) {
-    let slug = DEMO_ORG_SLUG;
-    let existingSlug = await Organization.findOne({ slug });
-    let suffix = 1;
-    while (existingSlug) {
-      slug = `${DEMO_ORG_SLUG}-${suffix}`;
-      existingSlug = await Organization.findOne({ slug });
-      suffix += 1;
-    }
-
-    organization = new Organization({
-      name: DEMO_ORG_NAME,
-      slug,
-      ownerId: user._id,
-      // Enterprise so the demo account showcases every plan-gated feature
-      // (Custom Roles, SSO, audit export, etc.) — this is a sales demo
-      // account, not a real customer subject to real plan limits.
-      plan: 'enterprise',
-      usageCurrent: { users: 1, jobs: 0, candidates: 0, emailsSent: 0 },
-      settings: { timezone: 'Asia/Kolkata', currency: 'INR', dateFormat: 'DD/MM/YYYY' },
-      atsSettings: {
-        pipelineStages: ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'],
-        defaultSources: ['LinkedIn', 'Indeed', 'Naukri', 'Referral', 'Direct'],
-        enableCandidatePortal: true,
-        enableCareersPage: true,
-      }
-    });
-    await organization.save();
-    user.organizationId = organization._id;
-    await user.save();
-  }
-
-  if (user.organizationId && !organization.ownerId) {
-    organization.ownerId = user._id;
-    await organization.save();
-  }
-
-  // Pin the demo org to Enterprise on every login too, in case it was
-  // created before this was the default, or a webhook/downgrade touched it.
-  if (organization.plan !== 'enterprise') {
-    organization.plan = 'enterprise';
-    await organization.save();
-  }
-
-  return { user, organization };
-};
-
-const publicApplyLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // 10 applications per hour per IP
-  message: { success: false, message: 'Too many applications. Please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-const uploadLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 50,
-  message: { success: false, message: 'Too many uploads. Please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false,
+  skip: (req) => req.path === '/health',
 });
 
 // ── Request Timeout ──────────────────────────────────────────────────
@@ -274,35 +194,78 @@ const stripeWebhookRoutes = require('./routes/stripeWebhookRoutes');
 app.use('/api/billing/webhook', stripeWebhookRoutes);
 
 // ── CORS ─────────────────────────────────────────────────────────────
-const allowedOriginList = [
-  "https://skillnix-ats-frontend.onrender.com",
-  "https://frontend-self-one-14.vercel.app",
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost:3000",
-  "http://127.0.0.1:5173",
-  "http://127.0.0.1:3000",
-  APP_FRONTEND_URL
+// Production: only FRONTEND_URL + known production hosts (no localhost).
+const productionOrigins = [
+  'https://skillnix-ats-frontend.onrender.com',
+  APP_FRONTEND_URL,
 ].filter(Boolean);
+
+const developmentOrigins = [
+  ...productionOrigins,
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000',
+];
+
+const allowedOriginList =
+  process.env.NODE_ENV === 'production' ? productionOrigins : developmentOrigins;
 
 function corsOrigin(origin, cb) {
   if (!origin) return cb(null, true);
-  if (allowedOriginList.indexOf(origin) !== -1) return cb(null, origin);
-  if (/^https?:\/\/localhost(:\d+)?$/i.test(origin) || /^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(origin)) return cb(null, origin);
+  if (allowedOriginList.includes(origin)) return cb(null, origin);
+  // Extra localhost only outside production
+  if (process.env.NODE_ENV !== 'production') {
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return cb(null, origin);
+  } else {
+    logger.warn({ origin }, 'CORS blocked origin');
+  }
   return cb(null, false);
 }
 app.use(cors({ origin: corsOrigin, credentials: true, optionsSuccessStatus: 200 }));
 app.options('*', cors({ origin: corsOrigin, credentials: true, optionsSuccessStatus: 200 }));
 
 // ── Body Parsing ─────────────────────────────────────────────────────
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ limit: '100mb', extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use(cookieParser());
+
+// Structured HTTP request logging (skips health checks)
+try {
+  const pinoHttp = require('pino-http');
+  app.use(pinoHttp({
+    logger,
+    autoLogging: { ignore: (req) => req.url === '/health' },
+    customLogLevel: (_req, res, err) => {
+      if (err || res.statusCode >= 500) return 'error';
+      if (res.statusCode >= 400) return 'warn';
+      return 'info';
+    },
+  }));
+} catch (e) {
+  logger.warn('pino-http not available — falling back to default logging');
+}
+
+app.use('/api', globalApiLimiter);
+
+// Soft API versioning: accept /api/v1/* as an alias for /api/*
+// Prefer /api/v1 for new clients; unversioned /api remains for compat.
+app.use((req, _res, next) => {
+  if (req.url === '/api/v1' || req.url.startsWith('/api/v1/') || req.url.startsWith('/api/v1?')) {
+    req.url = req.url.replace(/^\/api\/v1/, '/api');
+  }
+  next();
+});
+// Also expose candidates under /api/v1/candidates → rewrite handled above when using /api/v1/candidates
+// Legacy /candidates stays mounted below for older clients.
 
 // ══════════════════════════════════════════════════════════════════════
 // ROUTES
 // ══════════════════════════════════════════════════════════════════════
 
 // ── Public routes (no auth) ──────────────────────────────────────────
+app.use('/api', require('./routes/authRoutes'));
 app.use('/api', homeRoutes);
 app.use('/api/public', publicSubscribeRoutes);
 app.use('/oauth/zoho', zohoOAuthRoutes);
@@ -346,6 +309,8 @@ app.use('/api/report-schedules', reportScheduleRoutes);
 app.use('/api/analytics', verifyToken, analyticsRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/candidates', verifyToken, candidateRoutes);
+app.use('/api/candidates', verifyToken, candidateRoutes); // versioned-friendly alias
+app.use('/api/v1/candidates', verifyToken, candidateRoutes);
 app.use('/api/email', verifyToken, emailRoutes);
 app.use('/api/email-templates', verifyToken, emailTemplateRoutes);
 app.use('/api/positions', positionRoutes);
@@ -441,604 +406,16 @@ app.use((req, res, next) => {
   next();
 });
 
-// ══════════════════════════════════════════════════════════════════════
-// AUTH ROUTES (kept inline for backward compatibility)
-// ══════════════════════════════════════════════════════════════════════
-
-/* ================= LOGIN ================= */
-app.post('/api/login', authLimiter, async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password required' });
-    }
-    
-    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+mfaEnabled');
-    
-    if (!user) {
-      return res.status(401).json({ 
-        message: "email_not_found",
-        displayMessage: "Email not registered. Please sign up first."
-      });
-    }
-
-    if (!user.isActive) {
-      return res.status(401).json({
-        message: "account_deactivated",
-        displayMessage: "Your account has been deactivated. Please contact your administrator."
-      });
-    }
-    
-    // Password verification (bcrypt with plain text backward compat)
-    let passwordMatch = false;
-    
-    if (user.password.startsWith('$2')) {
-      try {
-        passwordMatch = await bcrypt.compare(password, user.password);
-      } catch (bcryptErr) {
-        passwordMatch = (user.password === password);
-      }
-    } else {
-      passwordMatch = (user.password === password);
-      // Upgrade plain text to bcrypt
-      if (passwordMatch) {
-        user.password = await bcrypt.hash(password, 10);
-        await user.save();
-      }
-    }
-    
-    if (!passwordMatch) {
-      return res.status(401).json({ 
-        message: "invalid_password",
-        displayMessage: "Invalid password. Please try again."
-      });
-    }
-
-    let organization = null;
-    let entitlements = [];
-    if (user.organizationId) {
-      organization = await Organization.findById(user.organizationId)
-        .select('name slug logo plan planExpiresAt atsSettings settings securitySettings')
-        .lean();
-      if (organization) {
-        entitlements = getEntitlements(organization.plan);
-      }
-    }
-
-    // Org MFA enforcement — must enroll before full access
-    if (
-      organization?.securitySettings?.mfaEnforced &&
-      planHasFeature(organization.plan, 'security.mfaEnforcement') &&
-      !user.mfaEnabled
-    ) {
-      const enrollmentToken = jwt.sign(
-        { id: user._id, purpose: 'mfa_enrollment' },
-        JWT_SECRET,
-        { expiresIn: '30m' }
-      );
-      return res.json({
-        message: 'MFA enrollment required',
-        requiresMfaEnrollment: true,
-        enrollmentToken,
-        user: { email: user.email, name: user.name || '' }
-      });
-    }
-
-    // MFA second factor
-    if (user.mfaEnabled) {
-      const mfaToken = jwt.sign(
-        { id: user._id, purpose: 'mfa_pending' },
-        JWT_SECRET,
-        { expiresIn: '5m' }
-      );
-      return res.json({
-        message: 'MFA required',
-        requiresMfa: true,
-        mfaToken,
-        user: { email: user.email, name: user.name || '' }
-      });
-    }
-    
-    // Update last login
-    user.lastLoginAt = new Date();
-    await user.save();
-    
-    const token = await issueAuthToken(user, req);
-    
-    res.json({ 
-      message: "Login Successful", 
-      token,
-      user: { 
-        name: user.name || '', 
-        email: user.email, 
-        phone: user.phone || '',
-        role: user.role,
-        organizationId: user.organizationId,
-        isEmailVerified: user.isEmailVerified,
-        onboardingCompleted: user.onboardingCompleted,
-        profilePicture: user.profilePicture || '',
-        mfaEnabled: user.mfaEnabled
-      },
-      organization,
-      entitlements
-    });
-  } catch (err) { 
-    console.error('[LOGIN] ERROR:', err.message);
-    res.status(500).json({ message: 'Internal server error' }); 
-  }
+// Auth handlers live in routes/authRoutes.js (mounted earlier at /api).
+// Legacy register path without /api prefix:
+app.post('/register', (req, res, next) => {
+  req.url = '/register';
+  require('./routes/authRoutes')(req, res, next);
 });
 
-app.post('/api/demo-login', authLimiter, async (req, res) => {
-  if (!ENABLE_DEMO_LOGIN) {
-    return res.status(404).json({ message: 'Demo login is unavailable.' });
-  }
-
-  try {
-    const { user, organization } = await createDemoAccount();
-    const token = generateToken(user);
-
-    res.json({
-      message: 'Demo login successful',
-      token,
-      user: {
-        name: user.name || 'Demo Recruiter',
-        email: user.email,
-        role: user.role,
-        organizationId: user.organizationId,
-        isEmailVerified: user.isEmailVerified,
-        onboardingCompleted: user.onboardingCompleted,
-        profilePicture: user.profilePicture || ''
-      },
-      organization,
-      entitlements: getEntitlements(organization.plan)
-    });
-  } catch (err) {
-    console.error('[DEMO LOGIN] ERROR:', err);
-    res.status(500).json({ message: 'Failed to create demo account.' });
-  }
-});
-
-/* ================= REGISTER (legacy — new flow uses /api/onboarding/register) ================= */
-app.post('/register', authLimiter, async (req, res) => {
-  try {
-    const { name, email, phone, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password required' });
-    }
-
-    const existing = await User.findOne({ email: email.toLowerCase().trim() });
-    if (existing) {
-      return res.status(400).json({ message: 'User already exists' });
-    }
-
-    const newUser = new User({ 
-      name: normalizeText(name || ''), 
-      email: email.toLowerCase().trim(), 
-      phone: phone?.trim() || '', 
-      password: password // Pre-save hook will hash this
-    });
-    await newUser.save();
-    
-    return res.status(201).json({ message: 'Registration successful' });
-  } catch (err) {
-    console.error('[REGISTER] ERROR:', err.message);
-    return res.status(500).json({ message: 'Server error' });
-  }
-});
-
-/* ================= PROFILE ROUTES ================= */
-
-// GET profile
-app.get('/api/profile', verifyToken, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id).select('-password');
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    
-    let organization = null;
-    let entitlements = [];
-    if (user.organizationId) {
-      organization = await Organization.findById(user.organizationId)
-        .select('name slug logo plan planExpiresAt atsSettings settings usageCurrent usageLimits')
-        .lean();
-      if (organization) {
-        entitlements = getEntitlements(organization.plan);
-      }
-    }
-    
-    res.json({ 
-      success: true, 
-      user: { 
-        name: user.name, 
-        email: user.email, 
-        phone: user.phone, 
-        profilePicture: user.profilePicture || '',
-        role: user.role,
-        organizationId: user.organizationId,
-        isEmailVerified: user.isEmailVerified,
-        onboardingCompleted: user.onboardingCompleted
-      },
-      organization,
-      entitlements
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// UPDATE profile (name, phone)
-app.put('/api/profile', verifyToken, async (req, res) => {
-  try {
-    const { name, phone } = req.body;
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-
-    if (name !== undefined) user.name = normalizeText(name);
-    if (phone !== undefined) user.phone = phone.trim();
-    await user.save();
-
-    const token = generateToken(user);
-    res.json({ 
-      success: true, 
-      message: 'Profile updated successfully', 
-      user: { name: user.name, email: user.email, phone: user.phone, profilePicture: user.profilePicture || '', role: user.role }, 
-      token 
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// UPLOAD profile picture
-const multerProfile = require('multer');
-const profilePicUpload = multerProfile({
-  storage: multerProfile.diskStorage({
-    destination: path.join(__dirname, 'uploads'),
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname) || '.jpg';
-      cb(null, `profile-${req.user.id}-${Date.now()}${ext}`);
-    }
-  }),
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (allowed.includes(ext)) cb(null, true);
-    else cb(new Error('Only image files (JPG, PNG, GIF, WebP) are allowed'));
-  }
-});
-
-app.put('/api/profile/picture', verifyToken, uploadLimiter, profilePicUpload.single('profilePicture'), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ success: false, message: 'No image file provided' });
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-
-    if (user.profilePicture) {
-      const oldPath = path.join(__dirname, user.profilePicture);
-      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-    }
-
-    user.profilePicture = `/uploads/${req.file.filename}`;
-    await user.save();
-
-    res.json({ success: true, message: 'Profile picture updated', profilePicture: user.profilePicture });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-app.delete('/api/profile/picture', verifyToken, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-
-    if (user.profilePicture) {
-      const picPath = path.join(__dirname, user.profilePicture);
-      if (fs.existsSync(picPath)) fs.unlinkSync(picPath);
-    }
-    user.profilePicture = '';
-    await user.save();
-
-    res.json({ success: true, message: 'Profile picture removed' });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// CHANGE password
-app.put('/api/profile/change-password', verifyToken, async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-    if (!currentPassword || !newPassword) return res.status(400).json({ success: false, message: 'Current and new password required' });
-    if (newPassword.length < 8) return res.status(400).json({ success: false, message: 'New password must be at least 8 characters' });
-
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    
-    let passwordMatch = false;
-    if (user.password.startsWith('$2')) {
-      try {
-        passwordMatch = await bcrypt.compare(currentPassword, user.password);
-      } catch (bcryptErr) {
-        passwordMatch = (user.password === currentPassword);
-      }
-    } else {
-      passwordMatch = (user.password === currentPassword);
-    }
-    
-    if (!passwordMatch) {
-      return res.status(401).json({ success: false, message: 'Current password is incorrect' });
-    }
-
-    user.password = await bcrypt.hash(newPassword, 10);
-    await user.save();
-    res.json({ success: true, message: 'Password changed successfully' });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-/* ================= PASSWORD RESET ROUTES ================= */
-
-// Step 1: Request password reset
-app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ success: false, message: 'Email is required' });
-
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user) {
-      return res.json({ success: true, message: 'If this email is registered, you will receive a reset link.' });
-    }
-
-    const resetToken = jwt.sign(
-      { id: user._id, email: user.email, purpose: 'password-reset' },
-      JWT_SECRET,
-      { expiresIn: '15m' }
-    );
-
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
-
-    try {
-      const htmlBody = `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="text-align: center; padding: 30px 20px; background: linear-gradient(135deg, #4F46E5, #7C3AED); border-radius: 12px 12px 0 0;">
-            <h1 style="color: white; margin: 0; font-size: 24px;">Password Reset</h1>
-            <p style="color: rgba(255,255,255,0.8); margin: 8px 0 0;">SkillNix ATS</p>
-          </div>
-          <div style="padding: 30px 20px; background: #ffffff; border: 1px solid #e5e7eb; border-top: none;">
-            <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${user.name || 'there'},</p>
-            <p style="color: #374151; font-size: 15px; line-height: 1.6;">We received a request to reset your password. Click the button below to create a new password:</p>
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${resetUrl}" style="display: inline-block; padding: 14px 32px; background: #4F46E5; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px;">Reset My Password</a>
-            </div>
-            <p style="color: #6B7280; font-size: 13px; line-height: 1.6;">This link expires in <strong>15 minutes</strong>. If you didn't request this, you can safely ignore this email.</p>
-            <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;">
-            <p style="color: #9CA3AF; font-size: 12px;">If the button doesn't work, copy and paste this URL:<br><a href="${resetUrl}" style="color: #4F46E5; word-break: break-all;">${resetUrl}</a></p>
-          </div>
-        </div>
-      `;
-
-      await sendEmail(
-        user.email,
-        'Reset Your Password - SkillNix ATS',
-        htmlBody,
-        `Reset your password: ${resetUrl} (expires in 15 minutes)`,
-        { userId: user._id }
-      );
-    } catch (emailErr) {
-      console.error('[PASSWORD-RESET] Email send failed:', emailErr.message);
-      if (emailErr.message === 'EMAIL_NOT_CONFIGURED') {
-        return res.json({
-          success: true,
-          message: 'Email service not configured. Use the direct reset link.',
-          resetUrl: resetUrl
-        });
-      }
-    }
-
-    res.json({ success: true, message: 'If this email is registered, you will receive a reset link.' });
-  } catch (err) {
-    console.error('[PASSWORD-RESET] Error:', err.message);
-    res.status(500).json({ success: false, message: 'Failed to process password reset request' });
-  }
-});
-
-// Step 2: Verify reset token
-app.get('/api/auth/verify-reset-token', async (req, res) => {
-  try {
-    const { token } = req.query;
-    if (!token) return res.status(400).json({ success: false, message: 'Token is required' });
-
-    const decoded = jwt.verify(token, JWT_SECRET);
-    if (decoded.purpose !== 'password-reset') {
-      return res.status(400).json({ success: false, message: 'Invalid token type' });
-    }
-
-    res.json({ success: true, email: decoded.email });
-  } catch (err) {
-    if (err.name === 'TokenExpiredError') {
-      return res.status(400).json({ success: false, message: 'Reset link has expired. Please request a new one.' });
-    }
-    res.status(400).json({ success: false, message: 'Invalid or expired reset link' });
-  }
-});
-
-// Step 3: Reset password with token
-app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
-  try {
-    const { token, newPassword } = req.body;
-    if (!token || !newPassword) return res.status(400).json({ success: false, message: 'Token and new password required' });
-    if (newPassword.length < 8) return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
-
-    const decoded = jwt.verify(token, JWT_SECRET);
-    if (decoded.purpose !== 'password-reset') {
-      return res.status(400).json({ success: false, message: 'Invalid token type' });
-    }
-
-    const user = await User.findById(decoded.id);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-
-    user.password = await bcrypt.hash(newPassword, 10);
-    await user.save();
-
-    res.json({ success: true, message: 'Password reset successfully. You can now login with your new password.' });
-  } catch (err) {
-    if (err.name === 'TokenExpiredError') {
-      return res.status(400).json({ success: false, message: 'Reset link has expired. Please request a new one.' });
-    }
-    res.status(500).json({ success: false, message: 'Failed to reset password' });
-  }
-});
-
-// GET account stats (for profile page)
-app.get('/api/profile/stats', verifyToken, async (req, res) => {
-  try {
-    const candidateFilter = req.user.organizationId 
-      ? { organizationId: req.user.organizationId }
-      : { createdBy: req.user.id };
-    const candidateCount = await Candidate.countDocuments(candidateFilter);
-    
-    const user = await User.findById(req.user.id).select('createdAt');
-    const memberSince = user?.createdAt || (user?._id ? user._id.getTimestamp() : null);
-    
-    let orgStats = null;
-    if (req.user.organizationId) {
-      const org = await Organization.findById(req.user.organizationId)
-        .select('usageCurrent usageLimits plan planExpiresAt')
-        .lean();
-      orgStats = org;
-    }
-    
-    res.json({
-      success: true,
-      stats: {
-        totalCandidates: candidateCount,
-        memberSince,
-        role: req.user.role,
-        organization: orgStats
-      }
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-/* ================= JOB ROUTES (legacy inline — will migrate to jobRoutes) ================= */
-app.get('/jobs', verifyToken, async (req, res) => {
-  try {
-    const { isTemplate } = req.query;
-    
-    // Build tenant-scoped query
-    const baseFilter = req.user.organizationId 
-      ? { organizationId: req.user.organizationId }
-      : {};
-    
-    const query = isTemplate === 'true' 
-      ? { ...baseFilter, isTemplate: true } 
-      : { ...baseFilter, $or: [{ isTemplate: false }, { isTemplate: { $exists: false } }] };
-    
-    const jobs = await Job.find(query).sort({ createdAt: -1 });
-    res.json(jobs);
-  } catch (err) { res.status(500).json({ message: err.message }); }
-});
-
-app.post('/jobs', verifyToken, requireRecruiterOrAbove, checkPlanLimit('jobs'), async (req, res) => {
-  try {
-    const jobData = { ...req.body };
-    
-    // Add tenant context
-    if (req.user.organizationId) {
-      jobData.organizationId = req.user.organizationId;
-    }
-    jobData.createdBy = req.user.id;
-    
-    // Sync title/role for backward compat
-    if (jobData.role && !jobData.title) {
-      jobData.title = jobData.role;
-    }
-    if (jobData.title && !jobData.role) {
-      jobData.role = jobData.title;
-    }
-    
-    const newJob = new Job(jobData);
-    await newJob.save();
-    
-    // Increment org usage counter
-    if (req.user.organizationId) {
-      await Organization.findByIdAndUpdate(
-        req.user.organizationId,
-        { $inc: { 'usageCurrent.jobs': 1 } }
-      );
-    }
-    
-    // Emit event
-    eventBus.emit(eventTypes.JOB_CREATED, {
-      organizationId: req.user.organizationId,
-      userId: req.user.id,
-      jobId: newJob._id,
-      title: newJob.title
-    });
-    
-    res.status(201).json(newJob);
-  } catch (err) { res.status(500).json({ message: err.message }); }
-});
-
-app.put('/jobs/:id', verifyToken, requireRecruiterOrAbove, async (req, res) => {
-  try {
-    const scope = req.user.organizationId
-      ? { organizationId: req.user.organizationId }
-      : { createdBy: req.user.id };
-
-    const updates = { ...req.body };
-    delete updates._id;
-    delete updates.organizationId;
-    delete updates.createdBy;
-
-    if (updates.role && !updates.title) updates.title = updates.role;
-    if (updates.title && !updates.role) updates.role = updates.title;
-
-    if (updates.status === 'Closed' && !updates.closedAt) {
-      updates.closedAt = new Date();
-      updates.isPublished = false;
-    }
-
-    const job = await Job.findOneAndUpdate(
-      { _id: req.params.id, ...scope },
-      { $set: updates },
-      { new: true, runValidators: true }
-    );
-
-    if (!job) return res.status(404).json({ message: 'Job not found' });
-    res.json(job);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-app.delete('/jobs/:id', verifyToken, requireRecruiterOrAbove, async (req, res) => {
-  try {
-    const scope = req.user.organizationId
-      ? { organizationId: req.user.organizationId }
-      : { createdBy: req.user.id };
-
-    const deleted = await Job.findOneAndDelete({ _id: req.params.id, ...scope });
-    if (!deleted) return res.status(404).json({ message: 'Job not found' });
-
-    if (req.user.organizationId) {
-      await Organization.findByIdAndUpdate(
-        req.user.organizationId,
-        { $inc: { 'usageCurrent.jobs': -1 } }
-      );
-    }
-
-    res.json({ message: 'Job deleted successfully', id: req.params.id });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+app.use('/api/profile', require('./routes/profileRoutes'));
+app.use('/jobs', require('./routes/jobRoutes'));
+app.use('/api/jobs', require('./routes/jobRoutes'));
 
 // ══════════════════════════════════════════════════════════════════════
 // DATABASE CONNECTION
@@ -1048,22 +425,23 @@ const mongoUrl = process.env.MONGODB_URL || process.env.MONGODB_URI || process.e
 
 const startServer = () => {
   const server = app.listen(PORT, () => {
-    console.log(`🚀 SkillNix SaaS ATS v3 running on port ${PORT}`);
+    global.__ats_server = server; // Store ref for graceful shutdown
+    logger.info(`🚀 SkillNix SaaS ATS v3 running on port ${PORT}`);
     const s3Resume = require('./services/s3Service').isS3Configured();
-    console.log(s3Resume
+    logger.info(s3Resume
       ? `[Resume storage] S3 — bucket: ${process.env.S3_BUCKET_NAME}`
       : '[Resume storage] Local (uploads/)');
     startNotificationScheduler();
     initWebhookDispatcher();
     startReportScheduler();
-    console.log('[Event Bus] Initialized with listeners:', eventBus.eventNames().join(', '));
+    logger.info('[Event Bus] Initialized with listeners:', eventBus.eventNames().join(', '));
   });
 
   server.timeout = 600000;
   server.keepAliveTimeout = 61000;
 };
 
-console.log('🔌 Connecting to MongoDB...', mongoUrl.replace(/^(mongodb\+srv:\/\/[^:]+):[^@]+@/, '$1:****@'));
+logger.info('🔌 Connecting to MongoDB...', mongoUrl.replace(/^(mongodb\+srv:\/\/[^:]+):[^@]+@/, '$1:****@'));
 
 mongoose.connect(mongoUrl, {
   serverSelectionTimeoutMS: 30000,
@@ -1076,215 +454,23 @@ mongoose.connect(mongoUrl, {
   bufferCommands: false
 })
   .then(() => {
-    console.log('✅ MongoDB Connected');
+    logger.info('✅ MongoDB Connected');
     startServer();
   })
   .catch(err => {
-    console.error('❌ Mongo Error:', err);
+    logger.error('❌ Mongo Error:', err);
     process.exit(1);
   });
 
 mongoose.connection.on('error', (err) => {
-  console.error('❌ MongoDB connection error:', err);
+  logger.error('❌ MongoDB connection error:', err);
 });
 
 mongoose.connection.on('disconnected', () => {
-  console.warn('⚠️ MongoDB disconnected');
+  logger.warn('⚠️ MongoDB disconnected');
 });
 
-// ── Post-connection migrations ───────────────────────────────────────
-mongoose.connection.once('open', async () => {
-  // Drop legacy indexes
-  try {
-    const indexes = await Candidate.collection.indexes();
-    const hasContactIndex = indexes.find(idx => idx.name === 'contact_1');
-    const hasEmailIndex = indexes.find(idx => idx.name === 'email_1');
-    if (hasContactIndex) {
-      await Candidate.collection.dropIndex('contact_1');
-      console.log('✅ Dropped legacy contact_1 index');
-    }
-    if (hasEmailIndex) {
-      await Candidate.collection.dropIndex('email_1');
-      console.log('✅ Dropped legacy email_1 index');
-    }
-  } catch (err) {
-    console.warn('⚠️ Failed to drop legacy indexes:', err.message);
-  }
-
-  // Migrate orphan candidates to first user
-  try {
-    const orphanCount = await Candidate.collection.countDocuments({ createdBy: { $exists: false } });
-    if (orphanCount > 0) {
-      const firstUser = await User.findOne().sort({ _id: 1 });
-      if (firstUser) {
-        const result = await Candidate.collection.updateMany(
-          { createdBy: { $exists: false } },
-          { $set: { createdBy: firstUser._id } }
-        );
-        console.log(`✅ MIGRATION: Assigned ${result.modifiedCount} orphan candidates to user ${firstUser.email}`);
-      }
-    }
-  } catch (err) {
-    console.warn('⚠️ Migration error:', err.message);
-  }
-
-  // Migrate master data collections
-  const masterCollections = ['sources', 'positions', 'clients', 'companies'];
-  for (const collName of masterCollections) {
-    try {
-      const coll = mongoose.connection.db.collection(collName);
-      const indexes = await coll.indexes();
-      
-      for (const idx of indexes) {
-        const hasNameOnly = idx.key.name === 1 && Object.keys(idx.key).length === 1;
-        const isUniqueGlobal = idx.unique === true;
-        const isDefaultId = idx.name === '_id_';
-        const isOldPattern = idx.name === 'name_1' || idx.name === 'name_1_createdBy_1';
-        
-        if (!isDefaultId && (isUniqueGlobal && hasNameOnly || isOldPattern)) {
-          try {
-            await coll.dropIndex(idx.name);
-            console.log(`✅ Dropped problematic index on ${collName}: ${idx.name}`);
-          } catch (dropErr) {
-            console.warn(`⚠️ Could not drop index ${idx.name} on ${collName}:`, dropErr.message);
-          }
-        }
-      }
-      
-      try {
-        await coll.createIndex({ createdBy: 1, name: 1 }, { unique: true, sparse: false });
-      } catch (err) {
-        if (!err.message.includes('already exists')) {
-          console.warn(`⚠️ Could not create compound index on ${collName}:`, err.message);
-        }
-      }
-    } catch (err) {
-      console.warn(`⚠️ Error checking indexes for ${collName}:`, err.message);
-    }
-
-    // Assign orphan records
-    try {
-      const coll = mongoose.connection.db.collection(collName);
-      const orphans = await coll.countDocuments({ createdBy: { $exists: false } });
-      if (orphans > 0) {
-        const firstUser = await User.findOne().sort({ _id: 1 });
-        if (firstUser) {
-          const res = await coll.updateMany(
-            { createdBy: { $exists: false } },
-            { $set: { createdBy: firstUser._id } }
-          );
-          console.log(`✅ MIGRATION: Assigned ${res.modifiedCount} orphan ${collName} to ${firstUser.email}`);
-        }
-      }
-    } catch (err) {
-      console.warn(`⚠️ Migration ${collName}:`, err.message);
-    }
-  }
-
-  // ── Backfill organizationId on Candidate records that are missing it.
-  // This is business-critical PII data — candidateRoutes.js/candidateController.js
-  // now use organizationId as the multi-tenant boundary, so any record missing
-  // it needs to be assigned before that boundary is fully effective.
-  try {
-    const orphanCandidates = await Candidate.find({ organizationId: { $exists: false }, createdBy: { $exists: true, $ne: null } }).select('_id createdBy').lean();
-    let migratedCandidates = 0;
-    const ownerOrgCache = new Map();
-    for (const doc of orphanCandidates) {
-      try {
-        const ownerId = String(doc.createdBy);
-        if (!ownerOrgCache.has(ownerId)) {
-          const owner = await User.findById(doc.createdBy).select('organizationId');
-          ownerOrgCache.set(ownerId, owner?.organizationId || null);
-        }
-        const orgId = ownerOrgCache.get(ownerId);
-        if (orgId) {
-          await Candidate.updateOne({ _id: doc._id }, { $set: { organizationId: orgId } });
-          migratedCandidates++;
-        }
-      } catch (docErr) {
-        console.warn(`⚠️ Could not backfill organizationId on candidate/${doc._id}:`, docErr.message);
-      }
-    }
-    if (migratedCandidates > 0) {
-      console.log(`✅ MIGRATION: Backfilled organizationId on ${migratedCandidates} candidate record(s)`);
-    }
-  } catch (err) {
-    console.warn('⚠️ Candidate organizationId backfill error:', err.message);
-  }
-
-  // ── Backfill organizationId on Client/Position/Source (previously scoped
-  // only by createdBy, which let any authenticated user edit/delete any
-  // other org's records via update/delete-by-_id routes). ──
-  const tenantScopedMasterCollections = ['clients', 'positions', 'sources', 'teammembers', 'companies'];
-  for (const collName of tenantScopedMasterCollections) {
-    try {
-      const coll = mongoose.connection.db.collection(collName);
-      const orphans = await coll.find({ organizationId: { $exists: false }, createdBy: { $exists: true } }).toArray();
-      let migrated = 0;
-      for (const doc of orphans) {
-        try {
-          const owner = await User.findById(doc.createdBy).select('organizationId');
-          if (owner && owner.organizationId) {
-            await coll.updateOne({ _id: doc._id }, { $set: { organizationId: owner.organizationId } });
-            migrated++;
-          }
-        } catch (docErr) {
-          // e.g. duplicate organizationId+email under the new unique index —
-          // skip this one record rather than aborting the whole backfill.
-          console.warn(`⚠️ Could not backfill organizationId on ${collName}/${doc._id}:`, docErr.message);
-        }
-      }
-      if (migrated > 0) {
-        console.log(`✅ MIGRATION: Backfilled organizationId on ${migrated} ${collName} record(s)`);
-      }
-    } catch (err) {
-      console.warn(`⚠️ organizationId backfill error for ${collName}:`, err.message);
-    }
-  }
-
-  // ── NEW: Create default organization for existing users without one ──
-  try {
-    const usersWithoutOrg = await User.find({ organizationId: { $exists: false } }).limit(100);
-    if (usersWithoutOrg.length > 0) {
-      console.log(`[MIGRATION] Found ${usersWithoutOrg.length} users without organization. Creating default orgs...`);
-      for (const user of usersWithoutOrg) {
-        try {
-          const org = new Organization({
-            name: `${user.name || user.email.split('@')[0]}'s Organization`,
-            ownerId: user._id,
-            plan: 'free_trial',
-            planExpiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
-          });
-          await org.save();
-          
-          user.organizationId = org._id;
-          user.role = 'owner';
-          user.isEmailVerified = true; // Existing users are assumed verified
-          user.onboardingCompleted = true;
-          await user.save();
-          
-          // Backfill organizationId on this user's candidates
-          await Candidate.collection.updateMany(
-            { createdBy: user._id, organizationId: { $exists: false } },
-            { $set: { organizationId: org._id } }
-          );
-          
-          // Backfill organizationId on this user's jobs
-          await Job.collection.updateMany(
-            { createdBy: user._id, organizationId: { $exists: false } },
-            { $set: { organizationId: org._id } }
-          );
-          
-          console.log(`✅ MIGRATION: Created org "${org.name}" (${org.slug}) for user ${user.email}`);
-        } catch (err) {
-          console.warn(`⚠️ Failed to create org for ${user.email}:`, err.message);
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('⚠️ Org migration error:', err.message);
-  }
-});
+// Migrations run via migrate-mongo (npm run migrate:up), not on server boot.
 
 // ══════════════════════════════════════════════════════════════════════
 // DIAGNOSTICS (protected in production, useful for dev)
@@ -1311,3 +497,32 @@ if (process.env.NODE_ENV !== 'production') {
     }
   });
 }
+
+// ══════════════════════════════════════════════════════════════════════
+// GRACEFUL SHUTDOWN
+// ══════════════════════════════════════════════════════════════════════
+const gracefulShutdown = (signal) => {
+  logger.info(`\n📴 Received ${signal}. Starting graceful shutdown...`);
+  // Close the HTTP server first (stop accepting new connections)
+  if (global.__ats_server) {
+    global.__ats_server.close(() => {
+      logger.info('✅ HTTP server closed');
+      mongoose.connection.close(false).then(() => {
+        logger.info('✅ MongoDB connection closed');
+        process.exit(0);
+      }).catch(() => {
+        process.exit(0);
+      });
+    });
+  } else {
+    mongoose.connection.close(false).then(() => process.exit(0)).catch(() => process.exit(0));
+  }
+  // Force kill after 30 seconds if graceful shutdown hangs
+  setTimeout(() => {
+    logger.error('⚠️ Graceful shutdown timed out after 30s. Forcing exit.');
+    process.exit(1);
+  }, 30000).unref();
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

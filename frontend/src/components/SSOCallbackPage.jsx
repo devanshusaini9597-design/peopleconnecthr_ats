@@ -22,6 +22,7 @@ const SSOCallbackPage = () => {
         const res = await fetch(`${BASE_API_URL}/api/sso/exchange`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ code })
         });
         const data = await res.json();
@@ -30,17 +31,19 @@ const SSOCallbackPage = () => {
           return;
         }
 
-        localStorage.setItem('token', data.token);
+        localStorage.removeItem('token');
         localStorage.setItem('userEmail', data.user?.email || '');
         localStorage.setItem('userName', data.user?.name || '');
         localStorage.setItem('isLoggedIn', 'true');
         if (data.user) {
           localStorage.setItem('userData', JSON.stringify(data.user));
           localStorage.setItem('userRole', data.user.role || 'recruiter');
+          if (data.user.organizationId) localStorage.setItem('orgId', data.user.organizationId);
         }
         if (data.organization) {
           localStorage.setItem('orgData', JSON.stringify(data.organization));
           localStorage.setItem('orgName', data.organization.name || '');
+          if (data.organization._id) localStorage.setItem('orgId', data.organization._id);
         }
 
         window.location.href = '/dashboard';

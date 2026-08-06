@@ -29,4 +29,6 @@ const talentPoolSchema = new mongoose.Schema({
 
 talentPoolSchema.index({ organizationId: 1, name: 1 }, { unique: true });
 
+talentPoolSchema.plugin(require('../utils/tenantPlugin'));
+
 module.exports = mongoose.model('TalentPool', talentPoolSchema);

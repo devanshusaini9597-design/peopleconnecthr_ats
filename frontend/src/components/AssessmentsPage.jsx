@@ -1,514 +1,36 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { ClipboardList, Plus, Trash2, Lock, Loader2, Send, ArrowLeft, Clock, FileEdit, Search, AlertCircle, RefreshCw, Type, Code2, ListChecks } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  ClipboardList, Plus, Trash2, Lock, Loader2, Search, AlertCircle, RefreshCw,
+  Clock, Filter, Info,
+} from 'lucide-react';
 import { authenticatedFetch, handleUnauthorized, readApiJson } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
-import Modal from './ui/Modal';
 import ConfirmationModal from './ConfirmationModal';
 import PremiumSelect from './ui/PremiumSelect';
-
-const emptyQuestion = () => ({ type: 'text', prompt: '', options: ['', ''], correctOptionIndex: 0, points: 10, language: '' });
-
-const QUESTION_TYPE_OPTIONS = [
-  { value: 'text', label: 'Free text', description: 'Open written answer', icon: Type },
-  { value: 'code', label: 'Code', description: 'Code snippet answer', icon: Code2 },
-  { value: 'multiple_choice', label: 'Multiple choice', description: 'Pick one correct option', icon: ListChecks },
-];
-
-const STATUS_BADGE = {
-  pending: 'badge-neutral',
-  in_progress: 'badge-brand',
-  submitted: 'badge-warning',
-  graded: 'badge-success',
-  expired: 'badge-danger'
-};
-
-const BuilderModal = ({ open, onClose, onSave, saving }) => {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [durationMinutes, setDurationMinutes] = useState(45);
-  const [questions, setQuestions] = useState([emptyQuestion()]);
-
-  useEffect(() => {
-    if (open) {
-      setTitle('');
-      setDescription('');
-      setDurationMinutes(45);
-      setQuestions([emptyQuestion()]);
-    }
-  }, [open]);
-
-  const updateQuestion = (idx, patch) => {
-    setQuestions((qs) => qs.map((q, i) => (i === idx ? { ...q, ...patch } : q)));
-  };
-  const updateOption = (qIdx, oIdx, value) => {
-    setQuestions((qs) => qs.map((q, i) => {
-      if (i !== qIdx) return q;
-      const options = [...q.options];
-      options[oIdx] = value;
-      return { ...q, options };
-    }));
-  };
-  const addOption = (qIdx) => updateQuestion(qIdx, { options: [...questions[qIdx].options, ''] });
-  const removeQuestion = (idx) => setQuestions((qs) => qs.filter((_, i) => i !== idx));
-
-  const valid = title.trim() && questions.length > 0 && questions.every((q) => q.prompt.trim());
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="New Assessment"
-      description="Build a skills test — code answers are graded by your team."
-      size="xl"
-      footer={
-        <>
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button
-            type="button"
-            onClick={() => onSave({ title, description, durationMinutes, questions })}
-            disabled={saving || !valid}
-            className="btn-primary"
-          >
-            {saving ? <><Loader2 size={16} className="animate-spin" /> Creating…</> : 'Create Assessment'}
-          </button>
-        </>
-      }
-    >
-      <div className="space-y-5">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="sm:col-span-2">
-            <label className="label-ats">Title</label>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} className="input-ats" placeholder="e.g. React Fundamentals" />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="label-ats">Description</label>
-            <input value={description} onChange={(e) => setDescription(e.target.value)} className="input-ats" placeholder="Optional" />
-          </div>
-          <div>
-            <label className="label-ats">Duration (minutes)</label>
-            <input type="number" min="5" value={durationMinutes} onChange={(e) => setDurationMinutes(Number(e.target.value))} className="input-ats" />
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex items-center justify-between gap-2">
-            <label className="text-sm font-bold text-stone-900">Questions</label>
-            <button
-              type="button"
-              onClick={() => setQuestions((qs) => [...qs, emptyQuestion()])}
-              className="text-sm text-brand-600 font-semibold hover:text-brand-700 transition-colors"
-            >
-              + Add question
-            </button>
-          </div>
-
-          {questions.map((q, idx) => (
-            <div key={idx} className="rounded-2xl border border-stone-200 p-4 space-y-3 bg-stone-50/60 hover:border-brand-200/60 transition-colors">
-              <div className="flex items-center justify-between">
-                <span className="badge-brand">Question {idx + 1}</span>
-                {questions.length > 1 && (
-                  <button type="button" onClick={() => removeQuestion(idx)} className="p-1.5 rounded-lg text-stone-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <PremiumSelect
-                  compact
-                  value={q.type}
-                  onChange={(v) => updateQuestion(idx, { type: v })}
-                  options={QUESTION_TYPE_OPTIONS}
-                  placeholder="Question type"
-                  icon={ListChecks}
-                  className="w-full"
-                />
-                {q.type === 'code' && (
-                  <input
-                    value={q.language}
-                    onChange={(e) => updateQuestion(idx, { language: e.target.value })}
-                    placeholder="Language (e.g. javascript)"
-                    className="input-ats !py-2"
-                  />
-                )}
-                <input
-                  type="number"
-                  min="0"
-                  value={q.points}
-                  onChange={(e) => updateQuestion(idx, { points: Number(e.target.value) })}
-                  placeholder="Points"
-                  className="input-ats !py-2"
-                />
-              </div>
-              <textarea
-                value={q.prompt}
-                onChange={(e) => updateQuestion(idx, { prompt: e.target.value })}
-                placeholder="Question prompt"
-                rows={2}
-                className="textarea-ats"
-              />
-              {q.type === 'multiple_choice' && (
-                <div className="space-y-1.5">
-                  {q.options.map((opt, oIdx) => (
-                    <div key={oIdx} className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        checked={q.correctOptionIndex === oIdx}
-                        onChange={() => updateQuestion(idx, { correctOptionIndex: oIdx })}
-                        className="text-brand-600 focus:ring-brand-500/30"
-                      />
-                      <input
-                        value={opt}
-                        onChange={(e) => updateOption(idx, oIdx, e.target.value)}
-                        placeholder={`Option ${oIdx + 1}`}
-                        className="flex-1 input-ats !py-2"
-                      />
-                    </div>
-                  ))}
-                  <button type="button" onClick={() => addOption(idx)} className="text-xs text-brand-600 font-semibold hover:text-brand-700">
-                    + Add option
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    </Modal>
-  );
-};
-
-const InviteModal = ({ assessment, open, onClose, onSent }) => {
-  const toast = useToast();
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [sending, setSending] = useState(false);
-
-  useEffect(() => {
-    if (!open) {
-      setQuery('');
-      setResults([]);
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const handle = setTimeout(async () => {
-      if (!query.trim()) { setResults([]); return; }
-      try {
-        const res = await authenticatedFetch(`/candidates?search=${encodeURIComponent(query.trim())}&limit=10`);
-        const data = await res.json();
-        if (data.success) setResults(data.data || []);
-      } catch { /* best-effort */ }
-    }, 350);
-    return () => clearTimeout(handle);
-  }, [query, open]);
-
-  const handleInvite = async (candidate) => {
-    setSending(true);
-    try {
-      const res = await authenticatedFetch(`/api/assessments/${assessment._id}/invite`, {
-        method: 'POST',
-        body: JSON.stringify({ candidateId: candidate._id })
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        toast?.error?.(data.message || 'Failed to send invite');
-        return;
-      }
-      toast?.success?.(`Invite sent to ${candidate.name}`);
-      onSent();
-      onClose();
-    } catch {
-      toast?.error?.('Failed to send invite');
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Invite a candidate"
-      description={`Send “${assessment.title}” to a candidate in your database.`}
-      size="md"
-    >
-      <div className="relative">
-        <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search candidates…"
-          className="input-ats !pl-9"
-          autoFocus
-        />
-      </div>
-      <div className="mt-3 max-h-64 overflow-y-auto space-y-0.5">
-        {results.length === 0 ? (
-          <EmptyState
-            icon={Search}
-            tone={query ? 'amber' : 'sky'}
-            compact
-            message={query ? 'No candidates found' : 'Search candidates'}
-            subMessage={query ? 'Try a different name or email.' : 'Start typing a name or email.'}
-          />
-        ) : results.map((c) => (
-          <button
-            key={c._id}
-            type="button"
-            onClick={() => handleInvite(c)}
-            disabled={sending}
-            className="list-row-ats w-full text-left justify-between disabled:opacity-50"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-100 to-teal-100 text-brand-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                {(c.name || 'N')[0].toUpperCase()}
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-stone-900 truncate">{c.name}</div>
-                <div className="text-xs text-stone-500 truncate">{c.email}</div>
-              </div>
-            </div>
-            {sending ? <Loader2 className="w-4 h-4 text-brand-600 animate-spin" /> : <Send className="w-4 h-4 text-brand-600" />}
-          </button>
-        ))}
-      </div>
-    </Modal>
-  );
-};
-
-const GradeModal = ({ invite, open, onClose, onGraded }) => {
-  const toast = useToast();
-  const [scores, setScores] = useState({});
-  const [feedback, setFeedback] = useState('');
-  const [saving, setSaving] = useState(false);
-  const assessment = invite?.assessmentId;
-
-  useEffect(() => {
-    if (open && invite) {
-      setFeedback(invite.feedback || '');
-      setScores({});
-    }
-  }, [open, invite]);
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const res = await authenticatedFetch(`/api/assessments/invites/${invite._id}/grade`, {
-        method: 'POST',
-        body: JSON.stringify({
-          scores: Object.entries(scores).map(([questionId, manualScore]) => ({ questionId, manualScore: Number(manualScore) })),
-          feedback
-        })
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        toast?.error?.(data.message || 'Failed to save grade');
-        return;
-      }
-      toast?.success?.('Grade saved');
-      onGraded();
-      onClose();
-    } catch {
-      toast?.error?.('Failed to save grade');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (!invite) return null;
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={`${invite.candidateId?.name}'s submission`}
-      description={assessment?.title}
-      size="xl"
-      footer={
-        <>
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="button" onClick={handleSave} disabled={saving} className="btn-primary">
-            {saving ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : 'Save Grade'}
-          </button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        {(assessment?.questions || []).map((q) => {
-          const answer = invite.answers?.find((a) => a.questionId === q._id);
-          return (
-            <div key={q._id} className="rounded-2xl border border-stone-200 p-4 bg-stone-50/40">
-              <p className="text-sm font-semibold text-stone-900">
-                {q.prompt}{' '}
-                <span className="text-xs font-medium text-stone-400">({q.points} pts)</span>
-              </p>
-              {q.type === 'multiple_choice' ? (
-                <p className="text-sm text-stone-600 mt-2">
-                  Selected: {q.options?.[Number(answer?.response)] ?? '—'} · Auto-graded: {answer?.autoScore ?? 0}/{q.points}
-                </p>
-              ) : (
-                <>
-                  <pre className="text-sm text-stone-700 mt-2 whitespace-pre-wrap bg-white p-3 rounded-xl border border-stone-100">{answer?.response || '(no answer)'}</pre>
-                  <div className="flex items-center gap-2 mt-3">
-                    <label className="label-ats !mb-0">Score</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max={q.points}
-                      defaultValue={answer?.manualScore ?? ''}
-                      onChange={(e) => setScores((s) => ({ ...s, [q._id]: e.target.value }))}
-                      className="w-24 input-ats !py-1.5"
-                    />
-                    <span className="text-xs text-stone-400">/ {q.points}</span>
-                  </div>
-                </>
-              )}
-            </div>
-          );
-        })}
-        <div>
-          <label className="label-ats">Overall feedback</label>
-          <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} rows={3} className="textarea-ats" />
-        </div>
-      </div>
-    </Modal>
-  );
-};
-
-const AssessmentDetail = ({ assessment, onBack, toast }) => {
-  const [invites, setInvites] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showInvite, setShowInvite] = useState(false);
-  const [gradingInvite, setGradingInvite] = useState(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await authenticatedFetch(`/api/assessments/invites?assessmentId=${assessment._id}`);
-      const data = await res.json();
-      if (data.success) setInvites(data.data || []);
-    } finally {
-      setLoading(false);
-    }
-  }, [assessment._id]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const openGrade = async (invite) => {
-    const res = await authenticatedFetch(`/api/assessments/invites/${invite._id}`);
-    const data = await res.json();
-    if (data.success) setGradingInvite(data.data);
-  };
-
-  return (
-    <div className="space-y-6 animate-page-enter">
-      <button
-        type="button"
-        onClick={onBack}
-        className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-600 hover:text-brand-700 transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" /> Back to assessments
-      </button>
-
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-        <div className="flex items-start gap-3 sm:gap-4 min-w-0">
-          <div className="icon-box-ats !w-12 !h-12">
-            <ClipboardList strokeWidth={2.5} />
-          </div>
-          <div className="min-w-0">
-            <h2 className="text-xl sm:text-2xl font-bold text-stone-900 tracking-tight" style={{ letterSpacing: '-0.025em' }}>
-              {assessment.title}
-            </h2>
-            <p className="text-sm text-stone-500 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="inline-flex items-center gap-1"><ClipboardList className="w-3.5 h-3.5" /> {assessment.questions.length} questions</span>
-              <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {assessment.durationMinutes} min</span>
-              <span className="badge-neutral">{assessment.maxScore} pts max</span>
-            </p>
-          </div>
-        </div>
-        <button type="button" onClick={() => setShowInvite(true)} className="btn-primary w-full sm:w-auto">
-          <Send className="w-4 h-4" /> Invite Candidate
-        </button>
-      </div>
-
-      <div className="table-shell-ats">
-        {loading ? (
-          <div className="p-12 flex flex-col items-center gap-2">
-            <Loader2 className="w-7 h-7 text-brand-600 animate-spin" />
-            <p className="text-sm text-stone-500 font-medium">Loading invites…</p>
-          </div>
-        ) : invites.length === 0 ? (
-          <EmptyState
-            icon={ClipboardList}
-            tone="sky"
-            message="No invites sent yet"
-            subMessage="Invite a candidate to take this assessment."
-            action={
-              <button type="button" onClick={() => setShowInvite(true)} className="btn-primary">
-                <Send className="w-4 h-4" /> Invite Candidate
-              </button>
-            }
-          />
-        ) : (
-          <div className="divide-y divide-stone-100">
-            {invites.map((inv) => (
-              <div key={inv._id} className="p-4 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-brand-50/20 transition-colors">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-100 to-teal-100 text-brand-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                    {(inv.candidateId?.name || 'N')[0].toUpperCase()}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="font-semibold text-stone-900 truncate">{inv.candidateId?.name}</div>
-                    <div className="text-sm text-stone-500 truncate">{inv.candidateId?.email}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                  {inv.totalScore !== undefined && inv.totalScore !== null && (
-                    <span className="text-sm font-semibold text-stone-700 tabular-nums">
-                      {inv.totalScore}/{inv.maxScore || assessment.maxScore}
-                    </span>
-                  )}
-                  <span className={STATUS_BADGE[inv.status] || 'badge-neutral'}>
-                    {String(inv.status || '').replace('_', ' ')}
-                  </span>
-                  {(inv.status === 'submitted' || inv.status === 'graded') && (
-                    <button
-                      type="button"
-                      onClick={() => openGrade(inv)}
-                      className="p-2.5 hover:bg-brand-50 rounded-xl text-brand-600 transition-colors touch-target"
-                      title="Review & grade"
-                    >
-                      <FileEdit className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <InviteModal assessment={assessment} open={showInvite} onClose={() => setShowInvite(false)} onSent={load} />
-      <GradeModal
-        invite={gradingInvite}
-        open={!!gradingInvite}
-        onClose={() => setGradingInvite(null)}
-        onGraded={load}
-      />
-    </div>
-  );
-};
+import ProductTour from './ui/ProductTour';
+import TourHelpFab from './ui/TourHelpFab';
+import usePageTour from '../hooks/usePageTour';
+import { useAuth } from '../context/AuthContext';
+import { planHasFeature } from '../config/planFeatures';
+import {
+  ASSESS_TOUR_KEY, ASSESS_TOUR_STEPS, SORT_OPTIONS, actionBtn,
+} from './assessments/assessmentsConstants';
+import { BuilderModal } from './assessments/BuilderModal';
+import { AssessmentDetail } from './assessments/AssessmentDetail';
 
 const AssessmentsPage = () => {
   const toast = useToast();
+  const { organization } = useAuth();
+  const canProctor = planHasFeature(organization?.plan, 'assessments.proctoring');
+  const [tourOpen, setTourOpen] = usePageTour(ASSESS_TOUR_KEY);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [assessments, setAssessments] = useState([]);
   const [query, setQuery] = useState('');
+  const [sortBy, setSortBy] = useState('title');
   const [showBuilder, setShowBuilder] = useState(false);
   const [saving, setSaving] = useState(false);
   const [active, setActive] = useState(null);
@@ -542,14 +64,25 @@ const AssessmentsPage = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = assessments.filter((a) => {
+  const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      (a.title || '').toLowerCase().includes(q) ||
-      (a.description || '').toLowerCase().includes(q)
-    );
-  });
+    const list = assessments.filter((a) => {
+      if (!q) return true;
+      return (
+        (a.title || '').toLowerCase().includes(q) ||
+        (a.description || '').toLowerCase().includes(q)
+      );
+    });
+    const sorted = [...list];
+    if (sortBy === 'questions') {
+      sorted.sort((a, b) => (b.questions?.length || 0) - (a.questions?.length || 0));
+    } else if (sortBy === 'duration') {
+      sorted.sort((a, b) => (b.durationMinutes || 0) - (a.durationMinutes || 0));
+    } else {
+      sorted.sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
+    }
+    return sorted;
+  }, [assessments, query, sortBy]);
 
   const handleCreate = async (form) => {
     setSaving(true);
@@ -623,7 +156,7 @@ const AssessmentsPage = () => {
   return (
     <div className="page-shell-ats">
       {active ? (
-        <AssessmentDetail assessment={active} onBack={() => setActive(null)} toast={toast} />
+        <AssessmentDetail assessment={active} onBack={() => setActive(null)} />
       ) : (
         <>
           <PageHeader
@@ -632,10 +165,23 @@ const AssessmentsPage = () => {
             subtitle="Build skills tests and invite candidates to complete them. Code answers are graded by your team."
             gradientTitle
           >
-            <button type="button" onClick={() => setShowBuilder(true)} className="btn-primary">
+            <button type="button" onClick={() => setShowBuilder(true)} className="btn-primary flex-1 sm:flex-none">
               <Plus className="w-4 h-4" /> New Assessment
             </button>
           </PageHeader>
+
+          <div
+            data-tour="assess-tip"
+            className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed flex flex-wrap items-center gap-x-3 gap-y-1.5"
+          >
+            <span className="inline-flex items-center gap-1.5 text-brand-700 font-semibold">
+              <Info size={14} /> Tip
+            </span>
+            <span>
+              Create a test, open it to invite candidates, then grade submissions when they arrive.
+              Press <span className="font-semibold text-stone-800">?</span> for a tour.
+            </span>
+          </div>
 
           {loadError ? (
             <div className="card-ats-bordered border-red-200/80 bg-red-50/30">
@@ -672,20 +218,40 @@ const AssessmentsPage = () => {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                <div className="relative flex-1 max-w-md">
-                  <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search assessments…"
-                    className="input-ats !pl-9"
-                  />
+              <section
+                data-tour="assess-filters"
+                className="rounded-xl border border-stone-200/90 bg-white shadow-sm overflow-hidden"
+              >
+                <div className="h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+                <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-end gap-3">
+                  <div className="flex-1 min-w-0">
+                    <label className="label-ats flex items-center gap-1.5">
+                      <Filter size={12} className="text-stone-400" /> Search
+                    </label>
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="Search assessments…"
+                        className="input-ats input-ats-icon"
+                      />
+                    </div>
+                  </div>
+                  <div className="w-full sm:w-52">
+                    <label className="label-ats">Sort</label>
+                    <PremiumSelect
+                      value={sortBy}
+                      onChange={setSortBy}
+                      options={SORT_OPTIONS}
+                      placeholder="Sort by"
+                    />
+                  </div>
+                  <p className="text-sm font-medium text-stone-500 lg:pb-2.5 lg:ml-auto whitespace-nowrap">
+                    {filtered.length} assessment{filtered.length === 1 ? '' : 's'}
+                  </p>
                 </div>
-                <p className="text-sm font-medium text-stone-500 sm:ml-auto">
-                  {filtered.length} assessment{filtered.length === 1 ? '' : 's'}
-                </p>
-              </div>
+              </section>
 
               {filtered.length === 0 ? (
                 <div className="card-ats-bordered">
@@ -697,7 +263,7 @@ const AssessmentsPage = () => {
                   />
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
+                <div data-tour="assess-grid" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
                   {filtered.map((a) => (
                     <div
                       key={a._id}
@@ -710,18 +276,21 @@ const AssessmentsPage = () => {
                       <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
                       <div className="flex items-start justify-between gap-2">
                         <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-brand-100 to-teal-100 border border-brand-200/60 flex items-center justify-center group-hover:scale-105 transition-transform">
-                          <ClipboardList className="w-5 h-5 text-brand-600" />
+                          {a.proctoring?.enabled
+                            ? <Shield className="w-5 h-5 text-brand-600" />
+                            : <ClipboardList className="w-5 h-5 text-brand-600" />}
                         </div>
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); setDeleteTarget(a); }}
-                          className="p-2 hover:bg-red-50 rounded-xl text-stone-300 hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                          className={`${actionBtn} text-stone-400 hover:text-red-600 hover:border-red-200 opacity-100 sm:opacity-0 sm:group-hover:opacity-100`}
                           aria-label="Delete assessment"
+                          title="Delete assessment"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 size={14} />
                         </button>
                       </div>
-                      <h3 className="font-bold text-stone-900 mt-3.5 tracking-tight line-clamp-2">{a.title}</h3>
+                      <h3 className="font-bold text-stone-900 mt-3.5 tracking-tight line-clamp-2 break-words">{a.title}</h3>
                       {a.description && (
                         <p className="text-sm text-stone-500 mt-1 line-clamp-2 leading-relaxed">{a.description}</p>
                       )}
@@ -738,7 +307,13 @@ const AssessmentsPage = () => {
         </>
       )}
 
-      <BuilderModal open={showBuilder} onClose={() => setShowBuilder(false)} onSave={handleCreate} saving={saving} />
+      <BuilderModal
+        open={showBuilder}
+        onClose={() => setShowBuilder(false)}
+        onSave={handleCreate}
+        saving={saving}
+        canProctor={canProctor}
+      />
       <ConfirmationModal
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
@@ -749,6 +324,18 @@ const AssessmentsPage = () => {
         type="delete"
         isLoading={deleting}
       />
+
+      {!active && (
+        <>
+          <TourHelpFab onClick={() => setTourOpen(true)} label="Take a tour" title="Take a tour of Assessments" />
+          <ProductTour
+            open={tourOpen}
+            onClose={() => setTourOpen(false)}
+            steps={ASSESS_TOUR_STEPS}
+            storageKey={ASSESS_TOUR_KEY}
+          />
+        </>
+      )}
     </div>
   );
 };

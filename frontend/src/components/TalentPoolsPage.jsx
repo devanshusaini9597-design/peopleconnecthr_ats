@@ -1,357 +1,34 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Plus, Trash2, Lock, Loader2, Search, UserPlus, ArrowLeft, Layers, AlertCircle, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  Users, Plus, Trash2, Lock, Loader2, Search, Layers,
+  AlertCircle, RefreshCw, Settings2, Filter, Info,
+} from 'lucide-react';
 import { authenticatedFetch, handleUnauthorized, readApiJson } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
-import Modal from './ui/Modal';
 import ConfirmationModal from './ConfirmationModal';
-
-const POOL_COLORS = ['#0d9488', '#14b8a6', '#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#a855f7'];
-
-const CreatePoolModal = ({ open, onClose, onSave, saving }) => {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [color, setColor] = useState(POOL_COLORS[0]);
-
-  useEffect(() => {
-    if (open) {
-      setName('');
-      setDescription('');
-      setColor(POOL_COLORS[0]);
-    }
-  }, [open]);
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="New Talent Pool"
-      description="Group strong candidates for future roles."
-      size="md"
-      footer={
-        <>
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button
-            type="button"
-            onClick={() => onSave({ name, description, color })}
-            disabled={saving || !name.trim()}
-            className="btn-primary"
-          >
-            {saving ? <><Loader2 size={16} className="animate-spin" /> Creating…</> : 'Create Pool'}
-          </button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        <div>
-          <label className="label-ats">Pool name</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="input-ats"
-            placeholder="e.g. Frontend Bench, Referrals 2026"
-            autoFocus
-          />
-        </div>
-        <div>
-          <label className="label-ats">Description</label>
-          <input
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="input-ats"
-            placeholder="Optional"
-          />
-        </div>
-        <div>
-          <label className="label-ats mb-2">Color</label>
-          <div className="flex flex-wrap gap-2.5">
-            {POOL_COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setColor(c)}
-                className={`w-9 h-9 rounded-full border-2 transition-all duration-200 ${
-                  color === c ? 'border-stone-900 scale-110 shadow-md' : 'border-transparent hover:scale-105'
-                }`}
-                style={{ backgroundColor: c }}
-                aria-label={`Select color ${c}`}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-    </Modal>
-  );
-};
-
-const AddCandidatesModal = ({ pool, open, onClose, onAdded }) => {
-  const toast = useToast();
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [selected, setSelected] = useState(new Set());
-  const [adding, setAdding] = useState(false);
-
-  useEffect(() => {
-    if (!open) {
-      setQuery('');
-      setResults([]);
-      setSelected(new Set());
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const handle = setTimeout(async () => {
-      if (!query.trim()) { setResults([]); return; }
-      setSearching(true);
-      try {
-        const res = await authenticatedFetch(`/candidates?search=${encodeURIComponent(query.trim())}&limit=15`);
-        const data = await res.json();
-        if (data.success) setResults(data.data || []);
-      } catch {
-        // silent — search is best-effort
-      } finally {
-        setSearching(false);
-      }
-    }, 350);
-    return () => clearTimeout(handle);
-  }, [query, open]);
-
-  const toggle = (id) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const handleAdd = async () => {
-    if (selected.size === 0) return;
-    setAdding(true);
-    try {
-      const res = await authenticatedFetch(`/api/talent-pools/${pool._id}/candidates`, {
-        method: 'POST',
-        body: JSON.stringify({ candidateIds: Array.from(selected) })
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        toast?.error?.(data.message || 'Failed to add candidates');
-        return;
-      }
-      toast?.success?.(data.message);
-      onAdded();
-      onClose();
-    } catch {
-      toast?.error?.('Failed to add candidates');
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={`Add candidates to “${pool.name}”`}
-      description="Search and select candidates to keep warm in this pool."
-      size="lg"
-      footer={
-        <>
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="button" onClick={handleAdd} disabled={adding || selected.size === 0} className="btn-primary">
-            {adding ? <><Loader2 size={16} className="animate-spin" /> Adding…</> : `Add ${selected.size || ''} candidate${selected.size === 1 ? '' : 's'}`}
-          </button>
-        </>
-      }
-    >
-      <div className="relative mb-4">
-        <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by name, email, or skills…"
-          className="input-ats !pl-9"
-          autoFocus
-        />
-      </div>
-      <div className="max-h-72 overflow-y-auto -mx-1 px-1">
-        {searching ? (
-          <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 text-brand-600 animate-spin" /></div>
-        ) : results.length === 0 ? (
-          <EmptyState
-            icon={query ? Search : Users}
-            tone={query ? 'amber' : 'brand'}
-            compact
-            message={query ? 'No candidates found' : 'Search candidates'}
-            subMessage={query ? 'Try a different name or email.' : 'Start typing to search your candidates.'}
-          />
-        ) : (
-          <div className="space-y-0.5 stagger-children">
-            {results.map((c) => (
-              <label key={c._id} className="list-row-ats cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selected.has(c._id)}
-                  onChange={() => toggle(c._id)}
-                  className="rounded border-stone-300 text-brand-600 focus:ring-brand-500/30"
-                />
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-100 to-teal-100 text-brand-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                  {(c.name || 'N')[0].toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-stone-900 truncate">{c.name}</div>
-                  <div className="text-xs text-stone-500 truncate">{c.email}{c.position ? ` · ${c.position}` : ''}</div>
-                </div>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
-    </Modal>
-  );
-};
-
-const PoolDetail = ({ pool, onBack, toast }) => {
-  const [candidates, setCandidates] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showAdd, setShowAdd] = useState(false);
-  const [removeTarget, setRemoveTarget] = useState(null);
-  const [removing, setRemoving] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await authenticatedFetch(`/api/talent-pools/${pool._id}/candidates`);
-      const data = await res.json();
-      if (data.success) setCandidates(data.data.candidates || []);
-    } finally {
-      setLoading(false);
-    }
-  }, [pool._id]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const handleRemove = async () => {
-    if (!removeTarget) return;
-    setRemoving(true);
-    try {
-      const res = await authenticatedFetch(`/api/talent-pools/${pool._id}/candidates/${removeTarget._id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        toast?.error?.(data.message || 'Failed to remove candidate');
-        return;
-      }
-      toast?.success?.('Removed from pool');
-      setRemoveTarget(null);
-      load();
-    } catch {
-      toast?.error?.('Failed to remove candidate');
-    } finally {
-      setRemoving(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6 animate-page-enter">
-      <button
-        type="button"
-        onClick={onBack}
-        className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-600 hover:text-brand-700 transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" /> Back to pools
-      </button>
-
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-        <div className="flex items-start gap-3 sm:gap-4 min-w-0">
-          <div
-            className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm ring-1 ring-black/5"
-            style={{ backgroundColor: `${pool.color}22` }}
-          >
-            <Layers className="w-6 h-6" style={{ color: pool.color }} />
-          </div>
-          <div className="min-w-0">
-            <h2 className="text-xl sm:text-2xl font-bold text-stone-900 tracking-tight" style={{ letterSpacing: '-0.025em' }}>
-              {pool.name}
-            </h2>
-            {pool.description && <p className="text-sm text-stone-500 mt-1 leading-relaxed">{pool.description}</p>}
-            <span className="badge-brand mt-2">{candidates.length} candidate{candidates.length === 1 ? '' : 's'}</span>
-          </div>
-        </div>
-        <button type="button" onClick={() => setShowAdd(true)} className="btn-primary w-full sm:w-auto">
-          <UserPlus className="w-4 h-4" /> Add Candidates
-        </button>
-      </div>
-
-      <div className="table-shell-ats">
-        {loading ? (
-          <div className="p-12 flex flex-col items-center gap-2">
-            <Loader2 className="w-7 h-7 text-brand-600 animate-spin" />
-            <p className="text-sm text-stone-500 font-medium">Loading candidates…</p>
-          </div>
-        ) : candidates.length === 0 ? (
-          <EmptyState
-            icon={Users}
-            tone="brand"
-            message="No candidates in this pool yet"
-            subMessage="Add candidates to keep them warm for future roles."
-            action={
-              <button type="button" onClick={() => setShowAdd(true)} className="btn-primary">
-                <UserPlus className="w-4 h-4" /> Add Candidates
-              </button>
-            }
-          />
-        ) : (
-          <div className="divide-y divide-stone-100">
-            {candidates.map((c) => (
-              <div key={c._id} className="p-4 sm:px-5 flex items-center justify-between gap-3 hover:bg-brand-50/20 transition-colors">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-100 to-teal-100 text-brand-700 flex items-center justify-center text-xs font-bold flex-shrink-0 ring-1 ring-brand-200/50">
-                    {(c.name || 'N')[0].toUpperCase()}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="font-semibold text-stone-900 truncate">{c.name}</div>
-                    <div className="text-sm text-stone-500 truncate">{c.email}{c.position ? ` · ${c.position}` : ''}</div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setRemoveTarget(c)}
-                  className="p-2.5 hover:bg-red-50 rounded-xl text-stone-400 hover:text-red-500 transition-colors touch-target"
-                  title="Remove from pool"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <AddCandidatesModal pool={pool} open={showAdd} onClose={() => setShowAdd(false)} onAdded={load} />
-      <ConfirmationModal
-        isOpen={!!removeTarget}
-        onClose={() => setRemoveTarget(null)}
-        onConfirm={handleRemove}
-        title="Remove from pool?"
-        message={`${removeTarget?.name || 'This candidate'} will stay in your database — only removed from this pool.`}
-        confirmText="Remove"
-        type="delete"
-        isLoading={removing}
-      />
-    </div>
-  );
-};
+import PremiumSelect from './ui/PremiumSelect';
+import ProductTour from './ui/ProductTour';
+import TourHelpFab from './ui/TourHelpFab';
+import usePageTour from '../hooks/usePageTour';
+import {
+  POOLS_TOUR_KEY, POOLS_TOUR_STEPS, SORT_OPTIONS,
+} from './talentPools/talentPoolsConstants';
+import { PoolFormModal } from './talentPools/PoolFormModal';
+import { PoolDetail } from './talentPools/PoolDetail';
 
 const TalentPoolsPage = () => {
   const toast = useToast();
+  const [tourOpen, setTourOpen] = usePageTour(POOLS_TOUR_KEY);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [pools, setPools] = useState([]);
   const [query, setQuery] = useState('');
-  const [showCreate, setShowCreate] = useState(false);
+  const [sortBy, setSortBy] = useState('name');
+  const [showForm, setShowForm] = useState(false);
+  const [editPool, setEditPool] = useState(null);
   const [saving, setSaving] = useState(false);
   const [activePool, setActivePool] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -384,32 +61,72 @@ const TalentPoolsPage = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  const filteredPools = pools.filter((p) => {
+  const filteredPools = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      (p.name || '').toLowerCase().includes(q) ||
-      (p.description || '').toLowerCase().includes(q)
-    );
-  });
+    let list = pools.filter((p) => {
+      if (!q) return true;
+      return (
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.description || '').toLowerCase().includes(q)
+      );
+    });
+    list = [...list].sort((a, b) => {
+      if (sortBy === 'members') return (b.memberCount || 0) - (a.memberCount || 0);
+      if (sortBy === 'recent') {
+        const ta = new Date(a.updatedAt || a.createdAt || 0).getTime();
+        const tb = new Date(b.updatedAt || b.createdAt || 0).getTime();
+        return tb - ta;
+      }
+      return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+    });
+    return list;
+  }, [pools, query, sortBy]);
 
-  const handleCreate = async ({ name, description, color }) => {
+  const openCreate = () => {
+    setEditPool(null);
+    setShowForm(true);
+  };
+
+  const openManage = (pool) => {
+    setEditPool(pool);
+    setShowForm(true);
+  };
+
+  const handleSave = async ({ name, description, color }) => {
     setSaving(true);
     try {
-      const res = await authenticatedFetch('/api/talent-pools', {
-        method: 'POST',
-        body: JSON.stringify({ name, description, color })
-      });
-      const data = await readApiJson(res);
-      if (!res.ok || !data.success) {
-        toast?.error?.(data.message || 'Failed to create pool');
-        return;
+      if (editPool?._id) {
+        const res = await authenticatedFetch(`/api/talent-pools/${editPool._id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, description, color }),
+        });
+        const data = await readApiJson(res);
+        if (!res.ok || !data.success) {
+          toast?.error?.(data.message || 'Failed to update pool');
+          return;
+        }
+        toast?.success?.('Pool updated');
+        setShowForm(false);
+        setEditPool(null);
+        if (activePool?._id === editPool._id) setActivePool(data.data);
+        load();
+      } else {
+        const res = await authenticatedFetch('/api/talent-pools', {
+          method: 'POST',
+          body: JSON.stringify({ name, description, color }),
+        });
+        const data = await readApiJson(res);
+        if (!res.ok || !data.success) {
+          toast?.error?.(data.message || 'Failed to create pool');
+          return;
+        }
+        toast?.success?.('Talent pool created');
+        setShowForm(false);
+        load();
       }
-      toast?.success?.('Talent pool created');
-      setShowCreate(false);
-      load();
     } catch (err) {
-      toast?.error?.(err?.message || 'Failed to create pool');
+      toast?.error?.(err?.message || 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -427,6 +144,7 @@ const TalentPoolsPage = () => {
       }
       toast?.success?.('Talent pool deleted');
       setDeleteTarget(null);
+      if (activePool?._id === deleteTarget._id) setActivePool(null);
       load();
     } catch (err) {
       toast?.error?.(err?.message || 'Failed to delete pool');
@@ -466,9 +184,15 @@ const TalentPoolsPage = () => {
   }
 
   return (
-    <div className="page-shell-ats">
+    <div className="page-shell-ats animate-page-enter">
       {activePool ? (
-        <PoolDetail pool={activePool} onBack={() => setActivePool(null)} toast={toast} />
+        <PoolDetail
+          pool={activePool}
+          onBack={() => { setActivePool(null); load(); }}
+          toast={toast}
+          onPoolUpdated={(p) => { setActivePool(p); load(); }}
+          onManage={openManage}
+        />
       ) : (
         <>
           <PageHeader
@@ -477,10 +201,23 @@ const TalentPoolsPage = () => {
             subtitle="Keep strong candidates warm for future roles — independent of any single requisition."
             gradientTitle
           >
-            <button type="button" onClick={() => setShowCreate(true)} className="btn-primary">
-              <Plus className="w-4 h-4" /> New Pool
+            <button type="button" onClick={openCreate} className="btn-primary flex-1 sm:flex-none">
+              <Plus className="w-4 h-4" /> New pool
             </button>
           </PageHeader>
+
+          <div
+            data-tour="pools-tip"
+            className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed flex flex-wrap items-center gap-x-3 gap-y-1.5"
+          >
+            <span className="inline-flex items-center gap-1.5 text-brand-700 font-semibold">
+              <Info size={14} /> Tip
+            </span>
+            <span>
+              Create pools for benches and referrals. Open a pool to add members.
+              Press <span className="font-semibold text-stone-800">?</span> for a tour.
+            </span>
+          </div>
 
           {loadError ? (
             <div className="card-ats-bordered border-red-200/80 bg-red-50/30">
@@ -489,16 +226,16 @@ const TalentPoolsPage = () => {
                 tone="amber"
                 message="Couldn’t load talent pools"
                 subMessage={loadError}
-                action={
+                action={(
                   <div className="flex flex-wrap items-center justify-center gap-2">
                     <button type="button" onClick={load} className="btn-secondary">
                       <RefreshCw className="w-4 h-4" /> Retry
                     </button>
-                    <button type="button" onClick={() => setShowCreate(true)} className="btn-primary">
-                      <Plus className="w-4 h-4" /> New Pool
+                    <button type="button" onClick={openCreate} className="btn-primary">
+                      <Plus className="w-4 h-4" /> New pool
                     </button>
                   </div>
-                }
+                )}
               />
             </div>
           ) : pools.length === 0 ? (
@@ -508,29 +245,51 @@ const TalentPoolsPage = () => {
                 tone="violet"
                 message="No talent pools yet"
                 subMessage={'Create one to start bucketing candidates like "Frontend Bench" or "Referrals 2026".'}
-                action={
-                  <button type="button" onClick={() => setShowCreate(true)} className="btn-primary">
-                    <Plus className="w-4 h-4" /> New Pool
+                action={(
+                  <button type="button" onClick={openCreate} className="btn-primary">
+                    <Plus className="w-4 h-4" /> New pool
                   </button>
-                }
+                )}
               />
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                <div className="relative flex-1 max-w-md">
-                  <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search pools…"
-                    className="input-ats !pl-9"
-                  />
+              <section
+                data-tour="pools-filters"
+                className="rounded-xl border border-stone-200/90 bg-white shadow-sm overflow-hidden"
+              >
+                <div className="h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+                <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-end gap-3">
+                  <div className="flex-1 min-w-0">
+                    <label htmlFor="pools-search" className="label-ats flex items-center gap-1.5">
+                      <Filter size={12} className="text-stone-400" aria-hidden="true" /> Search
+                    </label>
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
+                      <input
+                        id="pools-search"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="Search pools…"
+                        className="input-ats input-ats-icon"
+                      />
+                    </div>
+                  </div>
+                  <div className="w-full sm:w-52">
+                    <label htmlFor="pools-sort" className="label-ats">Sort</label>
+                    <PremiumSelect
+                      id="pools-sort"
+                      value={sortBy}
+                      onChange={setSortBy}
+                      options={SORT_OPTIONS}
+                      placeholder="Sort by"
+                    />
+                  </div>
+                  <p className="text-sm font-medium text-stone-500 lg:pb-2.5 lg:ml-auto whitespace-nowrap">
+                    {filteredPools.length} pool{filteredPools.length === 1 ? '' : 's'}
+                  </p>
                 </div>
-                <p className="text-sm font-medium text-stone-500 sm:ml-auto">
-                  {filteredPools.length} pool{filteredPools.length === 1 ? '' : 's'}
-                </p>
-              </div>
+              </section>
 
               {filteredPools.length === 0 ? (
                 <div className="card-ats-bordered">
@@ -542,14 +301,17 @@ const TalentPoolsPage = () => {
                   />
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
+                <div data-tour="pools-grid" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
                   {filteredPools.map((pool) => (
                     <div
                       key={pool._id}
                       role="button"
                       tabIndex={0}
                       onClick={() => setActivePool(pool)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActivePool(pool); }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') setActivePool(pool);
+                        if (e.key === ' ') { e.preventDefault(); setActivePool(pool); }
+                      }}
                       className="card-ats p-5 cursor-pointer group hover:border-brand-200/80 relative overflow-hidden"
                     >
                       <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: pool.color || '#0d9488' }} />
@@ -560,22 +322,34 @@ const TalentPoolsPage = () => {
                         >
                           <Layers className="w-5 h-5" style={{ color: pool.color || '#0d9488' }} />
                         </div>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setDeleteTarget(pool); }}
-                          className="p-2 hover:bg-red-50 rounded-xl text-stone-300 hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
-                          aria-label="Delete pool"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); openManage(pool); }}
+                            className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-500 hover:text-brand-600 hover:border-brand-300"
+                            title="Manage"
+                            aria-label="Manage pool"
+                          >
+                            <Settings2 size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setDeleteTarget(pool); }}
+                            className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-400 hover:text-red-600 hover:border-red-200"
+                            title="Delete pool"
+                            aria-label="Delete pool"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
-                      <h3 className="font-bold text-stone-900 mt-3.5 tracking-tight">{pool.name}</h3>
+                      <h3 className="font-bold text-stone-900 mt-3.5 tracking-tight break-words">{pool.name}</h3>
                       {pool.description && (
                         <p className="text-sm text-stone-500 mt-1 line-clamp-2 leading-relaxed">{pool.description}</p>
                       )}
                       <div className="flex items-center gap-1.5 mt-4 pt-3 border-t border-stone-100 text-sm font-medium text-stone-600">
                         <Users className="w-4 h-4 text-stone-400" />
-                        {pool.memberCount} candidate{pool.memberCount === 1 ? '' : 's'}
+                        {pool.memberCount || 0} candidate{(pool.memberCount || 0) === 1 ? '' : 's'}
                       </div>
                     </div>
                   ))}
@@ -586,19 +360,38 @@ const TalentPoolsPage = () => {
         </>
       )}
 
-      <CreatePoolModal open={showCreate} onClose={() => setShowCreate(false)} onSave={handleCreate} saving={saving} />
+      <PoolFormModal
+        open={showForm}
+        onClose={() => { setShowForm(false); setEditPool(null); }}
+        onSave={handleSave}
+        saving={saving}
+        initial={editPool}
+      />
       <ConfirmationModal
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
         title="Delete talent pool?"
         message={`Delete “${deleteTarget?.name}”? Candidates stay in your database — they’re only removed from this pool.`}
-        confirmText="Delete Pool"
+        confirmText="Delete pool"
         type="delete"
         isLoading={deleting}
       />
+
+      {!activePool && (
+        <>
+          <TourHelpFab onClick={() => setTourOpen(true)} label="Take a tour" title="Take a tour of Talent Pools" />
+          <ProductTour
+            open={tourOpen}
+            onClose={() => setTourOpen(false)}
+            steps={POOLS_TOUR_STEPS}
+            storageKey={POOLS_TOUR_KEY}
+          />
+        </>
+      )}
     </div>
   );
 };
+
 
 export default TalentPoolsPage;

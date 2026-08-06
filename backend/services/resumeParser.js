@@ -4,25 +4,26 @@ const pdfParse = require('pdf-parse');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const logger = require('../utils/logger');
 
 // Strategy 2: pdfjs-dist for robust text extraction
 let pdfjsLib;
 try {
   pdfjsLib = require('pdfjs-dist/legacy/build/pdf.mjs');
-  console.log('✅ pdfjs-dist loaded for advanced PDF text extraction');
+  logger.info('✅ pdfjs-dist loaded for advanced PDF text extraction');
 } catch (e) {
   pdfjsLib = null;
-  console.warn('⚠️ pdfjs-dist not available:', e.message);
+  logger.warn('⚠️ pdfjs-dist not available:', e.message);
 }
 
 // Strategy 3: tesseract.js OCR for image-based documents
 let Tesseract;
 try {
   Tesseract = require('tesseract.js');
-  console.log('✅ tesseract.js loaded for OCR capability');
+  logger.info('✅ tesseract.js loaded for OCR capability');
 } catch (e) {
   Tesseract = null;
-  console.warn('⚠️ tesseract.js not available:', e.message);
+  logger.warn('⚠️ tesseract.js not available:', e.message);
 }
 
 // Optional: textract for DOCX/DOC/RTF
@@ -33,7 +34,7 @@ try {
   const { promisify } = require('util');
   extractText = promisify(textract.fromBufferWithMime);
 } catch (e) {
-  console.warn('⚠️ textract not available:', e.message);
+  logger.warn('⚠️ textract not available:', e.message);
   textract = null;
   extractText = null;
 }
@@ -53,7 +54,7 @@ async function extractTextWithPdfJs(buffer) {
     }
     return fullText.trim();
   } catch (err) {
-    console.warn('⚠️ pdfjs-dist extraction failed:', err.message);
+    logger.warn('⚠️ pdfjs-dist extraction failed:', err.message);
     return '';
   }
 }
@@ -62,10 +63,10 @@ async function extractTextWithPdfJs(buffer) {
 let napiCanvas;
 try {
   napiCanvas = require('@napi-rs/canvas');
-  console.log('✅ @napi-rs/canvas loaded for PDF page rendering');
+  logger.info('✅ @napi-rs/canvas loaded for PDF page rendering');
 } catch (e) {
   napiCanvas = null;
-  console.warn('⚠️ @napi-rs/canvas not available:', e.message);
+  logger.warn('⚠️ @napi-rs/canvas not available:', e.message);
 }
 
 // Custom CanvasFactory for pdfjs-dist rendering with @napi-rs/canvas
@@ -106,10 +107,10 @@ async function renderPdfPageToImage(pdfDoc, pageNum) {
 
     // Export as PNG buffer
     const pngBuffer = canvas.toBuffer('image/png');
-    console.log(`   📸 Page ${pageNum} rendered: ${pngBuffer.length} bytes PNG (${Math.round(viewport.width)}x${Math.round(viewport.height)})`);
+    logger.info(`   📸 Page ${pageNum} rendered: ${pngBuffer.length} bytes PNG (${Math.round(viewport.width)}x${Math.round(viewport.height)})`);
     return pngBuffer;
   } catch (err) {
-    console.warn(`⚠️ Failed to render PDF page ${pageNum}:`, err.message);
+    logger.warn(`⚠️ Failed to render PDF page ${pageNum}:`, err.message);
     return null;
   }
 }
@@ -117,7 +118,7 @@ async function renderPdfPageToImage(pdfDoc, pageNum) {
 // ─── Enterprise OCR Pipeline via tesseract.js ───
 async function ocrPdfBuffer(buffer) {
   if (!Tesseract) {
-    console.warn('⚠️ OCR not available (tesseract.js not installed)');
+    logger.warn('⚠️ OCR not available (tesseract.js not installed)');
     return '';
   }
   try {
@@ -126,11 +127,11 @@ async function ocrPdfBuffer(buffer) {
     // For PDF files: render pages to images first, then OCR each image
     if (header.startsWith('%PDF')) {
       if (!pdfjsLib || !napiCanvas) {
-        console.warn('⚠️ Cannot OCR scanned PDF: requires pdfjs-dist + @napi-rs/canvas');
+        logger.warn('⚠️ Cannot OCR scanned PDF: requires pdfjs-dist + @napi-rs/canvas');
         return '';
       }
 
-      console.log('🔍 Rendering PDF pages to images for OCR...');
+      logger.info('🔍 Rendering PDF pages to images for OCR...');
       const uint8 = new Uint8Array(buffer);
       const pdfDoc = await pdfjsLib.getDocument({
         data: uint8,
@@ -141,27 +142,27 @@ async function ocrPdfBuffer(buffer) {
 
       const worker = await Tesseract.createWorker('eng', 1, {
         errorHandler: (err) => {
-          console.warn('⚠️ Tesseract worker error (handled):', err.message);
+          logger.warn('⚠️ Tesseract worker error (handled):', err.message);
         }
       });
 
       for (let i = 1; i <= numPages; i++) {
-        console.log(`📄 Processing page ${i}/${numPages}...`);
+        logger.info(`📄 Processing page ${i}/${numPages}...`);
         const imgBuffer = await renderPdfPageToImage(pdfDoc, i);
         if (imgBuffer) {
           const { data } = await worker.recognize(imgBuffer);
           allText += (data.text || '') + '\n';
-          console.log(`   → Page ${i}: ${data.text.length} chars`);
+          logger.info(`   → Page ${i}: ${data.text.length} chars`);
         }
       }
 
       await worker.terminate();
-      console.log(`✅ OCR complete: extracted ${allText.length} characters from ${numPages} pages`);
+      logger.info(`✅ OCR complete: extracted ${allText.length} characters from ${numPages} pages`);
       return allText.trim();
     }
 
     // For image buffers, run OCR directly
-    console.log('🔍 Starting OCR on image buffer...');
+    logger.info('🔍 Starting OCR on image buffer...');
     const worker = await Tesseract.createWorker('eng', 1, {
       logger: m => {
         if (m.status === 'recognizing text') {
@@ -169,17 +170,17 @@ async function ocrPdfBuffer(buffer) {
         }
       },
       errorHandler: (err) => {
-        console.warn('⚠️ Tesseract worker error (handled):', err.message);
+        logger.warn('⚠️ Tesseract worker error (handled):', err.message);
       }
     });
 
     const { data } = await worker.recognize(buffer);
     await worker.terminate();
 
-    console.log(`\n✅ OCR complete: extracted ${data.text.length} characters`);
+    logger.info(`\n✅ OCR complete: extracted ${data.text.length} characters`);
     return data.text || '';
   } catch (err) {
-    console.warn('⚠️ OCR failed:', err.message);
+    logger.warn('⚠️ OCR failed:', err.message);
     return '';
   }
 }
@@ -188,14 +189,14 @@ async function ocrPdfBuffer(buffer) {
 async function ocrImageBuffer(buffer) {
   if (!Tesseract) return '';
   try {
-    console.log('🔍 Running OCR on image...');
+    logger.info('🔍 Running OCR on image...');
     const worker = await Tesseract.createWorker('eng');
     const { data } = await worker.recognize(buffer);
     await worker.terminate();
-    console.log(`✅ Image OCR complete: ${data.text.length} characters`);
+    logger.info(`✅ Image OCR complete: ${data.text.length} characters`);
     return data.text || '';
   } catch (err) {
-    console.warn('⚠️ Image OCR failed:', err.message);
+    logger.warn('⚠️ Image OCR failed:', err.message);
     return '';
   }
 }
@@ -428,7 +429,7 @@ function extractFields(text) {
   // Smart section segmentation
   const sections = smartSegment(flatText);
 
-  console.log('📋 Detected sections:', Object.keys(sections).filter(k => sections[k].length > 0));
+  logger.info('📋 Detected sections:', Object.keys(sections).filter(k => sections[k].length > 0));
 
   const result = {
     name: { value: '', confidence: 0 },
@@ -1013,10 +1014,10 @@ function extractFields(text) {
   // ════════════════════════════════════════
   // FINAL: Build clean response
   // ════════════════════════════════════════
-  console.log('🎯 Extraction results:');
+  logger.info('🎯 Extraction results:');
   for (const [key, val] of Object.entries(result)) {
-    if (val.value) console.log(`   ${key}: "${val.value}" (${val.confidence}%)`);
-    else console.log(`   ${key}: [not found]`);
+    if (val.value) logger.info(`   ${key}: "${val.value}" (${val.confidence}%)`);
+    else logger.info(`   ${key}: [not found]`);
   }
 
   return {
@@ -1054,23 +1055,23 @@ async function parseResume(buffer, mimetype, filename = '') {
   try {
     if (mimetype === 'application/pdf') {
       // ── Strategy 1: pdf-parse (fast, works for most text-based PDFs) ──
-      console.log('📄 [Strategy 1/3] Trying pdf-parse...');
+      logger.info('📄 [Strategy 1/3] Trying pdf-parse...');
       try {
         const data = await pdfParse(buffer);
         text = (data.text || '').trim();
-        console.log(`   → pdf-parse extracted ${text.length} chars`);
+        logger.info(`   → pdf-parse extracted ${text.length} chars`);
         if (text.length >= 20) {
           extractionMethod = 'pdf-parse';
         }
       } catch (e) {
-        console.log(`   → pdf-parse failed: ${e.message}`);
+        logger.info(`   → pdf-parse failed: ${e.message}`);
       }
 
       // ── Strategy 2: pdfjs-dist (handles PDFs that pdf-parse misses) ──
       if (text.length < 20 && pdfjsLib) {
-        console.log('📄 [Strategy 2/3] Trying pdfjs-dist direct extraction...');
+        logger.info('📄 [Strategy 2/3] Trying pdfjs-dist direct extraction...');
         const pdfjsText = await extractTextWithPdfJs(buffer);
-        console.log(`   → pdfjs-dist extracted ${pdfjsText.length} chars`);
+        logger.info(`   → pdfjs-dist extracted ${pdfjsText.length} chars`);
         if (pdfjsText.length > text.length) {
           text = pdfjsText;
           extractionMethod = 'pdfjs-dist';
@@ -1080,20 +1081,20 @@ async function parseResume(buffer, mimetype, filename = '') {
       // ── Strategy 3: OCR via tesseract.js (for scanned/image-based PDFs) ──
       // Skip OCR in production (Render has 30s timeout, OCR takes 30-60s)
       if (text.length < 20 && Tesseract && process.env.NODE_ENV !== 'production') {
-        console.log('📄 [Strategy 3/3] PDF appears image-based, running OCR...');
+        logger.info('📄 [Strategy 3/3] PDF appears image-based, running OCR...');
         const ocrText = await ocrPdfBuffer(buffer);
-        console.log(`   → OCR extracted ${ocrText.length} chars`);
+        logger.info(`   → OCR extracted ${ocrText.length} chars`);
         if (ocrText.length > text.length) {
           text = ocrText;
           extractionMethod = 'tesseract-ocr';
         }
       } else if (text.length < 20 && process.env.NODE_ENV === 'production') {
-        console.log('📄 [Strategy 3/3] Skipping OCR in production (timeout risk). PDF appears to be scanned/image-based.');
+        logger.info('📄 [Strategy 3/3] Skipping OCR in production (timeout risk). PDF appears to be scanned/image-based.');
       }
 
       // ── textract as final fallback ──
       if (text.length < 20 && extractText) {
-        console.log('📄 [Fallback] Trying textract...');
+        logger.info('📄 [Fallback] Trying textract...');
         try {
           const txText = await extractText('application/pdf', buffer);
           if (txText && txText.length > text.length) {
@@ -1101,7 +1102,7 @@ async function parseResume(buffer, mimetype, filename = '') {
             extractionMethod = 'textract';
           }
         } catch (e) {
-          console.log(`   → textract failed: ${e.message}`);
+          logger.info(`   → textract failed: ${e.message}`);
         }
       }
 
@@ -1143,13 +1144,13 @@ async function parseResume(buffer, mimetype, filename = '') {
 
     // ── Final validation ──
     const cleanText = (text || '').trim();
-    console.log(`\n══════════════════════════════════════════`);
-    console.log(`📊 Extraction Summary:`);
-    console.log(`   File: ${filename}`);
-    console.log(`   Method: ${extractionMethod}`);
-    console.log(`   Characters: ${cleanText.length}`);
-    console.log(`   Preview: "${cleanText.substring(0, 150)}..."`);
-    console.log(`══════════════════════════════════════════\n`);
+    logger.info(`\n══════════════════════════════════════════`);
+    logger.info(`📊 Extraction Summary:`);
+    logger.info(`   File: ${filename}`);
+    logger.info(`   Method: ${extractionMethod}`);
+    logger.info(`   Characters: ${cleanText.length}`);
+    logger.info(`   Preview: "${cleanText.substring(0, 150)}..."`);
+    logger.info(`══════════════════════════════════════════\n`);
 
     if (cleanText.length === 0) {
       const strategies = ['pdf-parse'];
@@ -1172,7 +1173,7 @@ async function parseResume(buffer, mimetype, filename = '') {
     const parsed = extractFields(cleanText);
 
     // Log parsing results for debugging
-    console.log('Resume parsing completed:', {
+    logger.info('Resume parsing completed:', {
       filename,
       extractedFields: Object.keys(parsed).filter(k => parsed[k] && k !== 'confidence'),
       confidence: parsed.confidence
@@ -1181,7 +1182,7 @@ async function parseResume(buffer, mimetype, filename = '') {
     return parsed;
 
   } catch (error) {
-    console.error('Resume parsing error:', error);
+    logger.error('Resume parsing error:', error);
     throw new Error(`Resume parsing failed: ${error.message}`);
   }
 }

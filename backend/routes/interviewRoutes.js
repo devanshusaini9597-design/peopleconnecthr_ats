@@ -1,256 +1,122 @@
+/**
+ * Interviews — thin wrappers; domain logic in interviewService.
+ */
 const express = require('express');
 const router = express.Router();
 const { verifyToken } = require('../middleware/authMiddleware');
-const { requireRole, requireOwner, requireAdmin, requireRecruiterOrAbove, checkPlanLimit } = require('../middleware/rbacMiddleware');
+const { requireRecruiterOrAbove } = require('../middleware/rbacMiddleware');
 const { tenantScope, requireOrganization } = require('../middleware/tenantMiddleware');
-const Interview = require('../models/Interview');
-const Scorecard = require('../models/Scorecard');
-const Application = require('../models/Application');
-const eventBus = require('../events/eventBus');
-const eventTypes = require('../events/eventTypes');
+const svc = require('../services/interviewService');
+
+function handle(res, error) {
+  const status = error.statusCode || 500;
+  return res.status(status).json({ success: false, message: error.message });
+}
 
 router.use(verifyToken, requireOrganization, tenantScope);
 
-/**
- * GET /
- */
-const populateInterview = {
-  path: 'applicationId',
-  populate: [{ path: 'candidateId', select: 'name email phone' }, { path: 'jobId', select: 'title role' }]
-};
-
 router.get('/', async (req, res) => {
   try {
-    const { status, interviewer } = req.query;
-    const filter = { organizationId: req.user.organizationId };
-    if (status) filter.status = status;
-    if (interviewer) filter.interviewers = { $elemMatch: { userId: interviewer } };
-    
-    const interviews = await Interview.find(filter).sort({ scheduledAt: 1 }).populate(populateInterview);
-    res.json({ success: true, data: interviews });
+    const data = await svc.listInterviews(req.user.organizationId, req.query);
+    res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    handle(res, error);
   }
 });
 
-/**
- * GET /my
- */
 router.get('/my', async (req, res) => {
   try {
-    const interviews = await Interview.find({ 
-      organizationId: req.user.organizationId,
-      'interviewers.userId': req.user.id 
-    }).sort({ scheduledAt: 1 }).populate(populateInterview);
-    res.json({ success: true, data: interviews });
+    const data = await svc.listMyInterviews(req.user.organizationId, req.user.id);
+    res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    handle(res, error);
   }
 });
 
-/**
- * GET /:id
- */
 router.get('/:id', async (req, res) => {
   try {
-    const interview = await Interview.findOne({ _id: req.params.id, organizationId: req.user.organizationId }).populate('applicationId interviewers.userId');
-    if (!interview) return res.status(404).json({ success: false, message: 'Not found' });
-    res.json({ success: true, data: interview });
+    const data = await svc.getInterview(req.user.organizationId, req.params.id);
+    res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    handle(res, error);
   }
 });
 
-/**
- * POST /
- */
 router.post('/', requireRecruiterOrAbove, async (req, res) => {
   try {
-    const { applicationId, interviewers, scheduledAt, duration, type, location, meetingLink } = req.body;
-    if (!applicationId || !scheduledAt) {
-      return res.status(400).json({ success: false, message: 'applicationId and scheduledAt are required' });
-    }
-    
-    const app = await Application.findOne({ _id: applicationId, organizationId: req.user.organizationId });
-    if (!app) return res.status(404).json({ success: false, message: 'Application not found' });
-    
-    const interview = new Interview({
-      organizationId: req.user.organizationId,
-      applicationId,
-      candidateId: app.candidateId,
-      jobId: app.jobId,
-      interviewers: Array.isArray(interviewers) && interviewers.length
-        ? interviewers
-        : [{ userId: req.user.id, name: req.user.name || '', email: req.user.email || '' }],
-      scheduledAt,
-      duration: duration || 60,
-      type: type || 'video',
-      location: location || '',
-      meetingLink: meetingLink || '',
-      status: 'scheduled',
-      createdBy: req.user.id
-    });
-    await interview.save();
-    await interview.populate(populateInterview);
-    eventBus.emit(eventTypes.INTERVIEW_SCHEDULED, {
-      organizationId: req.user.organizationId,
-      userId: req.user.id,
-      resourceType: 'Interview',
-      resourceId: interview._id,
-      applicationId,
-      scheduledAt
-    });
-    res.json({ success: true, data: interview });
+    const data = await svc.createInterview(req.user.organizationId, req.user, req.body);
+    res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    handle(res, error);
   }
 });
 
-/**
- * PUT /:id
- */
 router.put('/:id', requireRecruiterOrAbove, async (req, res) => {
   try {
-    const interview = await Interview.findOneAndUpdate(
-      { _id: req.params.id, organizationId: req.user.organizationId },
-      { $set: req.body },
-      { new: true }
-    );
-    res.json({ success: true, data: interview });
+    const data = await svc.updateInterview(req.user.organizationId, req.params.id, req.body);
+    res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    handle(res, error);
   }
 });
 
-/**
- * PUT /:id/cancel
- */
 router.put('/:id/cancel', requireRecruiterOrAbove, async (req, res) => {
   try {
-    const interview = await Interview.findOneAndUpdate(
-      { _id: req.params.id, organizationId: req.user.organizationId },
-      { $set: { status: 'cancelled', cancelledAt: new Date(), cancelledBy: req.user.id, cancelReason: req.body.reason } },
-      { new: true }
+    const data = await svc.cancelInterview(
+      req.user.organizationId,
+      req.user.id,
+      req.params.id,
+      req.body.reason
     );
-    if (interview) {
-      eventBus.emit(eventTypes.INTERVIEW_CANCELLED, {
-        organizationId: req.user.organizationId,
-        userId: req.user.id,
-        resourceType: 'Interview',
-        resourceId: interview._id,
-        reason: req.body.reason
-      });
-    }
-    res.json({ success: true, data: interview });
+    res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    handle(res, error);
   }
 });
 
-/**
- * PUT /:id/complete
- */
 router.put('/:id/complete', requireRecruiterOrAbove, async (req, res) => {
   try {
-    const interview = await Interview.findOneAndUpdate(
-      { _id: req.params.id, organizationId: req.user.organizationId },
-      { $set: { status: 'completed' } },
-      { new: true }
-    );
-    if (interview) {
-      eventBus.emit(eventTypes.INTERVIEW_COMPLETED, {
-        organizationId: req.user.organizationId,
-        userId: req.user.id,
-        resourceType: 'Interview',
-        resourceId: interview._id
-      });
-    }
-    res.json({ success: true, data: interview });
+    const data = await svc.completeInterview(req.user.organizationId, req.user.id, req.params.id);
+    res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    handle(res, error);
   }
 });
 
-/**
- * GET /:id/scorecards
- */
 router.get('/:id/scorecards', async (req, res) => {
   try {
-    const scorecards = await Scorecard.find({ interviewId: req.params.id, organizationId: req.user.organizationId });
-    res.json({ success: true, data: scorecards });
+    const data = await svc.listScorecards(req.user.organizationId, req.params.id);
+    res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    handle(res, error);
   }
 });
 
-/**
- * POST /:interviewId/scorecard
- */
 router.post('/:interviewId/scorecard', async (req, res) => {
   try {
-    const interview = await Interview.findOne({ _id: req.params.interviewId, organizationId: req.user.organizationId });
-    if (!interview) return res.status(404).json({ success: false, message: 'Interview not found' });
-    
-    const isAssigned = interview.interviewers.some(i => i.userId.toString() === req.user.id.toString());
-    if (!isAssigned) return res.status(403).json({ success: false, message: 'Only assigned interviewers can submit scorecards' });
-    
-    const { criteria, overallRating, recommendation, strengths, concerns, notes, isDraft, templateId } = req.body;
-
-    const normalizedCriteria = Array.isArray(criteria)
-      ? criteria.map((c) => ({
-          name: c.name,
-          rating: Number(c.rating) || 3,
-          weight: Math.min(5, Math.max(0.5, Number(c.weight) || 1)),
-          comment: c.comment || ''
-        }))
-      : [];
-
-    const scorecard = new Scorecard({
-      organizationId: req.user.organizationId,
-      interviewId: req.params.interviewId,
-      applicationId: interview.applicationId || req.body.applicationId,
-      interviewerId: req.user.id,
-      templateId: templateId || null,
-      criteria: normalizedCriteria,
-      overallRating,
-      recommendation,
-      strengths,
-      concerns,
-      notes,
-      isDraft: isDraft || false
-    });
-    await scorecard.save();
-    if (!scorecard.isDraft) {
-      eventBus.emit(eventTypes.SCORECARD_SUBMITTED, {
-        organizationId: req.user.organizationId,
-        userId: req.user.id,
-        resourceType: 'Scorecard',
-        resourceId: scorecard._id,
-        interviewId: req.params.interviewId,
-        recommendation
-      });
-    }
-    res.json({ success: true, data: scorecard });
+    const data = await svc.submitScorecard(
+      req.user.organizationId,
+      req.user,
+      req.params.interviewId,
+      req.body
+    );
+    res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    handle(res, error);
   }
 });
 
-/**
- * PUT /scorecard/:id
- */
 router.put('/scorecard/:id', async (req, res) => {
   try {
-    const scorecard = await Scorecard.findOne({ _id: req.params.id, organizationId: req.user.organizationId });
-    if (!scorecard) return res.status(404).json({ success: false, message: 'Not found' });
-    if (scorecard.interviewerId.toString() !== req.user.id.toString()) return res.status(403).json({ success: false, message: 'Unauthorized' });
-    if (!scorecard.isDraft) return res.status(400).json({ success: false, message: 'Cannot edit submitted scorecard' });
-    
-    Object.assign(scorecard, req.body);
-    await scorecard.save();
-    res.json({ success: true, data: scorecard });
+    const data = await svc.updateScorecard(
+      req.user.organizationId,
+      req.user.id,
+      req.params.id,
+      req.body
+    );
+    res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    handle(res, error);
   }
 });
 

@@ -25,7 +25,7 @@ const runDueReports = async () => {
     const ScheduledReport = mongoose.model('ScheduledReport');
     const Organization = mongoose.model('Organization');
     const { generateReportBuffer } = require('../controller/exportController');
-    const { sendEmail } = require('./emailService');
+    const { sendEmailQueued } = require('./emailService');
     const { planHasFeature } = require('../config/planFeatures');
 
     const due = await ScheduledReport.find({ isActive: true, nextRunAt: { $lte: new Date() } });
@@ -67,7 +67,7 @@ const runDueReports = async () => {
               <p><a href="${downloadUrl}" style="display:inline-block;padding:10px 20px;background:#4F46E5;color:#fff;border-radius:6px;text-decoration:none;">Download report</a></p>
               <p style="color:#888;font-size:12px;">This link expires in 7 days. Manage this schedule from Organization &rarr; Scheduled Reports.</p>
             </div>`;
-          await sendEmail(schedule.recipients, `Scheduled report: ${schedule.name}`, html, `Download your report: ${downloadUrl}`).catch((err) => {
+          await sendEmailQueued(schedule.recipients, `Scheduled report: ${schedule.name}`, html, `Download your report: ${downloadUrl}`).catch((err) => {
             console.error(`[reportScheduler] Failed to email schedule ${schedule._id}:`, err.message);
           });
         }

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Search, MapPin, Briefcase, Clock, Building, ArrowRight, Tag } from 'lucide-react';
 import API_URL from '../config';
+import CareersChatbotWidget from './CareersChatbotWidget';
+import PublicAnnouncementBanner from './PublicAnnouncementBanner';
 
 const CareersPage = () => {
   const { orgSlug } = useParams();
@@ -131,6 +133,7 @@ const CareersPage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans flex flex-col">
+      <PublicAnnouncementBanner orgSlug={orgSlug} />
       {/* Header */}
       <header className="bg-white border-b border-gray-200 py-12 px-4 sm:px-6 lg:px-8 text-center flex-shrink-0">
         <div className="max-w-4xl mx-auto">
@@ -295,10 +298,12 @@ const CareersPage = () => {
       {!orgData?.hidePoweredBy && (
         <footer className="bg-white border-t border-gray-200 py-8 flex-shrink-0">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-gray-500">
-            Powered by <a href="/" className="font-semibold text-gray-900 hover:text-indigo-600 transition-colors">SkillNix ATS</a>
+            Powered by <a href="/" className="font-semibold text-gray-900 hover:text-indigo-600 transition-colors">People Connect HR</a>
           </div>
         </footer>
       )}
+
+      <CareersChatbotWidget orgSlug={orgSlug} />
     </div>
   );
 };

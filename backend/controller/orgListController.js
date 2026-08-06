@@ -1,5 +1,6 @@
 const OrgListItem = require('../models/OrgListItem');
 const { normalizeText, escapeRegex } = require('../utils/textNormalize');
+const logger = require('../utils/logger');
 
 const ALLOWED = new Set(['ctc', 'notice']);
 
@@ -34,7 +35,7 @@ const getItems = async (req, res) => {
       .sort({ sortOrder: 1, name: 1 });
     res.json(items);
   } catch (error) {
-    console.error('Error fetching org list:', error);
+    logger.error('Error fetching org list:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -50,7 +51,7 @@ const getAllItems = async (req, res) => {
     const userIdStr = req.user.id.toString();
     res.json(items.map((p) => ({ ...p, isMine: p.createdBy?.toString() === userIdStr })));
   } catch (error) {
-    console.error('Error fetching all org list:', error);
+    logger.error('Error fetching all org list:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -95,7 +96,7 @@ const seedItems = async (req, res) => {
     }
     res.status(201).json({ success: true, added: created.length, data: created });
   } catch (error) {
-    console.error('Error seeding org list:', error);
+    logger.error('Error seeding org list:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -142,7 +143,7 @@ const createItem = async (req, res) => {
     });
     res.status(201).json(item);
   } catch (error) {
-    console.error('Error creating org list item:', error);
+    logger.error('Error creating org list item:', error);
     if (error.code === 11000) return res.status(400).json({ message: 'Item already exists' });
     res.status(500).json({ message: 'Server error' });
   }
@@ -175,7 +176,7 @@ const updateItem = async (req, res) => {
     await item.save();
     res.json(item);
   } catch (error) {
-    console.error('Error updating org list item:', error);
+    logger.error('Error updating org list item:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -189,7 +190,7 @@ const deleteItem = async (req, res) => {
     if (result.deletedCount === 0) return res.status(404).json({ message: 'Item not found' });
     res.json({ message: 'Deleted successfully' });
   } catch (error) {
-    console.error('Error deleting org list item:', error);
+    logger.error('Error deleting org list item:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };

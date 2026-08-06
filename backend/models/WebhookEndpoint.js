@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 const { encrypt, decrypt, isEncrypted } = require('../utils/encryption');
@@ -46,7 +47,7 @@ webhookEndpointSchema.methods.getDecryptedSecret = function () {
   try {
     return decrypt(this.secret) || '';
   } catch (err) {
-    console.error(`[WebhookEndpoint] Failed to decrypt secret for ${this._id}:`, err.message);
+    logger.error(`[WebhookEndpoint] Failed to decrypt secret for ${this._id}:`, err.message);
     return '';
   }
 };

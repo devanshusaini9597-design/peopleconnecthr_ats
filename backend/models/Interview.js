@@ -43,4 +43,6 @@ interviewSchema.index({ applicationId: 1 });
 interviewSchema.index({ 'interviewers.userId': 1, scheduledAt: 1 });
 interviewSchema.index({ status: 1 });
 
+interviewSchema.plugin(require('../utils/tenantPlugin'));
+
 module.exports = mongoose.model('Interview', interviewSchema);

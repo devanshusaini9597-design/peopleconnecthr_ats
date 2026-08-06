@@ -13,4 +13,6 @@ const sourceSchema = new mongoose.Schema({
 sourceSchema.index({ createdBy: 1, name: 1 }, { unique: true });
 sourceSchema.index({ organizationId: 1, name: 1 });
 
+sourceSchema.plugin(require('../utils/tenantPlugin'));
+
 module.exports = mongoose.model('Source', sourceSchema);

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, MapPin, Briefcase, Clock, UploadCloud, CheckCircle, AlertCircle, Building, FileText, ChevronRight } from 'lucide-react';
 import API_URL from '../config';
+import PublicAnnouncementBanner from './PublicAnnouncementBanner';
 
 const JobDetailPublic = () => {
   const { orgSlug, jobId } = useParams();
@@ -19,6 +20,8 @@ const JobDetailPublic = () => {
     coverLetter: '',
     source: ''
   });
+  const [customResponses, setCustomResponses] = useState({});
+  const [applicationForm, setApplicationForm] = useState(null);
   const [resumeFile, setResumeFile] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -31,8 +34,9 @@ const JobDetailPublic = () => {
         const res = await fetch(`${API_URL}/api/careers/${orgSlug}/jobs/${jobId}`);
         if (!res.ok) throw new Error('Job not found or no longer available');
         const data = await res.json();
-        setJob(data.job);
+        setJob(data.job || data.data);
         setOrg(data.organization);
+        setApplicationForm(data.applicationForm || null);
       } catch (err) {
         setError(err.message);
       } finally {
@@ -87,18 +91,21 @@ const JobDetailPublic = () => {
     setSubmitError('');
     
     try {
-      const payload = new FormData();
-      payload.append('firstName', formData.firstName);
-      payload.append('lastName', formData.lastName);
-      payload.append('email', formData.email);
-      payload.append('phone', formData.phone);
-      payload.append('coverLetter', formData.coverLetter);
-      payload.append('source', formData.source);
-      payload.append('resume', resumeFile);
-
+      const name = `${formData.firstName} ${formData.lastName}`.trim();
       const res = await fetch(`${API_URL}/api/careers/${orgSlug}/jobs/${jobId}/apply`, {
         method: 'POST',
-        body: payload
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          phone: formData.phone,
+          coverLetter: formData.coverLetter,
+          source: formData.source || 'Careers Page',
+          customResponses,
+          resume: resumeFile?.name || ''
+        })
       });
 
       if (!res.ok) {
@@ -143,6 +150,7 @@ const JobDetailPublic = () => {
 
   return (
     <div className="min-h-screen bg-white font-sans text-gray-900 flex flex-col">
+      <PublicAnnouncementBanner orgSlug={orgSlug} />
       {/* Header */}
       <header className="bg-gray-50 border-b border-gray-200 py-6 px-4 sm:px-6 lg:px-8 shrink-0">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
@@ -270,6 +278,66 @@ const JobDetailPublic = () => {
                     </div>
                   </div>
 
+                  {applicationForm?.fields?.length > 0 && (
+                    <div className="space-y-4 pt-2 border-t border-gray-200">
+                      <h4 className="text-sm font-semibold text-gray-900">{applicationForm.title || 'Additional questions'}</h4>
+                      {applicationForm.fields.map((field) => {
+                        const rule = field.showWhen;
+                        if (rule?.fieldKey) {
+                          const parentVal = customResponses[rule.fieldKey];
+                          if (String(parentVal ?? '') !== String(rule.equals ?? '')) return null;
+                        }
+                        return (
+                        <div key={field.key}>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            {field.label}{field.required ? ' *' : ''}
+                          </label>
+                          {field.type === 'textarea' ? (
+                            <textarea
+                              required={field.required}
+                              rows={3}
+                              placeholder={field.placeholder}
+                              value={customResponses[field.key] || ''}
+                              onChange={(e) => setCustomResponses((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                              className="w-full rounded-lg border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 bg-white px-4 py-2 border"
+                            />
+                          ) : field.type === 'select' || field.type === 'yes_no' ? (
+                            <select
+                              required={field.required}
+                              value={customResponses[field.key] || ''}
+                              onChange={(e) => setCustomResponses((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                              className="w-full rounded-lg border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 bg-white px-4 py-2 border"
+                            >
+                              <option value="">Select…</option>
+                              {(field.type === 'yes_no' ? ['Yes', 'No'] : (field.options || [])).map((opt) => (
+                                <option key={opt} value={opt}>{opt}</option>
+                              ))}
+                            </select>
+                          ) : field.type === 'checkbox' ? (
+                            <label className="flex items-center gap-2 text-sm text-gray-700">
+                              <input
+                                type="checkbox"
+                                checked={!!customResponses[field.key]}
+                                onChange={(e) => setCustomResponses((prev) => ({ ...prev, [field.key]: e.target.checked ? 'Yes' : '' }))}
+                              />
+                              {field.placeholder || 'Yes'}
+                            </label>
+                          ) : (
+                            <input
+                              required={field.required}
+                              type={field.type === 'phone' ? 'tel' : field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'email' ? 'email' : field.type === 'url' ? 'url' : 'text'}
+                              placeholder={field.placeholder}
+                              value={customResponses[field.key] || ''}
+                              onChange={(e) => setCustomResponses((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                              className="w-full rounded-lg border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 bg-white px-4 py-2 border"
+                            />
+                          )}
+                        </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Cover Letter (Optional)</label>
                     <textarea name="coverLetter" rows={4} value={formData.coverLetter} onChange={handleInputChange} className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white px-4 py-2 border"></textarea>
@@ -311,7 +379,7 @@ const JobDetailPublic = () => {
       
       <footer className="bg-white border-t border-gray-200 py-6 mt-auto">
         <div className="max-w-5xl mx-auto px-4 text-center text-sm text-gray-500">
-          Powered by <a href="/" className="font-semibold text-gray-900 hover:text-indigo-600">SkillNix ATS</a>
+          Powered by <a href="/" className="font-semibold text-gray-900 hover:text-indigo-600">People Connect HR</a>
         </div>
       </footer>
     </div>

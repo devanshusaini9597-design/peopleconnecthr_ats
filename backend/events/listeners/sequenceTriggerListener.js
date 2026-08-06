@@ -1,3 +1,4 @@
+const logger = require('../../utils/logger');
 /**
  * Auto-enroll candidates into sequences on application events.
  * Gated by messaging.sequences plan entitlement.
@@ -45,7 +46,7 @@ const initSequenceTriggerListeners = () => {
         }
       }
     } catch (err) {
-      console.warn('[sequenceTrigger]', err.message);
+      logger.warn('[sequenceTrigger]', err.message);
     }
   };
 

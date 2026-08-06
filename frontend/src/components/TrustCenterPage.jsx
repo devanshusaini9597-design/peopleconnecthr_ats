@@ -15,7 +15,7 @@ const PublicFooter = () => (
   <footer className="border-t border-stone-200 bg-white py-6 mt-auto">
     <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
       <Link to="/" className="text-sm text-stone-500 hover:text-brand-700 font-medium transition-colors">
-        ← Back to SkillNix
+        ← Back to People Connect HR
       </Link>
     </div>
   </footer>
@@ -47,8 +47,8 @@ export default function TrustCenterPage() {
       <header className="bg-white border-b border-stone-200 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between gap-4">
           <Link to="/" className="flex items-center gap-2.5 text-stone-900 font-semibold min-w-0">
-            <img src="/atslogo.jpg" alt="SkillNix" className="w-8 h-8 rounded-lg flex-shrink-0" />
-            <span className="truncate text-sm sm:text-base">SkillNix Trust Center</span>
+            <img src="/logo.png" alt="People Connect HR" className="w-8 h-8 rounded-lg flex-shrink-0" />
+            <span className="truncate text-sm sm:text-base">People Connect HR Trust Center</span>
           </Link>
           <Link
             to="/status"
@@ -68,7 +68,7 @@ export default function TrustCenterPage() {
             <h1 className="text-2xl sm:text-3xl font-bold text-stone-900 tracking-tight">Trust Center</h1>
           </div>
           <p className="text-stone-600 text-base sm:text-lg leading-relaxed max-w-2xl">
-            Security, compliance, and transparency for teams evaluating SkillNix.
+            Security, compliance, and transparency for teams evaluating People Connect HR.
           </p>
         </section>
 
@@ -143,7 +143,7 @@ export default function TrustCenterPage() {
             Security whitepaper
           </h2>
           <p className="text-stone-600 text-sm mt-4 mb-4 leading-relaxed">
-            SkillNix implements tenant isolation, encrypted credentials at rest (AES-256-GCM),
+            People Connect HR implements tenant isolation, encrypted credentials at rest (AES-256-GCM),
             JWT session auth with RBAC, rate limiting, audit logging, and optional MFA, SSO/SCIM,
             and BYOK encryption for Enterprise plans.
           </p>

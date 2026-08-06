@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 /**
  * RBAC Middleware for SkillNix SaaS
  * 
@@ -88,7 +89,7 @@ const checkPlanLimit = (resource) => {
 
       next();
     } catch (error) {
-      console.error('Plan limit check error:', error);
+      logger.error('Plan limit check error:', error);
       res.status(500).json({ success: false, message: 'Server error checking plan limits' });
     }
   };

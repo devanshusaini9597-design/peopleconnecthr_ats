@@ -1,5 +1,5 @@
 import React from 'react';
-import { Briefcase } from 'lucide-react';
+import BrandLogo from './BrandLogo';
 
 /**
  * Full-viewport enterprise loading screen — used on auth boot & route suspense.
@@ -37,9 +37,7 @@ const AppLoadingScreen = ({
     <div className="relative z-10 flex flex-col items-center text-center px-6 animate-fade-in">
       <div className="relative mb-7">
         <div className="absolute inset-0 rounded-3xl bg-brand-400/20 blur-xl scale-125 animate-pulse" />
-        <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-500 via-teal-500 to-brand-700 shadow-lg shadow-brand-500/25 flex items-center justify-center ring-4 ring-white">
-          <Briefcase className="w-7 h-7 text-white" strokeWidth={2} />
-        </div>
+        <BrandLogo size="2xl" className="relative shadow-lg shadow-brand-500/25 ring-4 ring-white" />
         <div className="absolute -inset-3 rounded-[1.35rem] border-2 border-transparent border-t-brand-500 border-r-teal-400/60 animate-spin" style={{ animationDuration: '1.1s' }} />
       </div>
 

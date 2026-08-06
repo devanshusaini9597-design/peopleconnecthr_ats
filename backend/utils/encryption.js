@@ -1,3 +1,4 @@
+const logger = require('./logger');
 /**
  * Field-level encryption for sensitive data at rest (API keys, OAuth tokens,
  * SMTP passwords, etc. stored in IntegrationConfig.credentials).
@@ -26,7 +27,7 @@ const getKey = () => {
     if (process.env.NODE_ENV === 'production') {
       throw new Error('INTEGRATION_ENCRYPTION_KEY environment variable is required in production to store integration credentials securely.');
     }
-    console.warn('⚠️  INTEGRATION_ENCRYPTION_KEY not set — using an insecure development-only key. Set this before storing real credentials.');
+    logger.warn('⚠️  INTEGRATION_ENCRYPTION_KEY not set — using an insecure development-only key. Set this before storing real credentials.');
     cachedKey = crypto.createHash('sha256').update('dev-only-insecure-key-CHANGE-ME').digest();
     return cachedKey;
   }

@@ -9,6 +9,7 @@ const express = require('express');
 const router = express.Router();
 const Organization = require('../models/Organization');
 const stripeService = require('../services/stripeService');
+const { applyPlanLimits } = require('../config/planLimits');
 const eventBus = require('../events/eventBus');
 const eventTypes = require('../events/eventTypes');
 
@@ -35,6 +36,7 @@ router.post('/', express.raw({ type: 'application/json' }), async (req, res) => 
             org.billingCustomerId = session.customer || org.billingCustomerId;
             org.billingSubscriptionId = session.subscription || org.billingSubscriptionId;
             org.planExpiresAt = undefined;
+            applyPlanLimits(org, planId);
             await org.save();
             eventBus.emit(eventTypes.ORG_PLAN_CHANGED, { organizationId, previousPlan, newPlan: planId, source: 'stripe_checkout' });
           }
@@ -53,6 +55,7 @@ router.post('/', express.raw({ type: 'application/json' }), async (req, res) => 
             const previousPlan = org.plan;
             if (planFromPrice && planFromPrice !== org.plan) {
               org.plan = planFromPrice;
+              applyPlanLimits(org, planFromPrice);
             }
             org.billingSubscriptionId = subscription.id;
             await org.save();
@@ -73,6 +76,7 @@ router.post('/', express.raw({ type: 'application/json' }), async (req, res) => 
             const previousPlan = org.plan;
             org.plan = 'starter';
             org.billingSubscriptionId = '';
+            applyPlanLimits(org, 'starter');
             await org.save();
             eventBus.emit(eventTypes.ORG_PLAN_CHANGED, { organizationId, previousPlan, newPlan: 'starter', source: 'stripe_subscription_cancelled' });
           }

@@ -1,18 +1,16 @@
 /**
  * Tenant Isolation Middleware
- * 
- * Automatically scopes all database queries to the current user's organization.
- * Must be used AFTER verifyToken middleware.
- */
-
-/**
- * Middleware that sets req.tenantFilter. 
- * If user has no organizationId (mid-onboarding), skip gracefully.
+ *
+ * Sets req.tenantFilter and req.tenantId after verifyToken.
+ * Prefer Model.find(...).setOptions({ _tenantId: req.tenantId }) when the
+ * model uses tenantPlugin — otherwise spread req.tenantFilter into queries.
  */
 const tenantScope = (req, res, next) => {
   req.tenantFilter = {};
-  
+  req.tenantId = null;
+
   if (req.user && req.user.organizationId) {
+    req.tenantId = req.user.organizationId;
     req.tenantFilter = { organizationId: req.user.organizationId };
   }
 
@@ -20,13 +18,20 @@ const tenantScope = (req, res, next) => {
 };
 
 /**
- * Middleware that returns 403 if user has no organizationId (for routes that require an org context)
+ * Apply tenant scoping option to a Mongoose query (for tenantPlugin models).
  */
+const withTenant = (query, req) => {
+  if (req?.tenantId) {
+    return query.setOptions({ _tenantId: req.tenantId });
+  }
+  return query;
+};
+
 const requireOrganization = (req, res, next) => {
   if (!req.user || !req.user.organizationId) {
     return res.status(403).json({
       success: false,
-      message: 'Access denied: User is not associated with an organization'
+      message: 'Access denied: User is not associated with an organization',
     });
   }
   next();
@@ -34,5 +39,6 @@ const requireOrganization = (req, res, next) => {
 
 module.exports = {
   tenantScope,
-  requireOrganization
+  requireOrganization,
+  withTenant,
 };

@@ -1,137 +1,205 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Edit, Trash2, Search, ArrowUpDown, Users2, Link2, Copy, X, Inbox } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Plus, Loader2 } from 'lucide-react';
 import BASE_API_URL from '../config';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import ConfirmationModal from './ConfirmationModal';
-import EmptyState from './ui/EmptyState';
-import { formatByFieldName, formatNameForInput } from '../utils/textFormatter';
+import PageHeader from './ui/PageHeader';
+import ProductTour from './ui/ProductTour';
+import TourHelpFab from './ui/TourHelpFab';
+import usePageTour from '../hooks/usePageTour';
+import { formatByFieldName } from '../utils/textFormatter';
 import { useAuth } from '../context/AuthContext';
 import { planHasFeature } from '../config/planFeatures';
+import { CATALOG } from './manageMasterData/masterDataConstants';
+import SharingPanel from './manageMasterData/SharingPanel';
+import PortalPanel from './manageMasterData/PortalPanel';
+import MasterDataCatalog from './manageMasterData/MasterDataCatalog';
+import MasterDataEditorModal from './manageMasterData/MasterDataEditorModal';
 
 /**
- * Agency mode (Enterprise): per-client sharing + a read-only client portal
- * link. Only rendered when this instance of ManageMasterData is managing
- * Clients (apiEndpoint === '/api/clients') — Positions/Sources don't have
- * this concept.
+ * Organization master lists — Positions, Clients, CV Sources.
+ * One shared catalog per org (no personal vs team split).
  */
-const ClientSharingModal = ({ client, members, onClose, onSave, saving }) => {
-  const [selected, setSelected] = useState(client.restrictedToUsers || []);
-  const toggle = (id) => setSelected((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="text-lg font-bold text-slate-900">Sharing: {client.name}</h3>
-          <button onClick={onClose}><X size={18} className="text-slate-400" /></button>
-        </div>
-        <div className="p-5">
-          <p className="text-sm text-slate-500 mb-3">Leave none selected to keep this client visible to your whole team. Select specific teammates to restrict it to just them.</p>
-          <div className="space-y-1.5 max-h-64 overflow-y-auto">
-            {members.map((m) => (
-              <label key={m._id} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg">
-                <input type="checkbox" checked={selected.includes(m._id)} onChange={() => toggle(m._id)} className="rounded border-slate-300" />
-                {m.name || m.email} <span className="text-xs text-slate-400">({m.role})</span>
-              </label>
-            ))}
-          </div>
-        </div>
-        <div className="p-5 border-t border-slate-100 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
-          <button onClick={() => onSave(selected)} disabled={saving} className="px-4 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50">
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const ClientPortalModal = ({ client, onClose, onEnable, onDisable, saving }) => {
-  const [copied, setCopied] = useState(false);
-  const portalUrl = client.portal?.token ? `${window.location.origin}/client-portal/${client.portal.token}` : null;
-  const copy = () => { navigator.clipboard?.writeText(portalUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-xl p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-bold text-slate-900">Client Portal: {client.name}</h3>
-          <button onClick={onClose}><X size={18} className="text-slate-400" /></button>
-        </div>
-        {client.portal?.enabled && portalUrl ? (
-          <>
-            <p className="text-sm text-slate-500 mb-3">Share this read-only link with {client.name} to let them view application progress.</p>
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
-              <code className="text-xs text-slate-800 break-all flex-1">{portalUrl}</code>
-              <button onClick={copy} className="p-2 hover:bg-slate-200 rounded-lg shrink-0"><Copy className="w-4 h-4 text-slate-600" /></button>
-            </div>
-            {copied && <p className="text-xs text-green-600 mt-2">Copied!</p>}
-            <button onClick={onDisable} disabled={saving} className="mt-4 w-full px-4 py-2 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50">
-              Disable portal
-            </button>
-          </>
-        ) : (
-          <>
-            <p className="text-sm text-slate-500 mb-4">Generate a read-only link {client.name} can use to check on their candidates' pipeline progress, without logging in.</p>
-            <button onClick={onEnable} disabled={saving} className="w-full px-4 py-2.5 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50">
-              {saving ? 'Generating…' : 'Enable client portal'}
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const ManageMasterData = ({ title, apiEndpoint, navigateBack }) => {
-  const navigate = useNavigate();
+const ManageMasterData = ({ title, apiEndpoint }) => {
   const toast = useToast();
   const { organization } = useAuth();
+  const cfg = CATALOG[title] || CATALOG.Positions;
+  const Icon = cfg.icon;
   const isClients = apiEndpoint === '/api/clients';
   const hasClientSharing = isClients && planHasFeature(organization?.plan, 'agency.clientSharing');
   const hasClientPortal = isClients && planHasFeature(organization?.plan, 'agency.clientPortal');
+
+  const [tourOpen, setTourOpen] = usePageTour(cfg.tourKey);
+  const tourSteps = useMemo(() => [
+    { title: cfg.headline, body: cfg.tip },
+    { target: '[data-tour="list-toolbar"]', title: 'Find & sort', body: 'Search the catalog and change sort order.', placement: 'bottom' },
+    { target: '[data-tour="list-table"]', title: 'Catalog', body: 'Edit or remove entries. They sync to Add Candidate dropdowns.', placement: 'top' },
+  ], [cfg.headline, cfg.tip]);
+
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [sortKey, setSortKey] = useState('name-asc');
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState({ name: '', description: '' });
+  const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const [members, setMembers] = useState([]);
   const [sharingClient, setSharingClient] = useState(null);
   const [portalClient, setPortalClient] = useState(null);
   const [agencySaving, setAgencySaving] = useState(false);
-  const [data, setData] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [editingItem, setEditingItem] = useState(null);
-  const [formData, setFormData] = useState({ name: '', description: '' });
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [viewAllMode, setViewAllMode] = useState(false);
-  const [addingId, setAddingId] = useState(null);
-  const [sortBy, setSortBy] = useState('name');
-  const [sortOrder, setSortOrder] = useState('asc');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await authenticatedFetch(`${BASE_API_URL}${apiEndpoint}/all`);
+      if (isUnauthorized(res)) { handleUnauthorized(); return; }
+      if (!res.ok) { toast.error(`Could not load ${cfg.headline.toLowerCase()}`); return; }
+      const data = await res.json();
+      setRows(Array.isArray(data) ? data : []);
+    } catch {
+      toast.error(`Could not load ${cfg.headline.toLowerCase()}`);
+    } finally {
+      setLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- toast is stable enough; avoid reload loops
+  }, [apiEndpoint, cfg.headline]);
+
+  useEffect(() => { load(); }, [apiEndpoint]);
 
   useEffect(() => {
-    fetchData();
-  }, [apiEndpoint, viewAllMode]);
-
-  useEffect(() => {
-    if (!hasClientSharing) return;
+    if (!hasClientSharing) return undefined;
+    let cancelled = false;
     authenticatedFetch(`${BASE_API_URL}/api/organization/members`)
       .then((r) => r.json())
-      .then((d) => { if (d.success) setMembers(d.data || []); })
+      .then((d) => { if (!cancelled && d.success) setMembers(d.data || []); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, [hasClientSharing]);
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    let list = rows.filter((r) => {
+      if (!q) return true;
+      return `${r.name || ''} ${r.description || ''}`.toLowerCase().includes(q);
+    });
+    list = [...list].sort((a, b) => {
+      if (sortKey === 'name-asc' || sortKey === 'name-desc') {
+        const cmp = String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+        return sortKey === 'name-asc' ? cmp : -cmp;
+      }
+      const ta = new Date(a.createdAt || a.updatedAt || 0).getTime();
+      const tb = new Date(b.createdAt || b.updatedAt || 0).getTime();
+      return sortKey === 'newest' ? tb - ta : ta - tb;
+    });
+    return list;
+  }, [rows, query, sortKey]);
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm({ name: '', description: '' });
+    setEditorOpen(true);
+  };
+
+  const openEdit = (item) => {
+    setEditing(item);
+    setForm({ name: item.name || '', description: item.description || '' });
+    setEditorOpen(true);
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    const payload = {
+      name: formatByFieldName('name', form.name),
+      description: formatByFieldName('description', form.description),
+    };
+    if (!payload.name.trim()) {
+      toast.warning('Name is required');
+      return;
+    }
+    setSaving(true);
+    try {
+      const url = editing
+        ? `${BASE_API_URL}${apiEndpoint}/${editing._id}`
+        : `${BASE_API_URL}${apiEndpoint}`;
+      const res = await authenticatedFetch(url, {
+        method: editing ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (isUnauthorized(res)) { handleUnauthorized(); return; }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.message || 'Could not save');
+        return;
+      }
+      toast.success(editing ? 'Updated' : 'Added to organization list');
+      setEditorOpen(false);
+      setEditing(null);
+      setForm({ name: '', description: '' });
+      await load();
+    } catch {
+      toast.error('Could not save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await authenticatedFetch(`${BASE_API_URL}${apiEndpoint}/${deleteTarget._id}`, { method: 'DELETE' });
+      if (isUnauthorized(res)) { handleUnauthorized(); return; }
+      if (!res.ok) { toast.error('Could not delete'); return; }
+      toast.success('Removed');
+      setDeleteTarget(null);
+      await load();
+    } catch {
+      toast.error('Could not delete');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleSeed = async () => {
+    if (!cfg.seedable) return;
+    setSeeding(true);
+    try {
+      const res = await authenticatedFetch(`${BASE_API_URL}${apiEndpoint}/seed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: true }),
+      });
+      if (isUnauthorized(res)) { handleUnauthorized(); return; }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast.error(data.message || 'Could not load starter set'); return; }
+      toast.success(`Starter set ready (${data.added ?? 0} added)`);
+      await load();
+    } catch {
+      toast.error('Could not load starter set');
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   const saveSharing = async (userIds) => {
     setAgencySaving(true);
     try {
-      const res = await authenticatedFetch(`${BASE_API_URL}/api/clients/${sharingClient._id}/sharing`, { method: 'PUT', body: JSON.stringify({ userIds }) });
+      const res = await authenticatedFetch(`${BASE_API_URL}/api/clients/${sharingClient._id}/sharing`, {
+        method: 'PUT',
+        body: JSON.stringify({ userIds }),
+      });
       const updated = await res.json();
       if (!res.ok) { toast.error(updated.message || 'Failed to update sharing'); return; }
       toast.success('Sharing updated');
       setSharingClient(null);
-      fetchData();
-    } catch (err) {
+      await load();
+    } catch {
       toast.error('Failed to update sharing');
     } finally {
       setAgencySaving(false);
@@ -141,12 +209,15 @@ const ManageMasterData = ({ title, apiEndpoint, navigateBack }) => {
   const enablePortal = async () => {
     setAgencySaving(true);
     try {
-      const res = await authenticatedFetch(`${BASE_API_URL}/api/clients/${portalClient._id}/portal/enable`, { method: 'POST', body: JSON.stringify({}) });
+      const res = await authenticatedFetch(`${BASE_API_URL}/api/clients/${portalClient._id}/portal/enable`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
       const updated = await res.json();
       if (!res.ok) { toast.error(updated.message || 'Failed to enable portal'); return; }
       setPortalClient(updated);
-      fetchData();
-    } catch (err) {
+      await load();
+    } catch {
       toast.error('Failed to enable portal');
     } finally {
       setAgencySaving(false);
@@ -156,471 +227,104 @@ const ManageMasterData = ({ title, apiEndpoint, navigateBack }) => {
   const disablePortal = async () => {
     setAgencySaving(true);
     try {
-      const res = await authenticatedFetch(`${BASE_API_URL}/api/clients/${portalClient._id}/portal/disable`, { method: 'POST', body: JSON.stringify({}) });
+      const res = await authenticatedFetch(`${BASE_API_URL}/api/clients/${portalClient._id}/portal/disable`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
       const updated = await res.json();
       if (!res.ok) { toast.error(updated.message || 'Failed to disable portal'); return; }
       setPortalClient(updated);
-      fetchData();
-    } catch (err) {
+      await load();
+    } catch {
       toast.error('Failed to disable portal');
     } finally {
       setAgencySaving(false);
     }
   };
 
-  const fetchData = async () => {
-    try {
-      setIsLoading(true);
-      const url = viewAllMode ? `${BASE_API_URL}${apiEndpoint}/all` : `${BASE_API_URL}${apiEndpoint}`;
-      const response = await authenticatedFetch(url);
-
-      if (isUnauthorized(response)) {
-        handleUnauthorized();
-        return;
-      }
-
-      if (response.ok) {
-        const result = await response.json();
-        setData(result);
-      } else {
-        toast.error('Failed to fetch data');
-      }
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      toast.error('Error fetching data');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    // Format the name field before sending
-    const formattedData = {
-      name: formatByFieldName('name', formData.name),
-      description: formatByFieldName('description', formData.description)
-    };
-
-    if (!formattedData.name.trim()) {
-      toast.warning('Name is required');
-      return;
-    }
-
-    try {
-      const url = editingItem
-        ? `${BASE_API_URL}${apiEndpoint}/${editingItem._id}`
-        : `${BASE_API_URL}${apiEndpoint}`;
-
-      const response = await authenticatedFetch(url, {
-        method: editingItem ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formattedData)
-      });
-
-      if (isUnauthorized(response)) {
-        handleUnauthorized();
-        return;
-      }
-
-      if (response.ok) {
-        toast.success(`${title.slice(0, -1)} ${editingItem ? 'updated' : 'added'} successfully!`);
-        setShowModal(false);
-        setFormData({ name: '', description: '' });
-        setEditingItem(null);
-        fetchData();
-      } else {
-        const error = await response.json();
-        toast.error(error.message || 'Operation failed');
-      }
-    } catch (error) {
-      console.error('Error saving data:', error);
-      toast.error('Error saving data');
-    }
-  };
-
-  const handleAddToMyList = async (item) => {
-    if (!item || addingId) return;
-    const idOrKey = item._id ?? item.addKey;
-    setAddingId(idOrKey);
-    try {
-      const payload = {
-        name: formatByFieldName('name', item.name || ''),
-        description: formatByFieldName('description', item.description || '')
-      };
-      const response = await authenticatedFetch(`${BASE_API_URL}${apiEndpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (isUnauthorized(response)) {
-        handleUnauthorized();
-        return;
-      }
-      if (response.ok) {
-        const createdItem = await response.json();
-        setData(prev => [...prev, { ...createdItem, isMine: true }]);
-        toast.success(`Added to your list`);
-      } else {
-        const err = await response.json().catch(() => ({}));
-        if (response.status === 400 && (err.message || '').toLowerCase().includes('already exists')) {
-          toast.warning('Already in your list');
-        } else {
-          toast.error(err.message || 'Could not add');
-        }
-      }
-    } catch (error) {
-      console.error('Error adding to list:', error);
-      toast.error('Could not add to your list');
-    } finally {
-      setAddingId(null);
-    }
-  };
-
-  const handleDeleteConfirm = (item) => {
-    setDeleteConfirm(item);
-  };
-
-  const handleDelete = async () => {
-    if (!deleteConfirm) return;
-    setIsDeleting(true);
-    try {
-      const response = await authenticatedFetch(`${BASE_API_URL}${apiEndpoint}/${deleteConfirm._id}`, {
-        method: 'DELETE'
-      });
-
-      if (isUnauthorized(response)) {
-        handleUnauthorized();
-        return;
-      }
-
-      if (response.ok) {
-        toast.success(`${title.slice(0, -1)} deleted successfully!`);
-        fetchData();
-      } else {
-        toast.error('Failed to delete item');
-      }
-    } catch (error) {
-      console.error('Error deleting data:', error);
-      toast.error('Error deleting data');
-    } finally {
-      setIsDeleting(false);
-      setDeleteConfirm(null);
-    }
-  };
-
-  // In "View all" mode, show all records so every row can be edited/deleted by any user
-  const displayList = useMemo(() => {
-    return data;
-  }, [data]);
-
-  const filteredData = useMemo(() => {
-    const list = displayList.filter(item =>
-      (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.description && String(item.description).toLowerCase().includes(searchTerm.toLowerCase()))
-    );
-    const key = sortBy === 'description' ? 'description' : 'name';
-    return [...list].sort((a, b) => {
-      const va = (a[key] || '').toString().toLowerCase();
-      const vb = (b[key] || '').toString().toLowerCase();
-      const cmp = va.localeCompare(vb, undefined, { sensitivity: 'base' });
-      return sortOrder === 'asc' ? cmp : -cmp;
-    });
-  }, [displayList, searchTerm, sortBy, sortOrder]);
-
-  const openModal = (item = null) => {
-    setEditingItem(item);
-    setFormData(item ? { name: item.name, description: item.description || '' } : { name: '', description: '' });
-    setShowModal(true);
-  };
-
   return (
-    <>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
-        {/* Header */}
-        <div className="mb-8">
-          <button
-            onClick={() => navigate(navigateBack)}
-            className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-semibold mb-4 transition-colors"
-          >
-            <ArrowLeft size={20} />
-            Back to Dashboard
+    <div className="page-shell-ats animate-page-enter">
+      <PageHeader icon={Icon} title={cfg.headline} subtitle={cfg.subtitle} gradientTitle>
+        {cfg.seedable && (
+          <button type="button" onClick={handleSeed} disabled={seeding} className="btn-secondary flex-1 sm:flex-none disabled:opacity-50">
+            {seeding ? <Loader2 size={16} className="animate-spin" /> : null}
+            {seeding ? 'Loading…' : 'Load starter set'}
           </button>
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-indigo-600 rounded-full flex items-center justify-center">
-                <Plus size={24} className="text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-slate-900">Manage {title}</h1>
-                <p className="text-sm text-slate-600 mt-1">Add, edit, and manage {title.toLowerCase()}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Tabs (left) + Search & Add New (right) - enterprise style */}
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-          <div className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1 shadow-sm">
-            <button
-              type="button"
-              onClick={() => setViewAllMode(false)}
-              className={`px-4 py-2 text-sm font-semibold rounded-md transition-all ${!viewAllMode ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'}`}
-            >
-              Show only mine
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewAllMode(true)}
-              className={`px-4 py-2 text-sm font-semibold rounded-md transition-all ${viewAllMode ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'}`}
-            >
-              View all
-            </button>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-600 whitespace-nowrap">Sort by:</span>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="rounded-lg border-2 border-slate-200 bg-white py-2 pr-8 pl-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 cursor-pointer"
-              >
-                <option value="name">Name</option>
-                <option value="description">Description</option>
-              </select>
-              <button
-                type="button"
-                onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
-                className="flex items-center gap-1 px-2 py-2 rounded-lg border-2 border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
-                title={sortOrder === 'asc' ? 'Ascending (click for descending)' : 'Descending (click for ascending)'}
-              >
-                <ArrowUpDown size={16} />
-                {sortOrder === 'asc' ? 'A→Z' : 'Z→A'}
-              </button>
-            </div>
-            <div className="relative w-64 sm:w-72">
-              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder={`Search ${title.toLowerCase()}...`}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full rounded-lg border-2 border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-              />
-            </div>
-            <button
-              onClick={() => openModal()}
-              className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:from-blue-600 hover:to-indigo-700"
-            >
-              <Plus size={18} />
-              Add New
-            </button>
-          </div>
-        </div>
-
-        {viewAllMode && (
-          <p className="mb-4 text-sm text-slate-600 bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2.5">
-            All users can edit or delete any entry. Use <strong>+ Copy to my list</strong> to copy others’ entries.
-          </p>
         )}
+        <button type="button" onClick={openCreate} className="btn-primary flex-1 sm:flex-none" data-tour="list-add">
+          <Plus size={16} /> Add {cfg.singular}
+        </button>
+      </PageHeader>
 
-        {/* Data Table */}
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-          {isLoading ? (
-            <div className="p-8 text-center">
-              <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-slate-600">Loading {title.toLowerCase()}...</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">Name</th>
-                    {viewAllMode && <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">Added by</th>}
-                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">Description</th>
-                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">Status</th>
-                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {filteredData.length === 0 ? (
-                    <tr>
-                      <td colSpan={viewAllMode ? 5 : 4} className="px-6">
-                        <EmptyState
-                          icon={searchTerm ? Search : Inbox}
-                          tone={searchTerm ? 'amber' : 'brand'}
-                          compact
-                          message={searchTerm ? 'No matching items found' : `No ${title.toLowerCase()} found`}
-                          subMessage={searchTerm ? 'Try a different search term.' : `Add your first ${title.toLowerCase().replace(/s$/, '')} to get started.`}
-                        />
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredData.map((item, index) => {
-                      const isMine = viewAllMode && item.isMine === true;
-                      return (
-                        <tr key={item._id || `row-${index}-${(item.name || '').slice(0, 20)}`} className={`hover:bg-slate-50 ${viewAllMode && !isMine ? 'bg-slate-50/50' : ''}`}>
-                          <td className="px-6 py-4 text-sm text-slate-900 font-medium">{item.name}</td>
-                          {viewAllMode && (
-                            <td className="px-6 py-4 text-sm">
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${isMine ? 'bg-green-100 text-green-800' : 'bg-slate-200 text-slate-700'}`}>
-                                {isMine ? 'You' : 'Others'}
-                              </span>
-                            </td>
-                          )}
-                          <td className="px-6 py-4 text-sm text-slate-600">{item.description || '-'}</td>
-                          <td className="px-6 py-4 text-sm">
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              item.isActive !== false ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                            }`}>
-                              {item.isActive !== false ? 'Active' : 'Inactive'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-sm">
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => openModal(item)}
-                                className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                title="Edit"
-                              >
-                                <Edit size={16} />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteConfirm(item)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Delete"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                              {viewAllMode && !isMine && (
-                                <button
-                                  onClick={() => handleAddToMyList(item)}
-                                  disabled={addingId === item._id}
-                                  className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
-                                  title="Copy to my list"
-                                >
-                                  {addingId === item._id ? (
-                                    <span className="inline-block w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
-                                  ) : (
-                                    <Plus size={16} />
-                                  )}
-                                </button>
-                              )}
-                              {hasClientSharing && (
-                                <button
-                                  onClick={() => setSharingClient(item)}
-                                  className={`p-2 rounded-lg transition-colors ${(item.restrictedToUsers || []).length > 0 ? 'text-amber-600 hover:bg-amber-50' : 'text-slate-400 hover:bg-slate-50'}`}
-                                  title={(item.restrictedToUsers || []).length > 0 ? `Restricted to ${item.restrictedToUsers.length} teammate(s)` : 'Sharing: visible to whole team'}
-                                >
-                                  <Users2 size={16} />
-                                </button>
-                              )}
-                              {hasClientPortal && (
-                                <button
-                                  onClick={() => setPortalClient(item)}
-                                  className={`p-2 rounded-lg transition-colors ${item.portal?.enabled ? 'text-indigo-600 hover:bg-indigo-50' : 'text-slate-400 hover:bg-slate-50'}`}
-                                  title={item.portal?.enabled ? 'Client portal enabled' : 'Enable client portal'}
-                                >
-                                  <Link2 size={16} />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Modal */}
-        {showModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl p-8 w-full max-w-md mx-4">
-              <h2 className="text-2xl font-bold text-slate-900 mb-6">
-                {editingItem ? 'Edit' : 'Add New'} {title.slice(0, -1)}
-              </h2>
-
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Name *</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: formatNameForInput(e.target.value) })}
-                    placeholder={`Enter ${title.slice(0, -1).toLowerCase()} name`}
-                    required
-                    className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Description</label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: formatNameForInput(e.target.value) })}
-                    placeholder={`Enter ${title.slice(0, -1).toLowerCase()} description (optional)`}
-                    rows="3"
-                    className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                  />
-                </div>
-
-                <div className="flex gap-4 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowModal(false)}
-                    className="flex-1 px-4 py-2.5 bg-slate-200 text-slate-800 rounded-lg font-semibold hover:bg-slate-300 transition-all text-sm"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all text-sm"
-                  >
-                    {editingItem ? 'Update' : 'Add'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-        {/* Delete Confirmation Modal */}
-        <ConfirmationModal
-          isOpen={!!deleteConfirm}
-          onClose={() => setDeleteConfirm(null)}
-          onConfirm={handleDelete}
-          title={`Delete ${title.slice(0, -1)}`}
-          message={`Are you sure you want to delete "${deleteConfirm?.name}"? This action cannot be undone.`}
-          confirmText={`Delete ${title.slice(0, -1)}`}
-          type="delete"
-          isLoading={isDeleting}
-        />
-
-        {sharingClient && (
-          <ClientSharingModal
-            client={sharingClient}
-            members={members}
-            saving={agencySaving}
-            onClose={() => setSharingClient(null)}
-            onSave={saveSharing}
-          />
-        )}
-        {portalClient && (
-          <ClientPortalModal
-            client={portalClient}
-            saving={agencySaving}
-            onClose={() => setPortalClient(null)}
-            onEnable={enablePortal}
-            onDisable={disablePortal}
-          />
-        )}
+      <div className="rounded-xl border border-brand-200/60 bg-gradient-to-r from-brand-50/70 via-white to-teal-50/40 px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed">
+        {cfg.tip} Press <span className="font-semibold text-stone-800">?</span> for a short tour.
       </div>
-    </>
+
+      <MasterDataCatalog
+        cfg={cfg}
+        Icon={Icon}
+        query={query}
+        setQuery={setQuery}
+        sortKey={sortKey}
+        setSortKey={setSortKey}
+        loading={loading}
+        visible={visible}
+        hasClientSharing={hasClientSharing}
+        hasClientPortal={hasClientPortal}
+        seeding={seeding}
+        onSeed={handleSeed}
+        onCreate={openCreate}
+        onEdit={openEdit}
+        onDelete={setDeleteTarget}
+        onShare={setSharingClient}
+        onPortal={setPortalClient}
+      />
+
+      <MasterDataEditorModal
+        open={editorOpen}
+        saving={saving}
+        editing={editing}
+        form={form}
+        setForm={setForm}
+        cfg={cfg}
+        title={title}
+        onClose={() => setEditorOpen(false)}
+        onSubmit={handleSave}
+      />
+
+      <ConfirmationModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title={`Remove ${cfg.singular}?`}
+        message={`Remove "${deleteTarget?.name}" from the organization list? It will no longer appear in Add Candidate.`}
+        confirmText="Remove"
+        type="delete"
+        isLoading={deleting}
+      />
+
+      {sharingClient && (
+        <SharingPanel
+          client={sharingClient}
+          members={members}
+          saving={agencySaving}
+          onClose={() => setSharingClient(null)}
+          onSave={saveSharing}
+        />
+      )}
+      {portalClient && (
+        <PortalPanel
+          client={portalClient}
+          saving={agencySaving}
+          onClose={() => setPortalClient(null)}
+          onEnable={enablePortal}
+          onDisable={disablePortal}
+        />
+      )}
+
+      <TourHelpFab onClick={() => setTourOpen(true)} label="Take a tour" title={`Tour of ${cfg.headline}`} />
+      <ProductTour open={tourOpen} onClose={() => setTourOpen(false)} steps={tourSteps} storageKey={cfg.tourKey} />
+    </div>
   );
 };
 

@@ -167,4 +167,6 @@ jobSchema.methods.close = function(reason = 'Position filled') {
   return this.save();
 };
 
+jobSchema.plugin(require('../utils/tenantPlugin'));
+
 module.exports = mongoose.model('Job', jobSchema);

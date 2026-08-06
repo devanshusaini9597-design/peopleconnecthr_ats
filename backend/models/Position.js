@@ -13,4 +13,6 @@ const positionSchema = new mongoose.Schema({
 positionSchema.index({ createdBy: 1, name: 1 }, { unique: true });
 positionSchema.index({ organizationId: 1, name: 1 });
 
+positionSchema.plugin(require('../utils/tenantPlugin'));
+
 module.exports = mongoose.model('Position', positionSchema);

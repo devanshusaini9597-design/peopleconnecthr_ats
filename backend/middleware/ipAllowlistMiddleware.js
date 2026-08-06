@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const mongoose = require('mongoose');
 const Organization = require('../models/Organization');
 const { planHasFeature } = require('../config/planFeatures');
@@ -33,7 +34,7 @@ const ipAllowlistMiddleware = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.error('[ipAllowlistMiddleware]', error.message);
+    logger.error('[ipAllowlistMiddleware]', error.message);
     res.status(500).json({ success: false, message: 'Server error checking IP allowlist' });
   }
 };

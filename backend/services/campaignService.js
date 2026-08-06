@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const axios = require('axios');
 const mongoose = require('mongoose');
 
@@ -48,7 +49,7 @@ const getAccessToken = async () => {
 
   cachedAccessToken = data.access_token;
   cachedExpiry = Date.now() + (Number(data.expires_in) || 3600) * 1000;
-  console.log('[Campaigns] OAuth access token refreshed');
+  logger.info('[Campaigns] OAuth access token refreshed');
   return cachedAccessToken;
 };
 
@@ -162,7 +163,7 @@ const sendMarketingEmail = async (to, subject, htmlBody, options = {}) => {
       const nameParts = (r.name || '').trim().split(/\s+/);
       await addContact(listKey, r.email, nameParts[0] || '', nameParts.slice(1).join(' ') || '');
     }
-    console.log(`[Campaigns] Added ${recipients.length} contact(s) to list via OAuth`);
+    logger.info(`[Campaigns] Added ${recipients.length} contact(s) to list via OAuth`);
     return { success: true, sent: recipients.length, data: { message: 'Contacts added to mailing list.' } };
   } catch (addErr) {
     const status = addErr.response?.status;
@@ -178,7 +179,7 @@ const sendMarketingEmail = async (to, subject, htmlBody, options = {}) => {
       err.code = 'CAMPAIGNS_NOT_CONFIGURED';
       throw err;
     }
-    console.error('[Campaigns] Add contact error:', data || addErr.message);
+    logger.error('[Campaigns] Add contact error:', data || addErr.message);
     throw addErr;
   }
 };

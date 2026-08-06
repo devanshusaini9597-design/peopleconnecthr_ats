@@ -3,6 +3,7 @@ import { useLocation, Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import RouteLoadingBar from './RouteLoadingBar';
+import AnnouncementBanner from './AnnouncementBanner';
 
 const Layout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -39,6 +40,7 @@ const Layout = ({ children }) => {
         }`}
       >
         <Header setSidebarOpen={setSidebarOpen} sidebarOpen={sidebarOpen} />
+        <AnnouncementBanner />
 
         <main
           ref={mainRef}

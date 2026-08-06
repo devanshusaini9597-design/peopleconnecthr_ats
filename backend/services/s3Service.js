@@ -7,6 +7,7 @@
 const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const path = require('path');
 const fs = require('fs');
+const logger = require('../utils/logger');
 
 const BUCKET = process.env.S3_BUCKET_NAME || '';
 const PREFIX = (process.env.S3_RESUME_PREFIX || 'resumes').replace(/^\/+|\/+$/g, '') || 'resumes';
@@ -40,14 +41,14 @@ function getClient() {
 async function uploadResumeFromFile(localFilePath, originalName) {
     const client = getClient();
     if (!client) {
-        console.log('[S3] Resume upload skipped — S3 not configured (set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, S3_BUCKET_NAME in .env)');
+        logger.info('[S3] Resume upload skipped — S3 not configured (set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, S3_BUCKET_NAME in .env)');
         return null;
     }
     const folder = PREFIX + '/';
-    console.log('[S3] Uploading resume → bucket:', BUCKET, ', folder:', folder);
+    logger.info('[S3] Uploading resume → bucket:', BUCKET, ', folder:', folder);
     try {
         if (!fs.existsSync(localFilePath)) {
-            console.error('[S3] Local file not found:', localFilePath);
+            logger.error('[S3] Local file not found:', localFilePath);
             return null;
         }
         const body = fs.readFileSync(localFilePath);
@@ -62,11 +63,11 @@ async function uploadResumeFromFile(localFilePath, originalName) {
             ContentType: getContentType(ext)
         }));
 
-        console.log('[S3] Resume saved in S3 — folder: "' + folder + '", full key:', key);
+        logger.info('[S3] Resume saved in S3 — folder: "' + folder + '", full key:', key);
         return { key };
     } catch (err) {
-        console.error('[S3] uploadResumeFromFile error:', err.message);
-        if (err.name) console.error('[S3] Error name:', err.name);
+        logger.error('[S3] uploadResumeFromFile error:', err.message);
+        if (err.name) logger.error('[S3] Error name:', err.name);
         return null;
     }
 }
@@ -113,7 +114,7 @@ async function getResumeStream(s3Key) {
         const contentType = response.ContentType || getContentType(path.extname(key));
         return { stream, contentType };
     } catch (err) {
-        console.error('[S3] getResumeStream error:', err.message);
+        logger.error('[S3] getResumeStream error:', err.message);
         return null;
     }
 }

@@ -1,26 +1,33 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { ScrollText, Download, Filter, RefreshCw, Lock, ChevronLeft, ChevronRight, User as UserIcon, Loader2, Calendar } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { ScrollText, Download, RefreshCw, Lock, Loader2 } from 'lucide-react';
 import PageHeader from './ui/PageHeader';
-import EmptyState from './ui/EmptyState';
-import PremiumSelect from './ui/PremiumSelect';
+import ProductTour from './ui/ProductTour';
+import TourHelpFab from './ui/TourHelpFab';
+import usePageTour from '../hooks/usePageTour';
 import { authenticatedFetch, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
-
-const formatAction = (action) => (action || '').replace(/\./g, ' ').replace(/_/g, ' ');
+import { AUDIT_TOUR_KEY, AUDIT_TOUR_STEPS, formatAction } from './auditLog/auditLogConstants';
+import AuditLogFilters from './auditLog/AuditLogFilters';
+import AuditLogTable from './auditLog/AuditLogTable';
 
 const AuditLogPage = () => {
   const toast = useToast();
+  const [tourOpen, setTourOpen] = usePageTour(AUDIT_TOUR_KEY);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [exportLocked, setExportLocked] = useState(false);
   const [entries, setEntries] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 1 });
   const [filters, setFilters] = useState({ action: '', resource: '', startDate: '', endDate: '' });
+  const [query, setQuery] = useState('');
   const [filterOptions, setFilterOptions] = useState({ actions: [], resources: [] });
   const [exporting, setExporting] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
+  const lastErrorToast = useRef('');
 
   const actionOptions = useMemo(() => [
-    { value: '', label: 'All actions', description: 'No filter' },
+    { value: '', label: 'All actions' },
     ...filterOptions.actions.map((a) => ({
       value: a,
       label: formatAction(a),
@@ -29,12 +36,31 @@ const AuditLogPage = () => {
   ], [filterOptions.actions]);
 
   const resourceOptions = useMemo(() => [
-    { value: '', label: 'All resources', description: 'No filter' },
+    { value: '', label: 'All resources' },
     ...filterOptions.resources.map((r) => ({
       value: r,
       label: r,
     })),
   ], [filterOptions.resources]);
+
+  const hasActiveFilters = !!(filters.action || filters.resource || filters.startDate || filters.endDate);
+
+  const visibleEntries = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return entries;
+    return entries.filter((e) => {
+      const hay = [
+        e.action,
+        e.resource,
+        e.resourceId,
+        e.ipAddress,
+        e.userId?.name,
+        e.userId?.email,
+        typeof e.details === 'string' ? e.details : JSON.stringify(e.details || ''),
+      ].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }, [entries, query]);
 
   const fetchDistinct = useCallback(async () => {
     try {
@@ -51,6 +77,8 @@ const AuditLogPage = () => {
   const fetchLogs = useCallback(async (page = 1) => {
     setLoading(true);
     setUpgradeRequired(false);
+    setLoadError(null);
+    setExpandedId(null);
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(pagination.limit) });
       if (filters.action) params.set('action', filters.action);
@@ -67,12 +95,25 @@ const AuditLogPage = () => {
       }
       if (data.success) {
         setEntries(data.data || []);
-        setPagination(data.pagination || pagination);
+        setPagination(data.pagination || { page, limit: pagination.limit, total: 0, pages: 1 });
+        lastErrorToast.current = '';
       } else {
-        toast?.error?.(data.message || 'Failed to load audit log');
+        const msg = data.message || 'Failed to load audit log';
+        setLoadError(msg);
+        setEntries([]);
+        if (lastErrorToast.current !== msg) {
+          lastErrorToast.current = msg;
+          toast?.error?.(msg);
+        }
       }
-    } catch (err) {
-      toast?.error?.('Failed to load audit log');
+    } catch {
+      const msg = 'Failed to load audit log';
+      setLoadError(msg);
+      setEntries([]);
+      if (lastErrorToast.current !== msg) {
+        lastErrorToast.current = msg;
+        toast?.error?.(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -115,7 +156,7 @@ const AuditLogPage = () => {
       a.remove();
       window.URL.revokeObjectURL(url);
       toast?.success?.('Audit log exported');
-    } catch (err) {
+    } catch {
       toast?.error?.('Export failed');
     } finally {
       setExporting(false);
@@ -132,7 +173,7 @@ const AuditLogPage = () => {
             </div>
             <h2 className="text-xl font-bold text-stone-900 tracking-tight">Audit Log requires an upgrade</h2>
             <p className="text-stone-500 mt-2 text-sm leading-relaxed">
-              The Audit Log is available on Professional and Enterprise plans. Upgrade your plan to see who did what, and when.
+              Available on Professional and Enterprise — see who did what, and when, across your org.
             </p>
             <a href="/billing" className="btn-primary inline-flex mt-6">View Plans</a>
           </div>
@@ -149,8 +190,14 @@ const AuditLogPage = () => {
         subtitle="Security-relevant actions across your organization."
         gradientTitle
       >
-        <button type="button" onClick={() => fetchLogs(pagination.page)} className="btn-secondary flex-1 sm:flex-none">
-          <RefreshCw className="w-4 h-4" /> Refresh
+        <button
+          type="button"
+          onClick={() => fetchLogs(pagination.page)}
+          className="h-10 w-10 inline-flex items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 hover:text-brand-600 hover:border-brand-300"
+          title="Refresh"
+          aria-label="Refresh"
+        >
+          <RefreshCw className="w-4 h-4" />
         </button>
         <button
           type="button"
@@ -164,150 +211,37 @@ const AuditLogPage = () => {
         </button>
       </PageHeader>
 
-      <div className="toolbar-ats flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500 px-1">
-            <Filter size={14} /> Filters
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <PremiumSelect
-            value={filters.action}
-            onChange={(v) => setFilters((f) => ({ ...f, action: v || '' }))}
-            options={actionOptions}
-            placeholder="All actions"
-            searchable
-            searchPlaceholder="Search actions…"
-            compact
-          />
-          <PremiumSelect
-            value={filters.resource}
-            onChange={(v) => setFilters((f) => ({ ...f, resource: v || '' }))}
-            options={resourceOptions}
-            placeholder="All resources"
-            searchable
-            searchPlaceholder="Search resources…"
-            compact
-          />
-          <div className="relative min-w-0">
-            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
-            <input
-              type="date"
-              value={filters.startDate}
-              onChange={(e) => setFilters((f) => ({ ...f, startDate: e.target.value }))}
-              className="input-ats !pl-10"
-              aria-label="Start date"
-            />
-          </div>
-          <div className="relative min-w-0">
-            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
-            <input
-              type="date"
-              value={filters.endDate}
-              onChange={(e) => setFilters((f) => ({ ...f, endDate: e.target.value }))}
-              className="input-ats !pl-10"
-              aria-label="End date"
-            />
-          </div>
-        </div>
-        {(filters.action || filters.resource || filters.startDate || filters.endDate) && (
-          <button
-            type="button"
-            onClick={() => setFilters({ action: '', resource: '', startDate: '', endDate: '' })}
-            className="text-sm text-brand-600 hover:text-brand-700 font-semibold self-start"
-          >
-            Clear filters
-          </button>
-        )}
-      </div>
+      <AuditLogFilters
+        query={query}
+        setQuery={setQuery}
+        filters={filters}
+        setFilters={setFilters}
+        actionOptions={actionOptions}
+        resourceOptions={resourceOptions}
+        hasActiveFilters={hasActiveFilters}
+        pagination={pagination}
+        filterOptions={filterOptions}
+      />
 
-      <div className="table-shell-ats relative overflow-hidden">
-        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm min-w-[640px]">
-            <thead className="bg-stone-50/90 text-stone-500 font-semibold text-xs uppercase tracking-wide border-b border-stone-100">
-              <tr>
-                <th className="px-4 sm:px-6 py-3.5">Timestamp</th>
-                <th className="px-4 sm:px-6 py-3.5">Action</th>
-                <th className="px-4 sm:px-6 py-3.5">Resource</th>
-                <th className="px-4 sm:px-6 py-3.5">User</th>
-                <th className="px-4 sm:px-6 py-3.5">IP</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100">
-              {loading ? (
-                [1, 2, 3, 4, 5].map((i) => (
-                  <tr key={i}>
-                    <td className="px-4 sm:px-6 py-3.5"><div className="h-4 w-32 skeleton-ats rounded-lg" /></td>
-                    <td className="px-4 sm:px-6 py-3.5"><div className="h-5 w-24 skeleton-ats rounded-lg" /></td>
-                    <td className="px-4 sm:px-6 py-3.5"><div className="h-5 w-20 skeleton-ats rounded-lg" /></td>
-                    <td className="px-4 sm:px-6 py-3.5"><div className="h-4 w-28 skeleton-ats rounded-lg" /></td>
-                    <td className="px-4 sm:px-6 py-3.5"><div className="h-4 w-20 skeleton-ats rounded-lg" /></td>
-                  </tr>
-                ))
-              ) : entries.length === 0 ? (
-                <tr>
-                  <td colSpan="5">
-                    <EmptyState
-                      icon={ScrollText}
-                      tone="sky"
-                      message="No audit log entries yet"
-                      subMessage="Actions like team changes and integration updates will show up here."
-                    />
-                  </td>
-                </tr>
-              ) : entries.map((entry) => (
-                <tr key={entry._id} className="hover:bg-brand-50/30 transition-colors">
-                  <td className="px-4 sm:px-6 py-3.5 text-stone-500 whitespace-nowrap text-xs sm:text-sm">
-                    {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : '—'}
-                  </td>
-                  <td className="px-4 sm:px-6 py-3.5">
-                    <span className="badge-neutral capitalize">{formatAction(entry.action)}</span>
-                  </td>
-                  <td className="px-4 sm:px-6 py-3.5 text-stone-600">
-                    <span className="badge-info">
-                      {entry.resource}{entry.resourceId ? ` #${String(entry.resourceId).slice(-6)}` : ''}
-                    </span>
-                  </td>
-                  <td className="px-4 sm:px-6 py-3.5 text-stone-600">
-                    <span className="inline-flex items-center gap-1.5 min-w-0">
-                      <span className="w-7 h-7 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center flex-shrink-0 border border-brand-100">
-                        <UserIcon className="w-3.5 h-3.5" />
-                      </span>
-                      <span className="truncate text-sm font-medium">{entry.userId?.name || entry.userId?.email || 'System'}</span>
-                    </span>
-                  </td>
-                  <td className="px-4 sm:px-6 py-3.5 text-stone-400 font-mono text-xs">{entry.ipAddress || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <AuditLogTable
+        loading={loading}
+        loadError={loadError}
+        visibleEntries={visibleEntries}
+        entries={entries}
+        query={query}
+        expandedId={expandedId}
+        setExpandedId={setExpandedId}
+        pagination={pagination}
+        fetchLogs={fetchLogs}
+      />
 
-      {pagination.pages > 1 && (
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-sm text-stone-500">
-          <span className="font-medium text-center sm:text-left">Page {pagination.page} of {pagination.pages} ({pagination.total} entries)</span>
-          <div className="grid grid-cols-2 sm:flex items-center gap-2">
-            <button
-              type="button"
-              disabled={pagination.page <= 1}
-              onClick={() => fetchLogs(pagination.page - 1)}
-              className="btn-secondary !px-3 !py-2 min-w-0"
-            >
-              <ChevronLeft className="w-4 h-4" /> Prev
-            </button>
-            <button
-              type="button"
-              disabled={pagination.page >= pagination.pages}
-              onClick={() => fetchLogs(pagination.page + 1)}
-              className="btn-secondary !px-3 !py-2 min-w-0"
-            >
-              Next <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      <TourHelpFab onClick={() => setTourOpen(true)} label="Take a tour" title="Take a tour of Audit Log" />
+      <ProductTour
+        open={tourOpen}
+        onClose={() => setTourOpen(false)}
+        steps={AUDIT_TOUR_STEPS}
+        storageKey={AUDIT_TOUR_KEY}
+      />
     </div>
   );
 };

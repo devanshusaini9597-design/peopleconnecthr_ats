@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 /**
  * Feature Entitlement Middleware
  *
@@ -44,7 +45,7 @@ const requireFeature = (featureKey) => {
 
       next();
     } catch (error) {
-      console.error('Feature entitlement check error:', error);
+      logger.error('Feature entitlement check error:', error);
       res.status(500).json({ success: false, message: 'Server error checking feature entitlement' });
     }
   };

@@ -56,4 +56,6 @@ applicationSchema.index({ organizationId: 1, assignedTo: 1, stage: 1 });
 applicationSchema.index({ organizationId: 1, isRejected: 1 });
 applicationSchema.index({ appliedAt: -1 });
 
+applicationSchema.plugin(require('../utils/tenantPlugin'));
+
 module.exports = mongoose.model('Application', applicationSchema);

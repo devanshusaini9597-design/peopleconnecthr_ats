@@ -71,9 +71,9 @@ export default function CareerPageBuilderSection() {
 
   return (
     <FeatureGate feature="careers.pageBuilder" fallback={<UpgradeFallback />}>
-      <div className="card-ats-bordered p-5 sm:p-6 relative overflow-hidden">
+      <div className="rounded-xl border border-stone-200/90 bg-white shadow-sm p-5 sm:p-6 relative overflow-hidden">
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4 mt-1">
           <div>
             <h3 className="section-title-ats !mb-0 !pb-0 !border-0">
               <Layout className="w-4 h-4 text-brand-600" />

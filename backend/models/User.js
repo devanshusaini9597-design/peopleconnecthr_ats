@@ -2,13 +2,15 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
+// Use the same JWT_SECRET from authMiddleware to avoid dual-secret bugs.
+// In production, authMiddleware.js exits the process if JWT_SECRET is unset,
+// so this fallback only applies in development.
 let JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('JWT_SECRET must be defined in production');
   }
-  console.warn('JWT_SECRET is not defined, using fallback secret for development.');
-  JWT_SECRET = 'dev-secret-change-in-production';
+  JWT_SECRET = 'dev-only-secret-CHANGE-IN-PRODUCTION';
 }
 
 /**
@@ -18,7 +20,11 @@ const userSchema = new mongoose.Schema({
   name: { type: String, default: '', trim: true },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   phone: { type: String, default: '', trim: true },
-  password: { type: String, required: true },
+  password: {
+    type: String,
+    required: true,
+    minlength: [8, 'Password must be at least 8 characters'],
+  },
   profilePicture: { type: String, default: '' },
   organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', index: true },
   role: {

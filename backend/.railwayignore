@@ -1,0 +1,15 @@
+node_modules
+.git
+.vercel
+uploads
+*.log
+.env
+.env.local
+.env.*.local
+eng.traineddata
+tmp-query.graphql
+coverage
+.DS_Store
+backend.log
+server.log
+resume_parse_errors.log

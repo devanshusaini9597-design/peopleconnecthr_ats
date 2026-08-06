@@ -2,40 +2,27 @@
  * Candidate self-service portal — magic-link auth (no password), matching
  * the pattern already used for password resets in server.js.
  *
- * Previously this whole file was a stub (`requirePortalAuth` hardcoded a
- * fake candidateId/organizationId, `/login` never sent anything) — fixed to
- * actually issue and verify short-lived JWTs scoped to a single candidate.
+ * Thin wrappers; domain logic in portalService.
  */
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
-const Candidate = require('../models/Candidate');
-const Application = require('../models/Application');
-const Organization = require('../models/Organization');
 const { JWT_SECRET } = require('../middleware/authMiddleware');
-const { sendEmail } = require('../services/emailService');
+const svc = require('../services/portalService');
+const { PORTAL_TOKEN_PURPOSE } = svc;
 
-const PORTAL_TOKEN_PURPOSE = 'candidate-portal';
+function handle(res, error) {
+  const status = error.statusCode || 500;
+  return res.status(status).json({ success: false, message: error.message });
+}
 
 /** GET /localization/:orgSlug — public locale config (portal.localization) */
 router.get('/localization/:orgSlug', async (req, res) => {
   try {
-    const org = await Organization.findOne({ slug: req.params.orgSlug })
-      .select('atsSettings.portalLocalization plan');
-    if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
-    const { planHasFeature } = require('../config/planFeatures');
-    const loc = org.atsSettings?.portalLocalization || {};
-    const enabled = !!loc.enabled && planHasFeature(org.plan, 'portal.localization');
-    res.json({
-      success: true,
-      data: {
-        enabled,
-        defaultLocale: loc.defaultLocale || 'en',
-        supportedLocales: enabled ? (loc.supportedLocales || ['en']) : ['en']
-      }
-    });
+    const data = await svc.getLocalization(req.params.orgSlug);
+    res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    handle(res, error);
   }
 });
 
@@ -46,41 +33,10 @@ router.get('/localization/:orgSlug', async (req, res) => {
  */
 router.post('/login', async (req, res) => {
   try {
-    const { email, orgSlug } = req.body;
-    if (!email) return res.status(400).json({ success: false, message: 'Email is required' });
-
-    const filter = { email: email.toLowerCase().trim() };
-    if (orgSlug) {
-      const org = await Organization.findOne({ slug: orgSlug }).select('_id');
-      if (org) filter.organizationId = org._id;
-    }
-
-    const candidate = await Candidate.findOne(filter).sort({ createdAt: -1 });
-
-    // Always return the same success message whether or not a candidate
-    // exists, so this endpoint can't be used to enumerate applicant emails.
-    if (candidate) {
-      const token = jwt.sign(
-        { candidateId: candidate._id, organizationId: candidate.organizationId, purpose: PORTAL_TOKEN_PURPOSE },
-        JWT_SECRET,
-        { expiresIn: '30m' }
-      );
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      const loginUrl = `${frontendUrl}/portal/callback?token=${token}`;
-
-      const html = `
-        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-          <h2>Your application status</h2>
-          <p>Click below to securely view the status of your application(s). This link expires in 30 minutes.</p>
-          <p><a href="${loginUrl}" style="display:inline-block;padding:10px 20px;background:#4F46E5;color:#fff;border-radius:6px;text-decoration:none;">View my applications</a></p>
-        </div>`;
-      await sendEmail(candidate.email, 'Your application status', html, `View your applications: ${loginUrl}`).catch((err) => {
-        console.error('[portal] Failed to send magic link:', err.message);
-      });
-    }
-
-    res.json({ success: true, message: 'If an application exists for this email, a login link has been sent.' });
+    const body = await svc.requestMagicLink(req.body);
+    res.json(body);
   } catch (error) {
+    if (error.statusCode) return handle(res, error);
     console.error('[portal] /login error:', error.message);
     res.status(500).json({ success: false, message: 'Failed to process login request' });
   }
@@ -109,93 +65,34 @@ const requirePortalAuth = (req, res, next) => {
 
 router.get('/status', requirePortalAuth, async (req, res) => {
   try {
-    const applications = await Application.find({ candidateId: req.candidateId, organizationId: req.organizationId })
-      .populate('jobId', 'title department location');
-
-    const mapped = applications.map(app => ({
-      id: app._id,
-      jobTitle: app.jobId ? app.jobId.title : 'Unknown Job',
-      department: app.jobId?.department || '',
-      location: app.jobId?.location || '',
-      stage: app.stage,
-      isRejected: app.isRejected,
-      isHired: app.isHired,
-      appliedAt: app.appliedAt || app.createdAt,
-      lastActivityAt: app.lastActivityAt || app.updatedAt
-    }));
-
-    res.json({ success: true, data: mapped });
+    const data = await svc.listApplicationStatuses(req.candidateId, req.organizationId);
+    res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    handle(res, error);
   }
 });
 
 router.get('/application/:id', requirePortalAuth, async (req, res) => {
   try {
-    const application = await Application.findOne({ _id: req.params.id, candidateId: req.candidateId, organizationId: req.organizationId })
-      .populate('jobId', 'title department location description');
-    if (!application) return res.status(404).json({ success: false, message: 'Application not found' });
-    res.json({ success: true, data: application });
+    const data = await svc.getApplication(req.params.id, req.candidateId, req.organizationId);
+    res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    handle(res, error);
   }
 });
 
 /**
  * GDPR self-service (Art. 15/20 "right to access/portability").
- * Always available on every plan — this is a compliance feature, not a
- * paid add-on. Returns everything this platform holds about the candidate:
- * their own profile fields + every application/pipeline record tied to
- * their candidateId, scoped to this organization only.
- *
  * GET /api/portal/gdpr/export
  */
 router.get('/gdpr/export', requirePortalAuth, async (req, res) => {
   try {
-    const candidate = await Candidate.findOne({ _id: req.candidateId, organizationId: req.organizationId }).lean();
-    if (!candidate) return res.status(404).json({ success: false, message: 'Candidate record not found' });
-
-    const applications = await Application.find({ candidateId: req.candidateId, organizationId: req.organizationId })
-      .populate('jobId', 'title department location')
-      .lean();
-
-    const exportPayload = {
-      exportedAt: new Date().toISOString(),
-      profile: {
-        name: candidate.name,
-        email: candidate.email,
-        contact: candidate.contact,
-        phone: candidate.phone,
-        position: candidate.position,
-        location: candidate.location,
-        experience: candidate.experience,
-        skills: candidate.skills,
-        source: candidate.source,
-        status: candidate.status,
-        statusHistory: candidate.statusHistory || [],
-        demographics: candidate.demographics || null,
-        resume: candidate.resume || null,
-        createdAt: candidate.createdAt
-      },
-      applications: applications.map(app => ({
-        jobTitle: app.jobId?.title || 'Unknown Job',
-        department: app.jobId?.department || '',
-        location: app.jobId?.location || '',
-        stage: app.stage,
-        stageHistory: app.stageHistory || [],
-        source: app.source,
-        isRejected: app.isRejected,
-        rejectionReason: app.rejectionReason || undefined,
-        isHired: app.isHired,
-        appliedAt: app.appliedAt,
-        notes: app.notes || undefined
-      }))
-    };
-
+    const exportPayload = await svc.exportGdprData(req.candidateId, req.organizationId);
     res.setHeader('Content-Disposition', `attachment; filename="my-data-export-${Date.now()}.json"`);
     res.setHeader('Content-Type', 'application/json');
     res.json(exportPayload);
   } catch (error) {
+    if (error.statusCode) return handle(res, error);
     console.error('[portal] /gdpr/export error:', error.message);
     res.status(500).json({ success: false, message: 'Failed to export data' });
   }
@@ -203,42 +100,14 @@ router.get('/gdpr/export', requirePortalAuth, async (req, res) => {
 
 /**
  * GDPR self-service erasure (Art. 17 "right to be forgotten").
- * Anonymizes PII in-place rather than hard-deleting the row: pipeline
- * history (stage/hired counts) stays intact for the org's own reporting,
- * but the candidate's name/email/phone/resume/skills/demographics are
- * scrubbed and the account can no longer be looked up or logged into
- * (email is rewritten to a token, so the unique-per-org email index
- * frees up the original address for future re-application).
- *
  * POST /api/portal/gdpr/erase   body: { confirm: true }
  */
 router.post('/gdpr/erase', requirePortalAuth, async (req, res) => {
   try {
-    if (req.body?.confirm !== true) {
-      return res.status(400).json({ success: false, message: 'Erasure must be explicitly confirmed (confirm: true)' });
-    }
-
-    const candidate = await Candidate.findOne({ _id: req.candidateId, organizationId: req.organizationId });
-    if (!candidate) return res.status(404).json({ success: false, message: 'Candidate record not found' });
-
-    const erasureToken = `erased-${candidate._id}@deleted.invalid`;
-
-    candidate.name = 'Erased Candidate';
-    candidate.email = erasureToken;
-    candidate.contact = '';
-    candidate.phone = '';
-    candidate.skills = '';
-    candidate.resume = '';
-    candidate.resumeText = '';
-    candidate.feedback = '';
-    candidate.remark = '';
-    candidate.demographics = { genderIdentity: '', ethnicity: '', veteranStatus: '', disabilityStatus: '', declinedToSelfIdentify: false };
-    candidate.customFields = {};
-    candidate.gdprErasedAt = new Date();
-    await candidate.save();
-
-    res.json({ success: true, message: 'Your personal data has been erased. This cannot be undone.' });
+    const body = await svc.eraseGdprData(req.candidateId, req.organizationId, req.body?.confirm);
+    res.json(body);
   } catch (error) {
+    if (error.statusCode) return handle(res, error);
     console.error('[portal] /gdpr/erase error:', error.message);
     res.status(500).json({ success: false, message: 'Failed to process erasure request' });
   }

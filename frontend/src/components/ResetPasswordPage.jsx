@@ -109,7 +109,7 @@ const ResetPasswordPage = () => {
               <Lock className="w-8 h-8 text-white" />
             </div>
             <h1 className="text-2xl font-bold text-white">Reset Password</h1>
-            <p className="text-white/80 text-sm mt-1">SkillNix ATS</p>
+            <p className="text-white/80 text-sm mt-1">People Connect HR</p>
           </div>
 
           <div className="p-6">

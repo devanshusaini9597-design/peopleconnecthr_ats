@@ -32,4 +32,6 @@ clientSchema.index({ createdBy: 1, name: 1 }, { unique: true });
 clientSchema.index({ organizationId: 1, name: 1 });
 clientSchema.index({ 'portal.token': 1 }, { unique: true, sparse: true });
 
+clientSchema.plugin(require('../utils/tenantPlugin'));
+
 module.exports = mongoose.model('Client', clientSchema);

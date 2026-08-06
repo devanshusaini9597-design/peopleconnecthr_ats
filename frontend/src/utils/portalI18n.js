@@ -22,8 +22,11 @@ const STRINGS = {
     appliedOn: 'Applied',
     noApplications: 'No applications found.',
     privacyTitle: 'Your data & privacy',
+    privacyBody: 'You can download everything we hold about you, or permanently erase your personal information.',
     downloadData: 'Download my data',
     eraseData: 'Erase my data',
+    eraseConfirmTitle: 'Erase my data?',
+    eraseConfirmBody: 'This permanently removes your name, email, phone, resume, and demographics from applications with this company. This cannot be undone.',
     language: 'Language'
   },
   es: {
@@ -38,8 +41,11 @@ const STRINGS = {
     appliedOn: 'Solicitado',
     noApplications: 'No se encontraron solicitudes.',
     privacyTitle: 'Tus datos y privacidad',
+    privacyBody: 'Puedes descargar todo lo que tenemos sobre ti o borrar permanentemente tu información personal.',
     downloadData: 'Descargar mis datos',
     eraseData: 'Borrar mis datos',
+    eraseConfirmTitle: '¿Borrar mis datos?',
+    eraseConfirmBody: 'Esto elimina permanentemente tu nombre, correo, teléfono y currículum. No se puede deshacer.',
     language: 'Idioma'
   },
   fr: {
@@ -54,8 +60,11 @@ const STRINGS = {
     appliedOn: 'Postulé',
     noApplications: 'Aucune candidature trouvée.',
     privacyTitle: 'Vos données et confidentialité',
+    privacyBody: 'Vous pouvez télécharger vos données ou effacer définitivement vos informations personnelles.',
     downloadData: 'Télécharger mes données',
     eraseData: 'Effacer mes données',
+    eraseConfirmTitle: 'Effacer mes données ?',
+    eraseConfirmBody: 'Cela supprime définitivement votre nom, e-mail, téléphone et CV. Irréversible.',
     language: 'Langue'
   },
   de: {
@@ -70,8 +79,11 @@ const STRINGS = {
     appliedOn: 'Beworben',
     noApplications: 'Keine Bewerbungen gefunden.',
     privacyTitle: 'Ihre Daten & Datenschutz',
+    privacyBody: 'Sie können Ihre Daten herunterladen oder Ihre personenbezogenen Daten dauerhaft löschen.',
     downloadData: 'Meine Daten herunterladen',
     eraseData: 'Meine Daten löschen',
+    eraseConfirmTitle: 'Meine Daten löschen?',
+    eraseConfirmBody: 'Name, E-Mail, Telefon und Lebenslauf werden dauerhaft entfernt. Dies kann nicht rückgängig gemacht werden.',
     language: 'Sprache'
   },
   hi: {
@@ -86,8 +98,11 @@ const STRINGS = {
     appliedOn: 'आवेदन',
     noApplications: 'कोई आवेदन नहीं मिला।',
     privacyTitle: 'आपका डेटा और गोपनीयता',
+    privacyBody: 'आप अपना डेटा डाउनलोड कर सकते हैं या व्यक्तिगत जानकारी स्थायी रूप से मिटा सकते हैं।',
     downloadData: 'मेरा डेटा डाउनलोड करें',
     eraseData: 'मेरा डेटा मिटाएं',
+    eraseConfirmTitle: 'मेरा डेटा मिटाएं?',
+    eraseConfirmBody: 'नाम, ईमेल, फ़ोन और रिज़्यूमे स्थायी रूप से हट जाएंगे। इसे वापस नहीं किया जा सकता।',
     language: 'भाषा'
   }
 };

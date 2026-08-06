@@ -9,7 +9,7 @@ import { getPortalLocale, setPortalLocale, t, PORTAL_LOCALES } from '../utils/po
  * Lets the candidate download everything the org holds on them, or
  * permanently anonymize their own record.
  */
-const PrivacyPanel = ({ token, onErased }) => {
+const PrivacyPanel = ({ token, onErased, locale = 'en' }) => {
   const [eraseOpen, setEraseOpen] = useState(false);
   const [erasing, setErasing] = useState(false);
   const [error, setError] = useState('');
@@ -39,28 +39,28 @@ const PrivacyPanel = ({ token, onErased }) => {
   };
 
   return (
-    <div className="mt-8 bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+    <div className="mt-8 bg-white rounded-2xl border border-stone-200 shadow-sm p-5">
       <div className="flex items-start gap-3">
-        <div className="h-10 w-10 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
-          <ShieldAlert className="h-5 w-5 text-indigo-600" />
+        <div className="h-10 w-10 rounded-xl bg-brand-50 flex items-center justify-center shrink-0">
+          <ShieldAlert className="h-5 w-5 text-brand-700" />
         </div>
         <div className="flex-1">
-          <h3 className="font-semibold text-gray-900">Your data & privacy</h3>
-          <p className="text-sm text-gray-500 mt-1">
-            You can download everything we hold about you, or permanently erase your personal information.
+          <h3 className="font-semibold text-stone-900">{t(locale, 'privacyTitle')}</h3>
+          <p className="text-sm text-stone-500 mt-1">
+            {t(locale, 'privacyBody')}
           </p>
           <div className="flex flex-wrap gap-3 mt-4">
             <button
               onClick={handleExport}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-brand-50 text-brand-800 hover:bg-brand-100 transition-colors"
             >
-              <Download className="h-4 w-4" /> Download my data
+              <Download className="h-4 w-4" /> {t(locale, 'downloadData')}
             </button>
             <button
               onClick={() => setEraseOpen(true)}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-red-50 text-red-700 hover:bg-red-100 transition-colors"
             >
-              Erase my data
+              {t(locale, 'eraseData')}
             </button>
           </div>
         </div>
@@ -70,12 +70,11 @@ const PrivacyPanel = ({ token, onErased }) => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => !erasing && setEraseOpen(false)}>
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900">Erase my data?</h3>
-              <button onClick={() => setEraseOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+              <h3 className="text-lg font-bold text-stone-900">{t(locale, 'eraseConfirmTitle')}</h3>
+              <button onClick={() => setEraseOpen(false)} className="text-stone-400 hover:text-stone-600"><X className="h-5 w-5" /></button>
             </div>
-            <p className="text-sm text-gray-600">
-              This permanently removes your name, email, phone, resume, and any self-reported demographics from every application
-              on file with this company. <strong>This cannot be undone.</strong>
+            <p className="text-sm text-stone-600">
+              {t(locale, 'eraseConfirmBody')}
             </p>
             {error && (
               <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md mt-3 flex items-start">
@@ -300,8 +299,8 @@ const CandidatePortal = () => {
           </select>
         </div>
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
-          <div className="flex justify-center h-12 w-12 bg-indigo-100 rounded-xl mx-auto items-center text-indigo-600">
-            <Briefcase className="h-8 w-8" />
+          <div className="flex justify-center mx-auto">
+            <img src="/logo.png" alt="People Connect HR" className="h-14 w-14 rounded-2xl object-cover shadow-md" />
           </div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
             {t(locale, 'portalTitle')}
@@ -374,9 +373,9 @@ const CandidatePortal = () => {
     <div className="min-h-screen bg-gray-50 font-sans">
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <div className="flex items-center space-x-2 text-indigo-600 font-bold text-xl tracking-tight">
-            <Briefcase className="h-6 w-6" />
-            <span>SkillNix Portal</span>
+          <div className="flex items-center space-x-2 text-teal-700 font-bold text-xl tracking-tight">
+            <img src="/logo.png" alt="People Connect HR" className="h-8 w-8 rounded-lg object-cover" />
+            <span>People Connect HR Portal</span>
           </div>
           <div className="flex items-center space-x-4">
             <div className="hidden sm:flex flex-col text-right">
@@ -397,7 +396,7 @@ const CandidatePortal = () => {
       <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="mb-8">
           <h1 className="text-3xl font-extrabold text-gray-900">Your Applications</h1>
-          <p className="mt-2 text-gray-600">Track the status of your job applications across all SkillNix partner companies.</p>
+          <p className="mt-2 text-gray-600">Track the status of your job applications across all People Connect HR partner companies.</p>
         </div>
 
         {loadingApps ? (
@@ -420,7 +419,7 @@ const CandidatePortal = () => {
           </div>
         )}
 
-        {token && <PrivacyPanel token={token} onErased={handleLogout} />}
+        {token && <PrivacyPanel token={token} onErased={handleLogout} locale={locale} />}
       </main>
     </div>
   );

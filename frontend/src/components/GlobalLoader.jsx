@@ -1,6 +1,6 @@
 import React from 'react';
 import { useGlobalLoader } from '../context/GlobalLoaderContext';
-import { Briefcase } from 'lucide-react';
+import BrandLogo from './ui/BrandLogo';
 
 /**
  * Full-screen overlay loader. Shown when global loading state is true.
@@ -22,9 +22,7 @@ export default function GlobalLoader() {
         <div className="absolute inset-x-0 top-0 h-1 rounded-t-2xl bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
         <div className="relative">
           <div className="absolute inset-0 rounded-2xl bg-brand-400/25 blur-lg scale-125 animate-pulse" />
-          <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-500 via-teal-500 to-brand-700 flex items-center justify-center shadow-lg shadow-brand-500/25">
-            <Briefcase className="w-6 h-6 text-white" />
-          </div>
+          <BrandLogo size="xl" className="relative shadow-lg shadow-brand-500/25 ring-2 ring-white" />
           <div
             className="absolute -inset-2.5 rounded-[1.15rem] border-2 border-transparent border-t-brand-500 border-r-teal-400/50 animate-spin"
             style={{ animationDuration: '0.9s' }}

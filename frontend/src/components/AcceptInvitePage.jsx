@@ -85,6 +85,7 @@ const AcceptInvitePage = () => {
       const res = await fetch(`${API_URL}/api/onboarding/accept-invite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           token,
           name: formData.name,
@@ -95,8 +96,9 @@ const AcceptInvitePage = () => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to accept invitation');
       
-      // Store token
-      localStorage.setItem('ats_token', data.token);
+      localStorage.removeItem('token');
+      localStorage.removeItem('ats_token');
+      localStorage.setItem('isLoggedIn', 'true');
       
       setSuccess(true);
       setTimeout(() => {
