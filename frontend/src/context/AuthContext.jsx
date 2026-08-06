@@ -127,6 +127,29 @@ export const AuthProvider = ({ children }) => {
     window.location.href = '/login';
   };
 
+  /** Apply an already-authenticated API payload (login / demo-login / MFA). */
+  const acceptSession = useCallback((data) => {
+    if (data?.organization?._id) {
+      localStorage.setItem('orgId', data.organization._id);
+    }
+    if (data?.user) {
+      localStorage.setItem('userData', JSON.stringify(data.user));
+      localStorage.setItem('userEmail', data.user.email || '');
+      localStorage.setItem('userName', data.user.name || '');
+      localStorage.setItem('userRole', data.user.role || '');
+      localStorage.setItem('isLoggedIn', 'true');
+    }
+    if (data?.organization) {
+      localStorage.setItem('orgData', JSON.stringify(data.organization));
+      localStorage.setItem('orgName', data.organization.name || '');
+    }
+    setUser(data?.user || null);
+    setOrganization(data?.organization || null);
+    setEntitlements(data?.entitlements || getEntitlements(data?.organization?.plan));
+    setIsAuthenticated(true);
+    setIsLoading(false);
+  }, []);
+
   const updateUser = (data) => setUser((prev) => ({ ...prev, ...data }));
   const updateOrganization = (data) => {
     setOrganization((prev) => {
@@ -147,6 +170,7 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
+    acceptSession,
     updateUser,
     updateOrganization,
     refreshProfile,

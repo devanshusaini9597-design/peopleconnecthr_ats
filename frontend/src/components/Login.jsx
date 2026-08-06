@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { motion, useMotionValue, useMotionTemplate, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft, ShieldCheck, Zap, Clock
 } from 'lucide-react';
 import API_URL from '../config';
+import { useAuth } from '../context/AuthContext';
 
 import { PIPELINE_STAGES, PIPELINE_SEED, staggerContainer, validateEmail } from './login/loginConstants';
 import SignupPromptModal from './login/SignupPromptModal';
@@ -14,6 +15,8 @@ import LoginAuthCard from './login/LoginAuthCard';
 
 const Login = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { acceptSession } = useAuth();
   const prefersReduced = useReducedMotion();
 
   // ----- Sign-in state -----
@@ -286,25 +289,11 @@ const Login = () => {
         throw new Error(data.message || 'Demo login failed');
       }
 
-      // Demo login unchanged as a feature; session via HttpOnly cookie (token still returned by API for compat)
       localStorage.removeItem('token');
-      localStorage.setItem('userEmail', data.user?.email || '');
-      localStorage.setItem('userName', data.user?.name || 'Demo User');
-      localStorage.setItem('isLoggedIn', 'true');
-      if (data.user) {
-        localStorage.setItem('userData', JSON.stringify(data.user));
-        localStorage.setItem('userRole', data.user.role || 'recruiter');
-        if (data.user.organizationId) localStorage.setItem('orgId', data.user.organizationId);
-      }
-      if (data.organization) {
-        localStorage.setItem('orgData', JSON.stringify(data.organization));
-        localStorage.setItem('orgName', data.organization.name || 'Demo Organization');
-        if (data.organization._id) localStorage.setItem('orgId', data.organization._id);
-      }
-
+      acceptSession(data);
       setSuccess('Demo account signed in — taking you in.');
       sessionStorage.setItem('showWelcomeModal', '1');
-      setTimeout(() => window.location.href = '/dashboard', 600);
+      setTimeout(() => navigate('/dashboard', { replace: true }), 400);
     } catch (err) {
       const message = err?.message && err.message !== 'Demo login failed'
         ? err.message
