@@ -1,9 +1,9 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import ConfirmationModal from '../../ConfirmationModal';
-import ColumnMapper from '../../ColumnMapper';
-import ProductTour from '../../ui/ProductTour';
-import TourHelpFab from '../../ui/TourHelpFab';
+import ConfirmationModal from '../ConfirmationModal';
+import ColumnMapper from '../ColumnMapper';
+import ProductTour from '../ui/ProductTour';
+import TourHelpFab from '../ui/TourHelpFab';
 import CandidateFormModal from './CandidateFormModal';
 import CandidateEmailModal from './CandidateEmailModal';
 import ImportReviewModal from './ImportReviewModal';

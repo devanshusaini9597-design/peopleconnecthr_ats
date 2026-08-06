@@ -8,7 +8,7 @@ import {
   actionBtn, actionDanger,
 } from './constants';
 
-export default function InterviewCard({ interview, onScorecard, onCancel, onComplete, onTranscript }) => {
+export default function InterviewCard({ interview, onScorecard, onCancel, onComplete, onTranscript }) {
   const meta = TYPE_META[interview.type] || TYPE_META.video;
   const TypeIcon = meta.icon;
   const { day, time } = formatWhen(interview.scheduledAt);

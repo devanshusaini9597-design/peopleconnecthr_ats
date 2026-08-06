@@ -1,12 +1,11 @@
 import React from 'react';
-import { X, AlertTriangle } from 'lucide-react';
+import { X, RefreshCw } from 'lucide-react';
 
 /** Deprecated field-corrections modal — preserved from ATS.jsx */
 export default function CorrectionsModal(props) {
   const { showCorrectionsModal, correctionRecords, setShowCorrectionsModal, toast } = props;
   if (!(showCorrectionsModal && correctionRecords?.length > 0)) return null;
   return (
-      {showCorrectionsModal && correctionRecords.length > 0 && (
         <div className="fixed inset-0 bg-stone-900/55 backdrop-blur-sm flex items-center justify-center z-50 p-4 backdrop-blur-sm overflow-y-auto">
           <div className="bg-white rounded-2xl w-full max-w-6xl p-8 shadow-2xl my-8">
             <div className="flex justify-between items-center mb-6 sticky top-0 bg-white z-10">
@@ -96,6 +95,5 @@ export default function CorrectionsModal(props) {
             </div>
           </div>
         </div>
-      )}
   );
 }

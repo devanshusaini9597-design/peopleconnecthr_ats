@@ -439,12 +439,6 @@ const handleAddCandidate = async (e) => {
     fetchStatusOptions();
   }, []);
 
-  const setFormField = (name, value) => {
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    if (formErrors[name]) setFormErrors((prev) => ({ ...prev, [name]: '' }));
-    setStepBanner('');
-  };
-
   const formPositionOptions = useMemo(() => masterPositions.map((pos) => ({ value: pos.name, label: pos.name })), [masterPositions]);
   const formExperienceOptions = useMemo(() => [
     { value: '', label: 'Select' }, { value: 'Fresher', label: 'Fresher' },
