@@ -307,6 +307,7 @@ app.use('/api/esign', esignRoutes);
 app.use('/api/report-schedules', reportScheduleRoutes);
 
 app.use('/api/analytics', verifyToken, analyticsRoutes);
+app.use('/api/statuses', require('./routes/statusesRoutes'));
 app.use('/api/companies', companyRoutes);
 app.use('/candidates', verifyToken, candidateRoutes);
 app.use('/api/candidates', verifyToken, candidateRoutes); // versioned-friendly alias
