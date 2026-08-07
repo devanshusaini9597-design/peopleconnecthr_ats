@@ -100,6 +100,9 @@ export default function ATSModals(props) {
         handleInputChange={form.handleInputChange}
         formPositionOptions={form.formPositionOptions}
         masterPositions={form.masterPositions}
+        masterCtcBands={form.masterCtcBands}
+        masterNoticePeriods={form.masterNoticePeriods}
+        setFormData={form.setFormData}
         setQuickList={form.setQuickList}
         formFlsOptions={form.formFlsOptions}
         formExperienceOptions={form.formExperienceOptions}

@@ -23,6 +23,7 @@ export default function CandidateFormModal(props) {
     formNoticeOptions, formStatusOptions, formClientOptions, masterClients,
     formSourceOptions, masterSources, orgCandidateFields, handleAddCandidate,
     quickList, fetchMasterData, isAutoParsing, countryCodes,
+    masterCtcBands = [], masterNoticePeriods = [], setFormData,
   } = props;
   if (!showModal) return null;
   return createPortal((() => {
@@ -79,6 +80,7 @@ export default function CandidateFormModal(props) {
           }`;
 
         return (
+        <>
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto animate-fade-in">
           <div className="absolute inset-0 bg-stone-900/55 backdrop-blur-sm" onClick={() => setShowModal(false)} aria-hidden />
           <div
@@ -484,6 +486,18 @@ export default function CandidateFormModal(props) {
             </div>
           </div>
         </div>
+        {quickList && (
+          <QuickListManager
+            open={!!quickList}
+            onClose={() => setQuickList(null)}
+            title={quickList.title}
+            singular={quickList.singular}
+            apiEndpoint={quickList.apiEndpoint}
+            seedable={!!quickList.seedable}
+            onChanged={fetchMasterData}
+          />
+        )}
+        </>
         );
   })(), document.body);
 }
