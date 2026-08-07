@@ -5,6 +5,42 @@
       "destination": "https://peopleconnecthrats-production.up.railway.app/api/:path*"
     },
     {
+      "source": "/jobs",
+      "destination": "https://peopleconnecthrats-production.up.railway.app/jobs"
+    },
+    {
+      "source": "/jobs/:path*",
+      "destination": "https://peopleconnecthrats-production.up.railway.app/jobs/:path*"
+    },
+    {
+      "source": "/candidates",
+      "destination": "https://peopleconnecthrats-production.up.railway.app/candidates"
+    },
+    {
+      "source": "/candidates/:path*",
+      "destination": "https://peopleconnecthrats-production.up.railway.app/candidates/:path*"
+    },
+    {
+      "source": "/uploads/:path*",
+      "destination": "https://peopleconnecthrats-production.up.railway.app/uploads/:path*"
+    },
+    {
+      "source": "/oauth/:path*",
+      "destination": "https://peopleconnecthrats-production.up.railway.app/oauth/:path*"
+    },
+    {
+      "source": "/sso/:path*",
+      "destination": "https://peopleconnecthrats-production.up.railway.app/sso/:path*"
+    },
+    {
+      "source": "/scim/:path*",
+      "destination": "https://peopleconnecthrats-production.up.railway.app/scim/:path*"
+    },
+    {
+      "source": "/client-portal/:path*",
+      "destination": "https://peopleconnecthrats-production.up.railway.app/client-portal/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

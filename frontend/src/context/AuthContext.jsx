@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { BASE_API_URL } from '../config';
 import { getEntitlements } from '../config/planFeatures';
 
@@ -11,8 +11,9 @@ export const AuthProvider = ({ children }) => {
   // Session auth is HttpOnly ats_token cookie only — no JWT in localStorage.
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const profileRequestId = useRef(0);
 
-  const clearLocalAuth = () => {
+  const clearLocalAuth = useCallback(() => {
     localStorage.removeItem('token');
     localStorage.removeItem('orgId');
     localStorage.removeItem('isLoggedIn');
@@ -26,19 +27,25 @@ export const AuthProvider = ({ children }) => {
     setOrganization(null);
     setEntitlements([]);
     setIsAuthenticated(false);
-  };
+  }, []);
 
   const fetchProfile = useCallback(async () => {
+    const requestId = ++profileRequestId.current;
     try {
       const response = await fetch(`${BASE_API_URL}/api/profile`, {
         credentials: 'include',
       });
+
+      // A newer login/acceptSession invalidated this in-flight check
+      if (requestId !== profileRequestId.current) return;
 
       if (!response.ok) {
         throw new Error('Failed to fetch profile');
       }
 
       const data = await response.json();
+      if (requestId !== profileRequestId.current) return;
+
       setUser(data.user);
       setOrganization(data.organization);
       setEntitlements(data.entitlements || []);
@@ -47,12 +54,15 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('orgId', data.organization._id);
       }
     } catch (error) {
+      if (requestId !== profileRequestId.current) return;
       console.error('Auth verification failed:', error);
       clearLocalAuth();
     } finally {
-      setIsLoading(false);
+      if (requestId === profileRequestId.current) {
+        setIsLoading(false);
+      }
     }
-  }, []);
+  }, [clearLocalAuth]);
 
   useEffect(() => {
     // Clear any legacy JWT left in localStorage from older builds
@@ -62,6 +72,7 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const handleUnauth = () => {
+      profileRequestId.current += 1;
       clearLocalAuth();
       window.location.href = '/login';
     };
@@ -71,7 +82,7 @@ export const AuthProvider = ({ children }) => {
       window.removeEventListener('auth:unauthorized', handleUnauth);
       window.removeEventListener('auth:session-expired', handleUnauth);
     };
-  }, []);
+  }, [clearLocalAuth]);
 
   const login = async (email, password) => {
     const response = await fetch(`${BASE_API_URL}/api/login`, {
@@ -86,6 +97,7 @@ export const AuthProvider = ({ children }) => {
       throw new Error(data.message || 'Login failed');
     }
 
+    profileRequestId.current += 1;
     if (data.organization && data.organization._id) {
       localStorage.setItem('orgId', data.organization._id);
     }
@@ -94,6 +106,7 @@ export const AuthProvider = ({ children }) => {
     setOrganization(data.organization);
     setEntitlements(data.entitlements || []);
     setIsAuthenticated(true);
+    setIsLoading(false);
 
     return data;
   };
@@ -123,12 +136,15 @@ export const AuthProvider = ({ children }) => {
     } catch (e) {
       /* ignore network errors on logout */
     }
+    profileRequestId.current += 1;
     clearLocalAuth();
     window.location.href = '/login';
   };
 
   /** Apply an already-authenticated API payload (login / demo-login / MFA). */
   const acceptSession = useCallback((data) => {
+    // Invalidate any in-flight anonymous profile check so it can't wipe this session
+    profileRequestId.current += 1;
     if (data?.organization?._id) {
       localStorage.setItem('orgId', data.organization._id);
     }
