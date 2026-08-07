@@ -16,25 +16,29 @@
  */
 
 module.exports = function tenantPlugin(schema) {
+  // Query middleware — Aggregate is NOT a Query and has no getOptions().
   const queryOps = [
     'find', 'findOne', 'findOneAndUpdate', 'findOneAndDelete', 'findOneAndReplace',
     'countDocuments', 'estimatedDocumentCount',
     'updateOne', 'updateMany',
     'deleteOne', 'deleteMany',
-    'distinct', 'aggregate',
+    'distinct',
   ];
 
   for (const op of queryOps) {
     schema.pre(op, function () {
-      const tenantId = this.getOptions()?._tenantId;
+      const tenantId = this.getOptions?.()?._tenantId;
       if (tenantId) {
-        if (op === 'aggregate') {
-          // Prepend a $match stage for aggregation pipelines
-          this.pipeline().unshift({ $match: { organizationId: tenantId } });
-        } else {
-          this.where({ organizationId: tenantId });
-        }
+        this.where({ organizationId: tenantId });
       }
     });
   }
+
+  // Aggregate middleware uses this.options, not getOptions()
+  schema.pre('aggregate', function () {
+    const tenantId = this.options?._tenantId;
+    if (tenantId) {
+      this.pipeline().unshift({ $match: { organizationId: tenantId } });
+    }
+  });
 };

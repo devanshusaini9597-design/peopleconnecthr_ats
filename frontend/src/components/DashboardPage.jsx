@@ -29,7 +29,14 @@ const DashboardPage = () => {
         setLoading(true);
         const res = await authenticatedFetch(`${BASE_API_URL}/api/analytics/dashboard-stats`);
         if (isUnauthorized(res)) return handleUnauthorized();
-        if (!res.ok) throw new Error('Failed to fetch');
+        if (!res.ok) {
+          let detail = '';
+          try {
+            const body = await res.json();
+            detail = body?.error || body?.message || '';
+          } catch { /* ignore */ }
+          throw new Error(detail || `Dashboard stats failed (${res.status})`);
+        }
         const data = await res.json();
         setDashData(data);
         setError(null);
