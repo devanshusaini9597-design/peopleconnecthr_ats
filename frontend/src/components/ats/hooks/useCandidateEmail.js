@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import BASE_API_URL from '../../../config';
-import { authenticatedFetch } from '../../../utils/fetchUtils';
+import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../../../utils/fetchUtils';
 
-export function useCandidateEmail({ toast, candidates, selectedIds, navigate } = {}) {
+export function useCandidateEmail({
+  toast, candidates, selectedIds, setSelectedIds, setConfirmModal, navigate,
+} = {}) {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailRecipient, setEmailRecipient] = useState(null);
   const [bulkEmailRecipients, setBulkEmailRecipients] = useState([]);
@@ -85,54 +87,59 @@ export function useCandidateEmail({ toast, candidates, selectedIds, navigate } =
     }
 
     const proceedWithBulkEmail = async () => {
-      setConfirmModal(prev => ({ ...prev, isOpen: false }));
-    try {
-      setIsUploading(true);
+      setConfirmModal?.((prev) => ({ ...prev, isOpen: false }));
+      try {
+        setIsSendingEmail(true);
 
-      const response = await authenticatedFetch(`${BASE_API_URL}/api/email/send-bulk`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          candidates: validCandidates.map(c => ({
-            email: c.email,
-            name: c.name,
-            position: c.position,
-            department: c.department || 'N/A',
-            joiningDate: c.joiningDate || 'TBD'
-          })),
-          emailType: selectedType,
-          customMessage: customMsg
-        })
-      });
+        const response = await authenticatedFetch(`${BASE_API_URL}/api/email/send-bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            candidates: validCandidates.map((c) => ({
+              email: c.email,
+              name: c.name,
+              position: c.position,
+              department: c.department || 'N/A',
+              joiningDate: c.joiningDate || 'TBD',
+            })),
+            emailType: selectedType,
+            customMessage: customMsg,
+          }),
+        });
 
-      if (isUnauthorized(response)) {
-        handleUnauthorized();
-        return;
+        if (isUnauthorized(response)) {
+          handleUnauthorized();
+          return;
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+          toast.success(`Bulk email sent! Total: ${data.data.total}, Sent: ${data.data.sent}, Failed: ${data.data.failed}`);
+          setSelectedIds?.([]);
+        } else {
+          toast.error(`Failed to send bulk emails: ${data.message}`);
+        }
+      } catch (error) {
+        console.error('Bulk email error:', error);
+        toast.error('Failed to send bulk emails. Please try again.');
+      } finally {
+        setIsSendingEmail(false);
       }
-
-      const data = await response.json();
-
-      if (data.success) {
-        toast.success(`Bulk email sent! Total: ${data.data.total}, Sent: ${data.data.sent}, Failed: ${data.data.failed}`);
-        setSelectedIds([]);
-      } else {
-        toast.error(`Failed to send bulk emails: ${data.message}`);
-      }
-    } catch (error) {
-      console.error('Bulk email error:', error);
-      toast.error('Failed to send bulk emails. Please try again.');
-    } finally {
-      setIsUploading(false);
-    }
     };
 
-    setConfirmModal({
-      isOpen: true, type: 'info',
-      title: 'Send Bulk Emails',
-      message: `Send ${selectedType} emails to ${validCandidates.length} candidate(s)?`,
-      confirmText: `Send ${validCandidates.length} Email${validCandidates.length > 1 ? 's' : ''}`,
-      onConfirm: proceedWithBulkEmail
-    });
+    if (typeof setConfirmModal === 'function') {
+      setConfirmModal({
+        isOpen: true,
+        type: 'info',
+        title: 'Send Bulk Emails',
+        message: `Send ${selectedType} emails to ${validCandidates.length} candidate(s)?`,
+        confirmText: `Send ${validCandidates.length} Email${validCandidates.length > 1 ? 's' : ''}`,
+        onConfirm: proceedWithBulkEmail,
+      });
+    } else {
+      await proceedWithBulkEmail();
+    }
   };
 
   // ===================== BULK EMAIL WORKFLOW FUNCTIONS =====================
@@ -276,7 +283,7 @@ export function useCandidateEmail({ toast, candidates, selectedIds, navigate } =
     setCustomMessage('');
     setEmailCC([]);
     setEmailBCC([]);
-    setSelectedIds([]);
+    setSelectedIds?.([]);
   };
 
   const handleSendEmail = async (candidate) => {
@@ -414,7 +421,7 @@ export function useCandidateEmail({ toast, candidates, selectedIds, navigate } =
           }
           setShowEmailModal(false);
           setBulkEmailRecipients([]);
-          setSelectedIds([]);
+          setSelectedIds?.([]);
         } else {
           if (failedCount > 0) {
             const first = data.data?.failed?.[0];
@@ -484,7 +491,7 @@ export function useCandidateEmail({ toast, candidates, selectedIds, navigate } =
           toast.success(`Bulk email sent! Total: ${data.data.total}, Sent: ${data.data.sent}, Failed: ${data.data.failed}`);
           setShowEmailModal(false);
           setBulkEmailRecipients([]);
-          setSelectedIds([]);
+          setSelectedIds?.([]);
           setEmailRecipient(null);
           console.log('[Send bulk email] Success:', data.data);
         } else if (data.message === 'EMAIL_NOT_CONFIGURED') {
@@ -568,7 +575,7 @@ export function useCandidateEmail({ toast, candidates, selectedIds, navigate } =
     showVerifiedEmailRequiredModal, setShowVerifiedEmailRequiredModal,
     verifiedEmailRequiredMessage, setVerifiedEmailRequiredMessage,
     bulkEmailStep, setBulkEmailStep, selectedEmails, setSelectedEmails, campaignStatus, emailStatuses,
-    handleBulkEmail, proceedWithBulkEmail, startBulkEmailFlow, toggleEmailSelection, selectAllEmails,
+    handleBulkEmail, startBulkEmailFlow, toggleEmailSelection, selectAllEmails,
     handleConfirmSend, closeBulkEmailFlow, handleSendEmail, selectEmailTemplate,
     sendTemplateEmail, sendSingleEmail,
   };

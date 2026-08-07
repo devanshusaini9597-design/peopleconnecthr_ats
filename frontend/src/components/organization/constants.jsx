@@ -1,7 +1,7 @@
 import {
-  Building2, Settings, Users, Briefcase, Shield, Eye, UserCog, ListChecks, Calendar,
+  Building2, Settings, Users, Briefcase, Shield, Eye, UserCog, ListChecks, Calendar, Globe,
 } from 'lucide-react';
-import { DATE_FORMAT_OPTIONS } from '../../data/locales';
+import { DATE_FORMAT_OPTIONS, TIMEZONE_OPTIONS } from '../../data/locales';
 
 export const ORG_TOUR_KEY = 'skillnix_tour_organization_v1';
 export const ORG_TOUR_STEPS = [

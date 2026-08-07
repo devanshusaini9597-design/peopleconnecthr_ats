@@ -79,7 +79,18 @@ const ATS = forwardRef((props, ref) => {
     await fetchData(1, { search: searchQuery, position: filterJob });
   });
 
-  const email = useCandidateEmail({ toast, candidates, selectedIds, navigate });
+  const bulk = useBulkCandidateActions({
+    toast, candidates, selectedIds, setSelectedIds, API_URL,
+    searchQuery, filterJob, currentPage, setCurrentPage, fetchData,
+  });
+  const {
+    sendWhatsApp, handleBulkWhatsApp, handleBulkDelete, handleBulkStatusUpdate,
+    handleDelete, handleFindDuplicates, dedupeLoading,
+  } = bulk;
+
+  const email = useCandidateEmail({
+    toast, candidates, selectedIds, setSelectedIds, setConfirmModal: bulk.setConfirmModal, navigate,
+  });
   const {
     showVerifiedEmailRequiredModal, setShowVerifiedEmailRequiredModal,
     verifiedEmailRequiredMessage, setVerifiedEmailRequiredMessage,
@@ -106,15 +117,6 @@ const ATS = forwardRef((props, ref) => {
   const resume = useResumePreview({ toast });
   const { handleResumePreview, handleResumeDownload } = resume;
   const { tableScrollRef, onTableDragScrollStart, onTableDragScrollMove, onTableDragScrollEnd } = useTableDragScroll();
-
-  const bulk = useBulkCandidateActions({
-    toast, candidates, selectedIds, setSelectedIds, API_URL,
-    searchQuery, filterJob, currentPage, setCurrentPage, fetchData,
-  });
-  const {
-    sendWhatsApp, handleBulkWhatsApp, handleBulkDelete, handleBulkStatusUpdate,
-    handleDelete, handleFindDuplicates, dedupeLoading,
-  } = bulk;
 
   useImperativeHandle(ref, () => ({
     triggerAutoImport: () => autoUploadInputRef.current?.click(),

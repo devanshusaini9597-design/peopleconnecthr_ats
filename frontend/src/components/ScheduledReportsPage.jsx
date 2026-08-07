@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   CalendarClock, Plus, Trash2, Lock, Loader2, Power, Mail,
   Info, Search, Filter, X, Clock,

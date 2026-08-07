@@ -1,4 +1,6 @@
+import { Briefcase, Zap, Building2 } from 'lucide-react';
 import { getEntitlements } from '../../config/planFeatures';
+import { readApiJson } from '../../utils/fetchUtils';
 
 export const BILLING_TOUR_KEY = 'skillnix_tour_billing_v2';
 export const BILLING_TOUR_STEPS = [

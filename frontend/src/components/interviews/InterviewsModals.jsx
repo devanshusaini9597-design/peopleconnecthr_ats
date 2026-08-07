@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Video, Phone, User, MapPin, Briefcase, Star, FileText, X, Plus, Users,
-  Search, Loader2, Link2, CheckCircle2, Calendar as CalendarIcon,
+  Search, Loader2, Link2, CheckCircle2, Calendar as CalendarIcon, Clock,
 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import ConfirmationModal from '../ConfirmationModal';

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ClipboardList, Plus, Trash2, Lock, Loader2, Search, AlertCircle, RefreshCw,
-  Clock, Filter, Info,
+  Clock, Filter, Info, Shield,
 } from 'lucide-react';
 import { authenticatedFetch, handleUnauthorized, readApiJson } from '../utils/fetchUtils';
 import { useToast } from './Toast';

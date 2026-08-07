@@ -1,5 +1,5 @@
 import React from 'react';
-import { Filter, RefreshCw, Briefcase, Building2, MapPin, Calendar, ArrowUpAZ, ArrowDownAZ, ArrowUpDown, IndianRupee } from 'lucide-react';
+import { Filter, RefreshCw, Briefcase, Building2, MapPin, Calendar, ArrowUpAZ, ArrowDownAZ, ArrowUpDown, IndianRupee, Clock3, BarChart3 } from 'lucide-react';
 import PremiumSelect from '../ui/PremiumSelect';
 import PremiumDatePicker from '../ui/PremiumDatePicker';
 

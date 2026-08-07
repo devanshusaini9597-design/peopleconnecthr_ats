@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, AlertTriangle, Check, RefreshCw, SquarePen } from 'lucide-react';
+import { X, AlertTriangle, Check, RefreshCw, SquarePen, FileText } from 'lucide-react';
 import PremiumSelect from '../ui/PremiumSelect';
 import { REVIEW_STATUS_OPTIONS } from './atsConstants';
 

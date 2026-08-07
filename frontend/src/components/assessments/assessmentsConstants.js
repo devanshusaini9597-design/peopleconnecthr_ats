@@ -1,4 +1,4 @@
-import { Type, Code2, ListChecks } from 'lucide-react';
+import { Type, Code2, ListChecks, Shield } from 'lucide-react';
 
 export const emptyQuestion = () => ({ type: 'text', prompt: '', options: ['', ''], correctOptionIndex: 0, points: 10, language: '' });
 

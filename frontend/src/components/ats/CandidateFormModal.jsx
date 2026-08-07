@@ -2,7 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import {
   X, User, IndianRupee, Building2, Settings2, Sparkles, RefreshCw,
-  ChevronLeft, ChevronRight, Upload, FileText,
+  ChevronLeft, ChevronRight, Upload, FileText, Check, AlertCircle,
 } from 'lucide-react';
 import PhoneInput from 'react-phone-input-2';
 import 'react-phone-input-2/lib/style.css';
