@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Mail, Plus, RefreshCw } from 'lucide-react';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -17,6 +18,7 @@ import EmailTemplateEditor from './emailTemplates/EmailTemplateEditor';
 import EmailTemplatePreview from './emailTemplates/EmailTemplatePreview';
 
 const EmailTemplatesPage = () => {
+  const { t } = useTranslation();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(TPL_TOUR_KEY);
   const [templates, setTemplates] = useState([]);
@@ -270,7 +272,7 @@ const EmailTemplatesPage = () => {
     <div className="page-shell-ats animate-page-enter">
       <PageHeader
         icon={Mail}
-        title="Email Templates"
+        title={t('pages.emailTemplates.title')}
         subtitle="Reusable emails for hiring workflows — personalize with one click."
         gradientTitle
       >

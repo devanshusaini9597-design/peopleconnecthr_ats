@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ClipboardList, Plus, RefreshCw } from 'lucide-react';
 import { authenticatedFetch, readApiJson } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -19,6 +20,7 @@ import { WorkflowsPanel, PendingApprovalsPanel } from './approvals/ApprovalsPane
 import WorkflowCreateModal from './approvals/WorkflowCreateModal';
 
 export default function ApprovalsPage() {
+  const { t } = useTranslation();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(APPR_TOUR_KEY);
   const [workflows, setWorkflows] = useState([]);
@@ -116,7 +118,7 @@ export default function ApprovalsPage() {
     >
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
-          title="Approval workflows"
+          title={t('pages.approvals.title')}
           subtitle="Define multi-step approvals for job requisitions and offers."
           icon={ClipboardList}
           gradientTitle

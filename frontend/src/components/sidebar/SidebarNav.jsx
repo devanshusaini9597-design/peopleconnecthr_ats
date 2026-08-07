@@ -1,5 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ChevronRight } from 'lucide-react';
 import { GROUP_STYLES } from './sidebarConstants';
 
@@ -15,6 +16,7 @@ export default function SidebarNav({
   onCloseMobile,
   isGroupActive,
 }) {
+  const { t } = useTranslation();
   return (
     <nav className={`h-full py-4 px-3 space-y-1 overflow-y-auto ${collapsed ? 'scrollbar-hide' : 'sidebar-nav-scrollbar'}`}>
       {visibleSections.map((section) => {
@@ -22,6 +24,7 @@ export default function SidebarNav({
         const gc = GROUP_STYLES[section.key] || GROUP_STYLES.main;
         const isOpenGroup = openGroups.has(section.key);
         const hasActive = isGroupActive(section.items);
+        const sectionTitle = t(section.titleKey || `nav.sections.${section.key}`, { defaultValue: section.title });
 
         if (collapsed) {
           return (
@@ -29,7 +32,7 @@ export default function SidebarNav({
               <button
                 ref={(el) => { flyoutBtnRefs.current[section.key] = el; }}
                 type="button"
-                title={section.title}
+                title={sectionTitle}
                 onClick={() => onCollapsedGroupClick(section.key)}
                 className={`relative flex items-center justify-center w-full py-2.5 rounded-xl transition-all duration-200 ${
                   hasActive || flyoutGroupKey === section.key ? gc.activeBg : 'hover:bg-stone-800/50'
@@ -68,7 +71,7 @@ export default function SidebarNav({
                 }`}>
                   <GroupIcon className={`w-4 h-4 ${hasActive ? gc.iconColor : 'text-stone-500'}`} />
                 </div>
-                <span className="truncate text-sm">{section.title}</span>
+                <span className="truncate text-sm">{sectionTitle}</span>
               </div>
               <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 text-stone-600 transition-transform duration-200 ${isOpenGroup ? 'rotate-90' : ''}`} />
             </button>
@@ -78,6 +81,7 @@ export default function SidebarNav({
                 {section.items.map((item) => {
                   const ItemIcon = item.icon;
                   const active = locationPathname === item.path;
+                  const itemLabel = t(item.labelKey || item.label, { defaultValue: item.label });
                   return (
                     <NavLink
                       key={item.path}
@@ -94,7 +98,7 @@ export default function SidebarNav({
                         <div className={`absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full ${gc.activeBar}`} />
                       )}
                       <ItemIcon className="w-3.5 h-3.5 flex-shrink-0" />
-                      <span className="truncate">{item.label}</span>
+                      <span className="truncate">{itemLabel}</span>
                     </NavLink>
                   );
                 })}

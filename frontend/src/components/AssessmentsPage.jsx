@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ClipboardList, Plus, Trash2, Lock, Loader2, Search, AlertCircle, RefreshCw,
   Clock, Filter, Info, Shield,
@@ -21,6 +22,7 @@ import { BuilderModal } from './assessments/BuilderModal';
 import { AssessmentDetail } from './assessments/AssessmentDetail';
 
 const AssessmentsPage = () => {
+  const { t } = useTranslation();
   const toast = useToast();
   const { organization } = useAuth();
   const canProctor = planHasFeature(organization?.plan, 'assessments.proctoring');
@@ -161,8 +163,8 @@ const AssessmentsPage = () => {
         <>
           <PageHeader
             icon={ClipboardList}
-            title="Assessments"
-            subtitle="Build skills tests and invite candidates to complete them. Code answers are graded by your team."
+            title={t('pages.assessments.title')}
+            subtitle={t('pages.assessments.subtitle')}
             gradientTitle
           >
             <button type="button" onClick={() => setShowBuilder(true)} className="btn-primary flex-1 sm:flex-none">

@@ -15,7 +15,96 @@
     "next": "Next",
     "submit": "Submit",
     "reset": "Reset",
-    "or": "or"
+    "or": "or",
+    "takeTour": "Take a tour",
+    "viewPlans": "View Plans",
+    "saveChanges": "Save Changes",
+    "add": "Add",
+    "remove": "Remove",
+    "create": "Create",
+    "update": "Update",
+    "yes": "Yes",
+    "no": "No",
+    "actions": "Actions",
+    "status": "Status",
+    "name": "Name",
+    "email": "Email",
+    "phone": "Phone",
+    "recruitmentSuite": "Recruitment Suite",
+    "openMenu": "Open menu",
+    "userMenu": "User menu",
+    "hiName": "Hi, {{name}}",
+    "logOut": "Log out",
+    "logOutConfirm": "Log out?",
+    "endSession": "End this session",
+    "showingCached": "Showing cached data if available."
+  },
+  "nav": {
+    "sections": {
+      "main": "Main",
+      "recruitment": "Recruitment",
+      "communication": "Communication",
+      "interviews": "Interviews",
+      "organization": "Organization",
+      "settings": "Settings",
+      "billing": "Billing"
+    },
+    "items": {
+      "dashboard": "Dashboard",
+      "analytics": "Analytics",
+      "globalSearch": "Global Search",
+      "reportsStudio": "Reports Studio",
+      "dei": "DEI",
+      "announcements": "Announcements",
+      "jobs": "Jobs",
+      "applications": "Applications",
+      "candidates": "Candidates",
+      "pipelineBoard": "Pipeline Board",
+      "resumeParsing": "Resume Parsing",
+      "talentPools": "Talent Pools",
+      "skills": "Skills",
+      "collaboration": "Collaboration",
+      "formBuilder": "Form Builder",
+      "assessments": "Assessments",
+      "aiTools": "AI Tools",
+      "inbox": "Inbox",
+      "sequences": "Sequences",
+      "consent": "Consent",
+      "interviews": "Interviews",
+      "scorecardTemplates": "Scorecard Templates",
+      "team": "Team",
+      "organization": "Organization",
+      "candidateFields": "Candidate Fields",
+      "companyBrand": "Company Brand",
+      "integrations": "Integrations",
+      "auditLog": "Audit Log",
+      "customRoles": "Custom Roles",
+      "sso": "Single Sign-On",
+      "security": "Security",
+      "webhooksApi": "Webhooks & API",
+      "scheduledReports": "Scheduled Reports",
+      "whiteLabel": "White-Label Kit",
+      "chromeExtension": "Chrome Extension",
+      "careersChatbot": "Careers Chatbot",
+      "referrals": "Referrals",
+      "approvals": "Approvals",
+      "emailTemplates": "Email Templates",
+      "emailSettings": "Email Settings",
+      "pushNotifications": "Push Notifications",
+      "profile": "Profile",
+      "billing": "Billing"
+    },
+    "header": {
+      "searchPlaceholder": "Search candidates, jobs...",
+      "myProfile": "My Profile",
+      "myProfileDesc": "Account & security",
+      "organization": "Organization",
+      "organizationDesc": "Company settings",
+      "integrations": "Integrations",
+      "integrationsDesc": "Email & providers",
+      "billing": "Billing & Plans",
+      "billingDesc": "Subscription"
+    }
   },
   "auth": {
     "welcomeBack": "Welcome back",
@@ -38,12 +127,30 @@
     "invalidCredentials": "Login failed. Please check your credentials.",
     "passwordUpgradeRequired": "Your account requires a password upgrade.",
     "loginFailed": "Login Failed",
-    "sessionExpired": "Your session has expired. Please log in again."
+    "sessionExpired": "Your session has expired. Please log in again.",
+    "mfaTitle": "Two-factor authentication",
+    "mfaSetupTitle": "Set up MFA",
+    "mfaEnterCode": "Enter the code from your authenticator app.",
+    "mfaOrgRequired": "Your organization requires MFA before you can sign in.",
+    "mfaVerify": "Verify & sign in",
+    "mfaBeginSetup": "Begin MFA setup",
+    "mfaSaveBackup": "Save backup codes:",
+    "newToBrand": "New to {{brand}}?",
+    "startHiring": "Start hiring in minutes — no credit card.",
+    "passwordRecovery": "Password recovery",
+    "resetYourPassword": "Reset your password",
+    "sendResetLink": "Send reset link",
+    "backToLogin": "Back to Login",
+    "passwordResetSuccess": "Password Reset Successful",
+    "invalidResetLink": "Invalid Reset Link",
+    "newPassword": "New Password",
+    "confirmPassword": "Confirm Password"
   },
   "candidates": {
     "title": "Candidates",
     "subtitle": "{{count}} in view",
     "addNew": "Add New Candidate",
+    "addSubtitle": "Fill in the candidate details below — required fields are marked.",
     "import": "Import",
     "export": "Export",
     "filters": "Filters",
@@ -52,6 +159,17 @@
     "noResults": "No candidates found",
     "totalCandidates": "Total Candidates",
     "importCandidates": "Import Candidates",
+    "importMenuTitle": "Import candidates",
+    "importMenuHint": "Review before anything enters your database",
+    "excelWithReview": "Excel / CSV with review",
+    "recommended": "Recommended",
+    "excelWithReviewDesc": "Upload → auto-fix → Ready / Needs review / Blocked → you approve import",
+    "mapColumns": "Map columns here",
+    "mapColumnsDesc": "Quick upload with column mapping on this page",
+    "fromDatabase": "From database",
+    "sharedWithMe": "Shared with me",
+    "tip": "Tip",
+    "bulkTip": "Select rows for bulk email, WhatsApp, status updates, or share.",
     "exportCandidates": "Export Candidates",
     "bulkDelete": "Bulk Delete",
     "stage": "Stage",
@@ -62,7 +180,237 @@
     "name": "Name",
     "experience": "Experience",
     "skills": "Skills",
-    "actions": "Actions"
+    "actions": "Actions",
+    "bulkImportRequiresPro": "Bulk Excel import requires Professional or higher.",
+    "noCandidatesDownload": "No candidates to download.",
+    "uploadWithReview": "Upload Excel/CSV with review…"
+  },
+  "pages": {
+    "dashboard": {
+      "welcome": "Welcome back, {{name}}",
+      "subtitle": "Recruitment overview for {{period}}.",
+      "analytics": "Analytics",
+      "addCandidate": "Add Candidate",
+      "tourTitle": "Take a tour of the dashboard",
+      "loadError": "Could not load dashboard data"
+    },
+    "interviews": {
+      "title": "Interviews",
+      "subtitle": "Schedule interviews, join meetings, and submit scorecards.",
+      "schedule": "Schedule interview",
+      "searchPlaceholder": "Search candidate or role…",
+      "tourTitle": "Take a tour of Interviews"
+    },
+  "jobs": {
+    "title": "Job Openings",
+    "subtitle": "Create and manage open roles for your hiring pipeline.",
+    "empty": "No job openings yet",
+    "noMatch": "No matching jobs",
+    "postToBoard": "Post to Job Board",
+    "deleteConfirm": "Delete job opening?"
+  },
+    "applications": {
+      "title": "Applications",
+      "pipelineTitle": "Pipeline Board",
+      "subtitle": "Track candidates through your hiring stages.",
+      "add": "Add Application",
+      "emptyJobs": "No open jobs yet",
+      "empty": "No applications yet",
+      "noMatch": "No candidates match"
+    },
+    "team": {
+      "title": "Team Directory",
+      "subtitle": "Invite colleagues and manage roles for your workspace.",
+      "addMember": "Add Member",
+      "pending": "Pending invitations",
+      "removeConfirm": "Remove Team Member",
+      "searchPlaceholder": "Search team members…"
+    },
+    "billing": {
+      "title": "Billing & Plans",
+      "subtitle": "Usage, plans, and invoices for your organization.",
+      "usage": "Usage & remaining capacity",
+      "activeJobs": "Active jobs",
+      "teamMembers": "Team members",
+      "candidates": "Candidates",
+      "emailsSent": "Emails sent",
+      "securePayments": "Secure payments",
+      "invoicesOnDemand": "Invoices on demand"
+    },
+    "profile": {
+      "title": "Profile",
+      "subtitle": "Your identity, security, and account preferences.",
+      "tourTitle": "Take a tour of Profile"
+    },
+    "organization": {
+      "title": "Organization Settings",
+      "subtitle": "Company details, pipeline stages, and workspace preferences."
+    },
+    "security": {
+      "title": "Security",
+      "subtitle": "Multi-factor authentication, session policies, and access controls."
+    },
+    "whiteLabel": {
+      "title": "White-Label Kit",
+      "subtitle": "Brand candidate-facing surfaces as your company — not the ATS vendor.",
+      "tourTitle": "Take a tour of White-Label"
+    },
+    "scheduledReports": {
+      "title": "Scheduled Reports",
+      "subtitle": "Automatically email reports to your team on a recurring cadence.",
+      "tourTitle": "Take a tour of Scheduled Reports",
+      "deleteConfirm": "Delete schedule?"
+    },
+    "assessments": {
+      "title": "Assessments",
+      "subtitle": "Build skills tests and invite candidates to complete them. Code answers are graded by your team.",
+      "tourTitle": "Take a tour of Assessments",
+      "deleteConfirm": "Delete assessment?"
+    },
+    "bulkImport": {
+      "title": "Bulk Import",
+      "subtitle": "Enterprise spreadsheet intake — download template, validate, select, then import.",
+      "tourTitle": "Tour Bulk Import"
+    },
+    "scorecardTemplates": {
+      "title": "Scorecard Templates",
+      "subtitle": "Reusable weighted interview criteria for hiring managers.",
+      "tourTitle": "Take a tour of Scorecard Templates",
+      "proFeature": "Scorecard templates are a Professional feature",
+      "deleteConfirm": "Delete template?"
+    },
+    "messagingConsent": {
+      "title": "Messaging Consent",
+      "subtitle": "Track SMS and email consent for compliant outreach.",
+      "proFeature": "Messaging consent is a Professional feature"
+    },
+    "dei": {
+      "title": "DEI & Fair Hiring",
+      "subtitle": "Monitor diversity metrics and fair-hiring signals across your pipeline."
+    },
+    "globalSearch": {
+      "title": "Global Search",
+      "subtitle": "Search candidates, jobs, and notes across your workspace."
+    },
+    "collaboration": {
+      "title": "Team Collaboration",
+      "subtitle": "Mentions, comments, and shared notes on candidates."
+    },
+    "reportsStudio": {
+      "title": "Reports Studio",
+      "subtitle": "Build custom hiring reports and export insights."
+    },
+    "pendingReview": {
+      "title": "Pending Review",
+      "subtitle": "Candidates waiting for recruiter review after import or parsing."
+    },
+    "auditLog": {
+      "title": "Audit Log",
+      "subtitle": "Security and compliance trail of important workspace actions."
+    },
+    "integrations": {
+      "title": "Integrations",
+      "subtitle": "Connect email, calendars, AI, and third-party hiring tools."
+    },
+    "approvals": {
+      "title": "Approval workflows",
+      "subtitle": "Route offers and sensitive actions through approvers."
+    },
+    "emailSettings": {
+      "title": "Email Settings",
+      "subtitle": "Configure outbound email providers for your organization."
+    },
+    "emailTemplates": {
+      "title": "Email Templates",
+      "subtitle": "Reusable emails for hiring workflows and candidate outreach."
+    },
+    "inbox": {
+      "title": "Inbox",
+      "subtitle": "Unified candidate conversations across email and messaging.",
+      "proFeature": "Inbox is a Professional feature"
+    },
+    "talentPools": {
+      "title": "Talent Pools",
+      "subtitle": "Keep strong candidates warm for future roles."
+    },
+    "sequences": {
+      "title": "Sequences",
+      "subtitle": "Multi-step outreach campaigns for candidates.",
+      "library": "Sequence library"
+    },
+    "aiTools": {
+      "title": "AI Tools",
+      "subtitle": "Recruiting assistants — resume, JD, match score, and more."
+    },
+    "skills": {
+      "title": "Skills",
+      "subtitle": "Organize and normalize skills across candidates and jobs."
+    },
+    "formBuilder": {
+      "title": "Form Builder",
+      "subtitle": "Design application forms for your careers pages."
+    },
+    "announcements": {
+      "title": "Announcements",
+      "subtitle": "Broadcast updates to your recruiting team."
+    },
+    "pushNotifications": {
+      "title": "Push Notifications",
+      "subtitle": "Browser and mobile alerts for hiring activity."
+    },
+    "customRoles": {
+      "title": "Custom Roles",
+      "subtitle": "Fine-grained permissions beyond built-in roles."
+    },
+    "sso": {
+      "title": "Single Sign-On",
+      "subtitle": "SAML/OIDC SSO for your organization."
+    },
+    "webhooksApi": {
+      "title": "Webhooks & API",
+      "subtitle": "API keys and outbound event webhooks."
+    },
+    "chromeExtension": {
+      "title": "Chrome Extension",
+      "subtitle": "Source candidates from the web into your ATS."
+    },
+    "chatbot": {
+      "title": "Careers Chatbot",
+      "subtitle": "Answer applicant questions on your careers site."
+    },
+    "referrals": {
+      "title": "Referrals",
+      "subtitle": "Employee referral program and reward tracking."
+    },
+    "companyBrand": {
+      "title": "Company Brand",
+      "subtitle": "Logos, colors, and careers page branding."
+    },
+    "candidateFields": {
+      "title": "Candidate Fields",
+      "subtitle": "Customize fields collected on candidate profiles."
+    },
+    "resumeParsing": {
+      "title": "Resume Parsing",
+      "subtitle": "Upload and parse resumes into structured candidate data."
+    },
+    "analytics": {
+      "title": "Analytics",
+      "subtitle": "Hiring funnel metrics and performance trends."
+    }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "overview": "Overview",
+    "recentActivity": "Recent Activity",
+    "quickStats": "Quick Stats",
+    "totalCandidates": "Total Candidates",
+    "addedThisMonth": "Added This Month",
+    "pendingReview": "Pending Review",
+    "hiredJoined": "Hired / Joined",
+    "noCandidatesYet": "No candidates yet",
+    "pipelineBoard": "Pipeline Board",
+    "resumeParsing": "Resume Parsing"
   },
   "jobs": {
     "title": "Jobs",
@@ -74,12 +422,6 @@
     "closed": "Closed",
     "active": "Active",
     "draft": "Draft"
-  },
-  "dashboard": {
-    "title": "Dashboard",
-    "overview": "Overview",
-    "recentActivity": "Recent Activity",
-    "quickStats": "Quick Stats"
   },
   "settings": {
     "title": "Settings",
@@ -104,5 +446,12 @@
     "unauthorized": "You are not authorized to perform this action.",
     "forbidden": "Access forbidden.",
     "validationFailed": "Validation failed. Please check your input."
+  },
+  "onboarding": {
+    "setupWorkspace": "Let's set up your workspace",
+    "inviteTeam": "Invite your team",
+    "postFirstJob": "Post your first job",
+    "allSet": "You're all set!",
+    "postJobContinue": "Post Job & Continue"
   }
 }

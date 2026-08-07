@@ -3,7 +3,7 @@ import { Plus, Trash2, Type, Code2, ListChecks, Shield, Loader2, ClipboardList }
 import Modal from '../ui/Modal';
 import PremiumSelect from '../ui/PremiumSelect';
 import {
-  emptyQuestion, QUESTION_TYPE_OPTIONS, STRICTNESS_OPTIONS,
+  emptyQuestion, QUESTION_TYPE_OPTIONS, STRICTNESS_OPTIONS, actionBtn,
 } from './assessmentsConstants';
 
 export const BuilderModal = ({ open, onClose, onSave, saving, canProctor }) => {

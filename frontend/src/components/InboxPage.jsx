@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   RefreshCw, Send, Inbox as InboxIcon
 } from 'lucide-react';
@@ -21,6 +22,7 @@ import InboxThreadDetail from './inbox/InboxThreadDetail';
 import InboxComposeModal from './inbox/InboxComposeModal';
 
 export default function InboxPage() {
+  const { t } = useTranslation();
   const toast = useToast();
   const countryCodes = useCountries();
   const [tourOpen, setTourOpen] = usePageTour(INBOX_TOUR_KEY);
@@ -204,7 +206,7 @@ export default function InboxPage() {
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={InboxIcon}
-          title="Inbox"
+          title={t('pages.inbox.title')}
           subtitle="Unified candidate conversations across email, SMS, and WhatsApp."
           gradientTitle
         >

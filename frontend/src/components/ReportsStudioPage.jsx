@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import {
   FileBarChart, Download, RefreshCw, Filter, BarChart3
@@ -72,6 +73,7 @@ export default function ReportsStudioPage() {
   };
 
   const exportAll = () => {
+  const { t } = useTranslation();
     const packs = [
       [pipeline, 'pipeline.csv'],
       [sources, 'sources.csv'],
@@ -116,7 +118,7 @@ export default function ReportsStudioPage() {
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={FileBarChart}
-          title="Reports Studio"
+          title={t('pages.reportsStudio.title')}
           subtitle="Pipeline, source quality, time-to-hire, and job performance with CSV export."
           gradientTitle
         >

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Plus, Copy, Loader2, Gift, RefreshCw, Link2, Check, Share2, UserRound
 } from 'lucide-react';
@@ -126,6 +127,7 @@ function ShareLinkField({ code, onCopied, size = 'md' }) {
 }
 
 export default function ReferralsPage() {
+  const { t } = useTranslation();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(REF_TOUR_KEY);
   const [referrals, setReferrals] = useState([]);
@@ -220,7 +222,7 @@ export default function ReferralsPage() {
     >
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
-          title="Referrals"
+          title={t('pages.referrals.title')}
           subtitle="Create a code, copy the ready-made share link, and track rewards."
           icon={Gift}
           gradientTitle

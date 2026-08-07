@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Loader2, CheckSquare, Square, UserPlus } from 'lucide-react';
+import { Search, Loader2, CheckSquare, Square, UserPlus, Users } from 'lucide-react';
 import { authenticatedFetch, readApiJson } from '../../utils/fetchUtils';
 import { useToast } from '../Toast';
 import Modal from '../ui/Modal';
+import EmptyState from '../ui/EmptyState';
 
 export const AddCandidatesModal = ({ pool, open, onClose, onAdded }) => {
   const toast = useToast();

@@ -1,5 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
+import FocusLock from 'react-focus-lock';
 import {
   X, User, IndianRupee, Building2, Settings2, Sparkles, RefreshCw,
   ChevronLeft, ChevronRight, Upload, FileText, Check, AlertCircle,
@@ -82,22 +83,24 @@ export default function CandidateFormModal(props) {
         return (
         <>
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto animate-fade-in">
-          <div className="absolute inset-0 bg-stone-900/55 backdrop-blur-sm" onClick={() => setShowModal(false)} aria-hidden />
+          <div className="absolute inset-0 bg-stone-900/55 backdrop-blur-sm" onClick={() => setShowModal(false)} aria-hidden="true" />
+          <FocusLock returnFocus>
           <div
             role="dialog"
             aria-modal="true"
+            aria-labelledby="candidate-form-title"
             className="relative w-full max-w-5xl my-auto rounded-t-2xl sm:rounded-2xl border border-stone-200/70 bg-white shadow-2xl max-h-[94dvh] sm:max-h-[90vh] flex flex-col overflow-hidden modal-panel-ats"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 flex-shrink-0" />
+            <div className="h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 flex-shrink-0" aria-hidden="true" />
 
             <div className="flex items-start justify-between gap-3 px-5 sm:px-6 py-3.5 border-b border-stone-100 flex-shrink-0 bg-gradient-to-r from-stone-50/80 via-white to-teal-50/30">
               <div className="min-w-0 flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-600 to-teal-600 flex items-center justify-center shadow-md shadow-brand-500/25 flex-shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-600 to-teal-600 flex items-center justify-center shadow-md shadow-brand-500/25 flex-shrink-0" aria-hidden="true">
                   <User size={18} className="text-white" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-stone-900 tracking-tight">
+                  <h2 id="candidate-form-title" className="text-lg font-bold text-stone-900 tracking-tight">
                     {editId ? 'Edit Candidate' : 'Add Candidate'}
                   </h2>
                   <p className="text-xs text-stone-500 mt-0.5">
@@ -485,6 +488,7 @@ export default function CandidateFormModal(props) {
               </div>
             </div>
           </div>
+          </FocusLock>
         </div>
         {quickList && (
           <QuickListManager

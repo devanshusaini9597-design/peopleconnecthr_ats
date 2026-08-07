@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import PageHeader from './ui/PageHeader';
 import CallbackRemindersWidget from './CallbackRemindersWidget';
 import WelcomeModal from './WelcomeModal';
@@ -8,13 +9,16 @@ import TourHelpFab from './ui/TourHelpFab';
 import { LayoutDashboard, UserPlus, BarChart3 } from 'lucide-react';
 import { BASE_API_URL } from '../config';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
+import { useAuth } from '../context/AuthContext';
 import { DASH_TOUR_KEY, DASH_TOUR_STEPS } from './dashboard/dashboardConstants';
 import { DashboardKpis, DashboardMainGrid, DashboardLowerGrid } from './dashboard/DashboardPanels';
 
 const DashboardPage = () => {
   const navigate = useNavigate();
-  const userEmail = localStorage.getItem('userEmail') || 'User';
-  const userName = localStorage.getItem('userName') || '';
+  const { t } = useTranslation();
+  const { user } = useAuth();
+  const userEmail = user?.email || 'User';
+  const userName = user?.name || '';
   const displayName = userName || (userEmail.includes('@') ? userEmail.split('@')[0] : userEmail);
 
   const [dashData, setDashData] = useState(null);
@@ -42,13 +46,13 @@ const DashboardPage = () => {
         setError(null);
       } catch (err) {
         console.error('Dashboard fetch error:', err);
-        setError('Could not load dashboard data');
+        setError(t('pages.dashboard.loadError'));
       } finally {
         setLoading(false);
       }
     };
     fetchDashboardData();
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (loading) return;
@@ -94,21 +98,23 @@ const DashboardPage = () => {
       />
       <PageHeader
         icon={LayoutDashboard}
-        title={`Welcome back, ${displayName}`}
-        subtitle={`Recruitment overview for ${new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}.`}
+        title={t('pages.dashboard.welcome', { name: displayName })}
+        subtitle={t('pages.dashboard.subtitle', {
+          period: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
+        })}
         gradientTitle
       >
         <button type="button" onClick={() => navigate('/analytics')} className="btn-secondary flex-1 sm:flex-none">
-          <BarChart3 size={16} /> Analytics
+          <BarChart3 size={16} /> {t('pages.dashboard.analytics')}
         </button>
         <button type="button" onClick={() => navigate('/ats?add=1')} className="btn-primary flex-1 sm:flex-none">
-          <UserPlus size={16} /> Add Candidate
+          <UserPlus size={16} /> {t('pages.dashboard.addCandidate')}
         </button>
       </PageHeader>
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm font-medium animate-fade-in">
-          {error}. Showing cached data if available.
+          {error}. {t('common.showingCached')}
         </div>
       )}
 
@@ -119,8 +125,8 @@ const DashboardPage = () => {
 
       <TourHelpFab
         onClick={() => setTourOpen(true)}
-        label="Take a tour"
-        title="Take a tour of the dashboard"
+        label={t('common.takeTour')}
+        title={t('pages.dashboard.tourTitle')}
       />
       <ProductTour
         open={tourOpen}

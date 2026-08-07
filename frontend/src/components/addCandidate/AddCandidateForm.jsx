@@ -4,7 +4,9 @@ import { ctcRanges, expectedCtcOptions, noticePeriodOptions } from '../../utils/
 
 export default function AddCandidateForm({
   formData,
+  setFormData,
   formErrors,
+  setFormErrors,
   fieldRefs,
   countryCode,
   setCountryCode,

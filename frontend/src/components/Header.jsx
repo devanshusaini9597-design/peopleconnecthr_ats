@@ -1,25 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { Menu, Search, ChevronDown, User, LogOut, Building2, CreditCard, Settings, Plug, Command, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { handleLogout } from '../utils/authUtils';
 import NotificationBell from './NotificationBell';
 import ConfirmationModal from './ConfirmationModal';
 import { authenticatedFetch } from '../utils/fetchUtils';
 import BASE_API_URL from '../config';
+import { useAuth } from '../context/AuthContext';
 
 const Header = ({ setSidebarOpen, sidebarOpen }) => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
+  const { user, organization } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [profilePicture, setProfilePicture] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const userEmail = localStorage.getItem('userEmail') || 'User';
-  const userName = localStorage.getItem('userName') || '';
+  const userEmail = user?.email || 'User';
+  const userName = user?.name || '';
   const displayName = userName || (userEmail.includes('@') ? userEmail.split('@')[0] : userEmail);
   const initials = (userName ? userName.split(' ').map((w) => w[0]).join('').slice(0, 2) : displayName.slice(0, 2)).toUpperCase();
-  const userRole = localStorage.getItem('userRole') || 'recruiter';
-  const orgName = localStorage.getItem('orgName') || '';
+  const userRole = user?.role || 'recruiter';
+  const orgName = organization?.name || '';
   const isAdmin = ['owner', 'admin'].includes(userRole);
 
   useEffect(() => {
@@ -78,10 +82,10 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
   };
 
   const menuItems = [
-    { label: 'My Profile', desc: 'Account & security', path: '/settings', icon: User, tone: 'bg-brand-50 text-brand-600', show: true },
-    { label: 'Organization', desc: 'Company settings', path: '/organization', icon: Settings, tone: 'bg-sky-50 text-sky-600', show: isAdmin },
-    { label: 'Integrations', desc: 'Email & providers', path: '/organization/integrations', icon: Plug, tone: 'bg-violet-50 text-violet-600', show: isAdmin },
-    { label: 'Billing & Plans', desc: 'Subscription', path: '/billing', icon: CreditCard, tone: 'bg-amber-50 text-amber-600', show: userRole === 'owner' },
+    { label: t('nav.header.myProfile'), desc: t('nav.header.myProfileDesc'), path: '/settings', icon: User, tone: 'bg-brand-50 text-brand-600', show: true },
+    { label: t('nav.header.organization'), desc: t('nav.header.organizationDesc'), path: '/organization', icon: Settings, tone: 'bg-sky-50 text-sky-600', show: isAdmin },
+    { label: t('nav.header.integrations'), desc: t('nav.header.integrationsDesc'), path: '/organization/integrations', icon: Plug, tone: 'bg-violet-50 text-violet-600', show: isAdmin },
+    { label: t('nav.header.billing'), desc: t('nav.header.billingDesc'), path: '/billing', icon: CreditCard, tone: 'bg-amber-50 text-amber-600', show: userRole === 'owner' },
   ].filter((i) => i.show);
 
   return (
@@ -92,7 +96,7 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
             type="button"
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="lg:hidden p-2.5 hover:bg-stone-100 rounded-xl transition-colors flex-shrink-0"
-            aria-label="Open menu"
+            aria-label={t('common.openMenu')}
           >
             <Menu className="w-5 h-5 text-stone-600" />
           </button>
@@ -104,8 +108,8 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search candidates, jobs..."
-                aria-label="Search"
+                placeholder={t('nav.header.searchPlaceholder')}
+                aria-label={t('common.search')}
                 className="w-full pl-11 pr-16 py-2.5 rounded-xl border border-stone-200 bg-stone-50/50 focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-500/15 outline-none text-sm transition-all placeholder:text-stone-400 text-stone-900"
               />
               <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-stone-100 text-[10px] font-medium text-stone-500">
@@ -123,7 +127,7 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
               type="button"
               onClick={() => setShowUserMenu(!showUserMenu)}
               className="flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 py-2 hover:bg-stone-100 rounded-xl transition-all duration-200"
-              title="User menu"
+              title={t('common.userMenu')}
             >
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-teal-600 flex items-center justify-center font-bold text-sm text-white shadow-md flex-shrink-0 overflow-hidden ring-2 ring-white">
                 {profilePicture ? (
@@ -132,7 +136,7 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
                   initials
                 )}
               </div>
-              <span className="hidden sm:inline text-sm font-semibold text-stone-700">Hi, {displayName}</span>
+              <span className="hidden sm:inline text-sm font-semibold text-stone-700">{t('common.hiName', { name: displayName })}</span>
               <span className={`hidden sm:inline text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border ${roleBadgeColors[userRole] || roleBadgeColors.readonly}`}>
                 {userRole}
               </span>
@@ -204,8 +208,8 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
                       <LogOut size={16} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-red-600">Log out</p>
-                      <p className="text-[11px] text-red-400">End this session</p>
+                      <p className="text-sm font-semibold text-red-600">{t('common.logOut')}</p>
+                      <p className="text-[11px] text-red-400">{t('common.endSession')}</p>
                     </div>
                   </button>
                 </div>
@@ -222,9 +226,9 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
           setShowLogoutConfirm(false);
           handleLogout(navigate);
         }}
-        title="Log out?"
+        title={t('common.logOutConfirm')}
         message="End your session on this device? You’ll need to sign in again to continue."
-        confirmText="Log out"
+        confirmText={t('common.logOut')}
         type="danger"
       />
     </header>

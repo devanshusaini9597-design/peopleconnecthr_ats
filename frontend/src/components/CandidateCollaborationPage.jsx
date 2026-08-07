@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MessageSquare, RefreshCw } from 'lucide-react';
 import { authenticatedFetch, readApiJson } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -12,6 +13,7 @@ import { TOUR_KEY, COLLAB_TOUR_STEPS } from './candidateCollaboration/collaborat
 import { CollabCandidateList, CollabThreadPanel } from './candidateCollaboration/CollaborationPanels';
 
 export default function CandidateCollaborationPage() {
+  const { t } = useTranslation();
   const toast = useToast();
   const [q, setQ] = useState('');
   const [candidates, setCandidates] = useState([]);
@@ -153,7 +155,7 @@ export default function CandidateCollaborationPage() {
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={MessageSquare}
-          title="Team Collaboration"
+          title={t('pages.collaboration.title')}
           subtitle="Internal notes and @mentions on candidates — visible to your hiring team."
           gradientTitle
         >

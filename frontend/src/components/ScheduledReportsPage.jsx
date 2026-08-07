@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   CalendarClock, Plus, Trash2, Lock, Loader2, Power, Mail,
   Info, Search, Filter, X, Clock,
@@ -20,6 +21,7 @@ import ScheduleModal from './scheduledReports/ScheduleModal';
 
 
 export default function ScheduledReportsPage() {
+  const { t } = useTranslation();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(SCHED_TOUR_KEY);
   const [loading, setLoading] = useState(true);
@@ -209,8 +211,8 @@ export default function ScheduledReportsPage() {
     <div className="page-shell-ats animate-page-enter">
       <PageHeader
         icon={CalendarClock}
-        title="Scheduled Reports"
-        subtitle="Automatically email reports to your team on a recurring cadence."
+        title={t('pages.scheduledReports.title')}
+        subtitle={t('pages.scheduledReports.subtitle')}
         gradientTitle
       >
         <button type="button" onClick={() => setShowModal(true)} className="btn-primary flex-1 sm:flex-none">

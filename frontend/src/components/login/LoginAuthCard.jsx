@@ -59,15 +59,15 @@ export default function LoginAuthCard({
                 {t('auth.welcomeBack')}
               </div>
               <h1 className="text-2xl sm:text-[1.75rem] font-bold text-stone-900 tracking-tight">
-                {mfaStep === 'mfa' ? 'Two-factor authentication' : mfaStep === 'enroll' ? 'Set up MFA' : (
+                {mfaStep === 'mfa' ? t('auth.mfaTitle') : mfaStep === 'enroll' ? t('auth.mfaSetupTitle') : (
                   <>{t('auth.title')} <span className="text-gradient">{BRAND_NAME}</span></>
                 )}
               </h1>
               <p className="text-sm text-stone-500 mt-2 leading-relaxed">
                 {mfaStep === 'mfa'
-                  ? 'Enter the code from your authenticator app.'
+                  ? t('auth.mfaEnterCode')
                   : mfaStep === 'enroll'
-                    ? 'Your organization requires MFA before you can sign in.'
+                    ? t('auth.mfaOrgRequired')
                     : t('auth.subtitle')}
               </p>
             </div>

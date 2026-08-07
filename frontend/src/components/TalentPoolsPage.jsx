@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Users, Plus, Trash2, Lock, Loader2, Search, Layers,
   AlertCircle, RefreshCw, Settings2, Filter, Info,
@@ -19,6 +20,7 @@ import { PoolFormModal } from './talentPools/PoolFormModal';
 import { PoolDetail } from './talentPools/PoolDetail';
 
 const TalentPoolsPage = () => {
+  const { t } = useTranslation();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(POOLS_TOUR_KEY);
   const [loading, setLoading] = useState(true);
@@ -197,7 +199,7 @@ const TalentPoolsPage = () => {
         <>
           <PageHeader
             icon={Layers}
-            title="Talent Pools"
+            title={t('pages.talentPools.title')}
             subtitle="Keep strong candidates warm for future roles — independent of any single requisition."
             gradientTitle
           >

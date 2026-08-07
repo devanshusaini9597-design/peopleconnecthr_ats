@@ -37,8 +37,8 @@ export default function CandidatesPageHeader(props) {
               <div className="fixed inset-0 z-30" onClick={() => setShowImportMenu(false)} aria-hidden />
               <div className="absolute left-0 right-0 sm:left-auto sm:right-0 top-full mt-2 z-40 w-full sm:w-[340px] max-w-[calc(100vw-2rem)] rounded-xl border border-stone-200 bg-white shadow-xl shadow-stone-900/10 animate-fade-in overflow-hidden">
                 <div className="px-3.5 py-2.5 border-b border-stone-100 bg-stone-50/80">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-stone-500">Import candidates</p>
-                  <p className="text-[11px] text-stone-400 mt-0.5">Review before anything enters your database</p>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-stone-500">{t('candidates.importMenuTitle')}</p>
+                  <p className="text-[11px] text-stone-400 mt-0.5">{t('candidates.importMenuHint')}</p>
                 </div>
                 <div className="p-1.5">
                   <button
@@ -46,7 +46,7 @@ export default function CandidatesPageHeader(props) {
                     onClick={() => {
                       setShowImportMenu(false);
                       if (!planHasFeature(orgPlan, 'jobs.bulkImport')) {
-                        toast.info('Bulk Excel import requires Professional or higher.');
+                        toast.info(t('candidates.bulkImportRequiresPro'));
                         return;
                       }
                       navigate('/auto-import');
@@ -58,11 +58,11 @@ export default function CandidatesPageHeader(props) {
                     </span>
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold text-stone-800">
-                        Excel / CSV with review
-                        <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wide text-brand-700 bg-brand-50 border border-brand-100 px-1.5 py-0.5 rounded">Recommended</span>
+                        {t('candidates.excelWithReview')}
+                        <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wide text-brand-700 bg-brand-50 border border-brand-100 px-1.5 py-0.5 rounded">{t('candidates.recommended')}</span>
                       </span>
                       <span className="block text-[11px] text-stone-500 mt-0.5 leading-snug">
-                        Upload → auto-fix → Ready / Needs review / Blocked → you approve import
+                        {t('candidates.excelWithReviewDesc')}
                       </span>
                     </span>
                   </button>
@@ -75,8 +75,8 @@ export default function CandidatesPageHeader(props) {
                       <Upload size={15} strokeWidth={1.75} />
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-stone-800">Map columns here</span>
-                      <span className="block text-[11px] text-stone-500 mt-0.5 leading-snug">Quick upload with column mapping on this page</span>
+                      <span className="block text-sm font-semibold text-stone-800">{t('candidates.mapColumns')}</span>
+                      <span className="block text-[11px] text-stone-500 mt-0.5 leading-snug">{t('candidates.mapColumnsDesc')}</span>
                     </span>
                   </button>
                   {candidatesViewMode === 'all' && (
@@ -90,7 +90,7 @@ export default function CandidatesPageHeader(props) {
                         <Database size={15} strokeWidth={1.75} />
                       </span>
                       <span className="min-w-0">
-                        <span className="block text-sm font-semibold text-stone-800">From database</span>
+                        <span className="block text-sm font-semibold text-stone-800">{t('candidates.fromDatabase')}</span>
                         <span className="block text-[11px] text-stone-500 mt-0.5 leading-snug">Copy org candidates into your list</span>
                       </span>
                     </button>
@@ -107,7 +107,7 @@ export default function CandidatesPageHeader(props) {
                       </span>
                       <span className="min-w-0">
                         <span className="block text-sm font-semibold text-stone-800">
-                          {selectedIds.length > 0 ? `Shared (${selectedIds.length})` : 'Shared with me'}
+                          {selectedIds.length > 0 ? `Shared (${selectedIds.length})` : t('candidates.sharedWithMe')}
                         </span>
                         <span className="block text-[11px] text-stone-500 mt-0.5 leading-snug">Import candidates shared by teammates</span>
                       </span>

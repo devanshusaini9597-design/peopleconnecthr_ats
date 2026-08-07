@@ -391,7 +391,7 @@ const handleAddCandidate = async (e) => {
       toast.success(editId ? 'Profile Updated!' : 'Candidate Added!');
       setShowModal(false);
       setEditId(null);
-      setFormData(initialFormState);
+      setFormData(INITIAL_FORM_STATE);
       setFormErrors({});
       const pageToRestore = currentPage;
       await fetchData(1, { search: searchQuery, position: filterJob });

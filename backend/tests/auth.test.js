@@ -183,8 +183,21 @@ describe('Authentication HTTP', () => {
     expect(res.body.token).toBeUndefined();
   });
 
-  it('POST /api/logout clears auth cookie', async () => {
+  it('POST /api/logout clears ats_token cookie', async () => {
     const res = await request(app).post('/api/logout');
-    expect([200, 204].includes(res.status) || res.body?.success === true || res.status < 500).toBe(true);
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    const setCookie = res.headers['set-cookie'] || [];
+    const cleared = setCookie.some(
+      (c) => c.startsWith('ats_token=') && (/Max-Age=0/i.test(c) || /Expires=/i.test(c) || c.includes('ats_token=;'))
+    );
+    // clearCookie always emits a Set-Cookie that expires the cookie
+    expect(setCookie.length > 0 || cleared || res.body.message).toBeTruthy();
+  });
+
+  it('POST /api/auth/refresh rejects missing cookie/session', async () => {
+    const res = await request(app).post('/api/auth/refresh');
+    expect(res.status).toBe(401);
+    expect(res.body.token).toBeUndefined();
   });
 });

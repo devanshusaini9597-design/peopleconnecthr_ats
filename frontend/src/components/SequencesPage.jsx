@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   MailPlus, Plus, Loader2, Play, Trash2, Users,
   RefreshCw, Layers, Clock
@@ -23,6 +24,7 @@ import SequenceCreateModal from './sequences/SequenceCreateModal';
 import SequenceEnrollModal from './sequences/SequenceEnrollModal';
 
 export default function SequencesPage() {
+  const { t } = useTranslation();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(SEQ_TOUR_KEY);
   const [sequences, setSequences] = useState([]);
@@ -191,7 +193,7 @@ export default function SequencesPage() {
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={MailPlus}
-          title="Sequences"
+          title={t('pages.sequences.title')}
           subtitle="Multi-step outreach with delays across email, SMS, and WhatsApp."
           gradientTitle
         >

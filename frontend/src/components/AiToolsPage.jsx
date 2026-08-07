@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Sparkles, Lock, Plug } from 'lucide-react';
 import { authenticatedFetch, readApiJson } from '../utils/fetchUtils';
@@ -18,6 +19,7 @@ import AiToolTabs from './aiTools/AiToolTabs';
 import AiToolWorkspace from './aiTools/AiToolWorkspace';
 
 const AiToolsPage = () => {
+  const { t } = useTranslation();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(AI_TOUR_KEY);
   const [activeTab, setActiveTab] = useState('resume');
@@ -115,7 +117,7 @@ const AiToolsPage = () => {
     <div className="page-shell-ats animate-page-enter">
       <PageHeader
         icon={Sparkles}
-        title="AI Tools"
+        title={t('pages.aiTools.title')}
         subtitle="Recruiting assistants — resume, JD, match, email, and more. Requires an AI provider under Integrations."
         gradientTitle
       >

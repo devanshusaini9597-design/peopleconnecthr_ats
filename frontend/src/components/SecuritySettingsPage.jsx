@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Shield, Loader2, Save, RefreshCw } from 'lucide-react';
 import PageHeader from './ui/PageHeader';
 import ConfirmationModal from './ConfirmationModal';
@@ -15,6 +16,7 @@ import MfaSection from './securitySettings/MfaSection';
 import OrgPoliciesSection from './securitySettings/OrgPoliciesSection';
 
 export default function SecuritySettingsPage() {
+  const { t } = useTranslation();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(SEC_TOUR_KEY);
   const [loading, setLoading] = useState(true);
@@ -228,7 +230,7 @@ export default function SecuritySettingsPage() {
     <div className="page-shell-ats animate-page-enter">
       <PageHeader
         icon={Shield}
-        title="Security"
+        title={t('pages.security.title')}
         subtitle="Multi-factor authentication, session policies, and network controls."
         gradientTitle
       >

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import API_URL from '../config';
+import { useAuth } from '../context/AuthContext';
 import {
   OnboardingStep1,
   OnboardingStep2,
@@ -11,6 +12,7 @@ import {
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -33,24 +35,29 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     try {
-      const userStr = localStorage.getItem('user');
-      if (userStr) {
-        const user = JSON.parse(userStr);
-        if (user && user.email) {
-          const parts = user.email.split('@');
-          if (parts.length === 2) {
-            const domain = parts[1];
-            const freeDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com'];
-            if (!freeDomains.includes(domain)) {
-              setOrgDomain(domain);
-            }
+      const email = user?.email
+        || (() => {
+          try {
+            const data = localStorage.getItem('userData');
+            return data ? JSON.parse(data)?.email : null;
+          } catch {
+            return null;
+          }
+        })();
+      if (email) {
+        const parts = email.split('@');
+        if (parts.length === 2) {
+          const domain = parts[1];
+          const freeDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com'];
+          if (!freeDomains.includes(domain)) {
+            setOrgDomain(domain);
           }
         }
       }
     } catch (e) {
       console.error('Failed to parse user email', e);
     }
-  }, []);
+  }, [user]);
 
   const getAuthHeaders = () => ({
     'Content-Type': 'application/json'

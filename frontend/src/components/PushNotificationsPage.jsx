@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Bell, Loader2, CheckCircle2, RefreshCw, BellOff,
   Calendar, AtSign, Megaphone, MonitorSmartphone, AlertCircle
@@ -48,6 +49,7 @@ const ALERT_TYPES = [
 ];
 
 export default function PushNotificationsPage() {
+  const { t } = useTranslation();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(PUSH_TOUR_KEY);
   const [configured, setConfigured] = useState(false);
@@ -169,7 +171,7 @@ export default function PushNotificationsPage() {
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={Bell}
-          title="Push Notifications"
+          title={t('pages.pushNotifications.title')}
           subtitle="Browser alerts for interviews, mentions, and announcements."
           gradientTitle
         >

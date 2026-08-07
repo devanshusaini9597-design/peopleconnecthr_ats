@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft, Check, FileSpreadsheet, Inbox, Loader2, Lock, Upload,
 } from 'lucide-react';
@@ -15,6 +16,7 @@ import AutoImportModals from './autoImport/AutoImportModals';
 import useAutoImport from './autoImport/useAutoImport';
 
 export default function AutoImportPage() {
+  const { t } = useTranslation();
   const a = useAutoImport();
 
   if (a.authLoading) {
@@ -51,8 +53,8 @@ export default function AutoImportPage() {
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={FileSpreadsheet}
-          title="Bulk Import"
-          subtitle="Enterprise spreadsheet intake — download template, validate, select, then import."
+          title={t('pages.bulkImport.title')}
+          subtitle={t('pages.bulkImport.subtitle')}
           gradientTitle
         >
           <button type="button" className="btn-secondary" onClick={() => a.navigate('/ats')}>

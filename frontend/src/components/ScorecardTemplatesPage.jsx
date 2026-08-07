@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Award, Plus, RefreshCw } from 'lucide-react';
 import { authenticatedFetch, readApiJson } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -48,6 +49,7 @@ export default function ScorecardTemplatesPage() {
   }, [loading, rows.length]);
 
   const openCreate = () => {
+  const { t } = useTranslation();
     setEditId(null);
     setForm(emptyForm());
     setOpen(true);
@@ -154,8 +156,8 @@ export default function ScorecardTemplatesPage() {
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={Award}
-          title="Scorecard Templates"
-          subtitle="Reusable weighted interview criteria for hiring managers."
+          title={t('pages.scorecardTemplates.title')}
+          subtitle={t('pages.scorecardTemplates.subtitle')}
           gradientTitle
         >
           <button type="button" onClick={load} className="btn-secondary w-full sm:w-auto" disabled={loading}>

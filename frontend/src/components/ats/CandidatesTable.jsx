@@ -95,7 +95,7 @@ export default function CandidatesTable(props) {
                             type="button"
                             onClick={() => {
                               setEditId(null);
-                              setFormData(initialFormState);
+                              setFormData(INITIAL_FORM_STATE);
                               setFormErrors({});
                               setCountryCode('+91');
                               setCountryIso('IN');

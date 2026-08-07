@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, AlertTriangle, Check, RefreshCw, SquarePen, FileText } from 'lucide-react';
 import PremiumSelect from '../ui/PremiumSelect';
+import EmptyState from '../ui/EmptyState';
 import { REVIEW_STATUS_OPTIONS } from './atsConstants';
 
 export default function ImportReviewModal(props) {

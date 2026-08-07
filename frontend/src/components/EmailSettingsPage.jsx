@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Mail, RefreshCw } from 'lucide-react';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -24,6 +25,7 @@ import SmtpConnectModal from './emailSettings/SmtpConnectModal';
 const BASE = API_URL;
 
 const EmailSettingsPage = () => {
+  const { t } = useTranslation();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(EMAIL_TOUR_KEY);
   const [loading, setLoading] = useState(true);
@@ -239,7 +241,7 @@ const EmailSettingsPage = () => {
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={Mail}
-          title="Email Settings"
+          title={t('pages.emailSettings.title')}
           subtitle="Connect the mailbox SkillNix uses to send candidate and team emails."
           gradientTitle
         >

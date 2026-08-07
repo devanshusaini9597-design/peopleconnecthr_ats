@@ -1,5 +1,7 @@
 import React from 'react';
 import { X, Share2, RefreshCw, Check, Users } from 'lucide-react';
+import FocusLock from 'react-focus-lock';
+import EmptyState from '../ui/EmptyState';
 
 export default function ShareCandidateModals(props) {
   const {
@@ -11,12 +13,24 @@ export default function ShareCandidateModals(props) {
     <>
       {/* Share Candidate Modal - Member Selection */}
       {showShareModal && !showShareConfirmation && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-900/55 backdrop-blur-sm" onClick={() => setShowShareModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-900/55 backdrop-blur-sm" onClick={() => setShowShareModal(false)} role="presentation">
+          <FocusLock returnFocus>
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="share-candidate-title"
+          >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-stone-900">Share Candidate{selectedCandidatesForShare.length > 1 ? 's' : ''}</h3>
-              <button onClick={() => { setShowShareModal(false); setShowShareConfirmation(false); }} className="p-2 hover:bg-stone-200 rounded-lg transition-colors cursor-pointer">
-                <X size={20} className="text-stone-600" />
+              <h3 id="share-candidate-title" className="text-lg font-bold text-stone-900">Share Candidate{selectedCandidatesForShare.length > 1 ? 's' : ''}</h3>
+              <button
+                type="button"
+                onClick={() => { setShowShareModal(false); setShowShareConfirmation(false); }}
+                className="p-2 hover:bg-stone-200 rounded-lg transition-colors cursor-pointer"
+                aria-label="Close share dialog"
+              >
+                <X size={20} className="text-stone-600" aria-hidden="true" />
               </button>
             </div>
             
@@ -83,17 +97,25 @@ export default function ShareCandidateModals(props) {
               </button>
             </div>
           </div>
+          </FocusLock>
         </div>
       )}
 
       {/* Share Confirmation Modal */}
       {showShareConfirmation && selectedShareMembers.length > 0 && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-900/55 backdrop-blur-sm" onClick={() => setShowShareConfirmation(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-900/55 backdrop-blur-sm" onClick={() => setShowShareConfirmation(false)} role="presentation">
+          <FocusLock returnFocus>
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="share-confirm-title"
+          >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-stone-900">Confirm Share</h3>
-              <button onClick={() => setShowShareConfirmation(false)} className="p-2 hover:bg-stone-200 rounded-lg transition-colors cursor-pointer">
-                <X size={20} className="text-stone-600" />
+              <h3 id="share-confirm-title" className="text-lg font-bold text-stone-900">Confirm Share</h3>
+              <button type="button" onClick={() => setShowShareConfirmation(false)} className="p-2 hover:bg-stone-200 rounded-lg transition-colors cursor-pointer" aria-label="Close confirmation">
+                <X size={20} className="text-stone-600" aria-hidden="true" />
               </button>
             </div>
 
@@ -152,6 +174,7 @@ export default function ShareCandidateModals(props) {
               </button>
             </div>
           </div>
+          </FocusLock>
         </div>
       )}
     </>

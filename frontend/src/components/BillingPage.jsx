@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   CreditCard, Zap, Users, Briefcase, Mail, ShieldCheck,
   Loader2, Lock, Headphones, FileCheck2, ClipboardList,
@@ -22,6 +23,7 @@ import { BillingOverview } from './billing/BillingOverview';
 import { PlanCards } from './billing/PlanCards';
 
 export default function BillingPage() {
+  const { t } = useTranslation();
   const toast = useToast();
   const { organization, refreshProfile } = useAuth();
   const [tourOpen, setTourOpen] = usePageTour(BILLING_TOUR_KEY);
@@ -259,7 +261,7 @@ export default function BillingPage() {
     <div className="page-shell-ats max-w-6xl animate-page-enter">
       <PageHeader
         icon={CreditCard}
-        title="Billing & Plans"
+        title={t('pages.billing.title')}
         subtitle="Plan, remaining capacity, days left, and upgrades — Stripe-secured."
         gradientTitle
       >

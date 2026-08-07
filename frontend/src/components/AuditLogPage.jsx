@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ScrollText, Download, RefreshCw, Lock, Loader2 } from 'lucide-react';
 import PageHeader from './ui/PageHeader';
 import ProductTour from './ui/ProductTour';
@@ -11,6 +12,7 @@ import AuditLogFilters from './auditLog/AuditLogFilters';
 import AuditLogTable from './auditLog/AuditLogTable';
 
 const AuditLogPage = () => {
+  const { t } = useTranslation();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(AUDIT_TOUR_KEY);
   const [loading, setLoading] = useState(true);
@@ -186,7 +188,7 @@ const AuditLogPage = () => {
     <div className="page-shell-ats animate-page-enter">
       <PageHeader
         icon={ScrollText}
-        title="Audit Log"
+        title={t('pages.auditLog.title')}
         subtitle="Security-relevant actions across your organization."
         gradientTitle
       >

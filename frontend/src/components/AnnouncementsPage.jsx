@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Megaphone, Plus, Loader2, RefreshCw, Filter, Search, X,
 } from 'lucide-react';
@@ -23,6 +24,7 @@ import AnnouncementFormModal, { AnnouncementFields } from './announcements/Annou
 import AnnouncementFeed from './announcements/AnnouncementFeed';
 
 export default function AnnouncementsPage() {
+  const { t } = useTranslation();
   const toast = useToast();
   const { organization } = useAuth();
   const careersSlug = organization?.slug;
@@ -205,7 +207,7 @@ export default function AnnouncementsPage() {
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={Megaphone}
-          title="Announcements"
+          title={t('pages.announcements.title')}
           subtitle="Publish notices for your hiring team (in-app) or public careers site — enterprise-style banners."
           gradientTitle
         >

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Building2, Save, Loader2, Info } from 'lucide-react';
 import PageHeader from './ui/PageHeader';
 import ProductTour from './ui/ProductTour';
@@ -15,6 +16,7 @@ import OrgCareersTab from './organization/OrgCareersTab';
 import useOrganizationSettings from './organization/useOrganizationSettings';
 
 export default function OrganizationSettingsPage() {
+  const { t } = useTranslation();
   const {
     navigate,
     logoInputRef,
@@ -105,7 +107,7 @@ export default function OrganizationSettingsPage() {
     <div className={`page-shell-ats animate-page-enter ${activeTab !== 'team' ? 'has-sticky-footer' : ''}`}>
       <PageHeader
         icon={Building2}
-        title="Organization Settings"
+        title={t('pages.organization.title')}
         subtitle="Company preferences, hiring pipeline, team access, and careers page."
         gradientTitle
       />

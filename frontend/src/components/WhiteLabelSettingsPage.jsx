@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
   Palette, Lock, Loader2, Save, Sparkles, Mail, Info, Eye, Building2,
@@ -129,6 +130,7 @@ function LivePreview({ brandColor, orgName, hidePoweredBy, enabled, emailFromNam
 }
 
 const WhiteLabelSettingsPage = () => {
+  const { t } = useTranslation();
   const toast = useToast();
   const navigate = useNavigate();
   const { organization } = useAuth();
@@ -141,9 +143,7 @@ const WhiteLabelSettingsPage = () => {
   const [hidePoweredBy, setHidePoweredBy] = useState(false);
   const [emailFromName, setEmailFromName] = useState('');
 
-  const orgName = organization?.name
-    || localStorage.getItem('orgName')
-    || 'Your Company';
+  const orgName = organization?.name || 'Your Company';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -211,8 +211,8 @@ const WhiteLabelSettingsPage = () => {
     <div className="page-shell-ats animate-page-enter">
       <PageHeader
         icon={Palette}
-        title="White-Label Kit"
-        subtitle="Brand candidate-facing surfaces as your company — not the ATS vendor."
+        title={t('pages.whiteLabel.title')}
+        subtitle={t('pages.whiteLabel.subtitle')}
         gradientTitle
       >
         <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full border ${

@@ -3,6 +3,7 @@ import { Send, Loader2, Search } from 'lucide-react';
 import { authenticatedFetch } from '../../utils/fetchUtils';
 import { useToast } from '../Toast';
 import Modal from '../ui/Modal';
+import EmptyState from '../ui/EmptyState';
 
 export const InviteModal = ({ assessment, open, onClose, onSent }) => {
   const toast = useToast();

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft, CheckSquare, Columns3, Eye, EyeOff, Loader2, Plus, Save, Settings2, Trash2, X,
 } from 'lucide-react';
@@ -40,6 +41,7 @@ function slugify(label) {
 }
 
 export default function CandidateFieldsPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
@@ -172,7 +174,7 @@ export default function CandidateFieldsPage() {
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={Columns3}
-          title="Candidate Fields"
+          title={t('pages.candidateFields.title')}
           subtitle="Define core visibility and custom columns for your org — used in Candidates and Bulk Import mapping."
           gradientTitle
         >

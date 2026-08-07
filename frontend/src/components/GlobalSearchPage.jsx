@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Search, Users, Briefcase, GitPullRequest, RefreshCw, Filter,
 } from 'lucide-react';
@@ -104,6 +105,7 @@ export default function GlobalSearchPage() {
   }, [entity]);
 
   const clearSearch = () => {
+  const { t } = useTranslation();
     setQ('');
     inputRef.current?.focus();
   };
@@ -129,7 +131,7 @@ export default function GlobalSearchPage() {
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={Search}
-          title="Global Search"
+          title={t('pages.globalSearch.title')}
           subtitle="Find candidates, jobs, and applications instantly across your workspace."
           gradientTitle
         >

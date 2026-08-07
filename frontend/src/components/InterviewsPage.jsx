@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Calendar as CalendarIcon, X, Plus, Search, Loader2,
   AlertCircle, RefreshCw, Filter, Info,
@@ -16,6 +17,7 @@ import {
 } from './interviews/constants';
 
 export default function InterviewsPage() {
+  const { t } = useTranslation();
   const {
     tourOpen,
     setTourOpen,
@@ -50,6 +52,7 @@ export default function InterviewsPage() {
     finalNotes,
     setFinalNotes,
     submittingScorecard,
+    templates,
     templatesLoading,
     selectedTemplateId,
     activeCriteria,
@@ -91,8 +94,8 @@ export default function InterviewsPage() {
     <div className="page-shell-ats animate-page-enter">
       <PageHeader
         icon={CalendarIcon}
-        title="Interviews"
-        subtitle="Schedule interviews, join meetings, and submit scorecards."
+        title={t('pages.interviews.title')}
+        subtitle={t('pages.interviews.subtitle')}
         gradientTitle
       >
         <button type="button" onClick={openSchedule} className="btn-primary flex-1 sm:flex-none" data-tour="iv-schedule">
@@ -232,6 +235,7 @@ export default function InterviewsPage() {
         setFinalNotes={setFinalNotes}
         submittingScorecard={submittingScorecard}
         handleScorecard={handleScorecard}
+        templates={templates}
         templatesLoading={templatesLoading}
         selectedTemplateId={selectedTemplateId}
         applyTemplateSelection={applyTemplateSelection}

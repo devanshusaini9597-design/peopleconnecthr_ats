@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plug } from 'lucide-react';
 import API_URL from '../config';
 import { useAuth } from '../context/AuthContext';
@@ -77,6 +78,7 @@ export default function IntegrationSettingsPage() {
   };
 
   const closeConfigure = () => {
+  const { t } = useTranslation();
     if (saving || testing) return;
     setActiveProvider(null);
     setFormValues({});
@@ -210,7 +212,7 @@ export default function IntegrationSettingsPage() {
     <div className="page-shell-ats animate-page-enter">
       <PageHeader
         icon={Plug}
-        title="Integrations"
+        title={t('pages.integrations.title')}
         subtitle="Connect email, calendars, AI, messaging, storage, HRIS, and more."
         gradientTitle
       />

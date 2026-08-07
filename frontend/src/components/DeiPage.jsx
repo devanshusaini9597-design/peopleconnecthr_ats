@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import {
   Shield, RefreshCw, Download, Filter, BarChart3,
@@ -105,6 +106,7 @@ export default function DeiPage() {
   };
 
   const exportCsv = () => {
+  const { t } = useTranslation();
     if (!metrics?.funnel?.length) {
       toast.error('Nothing to export');
       return;
@@ -150,7 +152,7 @@ export default function DeiPage() {
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={Shield}
-          title="DEI & Fair Hiring"
+          title={t('pages.dei.title')}
           subtitle="Blind screening, voluntary self-ID analytics, and diverse-slate alerts."
           gradientTitle
         >

@@ -10,7 +10,7 @@ import PremiumDatePicker from '../ui/PremiumDatePicker';
 import InterviewTranscriptPanel from '../InterviewTranscriptPanel';
 import {
   TYPE_OPTIONS, DURATION_OPTIONS, RECS, DEFAULT_TEMPLATE_VALUE,
-  candidateName,
+  candidateName, jobName,
 } from './constants';
 
 export default function InterviewsModals(props) {
@@ -22,7 +22,7 @@ export default function InterviewsModals(props) {
     recommendation, setRecommendation,
     ratings, setRatings, skillNotes, setSkillNotes,
     finalNotes, setFinalNotes, submittingScorecard, handleScorecard,
-    templatesLoading, selectedTemplateId, applyTemplateSelection,
+    templates = [], templatesLoading, selectedTemplateId, applyTemplateSelection,
     activeCriteria, templateOptions, previewOverall,
     cancelTarget, setCancelTarget, cancelling, handleCancel,
     transcriptTarget, setTranscriptTarget,

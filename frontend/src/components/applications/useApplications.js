@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Briefcase } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { planHasFeature } from '../../config/planFeatures';
 import usePageTour from '../../hooks/usePageTour';
@@ -19,12 +20,13 @@ import { useApplicationsEnterprise } from './useApplicationsEnterprise';
 import { useApplicationsDrag } from './useApplicationsDrag';
 
 export default function useApplications() {
+  const { t } = useTranslation();
   const location = useLocation();
   const isApplicationsRoute = location.pathname.startsWith('/applications');
-  const pageTitle = isApplicationsRoute ? 'Applications' : 'Pipeline Board';
-  const pageSubtitle = isApplicationsRoute
-    ? 'Browse and manage applications in a list'
-    : 'Drag candidates across stages on the board';
+  const pageTitle = isApplicationsRoute
+    ? t('pages.applications.title')
+    : t('pages.applications.pipelineTitle');
+  const pageSubtitle = t('pages.applications.subtitle');
   const tourKey = isApplicationsRoute ? APPS_TOUR_KEY : PIPELINE_TOUR_KEY;
   const tourSteps = isApplicationsRoute ? APPS_TOUR_STEPS : PIPELINE_TOUR_STEPS;
 

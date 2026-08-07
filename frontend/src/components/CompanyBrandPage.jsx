@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Building2, Loader2, Save, RefreshCw } from 'lucide-react';
 import { authenticatedFetch, readApiJson } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -23,6 +24,7 @@ import {
 } from './companyBrand/BrandFormSections';
 
 export default function CompanyBrandPage() {
+  const { t } = useTranslation();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(BRAND_TOUR_KEY);
   const [loading, setLoading] = useState(true);
@@ -109,7 +111,7 @@ export default function CompanyBrandPage() {
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={Building2}
-          title="Company Brand"
+          title={t('pages.companyBrand.title')}
           subtitle="Benefits, team, SEO, and careers branding."
           gradientTitle
         >

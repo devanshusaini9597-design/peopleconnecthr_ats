@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft, FileSpreadsheet, Inbox, Info, RefreshCw, Trash2,
 } from 'lucide-react';
@@ -98,6 +99,7 @@ export default function PendingReviewPage() {
 
   useEffect(() => {
     const onVis = () => {
+  const { t } = useTranslation();
       if (document.visibilityState === 'visible') load(page, bucket, query);
     };
     document.addEventListener('visibilitychange', onVis);
@@ -331,7 +333,7 @@ export default function PendingReviewPage() {
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={Inbox}
-          title="Pending Review"
+          title={t('pages.pendingReview.title')}
           subtitle="Staging queue for import rows that need a human decision before they enter Candidates."
           gradientTitle
         >

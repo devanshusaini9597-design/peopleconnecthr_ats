@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, UserPlus } from 'lucide-react';
 import PageHeader from './ui/PageHeader';
@@ -18,6 +19,7 @@ import {
 import AddCandidateForm from './addCandidate/AddCandidateForm';
 
 const AddCandidatePage = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const toast = useToast();
   const [isLoading, setIsLoading] = useState(false);
@@ -320,8 +322,8 @@ const AddCandidatePage = () => {
 
           <PageHeader
             icon={UserPlus}
-            title="Add New Candidate"
-            subtitle="Fill in the candidate details below — required fields are marked."
+            title={t('candidates.addNew')}
+            subtitle={t('candidates.addSubtitle')}
             gradientTitle
           />
         </div>
@@ -329,7 +331,9 @@ const AddCandidatePage = () => {
         <div className="max-w-5xl mx-auto w-full">
           <AddCandidateForm
             formData={formData}
+            setFormData={setFormData}
             formErrors={formErrors}
+            setFormErrors={setFormErrors}
             fieldRefs={fieldRefs}
             countryCode={countryCode}
             setCountryCode={setCountryCode}

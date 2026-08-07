@@ -7,8 +7,6 @@ import { planHasFeature, planHasAnyIntegration } from '../config/planFeatures';
 import ConfirmationModal from './ConfirmationModal';
 import {
   SECTIONS,
-  getUserData,
-  getOrgData,
   planHasAnyAiFeature,
 } from './sidebar/sidebarConstants';
 import SidebarNav from './sidebar/SidebarNav';
@@ -23,10 +21,8 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
   const flyoutBtnRefs = useRef({});
   const navigate = useNavigate();
   const location = useLocation();
-  const userData = getUserData();
   const { organization, user: authUser } = useAuth();
-  const userRole = authUser?.role || userData.role || 'recruiter';
-  const orgData = getOrgData();
+  const userRole = authUser?.role || 'recruiter';
   const orgPlan = organization?.plan;
   const permissions = authUser?.permissions;
   const hasModuleKeys = Array.isArray(permissions) && permissions.some((p) => String(p).startsWith('modules.'));
@@ -36,7 +32,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
     [useCustomPack, permissions]
   );
 
-  const initials = (authUser?.name || userData.name || 'U')
+  const initials = (authUser?.name || 'U')
     .split(' ')
     .map((w) => w[0])
     .join('')
@@ -178,8 +174,8 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
         {/* Logo */}
         <div className="relative flex items-center justify-between h-[68px] px-4 border-b border-stone-800/40 flex-shrink-0">
           <NavLink to="/dashboard" onClick={handleCloseMobile} className={`flex items-center gap-3 min-w-0 flex-1 ${collapsed ? 'justify-center' : ''}`}>
-            {orgData.logo ? (
-              <img src={orgData.logo} alt="" className="w-9 h-9 rounded-xl object-cover flex-shrink-0 shadow-lg" />
+            {organization?.logo ? (
+              <img src={organization.logo} alt="" className="w-9 h-9 rounded-xl object-cover flex-shrink-0 shadow-lg" />
             ) : (
               <img
                 src="/logo.png"
@@ -189,7 +185,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
             )}
             {!collapsed && (
               <div className="min-w-0">
-                <p className="font-bold text-stone-100 text-sm leading-tight truncate">{orgData.name || 'People Connect HR'}</p>
+                <p className="font-bold text-stone-100 text-sm leading-tight truncate">{organization?.name || 'People Connect HR'}</p>
                 <p className="text-[10px] text-stone-500 font-medium leading-tight">Recruitment Suite</p>
               </div>
             )}
@@ -226,7 +222,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
         <SidebarUserFooter
           collapsed={collapsed}
           initials={initials}
-          userName={userData.name}
+          userName={authUser?.name || 'User'}
           userRole={userRole}
           onLogoutClick={() => setShowLogoutConfirm(true)}
         />

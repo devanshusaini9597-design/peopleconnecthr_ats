@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ShieldCheck, Loader2, Save, RefreshCw } from 'lucide-react';
 import { authenticatedFetch, readApiJson } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -114,6 +115,7 @@ export default function MessagingConsentPage() {
   };
 
   const requestSave = () => {
+  const { t } = useTranslation();
     if (!selected || !dirty) return;
     if (revokedChannels.length > 0) {
       setConfirmSaveOpen(true);
@@ -141,7 +143,7 @@ export default function MessagingConsentPage() {
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={ShieldCheck}
-          title="Messaging Consent"
+          title={t('pages.messagingConsent.title')}
           subtitle="TCPA / GDPR channel opt-in and talent-pool consent."
           gradientTitle
         >

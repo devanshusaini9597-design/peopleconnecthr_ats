@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
   User, Mail, Shield, Settings, Info, Sparkles,
@@ -15,10 +16,13 @@ import SecuritySection from './profileSettings/SecuritySection';
 import AccountSection from './profileSettings/AccountSection';
 import IdentityHero from './profileSettings/IdentityHero';
 import ProfileModals from './profileSettings/ProfileModals';
+import { useAuth } from '../context/AuthContext';
 
 const ProfileSettingsPage = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const toast = useToast();
+  const { user: authUser } = useAuth();
   const [tourOpen, setTourOpen] = usePageTour(PROFILE_TOUR_KEY);
 
   const [profile, setProfile] = useState({ name: '', email: '', phone: '' });
@@ -49,7 +53,7 @@ const ProfileSettingsPage = () => {
   const [activeSection, setActiveSection] = useState('profile');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  const userRole = (localStorage.getItem('userRole') || localStorage.getItem('role') || 'member').replace(/_/g, ' ');
+  const userRole = (authUser?.role || 'member').replace(/_/g, ' ');
 
   useEffect(() => {
     fetchProfile();
@@ -301,8 +305,8 @@ const ProfileSettingsPage = () => {
     <div className="page-shell-ats max-w-4xl animate-page-enter">
       <PageHeader
         icon={User}
-        title="Profile"
-        subtitle="Your identity, security, and account preferences."
+        title={t('pages.profile.title')}
+        subtitle={t('pages.profile.subtitle')}
         gradientTitle
       />
 

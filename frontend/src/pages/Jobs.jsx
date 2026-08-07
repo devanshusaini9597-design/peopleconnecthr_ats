@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Plus, MapPin, BookOpen, UserCheck, Briefcase, IndianRupee, Globe2, Loader2,
   Search, Pencil, Trash2, PauseCircle, Lock, Unlock, Filter, Building2,
@@ -24,6 +25,7 @@ import {
 import JobFormModal from '../components/jobs/JobFormModal';
 
 const Jobs = () => {
+  const { t } = useTranslation();
   const API_URL = `${BASE_API_URL}/jobs`;
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(JOBS_TOUR_KEY);
@@ -321,8 +323,8 @@ const Jobs = () => {
     <div className="page-shell-ats animate-page-enter">
       <PageHeader
         icon={Briefcase}
-        title="Job Openings"
-        subtitle="Create and manage open roles for your hiring pipeline."
+        title={t('pages.jobs.title')}
+        subtitle={t('pages.jobs.subtitle')}
         gradientTitle
       >
         <div data-tour="jobs-actions" className="flex flex-1 sm:flex-none items-center gap-2 w-full sm:w-auto">

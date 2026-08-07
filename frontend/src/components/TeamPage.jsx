@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Users, Plus, Mail, Clock, Filter, Info, CheckCircle, X, Loader2, Search } from 'lucide-react';
 import API_URL from '../config';
 import { authenticatedFetch, handleUnauthorized } from '../utils/fetchUtils';
@@ -22,6 +23,7 @@ import TeamMemberList from './team/TeamMemberList';
 const BASE = API_URL;
 
 const TeamPage = () => {
+  const { t } = useTranslation();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(TEAM_TOUR_KEY);
   const [members, setMembers] = useState([]);
@@ -218,7 +220,7 @@ const TeamPage = () => {
     <div className="page-shell-ats animate-page-enter">
       <PageHeader
         icon={Users}
-        title="Team Directory"
+        title={t('pages.team.title')}
         subtitle="Add colleagues, managers & stakeholders — quickly CC/BCC them in emails."
         gradientTitle
       >

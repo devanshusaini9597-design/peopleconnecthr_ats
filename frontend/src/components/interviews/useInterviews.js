@@ -501,6 +501,7 @@ export default function useInterviews() {
     finalNotes,
     setFinalNotes,
     submittingScorecard,
+    templates,
     templatesLoading,
     selectedTemplateId,
     activeCriteria,
