@@ -42,7 +42,13 @@
   },
   "candidates": {
     "title": "Candidates",
+    "subtitle": "{{count}} in view",
     "addNew": "Add New Candidate",
+    "import": "Import",
+    "export": "Export",
+    "filters": "Filters",
+    "searchPlaceholder": "Search candidates…",
+    "findDuplicates": "Find Duplicates",
     "noResults": "No candidates found",
     "totalCandidates": "Total Candidates",
     "importCandidates": "Import Candidates",

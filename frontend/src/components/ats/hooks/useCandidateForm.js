@@ -32,6 +32,7 @@ export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, cur
   const [aiScoreResult, setAiScoreResult] = useState(null);
   const [jdForScore, setJdForScore] = useState('');
   const [statusOptions, setStatusOptions] = useState(['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected']);
+  const [isAutoParsing, setIsAutoParsing] = useState(false);
 
   const fetchMasterData = async () => {
     try {
@@ -477,6 +478,7 @@ const handleAddCandidate = async (e) => {
     masterCtcBands, masterNoticePeriods, teamMembers, setTeamMembers, formSection, setFormSection,
     stepBanner, setStepBanner, quickList, setQuickList, countryCode, setCountryCode, countryIso, setCountryIso,
     countryCodes, aiScoreLoading, aiScoreResult, jdForScore, setJdForScore, statusOptions,
+    isAutoParsing,
     fetchMasterData, validateCandidateStep, goCandidateStep, handleEdit, handleAiScore,
     handleInputChange, handleAddCandidate, resolveCountryFromDial, setFormField,
     formPositionOptions, formExperienceOptions, formCtcOptions, formExpectedCtcOptions,

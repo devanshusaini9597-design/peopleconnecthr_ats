@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { Briefcase, Info } from 'lucide-react';
+import { Briefcase } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useParsing } from '../hooks/useParsing';
 import { authenticatedFetch } from '../utils/fetchUtils';
@@ -235,23 +235,6 @@ const ATS = forwardRef((props, ref) => {
         isLoadingInitial={isLoadingInitial}
         candidates={candidates}
       />
-
-      <div data-tour="cand-tip" className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <span className="inline-flex items-center gap-1.5 text-brand-700 font-semibold">
-          <Info size={14} aria-hidden /> Tip
-        </span>
-        <span>
-          Select rows for bulk email, WhatsApp, status, share, or delete.
-          Use <span className="font-semibold text-stone-800">Import → Excel with review</span> to upload a spreadsheet safely.
-          Press <span className="font-semibold text-stone-800">?</span> for a tour.
-        </span>
-      </div>
-
-      {isLoadingInitial && candidates.length === 0 && (
-        <div className="h-1 w-full bg-stone-100 rounded-full overflow-hidden" role="progressbar" aria-label="Loading candidates">
-          <div className="h-full w-1/3 bg-gradient-to-r from-brand-500 to-teal-400 rounded-full animate-shimmer" />
-        </div>
-      )}
 
       <input type="file" accept=".csv, .xlsx, .xls" ref={fileInputRef} onChange={handleBulkUpload} className="hidden" aria-hidden />
       <input type="file" accept=".csv, .xlsx, .xls" ref={autoUploadInputRef} onChange={handleAutoUpload} className="hidden" aria-hidden />

@@ -115,6 +115,8 @@ export default function ATSModals(props) {
         handleAddCandidate={form.handleAddCandidate}
         quickList={form.quickList}
         fetchMasterData={form.fetchMasterData}
+        isAutoParsing={form.isAutoParsing}
+        countryCodes={form.countryCodes}
       />
 
       <CandidateEmailModal

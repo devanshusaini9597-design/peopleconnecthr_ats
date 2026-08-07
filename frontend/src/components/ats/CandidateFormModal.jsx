@@ -22,7 +22,7 @@ export default function CandidateFormModal(props) {
     formFlsOptions, formExperienceOptions, formCtcOptions, formExpectedCtcOptions,
     formNoticeOptions, formStatusOptions, formClientOptions, masterClients,
     formSourceOptions, masterSources, orgCandidateFields, handleAddCandidate,
-    quickList, fetchMasterData,
+    quickList, fetchMasterData, isAutoParsing, countryCodes,
   } = props;
   if (!showModal) return null;
   return createPortal((() => {
