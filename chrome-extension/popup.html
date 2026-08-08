@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SkillNix ATS — LinkedIn Import</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <span class="logo-dot"></span>
+      <h1>SkillNix ATS</h1>
+    </header>
+
+    <section id="profile-view">
+      <p class="hint">On a LinkedIn profile page, review the scraped fields below and add the candidate's email before importing.</p>
+
+      <label>Full name
+        <input type="text" id="name" />
+      </label>
+      <label>Email <span class="required">*</span>
+        <input type="email" id="email" placeholder="candidate@example.com" />
+      </label>
+      <label>Position
+        <input type="text" id="position" />
+      </label>
+      <label>Company
+        <input type="text" id="companyName" />
+      </label>
+      <label>Location
+        <input type="text" id="location" />
+      </label>
+
+      <button id="import-btn" class="primary">Import to ATS</button>
+      <p id="import-feedback" class="feedback"></p>
+    </section>
+
+    <section id="not-linkedin-view" class="hidden">
+      <p class="hint">Open a LinkedIn profile page (linkedin.com/in/&hellip;) to import it.</p>
+    </section>
+
+    <footer>
+      <button id="settings-toggle" class="link">Settings</button>
+    </footer>
+
+    <section id="settings-view" class="hidden">
+      <label>API Domain
+        <input type="text" id="api-domain" placeholder="https://your-ats-backend.example.com" />
+      </label>
+      <label>Extension Token
+        <input type="password" id="api-token" placeholder="cext_..." />
+      </label>
+      <p class="hint">Generate a token in your ATS: Settings &rarr; Chrome Extension.</p>
+      <button id="save-settings" class="primary">Save Settings</button>
+      <p id="settings-feedback" class="feedback"></p>
+    </section>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

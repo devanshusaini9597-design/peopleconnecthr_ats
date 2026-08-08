@@ -1,0 +1,3 @@
+[migration]
+generated_at = "2026-05-20T09:30:00Z"
+name = "v2_schema_complete"

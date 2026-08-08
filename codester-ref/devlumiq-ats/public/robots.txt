@@ -1,0 +1,15 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://devlumiq.com/sitemap.xml
+
+# Disallow admin and private areas
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /login
+
+# Crawl-delay (optional, for politeness)
+Crawl-delay: 1
+

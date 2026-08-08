@@ -1,0 +1,99 @@
+import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import FocusLock from 'react-focus-lock';
+import { X } from 'lucide-react';
+
+/**
+ * Codester-style modal shell — stone overlay, scale-in panel, gradient accent.
+ * size: 'sm' | 'md' | 'lg' | 'xl' | 'full'
+ * Focus trapped via react-focus-lock for keyboard / screen-reader a11y.
+ */
+const SIZE = {
+  sm: 'max-w-md',
+  md: 'max-w-lg',
+  lg: 'max-w-2xl',
+  xl: 'max-w-4xl',
+  full: 'max-w-6xl',
+};
+
+const Modal = ({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  footer,
+  size = 'md',
+  closeOnBackdrop = true,
+  zClass = 'z-[100]',
+}) => {
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    document.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return createPortal(
+    <div className={`fixed inset-0 ${zClass} flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-hidden animate-fade-in`}>
+      <div
+        className="absolute inset-0 bg-stone-900/55 backdrop-blur-sm"
+        onClick={closeOnBackdrop ? onClose : undefined}
+        aria-hidden="true"
+      />
+      <FocusLock returnFocus disabled={!open}>
+        <div
+          className={`relative w-full ${SIZE[size] || SIZE.md} rounded-t-2xl sm:rounded-2xl border border-stone-200/60 bg-white shadow-2xl overflow-hidden max-h-[94dvh] sm:max-h-[90vh] flex flex-col modal-panel-ats`}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={title ? 'modal-title' : undefined}
+          aria-describedby={description ? 'modal-description' : undefined}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 flex-shrink-0" aria-hidden="true" />
+          {(title || onClose) && (
+            <div className="flex items-start justify-between gap-3 px-4 sm:px-5 py-4 border-b border-stone-100 flex-shrink-0">
+              <div className="min-w-0">
+                {title && (
+                  <h3 id="modal-title" className="text-lg font-bold text-stone-900 tracking-tight" style={{ letterSpacing: '-0.02em' }}>
+                    {title}
+                  </h3>
+                )}
+                {description && (
+                  <p id="modal-description" className="text-stone-500 text-sm mt-1 leading-snug">{description}</p>
+                )}
+              </div>
+              {onClose && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="p-2.5 rounded-xl hover:bg-stone-100 text-stone-400 hover:text-stone-600 transition-all duration-200 hover:rotate-90 flex-shrink-0 touch-target"
+                  aria-label="Close dialog"
+                >
+                  <X className="w-5 h-5" aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          )}
+          <div className="px-4 sm:px-5 py-3.5 overflow-y-auto flex-1 min-h-0 overscroll-contain">
+            {children}
+          </div>
+          {footer && (
+            <div className="px-4 sm:px-5 py-3 border-t border-stone-100 bg-stone-50/90 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 flex-shrink-0">
+              {footer}
+            </div>
+          )}
+        </div>
+      </FocusLock>
+    </div>,
+    document.body
+  );
+};
+
+export default Modal;

@@ -1,0 +1,126 @@
+/* ================== GLOBAL CSS VARIABLES ================== */
+:root {
+  /* Font Sizes */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  
+  /* Heading Sizes - Consistent across pages */
+  --heading-h1: 1.875rem;
+  --heading-h2: 1.5rem;
+  --heading-h3: 1.25rem;
+  --heading-h4: 1.125rem;
+  
+  /* Button Sizes */
+  --btn-xs: 0.5rem 0.75rem;
+  --btn-sm: 0.5rem 1rem;
+  --btn-md: 0.75rem 1.5rem;
+  --btn-lg: 1rem 1.5rem;
+  --btn-xl: 1.25rem 2rem;
+  
+  /* Spacing */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  
+  /* Border Radius */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+/* ================== GLOBAL STYLES ================== */
+body {
+  font-size: var(--text-base);
+}
+
+h1 {
+  font-size: var(--heading-h1);
+  font-weight: 700;
+}
+
+h2 {
+  font-size: var(--heading-h2);
+  font-weight: 700;
+}
+
+h3 {
+  font-size: var(--heading-h3);
+  font-weight: 700;
+}
+
+h4 {
+  font-size: var(--heading-h4);
+  font-weight: 600;
+}
+
+/* Standard Button Sizes */
+.btn-sm {
+  padding: var(--btn-sm);
+  font-size: var(--text-sm);
+}
+
+.btn-md {
+  padding: var(--btn-md);
+  font-size: var(--text-base);
+}
+
+.btn-lg {
+  padding: var(--btn-lg);
+  font-size: var(--text-base);
+}
+
+/* Tooltip - Clean Positioning */
+.tooltip-content {
+  position: absolute;
+  z-index: 50;
+  bottom: calc(100% + 0.5rem);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.75rem;
+  background-color: rgb(30, 41, 59);
+  color: white;
+  font-size: var(--text-xs);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+  max-width: 300px;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: normal;
+  word-wrap: break-word;
+  pointer-events: none;
+}
+
+.tooltip-content::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 4px solid rgb(30, 41, 59);
+}
+
+/* Bulk Email Animations */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}

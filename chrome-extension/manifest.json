@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "SkillNix ATS — LinkedIn Import",
+  "version": "1.0.0",
+  "description": "One-click import a LinkedIn profile as a candidate into your SkillNix ATS pipeline.",
+  "permissions": ["activeTab", "storage", "scripting"],
+  "host_permissions": ["https://*.linkedin.com/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Import to SkillNix ATS",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.linkedin.com/in/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

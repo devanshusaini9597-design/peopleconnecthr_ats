@@ -1,0 +1,6 @@
+#!/bin/sh
+# Prevent committing environment secret files
+if git diff --cached --name-only | grep -E '(^|/)\.env($|\.local$|\..*\.local$)'; then
+  echo "ERROR: Refusing to commit .env files. Unstage with: git reset HEAD <file>"
+  exit 1
+fi

@@ -1,0 +1,2 @@
+ALTER TABLE "EmailTemplate" ADD COLUMN IF NOT EXISTS "smsBody" TEXT;
+ALTER TABLE "EmailTemplate" ADD COLUMN IF NOT EXISTS "whatsappBody" TEXT;

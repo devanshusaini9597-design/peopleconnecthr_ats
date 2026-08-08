@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: peopleconnecthr-ats
+    env: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      # SECURITY: secrets are NOT stored in this file. Set actual values in the
+      # Render dashboard (Environment tab) for this service. `sync: false` tells
+      # Render to prompt for a value there instead of reading one from here.
+      - key: MONGODB_URL
+        sync: false
+      - key: PORT
+        value: 5000
+      - key: JWT_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        sync: false  # Set in Render dashboard per deployment
+      - key: ENABLE_DEMO_LOGIN
+        value: "true"
+      - key: NODE_ENV
+        value: production
+      - key: REDIS_URL
+        sync: false
+      - key: LOG_LEVEL
+        value: info

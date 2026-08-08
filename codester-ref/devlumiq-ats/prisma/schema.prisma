@@ -1,0 +1,1942 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// CORE MODELS
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  password      String?
+  role          UserRole  @default(RECRUITER)
+  avatar        String?
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  tokenVersion  Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Auth tokens
+  isEmailVerified         Boolean   @default(false)
+  verificationToken       String?   @unique
+  verificationTokenExpiry DateTime?
+  resetToken              String?   @unique
+  resetTokenExpiry        DateTime?
+  inviteToken             String?   @unique
+  inviteTokenExpiry       DateTime?
+
+  // Multi-tenancy
+  organizationId String?
+  organization   Company? @relation("CompanyUsers", fields: [organizationId], references: [id])
+
+  // Relations
+  ownedJobs           Job[]          @relation("JobOwner")
+  assignedInterviews  InterviewEvent[] @relation("InterviewAssignee")
+  referralSubmissions Referral[]     @relation("Referrer")
+  scoreSubmissions    InterviewScore[]
+  activityLogs        UserActivityLog[]
+  apiKeys             ApiKey[]
+  savedSearches       SavedSearch[]
+  webhookEvents       WebhookEvent[]
+  sessions            UserSession[]
+}
+
+enum UserRole {
+  ADMIN
+  RECRUITER
+  HIRING_MANAGER
+  INTERVIEWER
+  VIEWER
+}
+
+model UserSession {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenVersion Int
+  ipAddress    String?
+  userAgent    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ============================================
+// 1. CUSTOM CAREER PAGE BUILDER
+// ============================================
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  website     String?
+  logoUrl     String?
+  faviconUrl  String?
+
+  // Branding
+  primaryColor   String   @default("#0d9488")
+  secondaryColor String   @default("#14b8a6")
+  accentColor    String   @default("#5eead4")
+  fontFamily     String   @default("inter")
+  customCss      String?
+
+  // SEO & Social
+  metaTitle       String?
+  metaDescription String?
+  ogImageUrl      String?
+  twitterHandle   String?
+  linkedinUrl     String?
+
+  // Career Page Settings
+  heroTitle       String   @default("Join Our Team")
+  heroSubtitle    String?
+  heroBackground  String?
+  showBenefits    Boolean  @default(true)
+  showTeamPhotos Boolean  @default(false)
+  customDomain    String?  @unique
+
+  // Careers chatbot FAQ override: [{ q, a, keywords: string[] }]
+  careersFaq      Json?
+
+  // Social Sharing
+  enableLinkedInShare  Boolean @default(true)
+  enableTwitterShare   Boolean @default(true)
+  enableFacebookShare  Boolean @default(false)
+  enableEmailShare     Boolean @default(true)
+
+  isPublished Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  benefits    CompanyBenefit[]
+  teamMembers TeamMember[]
+  jobs        Job[]
+  socialLinks CompanySocialLink[]
+  users       User[]      @relation("CompanyUsers")
+  candidates  Candidate[] @relation("CompanyCandidates")
+  subscription Subscription?
+  orgApiKeys   OrgApiKeyConfig[]
+  customSkills Skill[]    @relation("OrgSkills")
+  talentPools  TalentPool[]
+  ssoConfig    OrgSsoConfig?
+}
+
+model CompanyBenefit {
+  id          String  @id @default(cuid())
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  icon        String
+  title       String
+  description String
+  sortOrder   Int     @default(0)
+}
+
+model TeamMember {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  role      String
+  photoUrl  String?
+  bio       String?
+  sortOrder Int     @default(0)
+}
+
+model CompanySocialLink {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  platform  String
+  url       String
+  sortOrder Int     @default(0)
+}
+
+// ============================================
+// 2. CANDIDATE STATUS PORTAL
+// ============================================
+
+model CandidatePortalUser {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  password        String
+  name            String
+  phone           String?
+  isVerified      Boolean   @default(false)
+  verificationToken String?
+  resetToken      String?
+  resetTokenExpiry  DateTime?
+  lastLoginAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  applications    Application[]
+  activityLogs    CandidateActivityLog[]
+  savedJobs       SavedJob[]
+  linkedCandidate Candidate?
+}
+
+model CandidateActivityLog {
+  id          String   @id @default(cuid())
+  candidateId String
+  candidate   CandidatePortalUser @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  type        String
+  description String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+}
+
+model SavedJob {
+  id          String   @id @default(cuid())
+  candidateId String
+  candidate   CandidatePortalUser @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId       String
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([candidateId, jobId])
+}
+
+// ============================================
+// 3. INTERVIEW CALENDAR INTEGRATION
+// ============================================
+
+model CalendarIntegration {
+  id           String   @id @default(cuid())
+  userId       String
+  provider     CalendarProvider
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  calendarId   String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  syncedEvents CalendarSyncedEvent[]
+}
+
+enum CalendarProvider {
+  GOOGLE
+  OUTLOOK
+  CALENDLY
+}
+
+model CalendarSyncedEvent {
+  id            String   @id @default(cuid())
+  integrationId String
+  integration   CalendarIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  interviewId   String
+  interview     InterviewEvent @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  externalEventId String
+  syncStatus    String   @default("synced")
+  lastSyncedAt  DateTime @updatedAt
+}
+
+model InterviewAvailability {
+  id          String   @id @default(cuid())
+  userId      String
+  dayOfWeek   Int      // 0-6
+  startTime   String   // HH:mm format
+  endTime     String   // HH:mm format
+  timezone    String   @default("UTC")
+  isRecurring Boolean  @default(true)
+  specificDate  DateTime?
+  isBlocked   Boolean  @default(false)
+}
+
+// ============================================
+// 4. ADVANCED SEARCH & BOOLEAN FILTERS
+// ============================================
+
+model SavedSearch {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+
+  // Search Parameters
+  query           String?
+  booleanQuery    String?  // Advanced boolean search
+  skills          Json
+  experienceMin   Int?
+  experienceMax   Int?
+  education       Json
+  location        String?
+  remoteOnly      Boolean  @default(false)
+  salaryMin       Int?
+  salaryMax       Int?
+  source          Json
+  tags            Json
+  datePosted      String?  // last24h, last7d, last30d, all
+
+  // Filters
+  statusFilters   Json
+  stageFilters    Json
+
+  // Settings
+  isAlertEnabled  Boolean  @default(false)
+  alertFrequency  String   @default("daily") // daily, weekly, instant
+  lastAlertSentAt DateTime?
+  resultCount     Int      @default(0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model SearchIndex {
+  id           String   @id @default(cuid())
+  candidateId  String @unique
+  candidate    Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  content      String   // Full text content for searching
+  skills       Json
+  experience   Json?    // Structured experience data
+  education    Json?    // Structured education data
+  updatedAt    DateTime @updatedAt
+
+  @@index([content], name: "content_search_idx")
+}
+
+// ============================================
+// 5. CUSTOM APPLICATION FORMS
+// ============================================
+
+model JobApplicationForm {
+  id          String   @id @default(cuid())
+  jobId       String   @unique
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  title       String   @default("Application Form")
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  fields FormField[]
+}
+
+enum FormFieldType {
+  TEXT
+  TEXTAREA
+  EMAIL
+  PHONE
+  NUMBER
+  DATE
+  SELECT
+  MULTISELECT
+  CHECKBOX
+  RADIO
+  FILE
+  URL
+  RATING
+  YES_NO
+}
+
+model FormField {
+  id          String       @id @default(cuid())
+  formId      String
+  form        JobApplicationForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  type        FormFieldType
+  label       String
+  placeholder String?
+  helpText    String?
+  isRequired  Boolean      @default(false)
+  isHidden    Boolean      @default(false)
+  sortOrder   Int          @default(0)
+
+  // Validation
+  validationRules Json?    // min, max, pattern, etc.
+
+  // Options (for select, multiselect, radio)
+  options     FormFieldOption[]
+
+  // File upload settings
+  allowedFileTypes Json // pdf, doc, docx, jpg, png, etc.
+  maxFileSize      Int?      // in bytes
+
+  // Conditional logic
+  showWhenFieldId  String?   // Show when this field has value
+  showWhenValue    String?
+}
+
+model FormFieldOption {
+  id       String   @id @default(cuid())
+  fieldId  String
+  field    FormField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  label    String
+  value    String
+  sortOrder Int     @default(0)
+}
+
+model ApplicationResponse {
+  id            String   @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fieldId       String
+  fieldLabel    String
+  fieldType     String
+  value         String?
+  fileUrl       String?
+  fileName      String?
+  createdAt     DateTime @default(now())
+}
+
+// ============================================
+// 6. CHROME EXTENSION / LINKEDIN IMPORT
+// ============================================
+
+model LinkedInImport {
+  id              String   @id @default(cuid())
+  linkedInUrl     String
+  linkedInId      String?
+  importedById    String
+  candidateId     String?
+  candidate       Candidate? @relation(fields: [candidateId], references: [id])
+  rawData         Json     // Full LinkedIn profile data
+  parsedData      Json?    // Parsed structured data
+  importStatus    String   @default("pending") // pending, processing, completed, failed
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+  processedAt     DateTime?
+}
+
+model ChromeExtensionToken {
+  id          String   @id @default(cuid())
+  userId      String
+  token       String   @unique
+  isActive    Boolean  @default(true)
+  lastUsedAt  DateTime?
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+}
+
+// ============================================
+// 7. JOB BOARD AUTO-POSTING
+// ============================================
+
+model JobBoardIntegration {
+  id           String   @id @default(cuid())
+  jobId        String
+  job          Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  board        JobBoard
+  externalId   String?
+  postUrl      String?
+  status       String   @default("pending") // pending, posted, expired, error
+  clicks       Int      @default(0)
+  applications Int      @default(0)
+  cost         Decimal? @db.Decimal(10, 2)
+  currency     String   @default("USD")
+  postedAt     DateTime @default(now())
+  expiresAt    DateTime?
+  lastSyncedAt DateTime @updatedAt
+  syncError    String?
+
+  // Board-specific settings
+  boardSettings Json?
+
+  @@index([jobId, board])
+}
+
+enum JobBoard {
+  LINKEDIN
+  INDEED
+  GLASSDOOR
+  ZIPRECRUITER
+  MONSTER
+  CAREERBUILDER
+  SIMPLYHIRED
+  STACKOVERFLOW
+  ANGELLIST
+  Weworkremotely
+}
+
+model JobBoardCredential {
+  id             String   @id @default(cuid())
+  board          JobBoard
+  accountName    String?
+  apiKey         String?
+  apiSecret      String?
+  accessToken    String?
+  refreshToken   String?
+  expiresAt      DateTime?
+  isActive       Boolean  @default(true)
+  organizationId String?
+  settings       Json?    // Board-specific settings
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+// ============================================
+// 8. INTERVIEW SCORECARDS & TEMPLATES
+// ============================================
+
+model ScorecardTemplate {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+  category       String   @default("general") // technical, cultural, behavioral, leadership
+  isDefault      Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  createdById    String?
+  organizationId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  criteria ScorecardCriteria[]
+  interviews InterviewEvent[]
+  jobs Job[]
+
+  @@index([organizationId])
+}
+
+model ScorecardCriteria {
+  id            String   @id @default(cuid())
+  templateId    String
+  template      ScorecardTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  maxScore      Int      @default(5)
+  weight        Decimal  @default(1.0) @db.Decimal(3, 2)
+  sortOrder     Int      @default(0)
+
+  // Interview guide
+  suggestedQuestions Json
+  whatToLookFor      String?
+  redFlags           String?
+}
+
+model InterviewScore {
+  id            String   @id @default(cuid())
+  interviewId   String
+  interview     InterviewEvent @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  criteriaId    String?
+  criteriaName  String?
+  criteriaDescription String?
+  score         Int
+  maxScore      Int      @default(5)
+  weight        Decimal  @default(1.0) @db.Decimal(3, 2)
+  notes         String?
+  scoredById    String?
+  scoredBy      User?    @relation(fields: [scoredById], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt @default(now())
+
+  // Overall recommendation
+  recommendation String?  @default("pending") // strong_hire, hire, leaning_hire, neutral, leaning_no, no_hire
+}
+
+// ============================================
+// 9. EMAIL AUTOMATION SEQUENCES
+// ============================================
+
+model EmailSequence {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  triggerType SequenceTrigger @default(MANUAL)
+  isActive    Boolean  @default(true)
+  organizationId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  steps EmailSequenceStep[]
+  enrollments EmailSequenceEnrollment[]
+
+  @@index([organizationId])
+}
+
+enum SequenceTrigger {
+  MANUAL
+  APPLICATION_RECEIVED
+  STAGE_CHANGE
+  INTERVIEW_SCHEDULED
+  INTERVIEW_COMPLETED
+  OFFER_SENT
+  OFFER_ACCEPTED
+  OFFER_DECLINED
+  REJECTION
+  NO_RESPONSE_3_DAYS
+  NO_RESPONSE_7_DAYS
+  NO_RESPONSE_14_DAYS
+}
+
+model EmailSequenceStep {
+  id          String   @id @default(cuid())
+  sequenceId  String
+  sequence    EmailSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  stepNumber  Int
+  delayHours  Int      @default(0) // Hours after previous step or trigger
+  templateId  String?
+  template    EmailTemplate? @relation(fields: [templateId], references: [id])
+  subject     String?
+  body        String?
+  condition   String?  // Conditional logic (e.g., "stage == 'phone_screen'")
+  channel     MessageChannel @default(EMAIL)
+}
+
+model EmailSequenceEnrollment {
+  id          String   @id @default(cuid())
+  sequenceId  String
+  sequence    EmailSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  applicationId String?
+  application   Application? @relation(fields: [applicationId], references: [id])
+  status      String   @default("active") // active, paused, completed, cancelled
+  currentStep Int      @default(0)
+  enrolledAt  DateTime @default(now())
+  completedAt DateTime?
+  cancelledAt DateTime?
+  cancelReason String?
+}
+
+model ScheduledEmail {
+  id          String   @id @default(cuid())
+  enrollmentId String
+  stepId      String
+  candidateId String
+  to          String
+  subject     String
+  body        String
+  scheduledAt DateTime
+  sentAt      DateTime?
+  error       String?
+  status      String   @default("pending") // pending, sent, failed, cancelled
+  createdAt   DateTime @default(now())
+}
+
+// ============================================
+// 10. HIRING PIPELINE ANALYTICS
+// ============================================
+
+model PipelineMetric {
+  id          String   @id @default(cuid())
+  jobId       String?
+  job         Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  date        DateTime @default(now())
+  period      String   @default("daily") // daily, weekly, monthly
+
+  // Stage metrics
+  stageName   String
+  candidatesIn  Int      @default(0)
+  candidatesOut Int      @default(0)
+  avgTimeInStage Decimal? @db.Decimal(10, 2) // Hours
+
+  // Conversion metrics
+  conversionRate Decimal? @db.Decimal(5, 2) // Percentage
+  dropOffCount   Int      @default(0)
+  dropOffRate    Decimal? @db.Decimal(5, 2)
+}
+
+model TimeToHireMetric {
+  id              String   @id @default(cuid())
+  jobId           String?
+  job             Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  applicationId   String   @unique
+  application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  candidateId     String
+
+  // Time tracking (in hours)
+  appliedAt       DateTime
+  firstStageAt    DateTime?
+  interviewAt     DateTime?
+  offerAt         DateTime?
+  hiredAt         DateTime?
+  rejectedAt      DateTime?
+  withdrewAt      DateTime?
+
+  totalTimeToHire Int?     // Hours from applied to hired
+  timeToFirstInterview Int? // Hours from applied to first interview
+  timeToOffer     Int?     // Hours from first interview to offer
+}
+
+model SourceQualityMetric {
+  id           String   @id @default(cuid())
+  source       String
+  date         DateTime @default(now())
+  period       String   @default("monthly")
+
+  // Volume metrics
+  totalApplicants Int @default(0)
+  passedScreening Int @default(0)
+  interviews    Int @default(0)
+  offers        Int @default(0)
+  hires         Int @default(0)
+
+  // Quality metrics
+  passRate      Decimal? @db.Decimal(5, 2) // passedScreening / totalApplicants
+  interviewRate Decimal? @db.Decimal(5, 2)
+  offerRate     Decimal? @db.Decimal(5, 2)
+  hireRate      Decimal? @db.Decimal(5, 2)
+  avgTimeToHire Int?     // Average hours
+  costPerHire   Decimal? @db.Decimal(10, 2)
+  organizationId String?
+
+  @@index([organizationId])
+}
+
+model AnalyticsDashboard {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  layout      Json     // Dashboard widget configuration
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ============================================
+// 11. SKILLS ASSESSMENTS
+// ============================================
+
+model AssessmentTemplate {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+  category       String   @default("technical") // technical, cognitive, personality, language
+  type           AssessmentType
+  duration       Int?     // Duration in minutes
+  difficulty     String   @default("intermediate") // beginner, intermediate, advanced
+  isActive       Boolean  @default(true)
+  passingScore   Int      @default(70)
+  organizationId String?
+  // Proctoring (additive — off by default for existing buyers)
+  proctoringEnabled Boolean @default(false)
+  proctoringStrictness String @default("standard") // off, standard, strict
+  requireFullscreen Boolean @default(false)
+  snapshotIntervalSec Int   @default(30)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  questions AssessmentQuestion[]
+  assignments AssessmentAssignment[]
+
+  @@index([organizationId])
+}
+
+enum AssessmentType {
+  CODING
+  MULTIPLE_CHOICE
+  OPEN_ENDED
+  PERSONALITY
+  LOGICAL_REASONING
+  LANGUAGE
+  CUSTOM
+}
+
+model AssessmentQuestion {
+  id           String   @id @default(cuid())
+  templateId   String
+  template     AssessmentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  type         String   @default("multiple_choice")
+  question     String
+  description  String?
+  codeSnippet  String?
+  options      Json?    // For multiple choice
+  correctAnswer String? // For auto-graded questions
+  points       Int      @default(1)
+  sortOrder    Int      @default(0)
+
+  // Coding specific
+  testCases    Json?    // Input/output pairs
+  language     String?  // For coding: javascript, python, etc.
+}
+
+model AssessmentAssignment {
+  id            String   @id @default(cuid())
+  templateId    String
+  template      AssessmentTemplate @relation(fields: [templateId], references: [id])
+  candidateId   String
+  candidate     Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  applicationId String?
+  application   Application? @relation(fields: [applicationId], references: [id])
+  assignedById  String
+  // Public take-link token (additive)
+  accessToken   String?  @unique
+
+  status        String   @default("pending") // pending, in_progress, completed, expired
+  startedAt     DateTime?
+  submittedAt   DateTime?
+  expiresAt     DateTime?
+  score         Int?
+  maxScore      Int?
+  percentage    Decimal? @db.Decimal(5, 2)
+  passed        Boolean?
+  feedback      String?
+  // pending_review when open-ended/personality still need recruiter scores; reviewed when done
+  reviewStatus  String?
+  reminderSentAt DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  responses AssessmentResponse[]
+  proctoringSession ProctoringSession?
+
+  @@index([accessToken])
+  @@index([status, expiresAt])
+}
+
+model ProctoringSession {
+  id              String   @id @default(cuid())
+  assignmentId    String   @unique
+  assignment      AssessmentAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  webcamSnapshots Json     @default("[]") // [{url|dataUrl, at, risk?}]
+  tabSwitchCount  Int      @default(0)
+  copyPasteEvents Json     @default("[]") // [{type, at, questionId?}]
+  blurEvents      Json     @default("[]")
+  timeline        Json     @default("[]") // unified integrity events
+  flagged         Boolean  @default(false)
+  riskScore       Int      @default(0) // 0–100
+  plagiarismScore Float?
+  plagiarismNotes String?
+  fullscreenExits Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model AssessmentResponse {
+  id           String   @id @default(cuid())
+  assignmentId String
+  assignment   AssessmentAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  questionId   String
+  answer       String?  // Text answer or selected option
+  codeSubmission String? // For coding questions
+  isCorrect    Boolean?
+  pointsEarned Int      @default(0)
+  timeSpent    Int?     // Seconds spent on this question
+  feedback     String?  // Recruiter feedback (manual review)
+  submittedAt  DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([assignmentId, questionId])
+}
+
+// ============================================
+// 12. E-SIGNATURE FOR OFFERS
+// ============================================
+
+model ESignatureProvider {
+  id           String   @id @default(cuid())
+  provider     ESignatureProviderType
+  isActive     Boolean  @default(true)
+  apiKey       String?
+  apiSecret    String?
+  webhookSecret String?
+  settings     Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+enum ESignatureProviderType {
+  DOCUSIGN
+  HELLOSIGN
+  SIGNNOW
+  ADOBE_SIGN
+}
+
+model ESignatureRequest {
+  id              String   @id @default(cuid())
+  offerLetterId   String?   @unique
+  offerLetter     OfferLetter? @relation(fields: [offerLetterId], references: [id], onDelete: Cascade)
+  candidateId     String?
+  candidate       Candidate? @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  provider        ESignatureProviderType
+  externalId      String?  // Provider's envelope ID
+  status          String   @default("draft") // draft, sent, delivered, signed, completed, declined, voided
+  signUrl         String?
+  signedDocumentUrl String?
+  documentUrl     String?  // Original document URL
+
+  // Signer details
+  signerName      String?
+  signerEmail     String?
+  signedAt        DateTime?
+  ipAddress       String?
+  auditTrail      Json?    // Provider's audit trail
+
+  // Metadata storage
+  metadata        Json?
+
+  // Status timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  sentAt          DateTime?
+  deliveredAt     DateTime?
+  completedAt     DateTime?
+  declinedAt      DateTime?
+  voidedAt        DateTime?
+  deletedAt       DateTime?
+  expiresAt       DateTime?
+
+  // Reason fields
+  declineReason   String?
+  voidReason      String?
+
+  // Certificate URL
+  certificateUrl  String?
+
+  @@index([candidateId])
+  @@index([externalId])
+}
+
+model OfferLetterTemplate {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+  category       String   @default("full_time") // full_time, part_time, contract, internship
+  content        String   // HTML template
+  variables      Json // List of available variables
+  isDefault      Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  organizationId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  offerLetters OfferLetter[]
+
+  @@index([organizationId])
+}
+
+// ============================================
+// 13. REFERRAL PROGRAM
+// ============================================
+
+model ReferralProgram {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  isActive        Boolean  @default(true)
+  organizationId  String?
+
+  // Reward settings
+  rewardType      String   @default("cash") // cash, gift_card, points, days_off
+  rewardAmount    Decimal  @db.Decimal(10, 2)
+  rewardCurrency  String   @default("USD")
+  rewardTiming    String   @default("hire") // application, interview, hire, retention_30d, retention_90d
+
+  // Eligibility
+  minDaysEmployed Int      @default(90) // Employee must be employed for X days
+  maxReferralsPerMonth Int? // Limit referrals per employee
+
+  // Job eligibility
+  eligibleJobIds  Json // Empty = all jobs eligible
+  excludedJobIds  Json
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  referrals Referral[]
+
+  @@index([organizationId])
+}
+
+model Referral {
+  id              String   @id @default(cuid())
+  programId       String
+  program         ReferralProgram @relation(fields: [programId], references: [id])
+  referrerId      String   // Employee who referred
+  referrer        User     @relation("Referrer", fields: [referrerId], references: [id])
+
+  // Candidate info
+  candidateName   String
+  candidateEmail  String
+  candidatePhone  String?
+  relationship    String?  // How they know the candidate
+  notes           String?
+
+  // Status tracking
+  status          String   @default("submitted") // submitted, contacted, interviewing, hired, rejected, paid
+  linkedCandidateId String?  // Once added to system - reference only, no relation
+  linkedApplicationId String?
+
+  // Reward tracking
+  rewardStatus    String   @default("pending") // pending, approved, paid, declined
+  rewardPaidAt    DateTime?
+  rewardAmount    Decimal? @db.Decimal(10, 2)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ============================================
+// 14. BACKGROUND CHECK INTEGRATION
+// ============================================
+
+model BackgroundCheckProvider {
+  id           String   @id @default(cuid())
+  provider     BgCheckProvider
+  isActive     Boolean  @default(true)
+  apiKey       String?
+  apiSecret    String?
+  webhookSecret String?
+  settings     Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+enum BgCheckProvider {
+  CHECKR
+  ONFIDO
+  GOODHIRE
+  STERLING
+  ACCURATE
+}
+
+model BackgroundCheck {
+  id            String   @id @default(cuid())
+  provider      BgCheckProvider
+  candidateId   String
+  candidate     Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  applicationId String?
+  application   Application? @relation(fields: [applicationId], references: [id])
+  requestedById String?
+
+  // Check configuration
+  checkTypes    Json // criminal, employment, education, identity, credit, motor_vehicle, drug
+  packageType   String?  // standard, premium, etc.
+  externalId    String?  // Provider's check ID
+  providerCandidateId String?  // Checkr candidate ID
+  providerInvitationId String?  // Checkr invitation ID
+  invitationUrl String?  // URL sent to candidate
+  status        String   @default("pending") // pending, in_progress, complete, clear, consider, suspended
+
+  // Results
+  resultSummary String?  // clear, consider, suspended
+  completedAt   DateTime?
+  reportUrl     String?
+  rawResults    Json?
+
+  // Compliance
+  consentObtained Boolean @default(false)
+  consentDate   DateTime?
+  adverseActionRequired Boolean @default(false)
+  adverseActionSentAt DateTime?
+
+  // Additional fields
+  notes         String?
+  expiresAt     DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([providerCandidateId])
+  @@index([providerInvitationId])
+}
+
+// ============================================
+// 15. API & WEBHOOKS
+// ============================================
+
+model ApiKey {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  key         String   @unique
+  keyHash     String?  @unique // SHA-256 hex hash of the raw key — used for secure lookup
+  permissions Json // read, write, delete, admin
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model Webhook {
+  id             String   @id @default(cuid())
+  name           String
+  url            String
+  secret         String   // For signature verification
+  events         Json // application.created, candidate.updated, etc.
+  isActive       Boolean  @default(true)
+  headers        Json?    // Custom headers
+  retryCount     Int      @default(3)
+  timeout        Int      @default(30) // Seconds
+  organizationId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  eventsLog   WebhookEvent[]
+
+  @@index([organizationId])
+}
+
+model WebhookEvent {
+  id          String   @id @default(cuid())
+  webhookId   String
+  webhook     Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  eventType   String
+  payload     Json
+  status      String   @default("pending") // pending, delivered, failed, retrying
+  responseStatus Int?   // HTTP status code
+  responseBody String?
+  errorMessage String?
+  attemptCount Int    @default(0)
+  deliveredAt DateTime?
+  createdAt   DateTime @default(now())
+  processedById String?
+  processedBy User?    @relation(fields: [processedById], references: [id])
+}
+
+// ============================================
+// CORE MODELS (ENHANCED)
+// ============================================
+
+model Job {
+  id            String   @id @default(cuid())
+  companyId     String?
+  company       Company? @relation(fields: [companyId], references: [id])
+  title         String
+  department    String
+  location      String
+  type          String   @default("Full-time") // Full-time, Part-time, Contract, Internship
+  status        String   @default("Active") // Active, Paused, Closed, Draft
+  description   String?
+  requirements  String?
+  responsibilities String?
+  salaryMin     Int?
+  salaryMax     Int?
+  salaryCurrency String   @default("USD")
+  salaryPeriod  String   @default("yearly") // yearly, monthly, hourly
+
+  // SEO & Social
+  metaTitle     String?
+  metaDescription String?
+  ogImageUrl    String?
+  
+  // Publishing
+  postedAt      DateTime @default(now())
+  expiresAt     DateTime?
+  publishedById String?
+  isInternal    Boolean  @default(false)
+
+  // Application tracking
+  applicants    Int      @default(0)
+  views         Int      @default(0)
+
+  // Relations
+  applications    Application[]
+  interviews      InterviewEvent[]
+  offerLetters    OfferLetter[]
+  boardPosts      JobBoardIntegration[]
+  customForm      JobApplicationForm?
+  savedByCandidates SavedJob[]
+  scorecardTemplateId String?
+  scorecardTemplate ScorecardTemplate? @relation(fields: [scorecardTemplateId], references: [id])
+
+  // Owner relation
+  ownerId String?
+  owner   User? @relation(name: "JobOwner", fields: [ownerId], references: [id])
+
+  // Pipeline stages configuration
+  pipelineStages  Json?    // Custom pipeline stages for this job
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt @default(now())
+  
+  // Analytics relations
+  pipelineMetrics PipelineMetric[]
+  timeToHireMetrics TimeToHireMetric[]
+  jobSkills       JobSkill[]
+}
+
+model Candidate {
+  id           String   @id @default(cuid())
+  
+  // Basic Info
+  name         String
+  email        String
+  phone        String?
+  avatarUrl    String?
+  
+  // Profile
+  source       String?  @default("direct") // direct, linkedin, indeed, referral, etc.
+  sourceDetail String?  // Specific source detail
+  skills       Json     @default("[]")
+  tags         Json     @default("[]")
+  experience   Int?     // Years of experience
+
+  // Messaging consent (TCPA / WhatsApp opt-in) — additive, default false
+  smsOptIn           Boolean   @default(false)
+  whatsappOptIn      Boolean   @default(false)
+  phoneVerifiedAt    DateTime?
+  messagingConsentAt DateTime?
+  messagingConsentIp String?
+
+  // Talent pool retention consent (GDPR) — default false; must opt-in
+  talentPoolConsent   Boolean   @default(false)
+  talentPoolConsentAt DateTime?
+  
+  // Location
+  location     String?
+  city         String?
+  country      String?
+  timezone     String?
+  isRemote     Boolean  @default(false)
+  
+  // Professional
+  currentTitle     String?
+  currentCompany   String?
+  linkedInUrl      String?
+  portfolioUrl     String?
+  githubUrl        String?
+  websiteUrl       String?
+  
+  // Resume
+  resumeUrl    String?
+  resumeText   String?  // Parsed text for search
+  resumeParsed Json?    // Structured parsed data
+  
+  // Social
+  linkedInImports LinkedInImport[]
+  
+  // Multi-tenancy
+  organizationId String?
+  organization   Company? @relation("CompanyCandidates", fields: [organizationId], references: [id])
+
+  // Portal
+  portalUserId String? @unique
+  portalUser   CandidatePortalUser? @relation(fields: [portalUserId], references: [id])
+
+  // Referral - just store ID, no bidirectional relation
+  referralSourceId String?
+
+  // Relations
+  applications    Application[]
+  interviews      InterviewEvent[]
+  notes           CandidateNote[]
+  comments        Comment[]
+  offerLetters    OfferLetter[]
+  resumes         Resume[]
+  sequenceEnrollments EmailSequenceEnrollment[]
+  assessmentAssignments AssessmentAssignment[]
+  backgroundChecks BackgroundCheck[]
+  eSignatureRequests ESignatureRequest[]
+  searchIndex     SearchIndex?
+  candidateSkills CandidateSkill[]
+  talentPoolMembers TalentPoolMember[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([email, organizationId])
+  @@index([skills])
+  @@index([source])
+  @@index([email])
+}
+
+model Application {
+  id          String   @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId       String
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  
+  // Stage tracking
+  stage       String   @default("Applied") // Applied, Screening, Interview, Offer, Hired, Rejected
+  stageIndex  Int      @default(0)
+  previousStage String?
+  
+  // Status
+  status      String   @default("active") // active, withdrawn, rejected, hired, on_hold
+  
+  // Application data
+  coverLetter String?
+  expectedSalary Int?
+  salaryCurrency String @default("USD")
+  startDate   DateTime?
+  notes       String?
+  
+  // Custom form responses
+  formResponses ApplicationResponse[]
+  
+  // Timestamps
+  appliedAt   DateTime @default(now())
+  lastActivityAt DateTime @updatedAt @default(now())
+  // Stage timestamps for analytics
+  screeningAt DateTime?
+  interviewAt DateTime?
+  offerAt     DateTime?
+  hiredAt     DateTime?
+  rejectedAt  DateTime?
+  withdrewAt  DateTime?
+  
+  // Rejection
+  rejectionReason String?
+  rejectionEmailSent Boolean @default(false)
+  autoRejectedAt DateTime?
+  
+  // Disposition
+  disposition String?  @default("new") // new, reviewed, shortlisted, contacted, scheduled, completed
+  
+  // Portal connection
+  portalUserId String?
+  portalUser   CandidatePortalUser? @relation(fields: [portalUserId], references: [id])
+  
+  // Relations
+  interviews    InterviewEvent[]
+  offerLetters  OfferLetter[]
+  timeToHireMetric TimeToHireMetric?
+  sequenceEnrollments EmailSequenceEnrollment[]
+  assessments   AssessmentAssignment[]
+  backgroundChecks BackgroundCheck[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([jobId, stage])
+  @@index([candidateId])
+}
+
+model InterviewEvent {
+  id          String   @id @default(cuid())
+  title       String
+  type        String   @default("phone") // phone, video, onsite, technical, panel
+  
+  // Timing
+  start       DateTime
+  end         DateTime?
+  timezone    String   @default("UTC")
+  duration    Int      @default(60) // Minutes
+  
+  // Participants
+  candidateId String?
+  candidate   Candidate? @relation(fields: [candidateId], references: [id])
+  jobId       String?
+  job         Job?       @relation(fields: [jobId], references: [id])
+  applicationId String?
+  application   Application? @relation(fields: [applicationId], references: [id])
+  
+  // Interviewer(s)
+  interviewers Json?    // Array of {userId, name, email, status}
+  
+  // Assigned to user
+  assignedToId String?
+  assignedTo   User?    @relation("InterviewAssignee", fields: [assignedToId], references: [id])
+  
+  // Location / Video
+  location    String?
+  videoLink   String?
+  videoProvider String? // zoom, teams, meet, etc.
+  
+  // Scorecard
+  scorecardTemplateId String?
+  scorecardTemplate ScorecardTemplate? @relation(fields: [scorecardTemplateId], references: [id])
+  scores      InterviewScore[]
+  overallScore Decimal? @db.Decimal(4, 2)
+  recommendation String? @default("pending") // strong_hire, hire, leaning_hire, neutral, leaning_no, no_hire
+  
+  // Calendar sync
+  calendarSyncs CalendarSyncedEvent[]
+  
+  // Status
+  status      String   @default("scheduled") // scheduled, confirmed, completed, cancelled, no_show
+  
+  // Prep
+  prepNotes   String?
+  agenda      String?
+  
+  // Feedback
+  feedbackSummary String?
+  nextSteps   String?
+
+  // Recording / AI notes (additive)
+  recordingConsent Boolean @default(false)
+  recordingConsentAt DateTime?
+  transcriptRetentionDays Int @default(90)
+  transcript InterviewTranscript?
+
+  // Meeting join bot (Recall.ai BYOK)
+  meetingBotId       String?
+  meetingBotProvider String?  // recall | other
+  meetingBotStatus   String?  // pending | joining | done | failed
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt @default(now())
+}
+
+model InterviewTranscript {
+  id              String   @id @default(cuid())
+  interviewEventId String  @unique
+  interview       InterviewEvent @relation(fields: [interviewEventId], references: [id], onDelete: Cascade)
+  rawTranscript   String
+  speakers        Json     @default("[]") // [{speaker, text, startMs?, endMs?}]
+  timestamps      Json     @default("[]") // key moments [{label, startMs, endMs?}]
+  source          String   @default("manual") // manual, zoom, meet, teams, webhook
+  aiSummary       String?
+  suggestedScore  Float?
+  suggestedRecommendation String?
+  scorecardSuggestions Json? // [{criteriaId|name, suggestedScore, rationale}]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ============================================
+// 20. DEI — Self-ID (separate from hiring data)
+// ============================================
+// NEVER join self-ID into scorecards or AI ranking.
+
+model CandidateSelfId {
+  id             String   @id @default(cuid())
+  // Soft link only — not used in hiring decision queries
+  candidateId    String?
+  applicationId  String?
+  organizationId String
+  // Voluntary self-ID (all optional)
+  gender         String?
+  ethnicity      String?
+  veteranStatus  String?
+  disability     String?
+  declinedToSelfId Boolean @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([candidateId])
+  @@index([applicationId])
+}
+
+model DiversityMetric {
+  id             String   @id @default(cuid())
+  organizationId String
+  jobId          String?
+  stage          String   // Applied, Screening, Interview, Offer, Hired
+  period         String   @default("monthly")
+  date           DateTime @default(now())
+  // Aggregated counts only — never individual
+  breakdown      Json     // { gender: {..}, ethnicity: {..} }
+  totalCount     Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, stage])
+  @@index([jobId])
+}
+
+model OrgDeiSettings {
+  id             String  @id @default(cuid())
+  organizationId String  @unique
+  blindScreeningEnabled Boolean @default(false)
+  diverseSlateAlerts    Boolean @default(false)
+  selfIdFormEnabled     Boolean @default(true)
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+}
+
+model OfferLetter {
+  id          String   @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId       String
+  job         Job      @relation(fields: [jobId], references: [id])
+  applicationId String?
+  application   Application? @relation(fields: [applicationId], references: [id])
+  
+  // Content
+  templateId  String?
+  template    OfferLetterTemplate? @relation(fields: [templateId], references: [id])
+  content     String   // HTML content
+  
+  // Terms
+  salary      String
+  currency    String   @default("USD")
+  salaryPeriod String  @default("yearly")
+  startDate   DateTime
+  benefits    String?
+  
+  // Status
+  status      String   @default("draft") // draft, sent, viewed, negotiating, accepted, declined, expired
+  sentAt      DateTime?
+  viewedAt    DateTime?
+  respondedAt DateTime?
+  expiresAt   DateTime?
+  
+  // E-Signature
+  eSignature  ESignatureRequest?
+  
+  // Negotiation
+  candidateNotes String?
+  counterOffer String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ============================================
+// SUPPORTING MODELS
+// ============================================
+
+model CandidateNote {
+  id          String     @id @default(cuid())
+  candidateId String
+  candidate   Candidate  @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  authorId    String?
+  authorName  String
+  authorEmail String?
+  body        String
+  isPrivate   Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt @default(now())
+}
+
+model Comment {
+  id          String     @id @default(cuid())
+  body        String
+  authorId    String?
+  authorName  String
+  authorEmail String
+  authorAvatar String?
+  mentions    Json?  // Array of mentioned user IDs
+  candidateId String?
+  candidate   Candidate? @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId       String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Resume {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  fileName    String
+  fileUrl     String?
+  fileSize    Int?
+  mimeType    String?
+  parsedData  Json?
+  rawText     String?
+  isPrimary   Boolean   @default(false)
+  source      String    @default("upload") // upload, email, api, linkedin
+  createdAt   DateTime  @default(now())
+}
+
+model EmailTemplate {
+  id             String   @id @default(cuid())
+  name           String
+  subject        String
+  body           String   // HTML content
+  // Short-form channel copies (additive — email body remains primary)
+  smsBody        String?
+  whatsappBody   String?
+  category       String   @default("general") // general, interview, offer, rejection, onboarding
+  variables      Json? // Available template variables
+  isDefault      Boolean  @default(false)
+  isSystem       Boolean  @default(false) // Can't be deleted
+  createdById    String?
+  organizationId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  sequenceSteps EmailSequenceStep[]
+
+  @@index([organizationId])
+}
+
+model MessageThread {
+  id             String    @id @default(cuid())
+  candidateId    String?
+  subject        String
+  organizationId String?
+  lastMessageAt  DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+
+  messages    Message[]
+
+  @@index([organizationId])
+}
+
+enum MessageChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+model Message {
+  id          String        @id @default(cuid())
+  threadId    String
+  thread      MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  fromUserId  String?
+  fromName    String
+  fromEmail   String        @default("")
+  toEmail     String?
+  // Multi-channel (defaults preserve existing email-only buyers)
+  channel     MessageChannel @default(EMAIL)
+  toPhone     String?
+  fromPhone   String?
+  externalId  String?       // Twilio SID / WhatsApp wamid
+  body        String
+  bodyHtml    String?
+  direction   String        @default("INBOUND") // INBOUND, OUTBOUND
+  status      String        @default("sent") // draft, sent, delivered, failed
+  isRead      Boolean       @default(false)
+  readAt      DateTime?
+  isDeleted   Boolean       @default(false)
+  deletedAt   DateTime?
+  attachments Json?         // Array of {filename, url, size}
+  repliedToId String?       // For reply threading
+  metadata    Json?         // Extra data (ip, user agent, etc.)
+  sentAt      DateTime      @default(now())
+  createdAt   DateTime      @default(now())
+
+  @@index([threadId])
+  @@index([isRead])
+  @@index([isDeleted])
+  @@index([sentAt])
+  @@index([channel])
+  @@index([toPhone])
+  @@index([externalId])
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String?
+  candidateId String?
+  title       String
+  message     String
+  type        String   @default("info") // info, success, warning, error
+  category    String?  // interview, application, offer, system
+  priority    String   @default("medium") // low, medium, high
+  isRead      Boolean  @default(false)
+  href        String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([candidateId])
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+model ActivityLog {
+  id          String   @id @default(cuid())
+  type        String   // application_created, stage_changed, interview_scheduled, etc.
+  userId      String?
+  candidateId String?
+  jobId       String?
+  applicationId String?
+  payload     Json     // Event details
+  createdAt   DateTime @default(now())
+}
+
+model UserActivityLog {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action      String   // login, logout, view, create, update, delete
+  entityType  String?  // job, candidate, application, etc.
+  entityId    String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  type      String   // announcement, news, reminder
+  title     String
+  summary   String
+  content   String?
+  timeLabel String?  // e.g. "Today", "2h ago"
+  cta       String?
+  href      String?
+  isActive  Boolean  @default(true)
+  organizationId String?
+  startDate DateTime @default(now())
+  endDate   DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([organizationId])
+}
+
+model UserSettings {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  
+  // Preferences
+  emailNotifications    Boolean  @default(true)
+  pushNotifications     Boolean  @default(true)
+  digestEmail           String   @default("daily") // none, daily, weekly
+  
+  // Calendar
+  defaultCalendarView   String   @default("week") // day, week, month
+  workingHoursStart     String   @default("09:00")
+  workingHoursEnd       String   @default("17:00")
+  workingDays           Int[]    @default([1, 2, 3, 4, 5]) // 0 = Sunday
+  timezone              String   @default("UTC")
+  
+  // Display
+  theme                 String   @default("system") // light, dark, system
+  language              String   @default("en")
+  dateFormat            String   @default("MM/DD/YYYY")
+  timeFormat            String   @default("12h") // 12h, 24h
+  
+  // Privacy
+  showOnlineStatus      Boolean  @default(true)
+  readReceipts          Boolean  @default(true)
+  
+  updatedAt             DateTime @updatedAt
+  createdAt             DateTime @default(now())
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, endpoint])
+  @@index([userId])
+}
+
+// ============================================
+// MISSING MODELS (Added for API compatibility)
+// ============================================
+
+// OAuth state storage for integration authentication
+model IntegrationAuth {
+  id          String   @id @default(cuid())
+  userId      String
+  provider    String   // DOCUSIGN, GOOGLE, etc.
+  state       String   @unique
+  code        String?  // Temporary authorization code storage
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([userId, provider])
+  @@index([state])
+}
+
+// Integration credentials storage
+model Integration {
+  id            String   @id @default(cuid())
+  userId        String
+  provider      String   // DOCUSIGN, GOOGLE, etc.
+  accessToken   String
+  refreshToken  String?
+  expiresAt     DateTime?
+  accountId     String?
+  baseUrl       String?
+  email         String?
+  name          String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, provider], name: "userId_provider")
+  @@index([userId])
+  @@index([provider])
+}
+
+// Webhook subscriptions (for Zapier and other integrations)
+model WebhookSubscription {
+  id             String   @id @default(cuid())
+  url            String
+  events         Json // Array of event types
+  secret         String?  // For signature verification
+  name           String?
+  description    String?
+  isActive       Boolean  @default(true)
+  organizationId String?
+  lastTriggeredAt DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([events])
+  @@index([organizationId])
+}
+
+// ============================================
+// 16. SUBSCRIPTION BILLING
+// ============================================
+
+enum Plan {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum SubStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+}
+
+model Subscription {
+  id               String    @id @default(cuid())
+  organizationId   String    @unique
+  organization     Company   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stripeCustomerId String?   @unique
+  stripeSubId      String?   @unique
+  plan             Plan      @default(FREE)
+  status           SubStatus @default(ACTIVE)
+  currentPeriodEnd DateTime?
+  cancelAtPeriodEnd Boolean  @default(false)
+  seats            Int       @default(3)
+  /// Optional purchasable add-ons, e.g. { "whiteLabelKit": true, "analyticsPlus": true }
+  addOns           Json      @default("{}")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+// ============================================
+// SSO / SAML (Enterprise) — opt-in per org
+// ============================================
+
+model OrgSsoConfig {
+  id                   String   @id @default(cuid())
+  organizationId       String   @unique
+  organization         Company  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  enabled              Boolean  @default(false)
+  entryPoint           String?  // IdP SSO URL
+  issuer               String?  // IdP Entity ID
+  cert                 String?  // IdP X.509 cert (PEM)
+  emailAttribute       String   @default("email")
+  wantAssertionsSigned Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+// ============================================
+// 17. BYOK (Bring Your Own Key) CONFIG
+// ============================================
+
+model OrgApiKeyConfig {
+  id             String  @id @default(cuid())
+  organizationId String
+  organization   Company @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider       String  // "openai", "checkr", "smtp", "whatsapp", etc.
+  encryptedKey   String  // AES-256-GCM encrypted API key
+  isActive       Boolean @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, provider])
+}
+
+// ============================================
+// 18. SKILLS TAXONOMY
+// ============================================
+// Additive: Candidate.skills / Job.requirements JSON remain for backward compatibility.
+// CandidateSkill / JobSkill are the canonical source when present.
+
+model Skill {
+  id             String   @id @default(cuid())
+  name           String
+  slug           String   @unique
+  category       String   @default("General") // Engineering, Design, Product, Soft Skills, etc.
+  description    String?
+  isSystem       Boolean  @default(false) // seeded system taxonomy
+  organizationId String?  // null = global/system; set for org-custom skills
+  organization   Company? @relation("OrgSkills", fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  candidateSkills CandidateSkill[]
+  jobSkills       JobSkill[]
+
+  @@index([name])
+  @@index([category])
+  @@index([organizationId])
+}
+
+model CandidateSkill {
+  id           String   @id @default(cuid())
+  candidateId  String
+  candidate    Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  skillId      String
+  skill        Skill     @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  proficiency  Int       @default(3) // 1–5
+  yearsUsed    Float?
+  source       String    @default("manual") // manual, resume, import, csv
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([candidateId, skillId])
+  @@index([skillId])
+}
+
+model JobSkill {
+  id             String  @id @default(cuid())
+  jobId          String
+  job            Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  skillId        String
+  skill          Skill   @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  required       Boolean @default(true)
+  minProficiency Int     @default(1)
+  weight         Float   @default(1)
+  createdAt      DateTime @default(now())
+
+  @@unique([jobId, skillId])
+  @@index([skillId])
+}
+
+// ============================================
+// 19. TALENT CRM / SILVER-MEDALIST POOLS
+// ============================================
+
+model TalentPool {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Company  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  poolType       String   @default("general") // general, silver_medalist, skill, keep_warm, future_fit
+  tags           Json     @default("[]")
+  isActive       Boolean  @default(true)
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  members TalentPoolMember[]
+
+  @@index([organizationId])
+  @@index([poolType])
+}
+
+model TalentPoolMember {
+  id          String     @id @default(cuid())
+  poolId      String
+  pool        TalentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  candidateId String
+  candidate   Candidate  @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  tags        Json       @default("[]")
+  addedReason String?
+  addedById   String?
+  lastContactedAt DateTime?
+  notes       String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([poolId, candidateId])
+  @@index([candidateId])
+  @@index([lastContactedAt])
+}

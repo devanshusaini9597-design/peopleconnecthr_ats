@@ -1,0 +1,3497 @@
+[
+  {
+    "name": "Reading Comprehension",
+    "category": "Soft Skills",
+    "onetCode": "2.A.1.a"
+  },
+  {
+    "name": "Active Listening",
+    "category": "Soft Skills",
+    "onetCode": "2.A.1.b"
+  },
+  {
+    "name": "Writing",
+    "category": "Soft Skills",
+    "onetCode": "2.A.1.c"
+  },
+  {
+    "name": "Speaking",
+    "category": "Soft Skills",
+    "onetCode": "2.A.1.d"
+  },
+  {
+    "name": "Mathematics",
+    "category": "Soft Skills",
+    "onetCode": "2.A.1.e"
+  },
+  {
+    "name": "Science",
+    "category": "Soft Skills",
+    "onetCode": "2.A.1.f"
+  },
+  {
+    "name": "Critical Thinking",
+    "category": "Soft Skills",
+    "onetCode": "2.A.2.a"
+  },
+  {
+    "name": "Active Learning",
+    "category": "Soft Skills",
+    "onetCode": "2.A.2.b"
+  },
+  {
+    "name": "Learning Strategies",
+    "category": "Soft Skills",
+    "onetCode": "2.A.2.c"
+  },
+  {
+    "name": "Monitoring",
+    "category": "Soft Skills",
+    "onetCode": "2.A.2.d"
+  },
+  {
+    "name": "Social Perceptiveness",
+    "category": "Soft Skills",
+    "onetCode": "2.B.1.a"
+  },
+  {
+    "name": "Coordination",
+    "category": "Soft Skills",
+    "onetCode": "2.B.1.b"
+  },
+  {
+    "name": "Persuasion",
+    "category": "Soft Skills",
+    "onetCode": "2.B.1.c"
+  },
+  {
+    "name": "Negotiation",
+    "category": "Soft Skills",
+    "onetCode": "2.B.1.d"
+  },
+  {
+    "name": "Instructing",
+    "category": "Soft Skills",
+    "onetCode": "2.B.1.e"
+  },
+  {
+    "name": "Service Orientation",
+    "category": "Soft Skills",
+    "onetCode": "2.B.1.f"
+  },
+  {
+    "name": "Complex Problem Solving",
+    "category": "Soft Skills",
+    "onetCode": "2.B.2.i"
+  },
+  {
+    "name": "Operations Analysis",
+    "category": "Soft Skills",
+    "onetCode": "2.B.3.a"
+  },
+  {
+    "name": "Technology Design",
+    "category": "Soft Skills",
+    "onetCode": "2.B.3.b"
+  },
+  {
+    "name": "Equipment Selection",
+    "category": "Soft Skills",
+    "onetCode": "2.B.3.c"
+  },
+  {
+    "name": "Installation",
+    "category": "Soft Skills",
+    "onetCode": "2.B.3.d"
+  },
+  {
+    "name": "Programming",
+    "category": "Soft Skills",
+    "onetCode": "2.B.3.e"
+  },
+  {
+    "name": "Operations Monitoring",
+    "category": "Soft Skills",
+    "onetCode": "2.B.3.f"
+  },
+  {
+    "name": "Operation and Control",
+    "category": "Soft Skills",
+    "onetCode": "2.B.3.g"
+  },
+  {
+    "name": "Equipment Maintenance",
+    "category": "Soft Skills",
+    "onetCode": "2.B.3.h"
+  },
+  {
+    "name": "Troubleshooting",
+    "category": "Soft Skills",
+    "onetCode": "2.B.3.i"
+  },
+  {
+    "name": "Repairing",
+    "category": "Soft Skills",
+    "onetCode": "2.B.3.j"
+  },
+  {
+    "name": "Quality Control Analysis",
+    "category": "Soft Skills",
+    "onetCode": "2.B.3.k"
+  },
+  {
+    "name": "Judgment and Decision Making",
+    "category": "Soft Skills",
+    "onetCode": "2.B.4.e"
+  },
+  {
+    "name": "Systems Analysis",
+    "category": "Soft Skills",
+    "onetCode": "2.B.4.g"
+  },
+  {
+    "name": "Systems Evaluation",
+    "category": "Soft Skills",
+    "onetCode": "2.B.4.h"
+  },
+  {
+    "name": "Time Management",
+    "category": "Soft Skills",
+    "onetCode": "2.B.5.a"
+  },
+  {
+    "name": "Management of Financial Resources",
+    "category": "Soft Skills",
+    "onetCode": "2.B.5.b"
+  },
+  {
+    "name": "Management of Material Resources",
+    "category": "Soft Skills",
+    "onetCode": "2.B.5.c"
+  },
+  {
+    "name": "Management of Personnel Resources",
+    "category": "Soft Skills",
+    "onetCode": "2.B.5.d"
+  },
+  {
+    "name": "Oral Comprehension",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Written Comprehension",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Oral Expression",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Written Expression",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Fluency of Ideas",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Originality",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Problem Sensitivity",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Deductive Reasoning",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Inductive Reasoning",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Information Ordering",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Category Flexibility",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Mathematical Reasoning",
+    "category": "Data"
+  },
+  {
+    "name": "Number Facility",
+    "category": "Data"
+  },
+  {
+    "name": "Memorization",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Speed of Closure",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Flexibility of Closure",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Perceptual Speed",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Spatial Orientation",
+    "category": "Engineering"
+  },
+  {
+    "name": "Visualization",
+    "category": "Design"
+  },
+  {
+    "name": "Selective Attention",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Finger Dexterity",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Manual Dexterity",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Control Precision",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Multilimb Coordination",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Response Orientation",
+    "category": "Operations"
+  },
+  {
+    "name": "Rate Control",
+    "category": "Operations"
+  },
+  {
+    "name": "Reaction Time",
+    "category": "Operations"
+  },
+  {
+    "name": "Wrist-Finger Speed",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Static Strength",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Dynamic Strength",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Trunk Strength",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Stamina",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Extent Flexibility",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Dynamic Flexibility",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Gross Body Coordination",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Gross Body Equilibrium",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Near Vision",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Far Vision",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Visual Color Discrimination",
+    "category": "Design"
+  },
+  {
+    "name": "Night Vision",
+    "category": "Operations"
+  },
+  {
+    "name": "Peripheral Vision",
+    "category": "Operations"
+  },
+  {
+    "name": "Depth Perception",
+    "category": "Operations"
+  },
+  {
+    "name": "Glare Sensitivity",
+    "category": "Operations"
+  },
+  {
+    "name": "Hearing Sensitivity",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Auditory Attention",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Sound Localization",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Speech Recognition",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Speech Clarity",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Administration and Management",
+    "category": "Operations"
+  },
+  {
+    "name": "Clerical",
+    "category": "Operations"
+  },
+  {
+    "name": "Economics and Accounting",
+    "category": "Finance"
+  },
+  {
+    "name": "Sales and Marketing",
+    "category": "Sales"
+  },
+  {
+    "name": "Customer and Personal Service",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Personnel and Human Resources",
+    "category": "HR"
+  },
+  {
+    "name": "Production and Processing",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Food Production",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Computers and Electronics",
+    "category": "Engineering"
+  },
+  {
+    "name": "Engineering and Technology",
+    "category": "Engineering"
+  },
+  {
+    "name": "Design",
+    "category": "Design"
+  },
+  {
+    "name": "Building and Construction",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Mechanical",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Mathematics Knowledge",
+    "category": "Data"
+  },
+  {
+    "name": "Physics",
+    "category": "Engineering"
+  },
+  {
+    "name": "Chemistry",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Biology",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Psychology",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Sociology and Anthropology",
+    "category": "Other"
+  },
+  {
+    "name": "Geography",
+    "category": "Other"
+  },
+  {
+    "name": "Medicine and Dentistry",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Therapy and Counseling",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Education and Training",
+    "category": "Education"
+  },
+  {
+    "name": "English Language",
+    "category": "Education"
+  },
+  {
+    "name": "Foreign Language",
+    "category": "Education"
+  },
+  {
+    "name": "Fine Arts",
+    "category": "Design"
+  },
+  {
+    "name": "History and Archeology",
+    "category": "Education"
+  },
+  {
+    "name": "Philosophy and Theology",
+    "category": "Education"
+  },
+  {
+    "name": "Public Safety and Security",
+    "category": "Security"
+  },
+  {
+    "name": "Law and Government",
+    "category": "Legal"
+  },
+  {
+    "name": "Telecommunications",
+    "category": "Engineering"
+  },
+  {
+    "name": "Communications and Media",
+    "category": "Marketing"
+  },
+  {
+    "name": "Transportation",
+    "category": "Operations"
+  },
+  {
+    "name": "JavaScript",
+    "category": "Engineering"
+  },
+  {
+    "name": "TypeScript",
+    "category": "Engineering"
+  },
+  {
+    "name": "Python",
+    "category": "Engineering"
+  },
+  {
+    "name": "Java",
+    "category": "Engineering"
+  },
+  {
+    "name": "C#",
+    "category": "Engineering"
+  },
+  {
+    "name": "C++",
+    "category": "Engineering"
+  },
+  {
+    "name": "C",
+    "category": "Engineering"
+  },
+  {
+    "name": "Go",
+    "category": "Engineering"
+  },
+  {
+    "name": "Rust",
+    "category": "Engineering"
+  },
+  {
+    "name": "Ruby",
+    "category": "Engineering"
+  },
+  {
+    "name": "PHP",
+    "category": "Engineering"
+  },
+  {
+    "name": "Swift",
+    "category": "Engineering"
+  },
+  {
+    "name": "Kotlin",
+    "category": "Engineering"
+  },
+  {
+    "name": "Scala",
+    "category": "Engineering"
+  },
+  {
+    "name": "Elixir",
+    "category": "Engineering"
+  },
+  {
+    "name": "Haskell",
+    "category": "Engineering"
+  },
+  {
+    "name": "Clojure",
+    "category": "Engineering"
+  },
+  {
+    "name": "Dart",
+    "category": "Engineering"
+  },
+  {
+    "name": "Lua",
+    "category": "Engineering"
+  },
+  {
+    "name": "Perl",
+    "category": "Engineering"
+  },
+  {
+    "name": "R Programming",
+    "category": "Engineering"
+  },
+  {
+    "name": "Objective-C",
+    "category": "Engineering"
+  },
+  {
+    "name": "Groovy",
+    "category": "Engineering"
+  },
+  {
+    "name": "Julia",
+    "category": "Engineering"
+  },
+  {
+    "name": "Fortran",
+    "category": "Engineering"
+  },
+  {
+    "name": "COBOL",
+    "category": "Engineering"
+  },
+  {
+    "name": "VB.NET",
+    "category": "Engineering"
+  },
+  {
+    "name": "Assembly",
+    "category": "Engineering"
+  },
+  {
+    "name": "Solidity",
+    "category": "Engineering"
+  },
+  {
+    "name": "Zig",
+    "category": "Engineering"
+  },
+  {
+    "name": "React",
+    "category": "Engineering"
+  },
+  {
+    "name": "Next.js",
+    "category": "Engineering"
+  },
+  {
+    "name": "Vue.js",
+    "category": "Engineering"
+  },
+  {
+    "name": "Angular",
+    "category": "Engineering"
+  },
+  {
+    "name": "Svelte",
+    "category": "Engineering"
+  },
+  {
+    "name": "SvelteKit",
+    "category": "Engineering"
+  },
+  {
+    "name": "Nuxt.js",
+    "category": "Engineering"
+  },
+  {
+    "name": "Remix",
+    "category": "Engineering"
+  },
+  {
+    "name": "Astro",
+    "category": "Engineering"
+  },
+  {
+    "name": "SolidJS",
+    "category": "Engineering"
+  },
+  {
+    "name": "Ember.js",
+    "category": "Engineering"
+  },
+  {
+    "name": "Backbone.js",
+    "category": "Engineering"
+  },
+  {
+    "name": "jQuery",
+    "category": "Engineering"
+  },
+  {
+    "name": "Node.js",
+    "category": "Engineering"
+  },
+  {
+    "name": "Express.js",
+    "category": "Engineering"
+  },
+  {
+    "name": "NestJS",
+    "category": "Engineering"
+  },
+  {
+    "name": "Fastify",
+    "category": "Engineering"
+  },
+  {
+    "name": "Koa",
+    "category": "Engineering"
+  },
+  {
+    "name": "Django",
+    "category": "Engineering"
+  },
+  {
+    "name": "Flask",
+    "category": "Engineering"
+  },
+  {
+    "name": "FastAPI",
+    "category": "Engineering"
+  },
+  {
+    "name": "Spring Boot",
+    "category": "Engineering"
+  },
+  {
+    "name": "Spring Framework",
+    "category": "Engineering"
+  },
+  {
+    "name": ".NET",
+    "category": "Engineering"
+  },
+  {
+    "name": "ASP.NET",
+    "category": "Engineering"
+  },
+  {
+    "name": "Laravel",
+    "category": "Engineering"
+  },
+  {
+    "name": "Symfony",
+    "category": "Engineering"
+  },
+  {
+    "name": "Ruby on Rails",
+    "category": "Engineering"
+  },
+  {
+    "name": "Phoenix",
+    "category": "Engineering"
+  },
+  {
+    "name": "Gin",
+    "category": "Engineering"
+  },
+  {
+    "name": "Echo",
+    "category": "Engineering"
+  },
+  {
+    "name": "Actix",
+    "category": "Engineering"
+  },
+  {
+    "name": "GraphQL",
+    "category": "Engineering"
+  },
+  {
+    "name": "REST APIs",
+    "category": "Engineering"
+  },
+  {
+    "name": "gRPC",
+    "category": "Engineering"
+  },
+  {
+    "name": "WebSockets",
+    "category": "Engineering"
+  },
+  {
+    "name": "SOAP",
+    "category": "Engineering"
+  },
+  {
+    "name": "OpenAPI",
+    "category": "Engineering"
+  },
+  {
+    "name": "tRPC",
+    "category": "Engineering"
+  },
+  {
+    "name": "SQL",
+    "category": "Engineering"
+  },
+  {
+    "name": "PostgreSQL",
+    "category": "Engineering"
+  },
+  {
+    "name": "MySQL",
+    "category": "Engineering"
+  },
+  {
+    "name": "MariaDB",
+    "category": "Engineering"
+  },
+  {
+    "name": "MongoDB",
+    "category": "Engineering"
+  },
+  {
+    "name": "Redis",
+    "category": "Engineering"
+  },
+  {
+    "name": "Cassandra",
+    "category": "Engineering"
+  },
+  {
+    "name": "DynamoDB",
+    "category": "Engineering"
+  },
+  {
+    "name": "CouchDB",
+    "category": "Engineering"
+  },
+  {
+    "name": "Neo4j",
+    "category": "Engineering"
+  },
+  {
+    "name": "Elasticsearch",
+    "category": "Engineering"
+  },
+  {
+    "name": "OpenSearch",
+    "category": "Engineering"
+  },
+  {
+    "name": "ClickHouse",
+    "category": "Engineering"
+  },
+  {
+    "name": "Snowflake",
+    "category": "Engineering"
+  },
+  {
+    "name": "BigQuery",
+    "category": "Engineering"
+  },
+  {
+    "name": "Redshift",
+    "category": "Engineering"
+  },
+  {
+    "name": "SQLite",
+    "category": "Engineering"
+  },
+  {
+    "name": "Oracle Database",
+    "category": "Engineering"
+  },
+  {
+    "name": "SQL Server",
+    "category": "Engineering"
+  },
+  {
+    "name": "FirestoreDB",
+    "category": "Engineering"
+  },
+  {
+    "name": "HTML",
+    "category": "Engineering"
+  },
+  {
+    "name": "CSS",
+    "category": "Engineering"
+  },
+  {
+    "name": "Sass",
+    "category": "Engineering"
+  },
+  {
+    "name": "Tailwind CSS",
+    "category": "Engineering"
+  },
+  {
+    "name": "Bootstrap",
+    "category": "Engineering"
+  },
+  {
+    "name": "Material UI",
+    "category": "Engineering"
+  },
+  {
+    "name": "Chakra UI",
+    "category": "Engineering"
+  },
+  {
+    "name": "Styled Components",
+    "category": "Engineering"
+  },
+  {
+    "name": "Webpack",
+    "category": "Engineering"
+  },
+  {
+    "name": "Vite",
+    "category": "Engineering"
+  },
+  {
+    "name": "esbuild",
+    "category": "Engineering"
+  },
+  {
+    "name": "Babel",
+    "category": "Engineering"
+  },
+  {
+    "name": "Parcel",
+    "category": "Engineering"
+  },
+  {
+    "name": "Rollup",
+    "category": "Engineering"
+  },
+  {
+    "name": "Data Structures",
+    "category": "Engineering"
+  },
+  {
+    "name": "Algorithms",
+    "category": "Engineering"
+  },
+  {
+    "name": "System Design",
+    "category": "Engineering"
+  },
+  {
+    "name": "Microservices",
+    "category": "Engineering"
+  },
+  {
+    "name": "Event-Driven Architecture",
+    "category": "Engineering"
+  },
+  {
+    "name": "Domain-Driven Design",
+    "category": "Engineering"
+  },
+  {
+    "name": "Clean Architecture",
+    "category": "Engineering"
+  },
+  {
+    "name": "Object-Oriented Programming",
+    "category": "Engineering"
+  },
+  {
+    "name": "Functional Programming",
+    "category": "Engineering"
+  },
+  {
+    "name": "Test-Driven Development",
+    "category": "Engineering"
+  },
+  {
+    "name": "WebAssembly",
+    "category": "Engineering"
+  },
+  {
+    "name": "WebRTC",
+    "category": "Engineering"
+  },
+  {
+    "name": "Serverless",
+    "category": "Engineering"
+  },
+  {
+    "name": "API Gateway",
+    "category": "Engineering"
+  },
+  {
+    "name": "Message Queues",
+    "category": "Engineering"
+  },
+  {
+    "name": "Kafka",
+    "category": "Engineering"
+  },
+  {
+    "name": "RabbitMQ",
+    "category": "Engineering"
+  },
+  {
+    "name": "NATS",
+    "category": "Engineering"
+  },
+  {
+    "name": "Pulsar",
+    "category": "Engineering"
+  },
+  {
+    "name": "ZeroMQ",
+    "category": "Engineering"
+  },
+  {
+    "name": "AWS",
+    "category": "DevOps"
+  },
+  {
+    "name": "Azure",
+    "category": "DevOps"
+  },
+  {
+    "name": "Google Cloud",
+    "category": "DevOps"
+  },
+  {
+    "name": "DigitalOcean",
+    "category": "DevOps"
+  },
+  {
+    "name": "Heroku",
+    "category": "DevOps"
+  },
+  {
+    "name": "Vercel",
+    "category": "DevOps"
+  },
+  {
+    "name": "Netlify",
+    "category": "DevOps"
+  },
+  {
+    "name": "Cloudflare",
+    "category": "DevOps"
+  },
+  {
+    "name": "Docker",
+    "category": "DevOps"
+  },
+  {
+    "name": "Kubernetes",
+    "category": "DevOps"
+  },
+  {
+    "name": "Helm",
+    "category": "DevOps"
+  },
+  {
+    "name": "OpenShift",
+    "category": "DevOps"
+  },
+  {
+    "name": "Podman",
+    "category": "DevOps"
+  },
+  {
+    "name": "containerd",
+    "category": "DevOps"
+  },
+  {
+    "name": "Terraform",
+    "category": "DevOps"
+  },
+  {
+    "name": "Pulumi",
+    "category": "DevOps"
+  },
+  {
+    "name": "CloudFormation",
+    "category": "DevOps"
+  },
+  {
+    "name": "Ansible",
+    "category": "DevOps"
+  },
+  {
+    "name": "Chef",
+    "category": "DevOps"
+  },
+  {
+    "name": "Puppet",
+    "category": "DevOps"
+  },
+  {
+    "name": "SaltStack",
+    "category": "DevOps"
+  },
+  {
+    "name": "CI/CD",
+    "category": "DevOps"
+  },
+  {
+    "name": "Jenkins",
+    "category": "DevOps"
+  },
+  {
+    "name": "GitHub Actions",
+    "category": "DevOps"
+  },
+  {
+    "name": "GitLab CI",
+    "category": "DevOps"
+  },
+  {
+    "name": "CircleCI",
+    "category": "DevOps"
+  },
+  {
+    "name": "Azure DevOps",
+    "category": "DevOps"
+  },
+  {
+    "name": "Argo CD",
+    "category": "DevOps"
+  },
+  {
+    "name": "Flux",
+    "category": "DevOps"
+  },
+  {
+    "name": "Linux",
+    "category": "DevOps"
+  },
+  {
+    "name": "Bash",
+    "category": "DevOps"
+  },
+  {
+    "name": "PowerShell",
+    "category": "DevOps"
+  },
+  {
+    "name": "Unix",
+    "category": "DevOps"
+  },
+  {
+    "name": "Shell Scripting",
+    "category": "DevOps"
+  },
+  {
+    "name": "Prometheus",
+    "category": "DevOps"
+  },
+  {
+    "name": "Grafana",
+    "category": "DevOps"
+  },
+  {
+    "name": "Datadog",
+    "category": "DevOps"
+  },
+  {
+    "name": "New Relic",
+    "category": "DevOps"
+  },
+  {
+    "name": "Splunk",
+    "category": "DevOps"
+  },
+  {
+    "name": "ELK Stack",
+    "category": "DevOps"
+  },
+  {
+    "name": "OpenTelemetry",
+    "category": "DevOps"
+  },
+  {
+    "name": "Jaeger",
+    "category": "DevOps"
+  },
+  {
+    "name": "Zipkin",
+    "category": "DevOps"
+  },
+  {
+    "name": "Nginx",
+    "category": "DevOps"
+  },
+  {
+    "name": "Apache HTTP Server",
+    "category": "DevOps"
+  },
+  {
+    "name": "HAProxy",
+    "category": "DevOps"
+  },
+  {
+    "name": "Traefik",
+    "category": "DevOps"
+  },
+  {
+    "name": "Istio",
+    "category": "DevOps"
+  },
+  {
+    "name": "Linkerd",
+    "category": "DevOps"
+  },
+  {
+    "name": "Envoy",
+    "category": "DevOps"
+  },
+  {
+    "name": "Git",
+    "category": "DevOps"
+  },
+  {
+    "name": "GitHub",
+    "category": "DevOps"
+  },
+  {
+    "name": "GitLab",
+    "category": "DevOps"
+  },
+  {
+    "name": "Bitbucket",
+    "category": "DevOps"
+  },
+  {
+    "name": "SVN",
+    "category": "DevOps"
+  },
+  {
+    "name": "Infrastructure as Code",
+    "category": "DevOps"
+  },
+  {
+    "name": "Site Reliability Engineering",
+    "category": "DevOps"
+  },
+  {
+    "name": "Observability",
+    "category": "DevOps"
+  },
+  {
+    "name": "Log Management",
+    "category": "DevOps"
+  },
+  {
+    "name": "Incident Management",
+    "category": "DevOps"
+  },
+  {
+    "name": "Chaos Engineering",
+    "category": "DevOps"
+  },
+  {
+    "name": "AWS Lambda",
+    "category": "DevOps"
+  },
+  {
+    "name": "Azure Functions",
+    "category": "DevOps"
+  },
+  {
+    "name": "Google Cloud Functions",
+    "category": "DevOps"
+  },
+  {
+    "name": "ECS",
+    "category": "DevOps"
+  },
+  {
+    "name": "EKS",
+    "category": "DevOps"
+  },
+  {
+    "name": "AKS",
+    "category": "DevOps"
+  },
+  {
+    "name": "GKE",
+    "category": "DevOps"
+  },
+  {
+    "name": "S3",
+    "category": "DevOps"
+  },
+  {
+    "name": "EC2",
+    "category": "DevOps"
+  },
+  {
+    "name": "IAM",
+    "category": "DevOps"
+  },
+  {
+    "name": "iOS Development",
+    "category": "Mobile"
+  },
+  {
+    "name": "Android Development",
+    "category": "Mobile"
+  },
+  {
+    "name": "React Native",
+    "category": "Mobile"
+  },
+  {
+    "name": "Flutter",
+    "category": "Mobile"
+  },
+  {
+    "name": "SwiftUI",
+    "category": "Mobile"
+  },
+  {
+    "name": "UIKit",
+    "category": "Mobile"
+  },
+  {
+    "name": "Jetpack Compose",
+    "category": "Mobile"
+  },
+  {
+    "name": "Xamarin",
+    "category": "Mobile"
+  },
+  {
+    "name": "Ionic",
+    "category": "Mobile"
+  },
+  {
+    "name": "Cordova",
+    "category": "Mobile"
+  },
+  {
+    "name": "Expo",
+    "category": "Mobile"
+  },
+  {
+    "name": "Firebase",
+    "category": "Mobile"
+  },
+  {
+    "name": "Xcode",
+    "category": "Mobile"
+  },
+  {
+    "name": "Android Studio",
+    "category": "Mobile"
+  },
+  {
+    "name": "App Store Optimization",
+    "category": "Mobile"
+  },
+  {
+    "name": "Mobile UI Design",
+    "category": "Mobile"
+  },
+  {
+    "name": "Push Notifications",
+    "category": "Mobile"
+  },
+  {
+    "name": "In-App Purchases",
+    "category": "Mobile"
+  },
+  {
+    "name": "Mobile Analytics",
+    "category": "Mobile"
+  },
+  {
+    "name": "Data Analysis",
+    "category": "Data"
+  },
+  {
+    "name": "Data Engineering",
+    "category": "Data"
+  },
+  {
+    "name": "Data Science",
+    "category": "Data"
+  },
+  {
+    "name": "Machine Learning",
+    "category": "Data"
+  },
+  {
+    "name": "Deep Learning",
+    "category": "Data"
+  },
+  {
+    "name": "Natural Language Processing",
+    "category": "Data"
+  },
+  {
+    "name": "Computer Vision",
+    "category": "Data"
+  },
+  {
+    "name": "MLOps",
+    "category": "Data"
+  },
+  {
+    "name": "Feature Engineering",
+    "category": "Data"
+  },
+  {
+    "name": "A/B Testing Analytics",
+    "category": "Data"
+  },
+  {
+    "name": "Tableau",
+    "category": "Data"
+  },
+  {
+    "name": "Power BI",
+    "category": "Data"
+  },
+  {
+    "name": "Looker",
+    "category": "Data"
+  },
+  {
+    "name": "Metabase",
+    "category": "Data"
+  },
+  {
+    "name": "Mode Analytics",
+    "category": "Data"
+  },
+  {
+    "name": "Qlik Sense",
+    "category": "Data"
+  },
+  {
+    "name": "Google Data Studio",
+    "category": "Data"
+  },
+  {
+    "name": "Excel",
+    "category": "Data"
+  },
+  {
+    "name": "Google Sheets",
+    "category": "Data"
+  },
+  {
+    "name": "Python Pandas",
+    "category": "Data"
+  },
+  {
+    "name": "NumPy",
+    "category": "Data"
+  },
+  {
+    "name": "SciPy",
+    "category": "Data"
+  },
+  {
+    "name": "scikit-learn",
+    "category": "Data"
+  },
+  {
+    "name": "TensorFlow",
+    "category": "Data"
+  },
+  {
+    "name": "PyTorch",
+    "category": "Data"
+  },
+  {
+    "name": "Keras",
+    "category": "Data"
+  },
+  {
+    "name": "XGBoost",
+    "category": "Data"
+  },
+  {
+    "name": "LightGBM",
+    "category": "Data"
+  },
+  {
+    "name": "Hugging Face",
+    "category": "Data"
+  },
+  {
+    "name": "spaCy",
+    "category": "Data"
+  },
+  {
+    "name": "OpenCV",
+    "category": "Data"
+  },
+  {
+    "name": "MLflow",
+    "category": "Data"
+  },
+  {
+    "name": "Weights & Biases",
+    "category": "Data"
+  },
+  {
+    "name": "Kubeflow",
+    "category": "Data"
+  },
+  {
+    "name": "Apache Spark",
+    "category": "Data"
+  },
+  {
+    "name": "Hadoop",
+    "category": "Data"
+  },
+  {
+    "name": "Hive",
+    "category": "Data"
+  },
+  {
+    "name": "Presto",
+    "category": "Data"
+  },
+  {
+    "name": "Trino",
+    "category": "Data"
+  },
+  {
+    "name": "Airflow",
+    "category": "Data"
+  },
+  {
+    "name": "dbt",
+    "category": "Data"
+  },
+  {
+    "name": "Apache Flink",
+    "category": "Data"
+  },
+  {
+    "name": "Databricks",
+    "category": "Data"
+  },
+  {
+    "name": "Delta Lake",
+    "category": "Data"
+  },
+  {
+    "name": "Apache Beam",
+    "category": "Data"
+  },
+  {
+    "name": "Luigi",
+    "category": "Data"
+  },
+  {
+    "name": "Prefect",
+    "category": "Data"
+  },
+  {
+    "name": "Dagster",
+    "category": "Data"
+  },
+  {
+    "name": "ETL",
+    "category": "Data"
+  },
+  {
+    "name": "ELT",
+    "category": "Data"
+  },
+  {
+    "name": "Data Warehousing",
+    "category": "Data"
+  },
+  {
+    "name": "Data Modeling",
+    "category": "Data"
+  },
+  {
+    "name": "Data Governance",
+    "category": "Data"
+  },
+  {
+    "name": "Data Quality",
+    "category": "Data"
+  },
+  {
+    "name": "Statistics",
+    "category": "Data"
+  },
+  {
+    "name": "Hypothesis Testing",
+    "category": "Data"
+  },
+  {
+    "name": "Forecasting",
+    "category": "Data"
+  },
+  {
+    "name": "Time Series Analysis",
+    "category": "Data"
+  },
+  {
+    "name": "SQL Analytics",
+    "category": "Data"
+  },
+  {
+    "name": "Business Intelligence",
+    "category": "Data"
+  },
+  {
+    "name": "Apache Kafka Streams",
+    "category": "Data"
+  },
+  {
+    "name": "Stream Processing",
+    "category": "Data"
+  },
+  {
+    "name": "Data Pipelines",
+    "category": "Data"
+  },
+  {
+    "name": "Dimensional Modeling",
+    "category": "Data"
+  },
+  {
+    "name": "Star Schema",
+    "category": "Data"
+  },
+  {
+    "name": "Figma",
+    "category": "Design"
+  },
+  {
+    "name": "Sketch",
+    "category": "Design"
+  },
+  {
+    "name": "Adobe XD",
+    "category": "Design"
+  },
+  {
+    "name": "Adobe Photoshop",
+    "category": "Design"
+  },
+  {
+    "name": "Adobe Illustrator",
+    "category": "Design"
+  },
+  {
+    "name": "Adobe After Effects",
+    "category": "Design"
+  },
+  {
+    "name": "Framer",
+    "category": "Design"
+  },
+  {
+    "name": "InVision",
+    "category": "Design"
+  },
+  {
+    "name": "Principle",
+    "category": "Design"
+  },
+  {
+    "name": "Canva",
+    "category": "Design"
+  },
+  {
+    "name": "UI Design",
+    "category": "Design"
+  },
+  {
+    "name": "UX Research",
+    "category": "Design"
+  },
+  {
+    "name": "UX Design",
+    "category": "Design"
+  },
+  {
+    "name": "Wireframing",
+    "category": "Design"
+  },
+  {
+    "name": "Prototyping",
+    "category": "Design"
+  },
+  {
+    "name": "Design Systems",
+    "category": "Design"
+  },
+  {
+    "name": "User Testing",
+    "category": "Design"
+  },
+  {
+    "name": "Usability Testing",
+    "category": "Design"
+  },
+  {
+    "name": "Information Architecture",
+    "category": "Design"
+  },
+  {
+    "name": "Interaction Design",
+    "category": "Design"
+  },
+  {
+    "name": "Accessibility",
+    "category": "Design"
+  },
+  {
+    "name": "WCAG",
+    "category": "Design"
+  },
+  {
+    "name": "Inclusive Design",
+    "category": "Design"
+  },
+  {
+    "name": "Visual Design",
+    "category": "Design"
+  },
+  {
+    "name": "Motion Design",
+    "category": "Design"
+  },
+  {
+    "name": "Illustration",
+    "category": "Design"
+  },
+  {
+    "name": "Icon Design",
+    "category": "Design"
+  },
+  {
+    "name": "Typography",
+    "category": "Design"
+  },
+  {
+    "name": "Color Theory",
+    "category": "Design"
+  },
+  {
+    "name": "Brand Identity",
+    "category": "Design"
+  },
+  {
+    "name": "Storybook",
+    "category": "Design"
+  },
+  {
+    "name": "Design Tokens",
+    "category": "Design"
+  },
+  {
+    "name": "Responsive Design",
+    "category": "Design"
+  },
+  {
+    "name": "Mobile-First Design",
+    "category": "Design"
+  },
+  {
+    "name": "Service Design",
+    "category": "Design"
+  },
+  {
+    "name": "Journey Mapping",
+    "category": "Design"
+  },
+  {
+    "name": "Persona Development",
+    "category": "Design"
+  },
+  {
+    "name": "Heuristic Evaluation",
+    "category": "Design"
+  },
+  {
+    "name": "Product Management",
+    "category": "Product"
+  },
+  {
+    "name": "Product Strategy",
+    "category": "Product"
+  },
+  {
+    "name": "Roadmapping",
+    "category": "Product"
+  },
+  {
+    "name": "Agile",
+    "category": "Product"
+  },
+  {
+    "name": "Scrum",
+    "category": "Product"
+  },
+  {
+    "name": "Kanban",
+    "category": "Product"
+  },
+  {
+    "name": "Lean Startup",
+    "category": "Product"
+  },
+  {
+    "name": "OKRs",
+    "category": "Product"
+  },
+  {
+    "name": "User Stories",
+    "category": "Product"
+  },
+  {
+    "name": "Backlog Management",
+    "category": "Product"
+  },
+  {
+    "name": "A/B Testing",
+    "category": "Product"
+  },
+  {
+    "name": "Feature Prioritization",
+    "category": "Product"
+  },
+  {
+    "name": "Competitive Analysis",
+    "category": "Product"
+  },
+  {
+    "name": "Go-to-Market",
+    "category": "Product"
+  },
+  {
+    "name": "Product Discovery",
+    "category": "Product"
+  },
+  {
+    "name": "Jobs to Be Done",
+    "category": "Product"
+  },
+  {
+    "name": "PRD Writing",
+    "category": "Product"
+  },
+  {
+    "name": "Stakeholder Management",
+    "category": "Product"
+  },
+  {
+    "name": "Jira",
+    "category": "Product"
+  },
+  {
+    "name": "Linear",
+    "category": "Product"
+  },
+  {
+    "name": "Asana",
+    "category": "Product"
+  },
+  {
+    "name": "Monday.com",
+    "category": "Product"
+  },
+  {
+    "name": "Productboard",
+    "category": "Product"
+  },
+  {
+    "name": "Amplitude",
+    "category": "Product"
+  },
+  {
+    "name": "Mixpanel",
+    "category": "Product"
+  },
+  {
+    "name": "Pendo",
+    "category": "Product"
+  },
+  {
+    "name": "LaunchDarkly",
+    "category": "Product"
+  },
+  {
+    "name": "Optimizely",
+    "category": "Product"
+  },
+  {
+    "name": "Growth Product Management",
+    "category": "Product"
+  },
+  {
+    "name": "Technical Product Management",
+    "category": "Product"
+  },
+  {
+    "name": "Platform Product Management",
+    "category": "Product"
+  },
+  {
+    "name": "API Product Management",
+    "category": "Product"
+  },
+  {
+    "name": "B2B Sales",
+    "category": "Sales"
+  },
+  {
+    "name": "B2C Sales",
+    "category": "Sales"
+  },
+  {
+    "name": "Enterprise Sales",
+    "category": "Sales"
+  },
+  {
+    "name": "SaaS Sales",
+    "category": "Sales"
+  },
+  {
+    "name": "Outbound Sales",
+    "category": "Sales"
+  },
+  {
+    "name": "Inbound Sales",
+    "category": "Sales"
+  },
+  {
+    "name": "Cold Outreach",
+    "category": "Sales"
+  },
+  {
+    "name": "Cold Calling",
+    "category": "Sales"
+  },
+  {
+    "name": "Account Management",
+    "category": "Sales"
+  },
+  {
+    "name": "Account-Based Selling",
+    "category": "Sales"
+  },
+  {
+    "name": "CRM",
+    "category": "Sales"
+  },
+  {
+    "name": "Salesforce",
+    "category": "Sales"
+  },
+  {
+    "name": "HubSpot CRM",
+    "category": "Sales"
+  },
+  {
+    "name": "Pipedrive",
+    "category": "Sales"
+  },
+  {
+    "name": "Close.io",
+    "category": "Sales"
+  },
+  {
+    "name": "Outreach.io",
+    "category": "Sales"
+  },
+  {
+    "name": "SalesLoft",
+    "category": "Sales"
+  },
+  {
+    "name": "Gong",
+    "category": "Sales"
+  },
+  {
+    "name": "Chorus.ai",
+    "category": "Sales"
+  },
+  {
+    "name": "LinkedIn Sales Navigator",
+    "category": "Sales"
+  },
+  {
+    "name": "Negotiation Skills",
+    "category": "Sales"
+  },
+  {
+    "name": "Closing Techniques",
+    "category": "Sales"
+  },
+  {
+    "name": "Solution Selling",
+    "category": "Sales"
+  },
+  {
+    "name": "Consultative Selling",
+    "category": "Sales"
+  },
+  {
+    "name": "MEDDIC",
+    "category": "Sales"
+  },
+  {
+    "name": "SPIN Selling",
+    "category": "Sales"
+  },
+  {
+    "name": "Challenger Sale",
+    "category": "Sales"
+  },
+  {
+    "name": "Pipeline Management",
+    "category": "Sales"
+  },
+  {
+    "name": "Quota Attainment",
+    "category": "Sales"
+  },
+  {
+    "name": "Sales Forecasting",
+    "category": "Sales"
+  },
+  {
+    "name": "Demo Presentation",
+    "category": "Sales"
+  },
+  {
+    "name": "RFP Response",
+    "category": "Sales"
+  },
+  {
+    "name": "Channel Sales",
+    "category": "Sales"
+  },
+  {
+    "name": "Partner Management",
+    "category": "Sales"
+  },
+  {
+    "name": "SEO",
+    "category": "Marketing"
+  },
+  {
+    "name": "SEM",
+    "category": "Marketing"
+  },
+  {
+    "name": "Content Marketing",
+    "category": "Marketing"
+  },
+  {
+    "name": "Email Marketing",
+    "category": "Marketing"
+  },
+  {
+    "name": "Social Media Marketing",
+    "category": "Marketing"
+  },
+  {
+    "name": "Brand Strategy",
+    "category": "Marketing"
+  },
+  {
+    "name": "Copywriting",
+    "category": "Marketing"
+  },
+  {
+    "name": "Content Strategy",
+    "category": "Marketing"
+  },
+  {
+    "name": "Growth Marketing",
+    "category": "Marketing"
+  },
+  {
+    "name": "Performance Marketing",
+    "category": "Marketing"
+  },
+  {
+    "name": "Google Ads",
+    "category": "Marketing"
+  },
+  {
+    "name": "Meta Ads",
+    "category": "Marketing"
+  },
+  {
+    "name": "LinkedIn Ads",
+    "category": "Marketing"
+  },
+  {
+    "name": "TikTok Ads",
+    "category": "Marketing"
+  },
+  {
+    "name": "Programmatic Advertising",
+    "category": "Marketing"
+  },
+  {
+    "name": "Affiliate Marketing",
+    "category": "Marketing"
+  },
+  {
+    "name": "Influencer Marketing",
+    "category": "Marketing"
+  },
+  {
+    "name": "Marketing Automation",
+    "category": "Marketing"
+  },
+  {
+    "name": "HubSpot",
+    "category": "Marketing"
+  },
+  {
+    "name": "Marketo",
+    "category": "Marketing"
+  },
+  {
+    "name": "Mailchimp",
+    "category": "Marketing"
+  },
+  {
+    "name": "Klaviyo",
+    "category": "Marketing"
+  },
+  {
+    "name": "Braze",
+    "category": "Marketing"
+  },
+  {
+    "name": "Iterable",
+    "category": "Marketing"
+  },
+  {
+    "name": "Google Analytics",
+    "category": "Marketing"
+  },
+  {
+    "name": "GA4",
+    "category": "Marketing"
+  },
+  {
+    "name": "Segment",
+    "category": "Marketing"
+  },
+  {
+    "name": "Hotjar",
+    "category": "Marketing"
+  },
+  {
+    "name": "Conversion Rate Optimization",
+    "category": "Marketing"
+  },
+  {
+    "name": "Landing Page Optimization",
+    "category": "Marketing"
+  },
+  {
+    "name": "Marketing Analytics",
+    "category": "Marketing"
+  },
+  {
+    "name": "Brand Management",
+    "category": "Marketing"
+  },
+  {
+    "name": "Public Relations",
+    "category": "Marketing"
+  },
+  {
+    "name": "Event Marketing",
+    "category": "Marketing"
+  },
+  {
+    "name": "Product Marketing",
+    "category": "Marketing"
+  },
+  {
+    "name": "Demand Generation",
+    "category": "Marketing"
+  },
+  {
+    "name": "WordPress",
+    "category": "Marketing"
+  },
+  {
+    "name": "Webflow",
+    "category": "Marketing"
+  },
+  {
+    "name": "Contentful",
+    "category": "Marketing"
+  },
+  {
+    "name": "Sanity CMS",
+    "category": "Marketing"
+  },
+  {
+    "name": "Shopify",
+    "category": "Marketing"
+  },
+  {
+    "name": "Communication",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Leadership",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Problem Solving",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Mentoring",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Coaching",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Project Management",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Teamwork",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Collaboration",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Cross-functional Collaboration",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Public Speaking",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Presentation Skills",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Emotional Intelligence",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Adaptability",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Creativity",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Conflict Resolution",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Decision Making",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Attention to Detail",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Time Prioritization",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Work Ethic",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Initiative",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Accountability",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Resilience",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Empathy",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Cultural Awareness",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Interpersonal Skills",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Facilitation",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Strategic Thinking",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Analytical Thinking",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Critical Analysis",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Feedback Giving",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Feedback Receiving",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Change Management",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Remote Collaboration",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Async Communication",
+    "category": "Soft Skills"
+  },
+  {
+    "name": "Operations Management",
+    "category": "Operations"
+  },
+  {
+    "name": "Supply Chain Management",
+    "category": "Operations"
+  },
+  {
+    "name": "Logistics",
+    "category": "Operations"
+  },
+  {
+    "name": "Inventory Management",
+    "category": "Operations"
+  },
+  {
+    "name": "Process Improvement",
+    "category": "Operations"
+  },
+  {
+    "name": "Lean Manufacturing",
+    "category": "Operations"
+  },
+  {
+    "name": "Six Sigma",
+    "category": "Operations"
+  },
+  {
+    "name": "Kaizen",
+    "category": "Operations"
+  },
+  {
+    "name": "Vendor Management",
+    "category": "Operations"
+  },
+  {
+    "name": "Procurement",
+    "category": "Operations"
+  },
+  {
+    "name": "Quality Assurance Operations",
+    "category": "Operations"
+  },
+  {
+    "name": "SOP Development",
+    "category": "Operations"
+  },
+  {
+    "name": "Business Continuity",
+    "category": "Operations"
+  },
+  {
+    "name": "Capacity Planning",
+    "category": "Operations"
+  },
+  {
+    "name": "Workforce Planning",
+    "category": "Operations"
+  },
+  {
+    "name": "ERP Systems",
+    "category": "Operations"
+  },
+  {
+    "name": "SAP",
+    "category": "Operations"
+  },
+  {
+    "name": "Oracle ERP",
+    "category": "Operations"
+  },
+  {
+    "name": "NetSuite",
+    "category": "Operations"
+  },
+  {
+    "name": "Workday",
+    "category": "Operations"
+  },
+  {
+    "name": "ServiceNow",
+    "category": "Operations"
+  },
+  {
+    "name": "Zendesk",
+    "category": "Operations"
+  },
+  {
+    "name": "Freshdesk",
+    "category": "Operations"
+  },
+  {
+    "name": "Financial Analysis",
+    "category": "Finance"
+  },
+  {
+    "name": "Financial Modeling",
+    "category": "Finance"
+  },
+  {
+    "name": "Accounting",
+    "category": "Finance"
+  },
+  {
+    "name": "Bookkeeping",
+    "category": "Finance"
+  },
+  {
+    "name": "Budgeting",
+    "category": "Finance"
+  },
+  {
+    "name": "Forecasting Finance",
+    "category": "Finance"
+  },
+  {
+    "name": "FP&A",
+    "category": "Finance"
+  },
+  {
+    "name": "Treasury Management",
+    "category": "Finance"
+  },
+  {
+    "name": "Accounts Payable",
+    "category": "Finance"
+  },
+  {
+    "name": "Accounts Receivable",
+    "category": "Finance"
+  },
+  {
+    "name": "General Ledger",
+    "category": "Finance"
+  },
+  {
+    "name": "Tax Compliance",
+    "category": "Finance"
+  },
+  {
+    "name": "Audit",
+    "category": "Finance"
+  },
+  {
+    "name": "Internal Controls",
+    "category": "Finance"
+  },
+  {
+    "name": "GAAP",
+    "category": "Finance"
+  },
+  {
+    "name": "IFRS",
+    "category": "Finance"
+  },
+  {
+    "name": "QuickBooks",
+    "category": "Finance"
+  },
+  {
+    "name": "Xero",
+    "category": "Finance"
+  },
+  {
+    "name": "SAP Finance",
+    "category": "Finance"
+  },
+  {
+    "name": "Oracle Financials",
+    "category": "Finance"
+  },
+  {
+    "name": "Excel Financial Modeling",
+    "category": "Finance"
+  },
+  {
+    "name": "Bloomberg Terminal",
+    "category": "Finance"
+  },
+  {
+    "name": "Capital IQ",
+    "category": "Finance"
+  },
+  {
+    "name": "PitchBook",
+    "category": "Finance"
+  },
+  {
+    "name": "Corporate Finance",
+    "category": "Finance"
+  },
+  {
+    "name": "Investment Banking",
+    "category": "Finance"
+  },
+  {
+    "name": "Private Equity",
+    "category": "Finance"
+  },
+  {
+    "name": "Venture Capital",
+    "category": "Finance"
+  },
+  {
+    "name": "Risk Management",
+    "category": "Finance"
+  },
+  {
+    "name": "Compliance Finance",
+    "category": "Finance"
+  },
+  {
+    "name": "Payroll Administration",
+    "category": "Finance"
+  },
+  {
+    "name": "Patient Care",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Clinical Research",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Electronic Health Records",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Epic Systems",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Cerner",
+    "category": "Healthcare"
+  },
+  {
+    "name": "HL7",
+    "category": "Healthcare"
+  },
+  {
+    "name": "FHIR",
+    "category": "Healthcare"
+  },
+  {
+    "name": "HIPAA Compliance",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Nursing",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Medical Coding",
+    "category": "Healthcare"
+  },
+  {
+    "name": "ICD-10",
+    "category": "Healthcare"
+  },
+  {
+    "name": "CPT Coding",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Pharmacy",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Radiology",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Laboratory Science",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Public Health",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Telemedicine",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Healthcare Administration",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Case Management",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Clinical Documentation",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Medical Billing",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Prior Authorization",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Phlebotomy",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Vital Signs Monitoring",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Infection Control",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Medication Administration",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Patient Education",
+    "category": "Healthcare"
+  },
+  {
+    "name": "Talent Acquisition",
+    "category": "HR"
+  },
+  {
+    "name": "Recruiting",
+    "category": "HR"
+  },
+  {
+    "name": "Sourcing",
+    "category": "HR"
+  },
+  {
+    "name": "Interviewing",
+    "category": "HR"
+  },
+  {
+    "name": "Employer Branding",
+    "category": "HR"
+  },
+  {
+    "name": "Workforce Planning HR",
+    "category": "HR"
+  },
+  {
+    "name": "Compensation & Benefits",
+    "category": "HR"
+  },
+  {
+    "name": "Employee Relations",
+    "category": "HR"
+  },
+  {
+    "name": "HRIS",
+    "category": "HR"
+  },
+  {
+    "name": "Workday HCM",
+    "category": "HR"
+  },
+  {
+    "name": "BambooHR",
+    "category": "HR"
+  },
+  {
+    "name": "Greenhouse",
+    "category": "HR"
+  },
+  {
+    "name": "Lever",
+    "category": "HR"
+  },
+  {
+    "name": "Ashby",
+    "category": "HR"
+  },
+  {
+    "name": "LinkedIn Recruiter",
+    "category": "HR"
+  },
+  {
+    "name": "Boolean Search",
+    "category": "HR"
+  },
+  {
+    "name": "Onboarding",
+    "category": "HR"
+  },
+  {
+    "name": "Offboarding",
+    "category": "HR"
+  },
+  {
+    "name": "Performance Management",
+    "category": "HR"
+  },
+  {
+    "name": "Learning & Development",
+    "category": "HR"
+  },
+  {
+    "name": "Diversity & Inclusion",
+    "category": "HR"
+  },
+  {
+    "name": "DEI Strategy",
+    "category": "HR"
+  },
+  {
+    "name": "Labor Relations",
+    "category": "HR"
+  },
+  {
+    "name": "HR Compliance",
+    "category": "HR"
+  },
+  {
+    "name": "Employment Law Basics",
+    "category": "HR"
+  },
+  {
+    "name": "Succession Planning",
+    "category": "HR"
+  },
+  {
+    "name": "Org Design",
+    "category": "HR"
+  },
+  {
+    "name": "People Analytics",
+    "category": "HR"
+  },
+  {
+    "name": "Employee Engagement",
+    "category": "HR"
+  },
+  {
+    "name": "Total Rewards",
+    "category": "HR"
+  },
+  {
+    "name": "Cybersecurity",
+    "category": "Security"
+  },
+  {
+    "name": "Information Security",
+    "category": "Security"
+  },
+  {
+    "name": "Application Security",
+    "category": "Security"
+  },
+  {
+    "name": "Network Security",
+    "category": "Security"
+  },
+  {
+    "name": "Cloud Security",
+    "category": "Security"
+  },
+  {
+    "name": "DevSecOps",
+    "category": "Security"
+  },
+  {
+    "name": "Penetration Testing",
+    "category": "Security"
+  },
+  {
+    "name": "Vulnerability Assessment",
+    "category": "Security"
+  },
+  {
+    "name": "SIEM",
+    "category": "Security"
+  },
+  {
+    "name": "SOC Operations",
+    "category": "Security"
+  },
+  {
+    "name": "Incident Response",
+    "category": "Security"
+  },
+  {
+    "name": "Threat Intelligence",
+    "category": "Security"
+  },
+  {
+    "name": "Identity and Access Management",
+    "category": "Security"
+  },
+  {
+    "name": "Zero Trust",
+    "category": "Security"
+  },
+  {
+    "name": "Encryption",
+    "category": "Security"
+  },
+  {
+    "name": "PKI",
+    "category": "Security"
+  },
+  {
+    "name": "OWASP",
+    "category": "Security"
+  },
+  {
+    "name": "Secure Coding",
+    "category": "Security"
+  },
+  {
+    "name": "SAST",
+    "category": "Security"
+  },
+  {
+    "name": "DAST",
+    "category": "Security"
+  },
+  {
+    "name": "Container Security",
+    "category": "Security"
+  },
+  {
+    "name": "Firewall Management",
+    "category": "Security"
+  },
+  {
+    "name": "IDS/IPS",
+    "category": "Security"
+  },
+  {
+    "name": "CISSP",
+    "category": "Security"
+  },
+  {
+    "name": "CISM",
+    "category": "Security"
+  },
+  {
+    "name": "CompTIA Security+",
+    "category": "Security"
+  },
+  {
+    "name": "GDPR Compliance",
+    "category": "Security"
+  },
+  {
+    "name": "SOC 2",
+    "category": "Security"
+  },
+  {
+    "name": "ISO 27001",
+    "category": "Security"
+  },
+  {
+    "name": "NIST Framework",
+    "category": "Security"
+  },
+  {
+    "name": "Risk Assessment Security",
+    "category": "Security"
+  },
+  {
+    "name": "Security Awareness Training",
+    "category": "Security"
+  },
+  {
+    "name": "Manual Testing",
+    "category": "QA"
+  },
+  {
+    "name": "Automated Testing",
+    "category": "QA"
+  },
+  {
+    "name": "Test Planning",
+    "category": "QA"
+  },
+  {
+    "name": "Test Case Design",
+    "category": "QA"
+  },
+  {
+    "name": "Regression Testing",
+    "category": "QA"
+  },
+  {
+    "name": "Integration Testing",
+    "category": "QA"
+  },
+  {
+    "name": "End-to-End Testing",
+    "category": "QA"
+  },
+  {
+    "name": "Unit Testing",
+    "category": "QA"
+  },
+  {
+    "name": "Selenium",
+    "category": "QA"
+  },
+  {
+    "name": "Cypress",
+    "category": "QA"
+  },
+  {
+    "name": "Playwright",
+    "category": "QA"
+  },
+  {
+    "name": "Puppeteer",
+    "category": "QA"
+  },
+  {
+    "name": "Appium",
+    "category": "QA"
+  },
+  {
+    "name": "Jest",
+    "category": "QA"
+  },
+  {
+    "name": "Vitest",
+    "category": "QA"
+  },
+  {
+    "name": "Mocha",
+    "category": "QA"
+  },
+  {
+    "name": "JUnit",
+    "category": "QA"
+  },
+  {
+    "name": "pytest",
+    "category": "QA"
+  },
+  {
+    "name": "TestNG",
+    "category": "QA"
+  },
+  {
+    "name": "Robot Framework",
+    "category": "QA"
+  },
+  {
+    "name": "API Testing",
+    "category": "QA"
+  },
+  {
+    "name": "Postman",
+    "category": "QA"
+  },
+  {
+    "name": "Insomnia",
+    "category": "QA"
+  },
+  {
+    "name": "Performance Testing",
+    "category": "QA"
+  },
+  {
+    "name": "JMeter",
+    "category": "QA"
+  },
+  {
+    "name": "k6",
+    "category": "QA"
+  },
+  {
+    "name": "LoadRunner",
+    "category": "QA"
+  },
+  {
+    "name": "Security Testing QA",
+    "category": "QA"
+  },
+  {
+    "name": "Accessibility Testing",
+    "category": "QA"
+  },
+  {
+    "name": "Quality Assurance",
+    "category": "QA"
+  },
+  {
+    "name": "Bug Tracking",
+    "category": "QA"
+  },
+  {
+    "name": "TestRail",
+    "category": "QA"
+  },
+  {
+    "name": "Zephyr",
+    "category": "QA"
+  },
+  {
+    "name": "Exploratory Testing",
+    "category": "QA"
+  },
+  {
+    "name": "Shift-Left Testing",
+    "category": "QA"
+  },
+  {
+    "name": "Continuous Testing",
+    "category": "QA"
+  },
+  {
+    "name": "Customer Success",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Customer Support",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Customer Experience",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Account Retention",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Churn Reduction",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Upselling",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Cross-selling",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Gainsight",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Totango",
+    "category": "Customer Success"
+  },
+  {
+    "name": "ChurnZero",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Intercom",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Freshdesk CS",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Zendesk Support",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Help Scout",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Customer Onboarding",
+    "category": "Customer Success"
+  },
+  {
+    "name": "NPS Analysis",
+    "category": "Customer Success"
+  },
+  {
+    "name": "CSAT Measurement",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Health Scoring",
+    "category": "Customer Success"
+  },
+  {
+    "name": "QBR Facilitation",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Technical Support",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Escalation Management",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Knowledge Base Management",
+    "category": "Customer Success"
+  },
+  {
+    "name": "SLA Management",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Ticket Triage",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Live Chat Support",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Customer Advocacy",
+    "category": "Customer Success"
+  },
+  {
+    "name": "Contract Drafting",
+    "category": "Legal"
+  },
+  {
+    "name": "Contract Negotiation",
+    "category": "Legal"
+  },
+  {
+    "name": "Corporate Law",
+    "category": "Legal"
+  },
+  {
+    "name": "Intellectual Property",
+    "category": "Legal"
+  },
+  {
+    "name": "Patent Law",
+    "category": "Legal"
+  },
+  {
+    "name": "Trademark Law",
+    "category": "Legal"
+  },
+  {
+    "name": "Employment Law",
+    "category": "Legal"
+  },
+  {
+    "name": "Litigation Support",
+    "category": "Legal"
+  },
+  {
+    "name": "Legal Research",
+    "category": "Legal"
+  },
+  {
+    "name": "Compliance Management",
+    "category": "Legal"
+  },
+  {
+    "name": "Data Privacy Law",
+    "category": "Legal"
+  },
+  {
+    "name": "GDPR Legal",
+    "category": "Legal"
+  },
+  {
+    "name": "CCPA",
+    "category": "Legal"
+  },
+  {
+    "name": "Regulatory Affairs",
+    "category": "Legal"
+  },
+  {
+    "name": "M&A Due Diligence",
+    "category": "Legal"
+  },
+  {
+    "name": "Securities Law",
+    "category": "Legal"
+  },
+  {
+    "name": "Commercial Law",
+    "category": "Legal"
+  },
+  {
+    "name": "eDiscovery",
+    "category": "Legal"
+  },
+  {
+    "name": "Legal Operations",
+    "category": "Legal"
+  },
+  {
+    "name": "CLM Software",
+    "category": "Legal"
+  },
+  {
+    "name": "Ironclad",
+    "category": "Legal"
+  },
+  {
+    "name": "DocuSign CLM",
+    "category": "Legal"
+  },
+  {
+    "name": "Curriculum Design",
+    "category": "Education"
+  },
+  {
+    "name": "Instructional Design",
+    "category": "Education"
+  },
+  {
+    "name": "Classroom Teaching",
+    "category": "Education"
+  },
+  {
+    "name": "Online Teaching",
+    "category": "Education"
+  },
+  {
+    "name": "Learning Management Systems",
+    "category": "Education"
+  },
+  {
+    "name": "Canvas LMS",
+    "category": "Education"
+  },
+  {
+    "name": "Blackboard",
+    "category": "Education"
+  },
+  {
+    "name": "Moodle",
+    "category": "Education"
+  },
+  {
+    "name": "Educational Assessment",
+    "category": "Education"
+  },
+  {
+    "name": "Student Counseling",
+    "category": "Education"
+  },
+  {
+    "name": "Special Education",
+    "category": "Education"
+  },
+  {
+    "name": "Adult Learning",
+    "category": "Education"
+  },
+  {
+    "name": "Corporate Training",
+    "category": "Education"
+  },
+  {
+    "name": "eLearning Development",
+    "category": "Education"
+  },
+  {
+    "name": "Articulate Storyline",
+    "category": "Education"
+  },
+  {
+    "name": "Adobe Captivate",
+    "category": "Education"
+  },
+  {
+    "name": "Academic Advising",
+    "category": "Education"
+  },
+  {
+    "name": "Grant Writing",
+    "category": "Education"
+  },
+  {
+    "name": "Educational Technology",
+    "category": "Education"
+  },
+  {
+    "name": "Differentiated Instruction",
+    "category": "Education"
+  },
+  {
+    "name": "CNC Machining",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Welding",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Assembly Line Operations",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Quality Control",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Statistical Process Control",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "ISO 9001",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Lean Production",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "CAD",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "AutoCAD",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "SolidWorks",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "CATIA",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "CAM",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "PLC Programming",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "SCADA",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Industrial Automation",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Robotics",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Preventive Maintenance",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "TPM",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Root Cause Analysis",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "5S Methodology",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Just-in-Time",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Kanban Manufacturing",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Bill of Materials",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Safety Management",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "OSHA Compliance",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Material Handling",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Packaging Operations",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Production Planning",
+    "category": "Manufacturing"
+  },
+  {
+    "name": "Microsoft Office",
+    "category": "Other"
+  },
+  {
+    "name": "Microsoft Word",
+    "category": "Other"
+  },
+  {
+    "name": "Microsoft PowerPoint",
+    "category": "Other"
+  },
+  {
+    "name": "Google Workspace",
+    "category": "Other"
+  },
+  {
+    "name": "Notion",
+    "category": "Other"
+  },
+  {
+    "name": "Confluence",
+    "category": "Other"
+  },
+  {
+    "name": "Slack",
+    "category": "Other"
+  },
+  {
+    "name": "Microsoft Teams",
+    "category": "Other"
+  },
+  {
+    "name": "Zoom",
+    "category": "Other"
+  },
+  {
+    "name": "Miro",
+    "category": "Other"
+  },
+  {
+    "name": "Lucidchart",
+    "category": "Other"
+  },
+  {
+    "name": "Technical Writing",
+    "category": "Other"
+  },
+  {
+    "name": "Documentation",
+    "category": "Other"
+  },
+  {
+    "name": "Research",
+    "category": "Other"
+  },
+  {
+    "name": "Multilingual Communication",
+    "category": "Other"
+  },
+  {
+    "name": "Translation",
+    "category": "Other"
+  },
+  {
+    "name": "Interpretation",
+    "category": "Other"
+  }
+]
