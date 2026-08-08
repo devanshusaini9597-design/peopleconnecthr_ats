@@ -18,6 +18,7 @@ import AddCandidatePage from './components/AddCandidatePage'
 import ResumeParsing from './components/ResumeParsing'
 import AutoImportPage from './components/AutoImportPage'
 import PendingReviewPage from './components/PendingReviewPage'
+import PendingReviewPageEnterprise from './components/PendingReviewPageEnterprise'
 import Jobs from './pages/Jobs'
 import AnalyticsDashboard from './components/AnalyticsDashboard'
 import CandidateSearch from './components/CandidateSearch'
@@ -165,7 +166,7 @@ const router = createBrowserRouter([
       // Related / shared
       { path: '/auto-import', element: <AutoImportPage /> },
       // CSV import staging (Auto Import) — not the Dashboard Pending Review KPI
-      { path: '/pending-review', element: <PendingReviewPage /> },
+      { path: '/pending-review', element: <PendingReviewPageEnterprise /> },
       { path: '/homeunder', element: <Navigate to="/dashboard" replace /> },
       { path: '/manage-positions', element: <Navigate to="/ats" replace /> },
       { path: '/manage-clients', element: <Navigate to="/ats" replace /> },
