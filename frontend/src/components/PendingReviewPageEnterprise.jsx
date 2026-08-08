@@ -264,6 +264,7 @@ function PendingReviewPageContent() {
           subtitle="Staging queue for import rows that need a human decision before they enter Candidates."
           gradientTitle
         >
+          <span className="px-2 py-1 rounded-full bg-brand-100 text-brand-700 text-[10px] font-bold uppercase tracking-wider">Enterprise</span>
           <button type="button" className="btn-secondary" onClick={() => navigate('/ats')}>
             <ArrowLeft size={16} /> Candidates
           </button>
