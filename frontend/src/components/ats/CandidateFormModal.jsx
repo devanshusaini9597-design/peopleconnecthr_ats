@@ -202,7 +202,7 @@ export default function CandidateFormModal(props) {
                   e.preventDefault();
                   e.stopPropagation();
                 }
-              }} className="overflow-y-auto flex-1 min-h-0 px-4 sm:px-6 py-4 pb-8 space-y-4">
+              }} className="overflow-y-auto flex-1 min-h-0 px-4 sm:px-6 py-4 pb-24 space-y-4">
                 {/* Mobile step strip */}
                 <div className="md:hidden flex gap-1.5">
                   {steps.map((s) => (
@@ -409,11 +409,21 @@ export default function CandidateFormModal(props) {
                       </ListField>
                       <div>
                         <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Date</label>
-                        <input type="date" name="date" value={formData.date || new Date().toISOString().split('T')[0]} onChange={handleInputChange} className={fieldClass(false)} />
+                        <PremiumDatePicker
+                          value={formData.date || new Date().toISOString().split('T')[0]}
+                          onChange={(v) => setFormField('date', v)}
+                          placeholder="Select date"
+                          allowClear
+                        />
                       </div>
                       <div>
                         <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Call back date</label>
-                        <input type="date" name="callBackDate" value={formData.callBackDate || ''} onChange={handleInputChange} className={fieldClass(false)} />
+                        <PremiumDatePicker
+                          value={formData.callBackDate || ''}
+                          onChange={(v) => setFormField('callBackDate', v)}
+                          placeholder="Select call back date"
+                          allowClear
+                        />
                       </div>
                       <div className="sm:col-span-2">
                         <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Remark</label>

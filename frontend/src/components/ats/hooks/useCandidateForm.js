@@ -139,7 +139,8 @@ export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, cur
     recentStepChangeRef.current = true;
     setFormSection(nextId);
     // Clear the guard after browser has finished processing the click event
-    setTimeout(() => { recentStepChangeRef.current = false; }, 200);
+    // Increased timeout to 500ms to ensure ghost click is fully handled
+    setTimeout(() => { recentStepChangeRef.current = false; }, 500);
   };
 
   const handleEdit = async (candidate) => {
