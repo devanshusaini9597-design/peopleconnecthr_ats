@@ -26,6 +26,7 @@ import PendingReviewToolbar from './pendingReview/PendingReviewToolbar';
 export default function PendingReviewPage() {
   const navigate = useNavigate();
   const toast = useToast();
+  const { t } = useTranslation();
   const [tourOpen, setTourOpen] = usePageTour(TOUR_KEY);
   const {
     tableScrollRef,
@@ -99,7 +100,6 @@ export default function PendingReviewPage() {
 
   useEffect(() => {
     const onVis = () => {
-  const { t } = useTranslation();
       if (document.visibilityState === 'visible') load(page, bucket, query);
     };
     document.addEventListener('visibilitychange', onVis);
