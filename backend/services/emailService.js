@@ -432,9 +432,10 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
     zohoApiUrl,
   } = await getUserTransporter(userId);
 
-  // Prefer explicit override, else transporter (login email for user-initiated sends)
-  const fromEmail = (senderEmail || transporterFrom || '').trim();
-  const replyToEmail = (senderEmail || transporterReplyTo || fromEmail || '').trim();
+  // Enterprise: From must stay the verified Zepto/agent address.
+  // senderEmail is the logged-in employee — use for Reply-To / identity only, never From.
+  const fromEmail = (transporterFrom || '').trim();
+  const replyToEmail = (transporterReplyTo || senderEmail || fromEmail || '').trim();
   
   if (!configured || !fromEmail) {
     throw new Error('EMAIL_NOT_CONFIGURED');
