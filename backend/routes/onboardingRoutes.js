@@ -33,7 +33,12 @@ router.post('/verify-email', async (req, res) => {
 });
 
 router.post('/resend-verification', async (req, res) => {
-  res.json(svc.resendVerification());
+  try {
+    const body = await svc.resendVerification(req.body);
+    res.json(body);
+  } catch (error) {
+    handle(res, error);
+  }
 });
 
 router.post('/create-org', verifyToken, async (req, res) => {

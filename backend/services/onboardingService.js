@@ -5,6 +5,8 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const User = require('../models/User');
 const Organization = require('../models/Organization');
+const { sendEmail } = require('./emailService');
+const logger = require('../utils/logger');
 
 function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
@@ -33,7 +35,50 @@ async function register({ email, password }) {
   });
 
   await user.save();
-  console.log(`[STUB] Verification Token for ${email}: ${emailVerificationToken}`);
+
+  // Send verification email
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const verificationUrl = `${frontendUrl}/verify-email?token=${emailVerificationToken}`;
+
+  try {
+    const htmlBody = `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="text-align: center; padding: 30px 20px; background: linear-gradient(135deg, #4F46E5, #7C3AED); border-radius: 12px 12px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 24px;">Verify Your Email</h1>
+            <p style="color: rgba(255,255,255,0.8); margin: 8px 0 0;">SkillNix ATS</p>
+          </div>
+          <div style="padding: 30px 20px; background: #ffffff; border: 1px solid #e5e7eb; border-top: none;">
+            <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi there,</p>
+            <p style="color: #374151; font-size: 15px; line-height: 1.6;">Thank you for registering with SkillNix ATS. Please verify your email address by clicking the button below:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${verificationUrl}" style="display: inline-block; padding: 14px 32px; background: #4F46E5; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px;">Verify Email</a>
+            </div>
+            <p style="color: #6B7280; font-size: 13px; line-height: 1.6;">This link expires in <strong>24 hours</strong>. If you didn't create an account, you can safely ignore this email.</p>
+            <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;">
+            <p style="color: #9CA3AF; font-size: 12px;">If the button doesn't work, copy and paste this URL:<br><a href="${verificationUrl}" style="color: #4F46E5; word-break: break-all;">${verificationUrl}</a></p>
+          </div>
+        </div>
+      `;
+
+    await sendEmail(
+      email,
+      'Verify Your Email - SkillNix ATS',
+      htmlBody,
+      `Verify your email: ${verificationUrl} (expires in 24 hours)`
+    );
+    
+    logger.info(`Verification email sent to ${email}`);
+  } catch (emailErr) {
+    logger.error({ err: emailErr }, 'VERIFICATION email send failed');
+    if (emailErr.message === 'EMAIL_NOT_CONFIGURED') {
+      if (process.env.NODE_ENV !== 'production') {
+        logger.warn({ verificationUrl }, 'Dev-only verification URL (NOT sent to client)');
+      }
+      throw httpError('Email service not configured. Please contact support.', 500);
+    }
+    // Don't fail registration if email fails, but log it
+    logger.error({ err: emailErr }, 'Failed to send verification email during registration');
+  }
 
   return { success: true, message: 'Registration successful. Please verify your email.' };
 }
@@ -53,9 +98,72 @@ async function verifyEmail(token) {
   return { success: true, message: 'Email verified successfully' };
 }
 
-function resendVerification() {
-  // STUB: Implement rate limiting and resend logic
-  return { success: true, message: 'Verification email sent' };
+async function resendVerification({ email }) {
+  if (!email) {
+    throw httpError('Email is required', 400);
+  }
+
+  const user = await User.findOne({ email });
+  if (!user) {
+    throw httpError('User not found', 404);
+  }
+
+  if (user.isEmailVerified) {
+    throw httpError('Email is already verified', 400);
+  }
+
+  // Generate new verification token
+  const emailVerificationToken = crypto.randomBytes(32).toString('hex');
+  const emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+
+  user.emailVerificationToken = emailVerificationToken;
+  user.emailVerificationExpires = emailVerificationExpires;
+  await user.save();
+
+  // Send verification email
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const verificationUrl = `${frontendUrl}/verify-email?token=${emailVerificationToken}`;
+
+  try {
+    const htmlBody = `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="text-align: center; padding: 30px 20px; background: linear-gradient(135deg, #4F46E5, #7C3AED); border-radius: 12px 12px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 24px;">Verify Your Email</h1>
+            <p style="color: rgba(255,255,255,0.8); margin: 8px 0 0;">SkillNix ATS</p>
+          </div>
+          <div style="padding: 30px 20px; background: #ffffff; border: 1px solid #e5e7eb; border-top: none;">
+            <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi there,</p>
+            <p style="color: #374151; font-size: 15px; line-height: 1.6;">Please verify your email address by clicking the button below:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${verificationUrl}" style="display: inline-block; padding: 14px 32px; background: #4F46E5; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px;">Verify Email</a>
+            </div>
+            <p style="color: #6B7280; font-size: 13px; line-height: 1.6;">This link expires in <strong>24 hours</strong>. If you didn't request this, you can safely ignore this email.</p>
+            <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;">
+            <p style="color: #9CA3AF; font-size: 12px;">If the button doesn't work, copy and paste this URL:<br><a href="${verificationUrl}" style="color: #4F46E5; word-break: break-all;">${verificationUrl}</a></p>
+          </div>
+        </div>
+      `;
+
+    await sendEmail(
+      email,
+      'Verify Your Email - SkillNix ATS',
+      htmlBody,
+      `Verify your email: ${verificationUrl} (expires in 24 hours)`
+    );
+    
+    logger.info(`Verification email resent to ${email}`);
+  } catch (emailErr) {
+    logger.error({ err: emailErr }, 'VERIFICATION email resend failed');
+    if (emailErr.message === 'EMAIL_NOT_CONFIGURED') {
+      if (process.env.NODE_ENV !== 'production') {
+        logger.warn({ verificationUrl }, 'Dev-only verification URL (NOT sent to client)');
+      }
+      throw httpError('Email service not configured. Please contact support.', 500);
+    }
+    throw httpError('Failed to resend verification email. Please try again later.', 500);
+  }
+
+  return { success: true, message: 'Verification email sent successfully.' };
 }
 
 async function createOrg(userId, { name }) {

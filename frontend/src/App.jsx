@@ -7,6 +7,7 @@ import { AuthProvider } from './context/AuthContext';
 import Home from './components/Home'
 import Login from './components/Login'
 import Register from './components/Register'
+import VerifyEmailPage from './components/VerifyEmailPage'
 import ResetPasswordPage from './components/ResetPasswordPage'
 import SubscribePage from './components/SubscribePage'
 import SubscribeThankYouPage from './components/SubscribeThankYouPage'
@@ -96,6 +97,7 @@ const router = createBrowserRouter([
   { path: '/', element: <Home /> },
   { path: '/login', element: <Login /> },
   { path: '/register', element: <Register /> },
+  { path: '/verify-email', element: <VerifyEmailPage /> },
   { path: '/reset-password', element: <ResetPasswordPage /> },
   { path: '/subscribe', element: <SubscribePage /> },
   { path: '/subscribe/thank-you', element: <SubscribeThankYouPage /> },
