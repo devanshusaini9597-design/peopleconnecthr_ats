@@ -93,7 +93,9 @@ const Register = () => {
       } else {
         // New signup OR existing but unverified — show verification step
         setIsRegistered(true);
-        if (data.pendingVerification) {
+        if (data.emailSent === false) {
+          setResendMessage(data.message || 'Account created, but the verification email could not be sent. Click Resend after email is configured.');
+        } else if (data.pendingVerification) {
           setResendMessage(data.message || 'We sent a new verification email.');
         }
       }

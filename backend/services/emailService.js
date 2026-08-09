@@ -205,9 +205,15 @@ const sendViaZohoZeptomail = async (to, subject, htmlBody, textBody, options = {
 const getUserTransporter = async (userId) => {
   try {
     // PRIORITY 0: .env Zoho ZeptoMail — system-level emails (no userId) always use this
-    const envKey = process.env.ZOHO_ZEPTOMAIL_API_KEY;
-    const envFrom = process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL;
-    if (envKey && envFrom && String(envKey).trim() && String(envFrom).trim()) {
+    // Accept both ZOHO_ZEPTOMAIL_* and shorter ZEPTOMAIL_* aliases
+    const envKey = (process.env.ZOHO_ZEPTOMAIL_API_KEY || process.env.ZEPTOMAIL_API_KEY || '').trim();
+    const envFrom = (process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL || process.env.ZEPTOMAIL_FROM_EMAIL || '').trim();
+    const envApiUrl = (
+      process.env.ZOHO_ZEPTOMAIL_API_URL ||
+      process.env.ZEPTOMAIL_API_URL ||
+      'https://api.zeptomail.in/'
+    ).replace(/\/?$/, '/');
+    if (envKey && envFrom) {
       // If no userId, this is a system email (verification, password reset, etc.)
       if (!userId) {
         return {
@@ -217,7 +223,7 @@ const getUserTransporter = async (userId) => {
           configured: true,
           provider: 'zoho-zeptomail',
           zohoApiKey: envKey,
-          zohoApiUrl: (process.env.ZOHO_ZEPTOMAIL_API_URL || 'https://api.zeptomail.in/').replace(/\/?$/, '/'),
+          zohoApiUrl: envApiUrl,
           userId: null,
           configSource: 'env'
         };
@@ -238,7 +244,7 @@ const getUserTransporter = async (userId) => {
         configured: true,
         provider: 'zoho-zeptomail',
         zohoApiKey: envKey,
-        zohoApiUrl: (process.env.ZOHO_ZEPTOMAIL_API_URL || 'https://api.zeptomail.in/').replace(/\/?$/, '/'),
+        zohoApiUrl: envApiUrl,
         userId: userId,
         configSource: 'env'
       };
@@ -624,10 +630,10 @@ const sendBulkEmails = async (recipients, subject, htmlBody, textBody, options =
 const checkUserEmailConfigured = async (userId) => {
   try {
     // PRIORITY 0: .env Zoho ZeptoMail — always available, no DB query needed
-    if (process.env.ZOHO_ZEPTOMAIL_API_KEY && process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL) {
-      if (String(process.env.ZOHO_ZEPTOMAIL_API_KEY).trim() && String(process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL).trim()) {
-        return true;
-      }
+    const envKey = (process.env.ZOHO_ZEPTOMAIL_API_KEY || process.env.ZEPTOMAIL_API_KEY || '').trim();
+    const envFrom = (process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL || process.env.ZEPTOMAIL_FROM_EMAIL || '').trim();
+    if (envKey && envFrom) {
+      return true;
     }
 
     if (!userId) return false;
@@ -662,7 +668,7 @@ const checkUserEmailConfigured = async (userId) => {
 };
 
 const getVerifiedZeptoDomain = () => {
-  const from = (process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL || '').trim();
+  const from = (process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL || process.env.ZEPTOMAIL_FROM_EMAIL || '').trim();
   if (!from || !from.includes('@')) return '';
   return from.split('@')[1].toLowerCase();
 };
@@ -671,8 +677,8 @@ const getVerifiedZeptoDomain = () => {
  * Get verified sender domain and API key: from env first, then CompanyEmailConfig (so deploy works without env vars).
  */
 const getVerifiedZeptoConfig = async () => {
-  let fromEmail = (process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL || '').trim();
-  let apiKey = (process.env.ZOHO_ZEPTOMAIL_API_KEY || '').trim();
+  let fromEmail = (process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL || process.env.ZEPTOMAIL_FROM_EMAIL || '').trim();
+  let apiKey = (process.env.ZOHO_ZEPTOMAIL_API_KEY || process.env.ZEPTOMAIL_API_KEY || '').trim();
   if (fromEmail && fromEmail.includes('@') && apiKey) {
     return { fromEmail, apiKey, domain: fromEmail.split('@')[1].toLowerCase(), source: 'env' };
   }

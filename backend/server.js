@@ -390,11 +390,18 @@ app.use('/uploads', (req, res, next) => {
 }, express.static(uploadDir));
 
 // ── Health Check ─────────────────────────────────────────────────────
-app.get('/health', (req, res) => res.json({ 
-  status: 'ok', 
-  version: 'v3-saas-enterprise-byok', 
-  timestamp: new Date().toISOString() 
-}));
+app.get('/health', (req, res) => {
+  const zohoKey = (process.env.ZOHO_ZEPTOMAIL_API_KEY || process.env.ZEPTOMAIL_API_KEY || '').trim();
+  const zohoFrom = (process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL || process.env.ZEPTOMAIL_FROM_EMAIL || '').trim();
+  const emailConfigured = Boolean(zohoKey && zohoFrom);
+  res.json({
+    status: 'ok',
+    version: 'v3-saas-enterprise-byok',
+    timestamp: new Date().toISOString(),
+    emailConfigured,
+    frontendUrlSet: Boolean((process.env.FRONTEND_URL || '').trim()),
+  });
+});
 
 // ── Database connection guard ──────────────────────────────────────────
 app.use((req, res, next) => {

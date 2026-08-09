@@ -106,9 +106,10 @@ async function register({ email, password, name, phone }) {
       success: true,
       requiresVerification: true,
       pendingVerification: true,
+      emailSent: sent,
       message: sent
         ? 'Account already exists but is not verified. We sent a new verification email.'
-        : 'Account already exists but is not verified. Please use Resend when email is available, or check server logs for the verification link in development.',
+        : 'Account already exists but is not verified. Verification email could not be sent — check Railway ZeptoMail env vars, then click Resend.',
     };
   }
 
@@ -127,9 +128,10 @@ async function register({ email, password, name, phone }) {
   return {
     success: true,
     requiresVerification: true,
+    emailSent: sent,
     message: sent
       ? 'Registration successful. Please verify your email.'
-      : 'Registration successful. Verification email could not be sent yet — use Resend, or check server logs for the link in development.',
+      : 'Registration successful, but verification email could not be sent. Set ZOHO_ZEPTOMAIL_* on Railway, then click Resend.',
   };
 }
 
