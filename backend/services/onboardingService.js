@@ -359,6 +359,8 @@ async function inviteTeammate(actor, { email, role, name, customRoleId }) {
 
   const orgName = org.name || '';
   const inviterName = actor.name || actor.email || 'A teammate';
+  let emailSent = false;
+  let emailError = null;
   try {
     await sendEmail(
       normalizedEmail,
@@ -366,12 +368,23 @@ async function inviteTeammate(actor, { email, role, name, customRoleId }) {
       buildInviteEmailHtml(inviteUrl, orgName, inviterName),
       `Accept your invitation: ${inviteUrl} (expires in 7 days)`
     );
+    emailSent = true;
     logger.info(`Invite email sent to ${normalizedEmail}`);
   } catch (emailErr) {
-    logger.warn(`Invite created but email failed for ${normalizedEmail}: ${emailErr.message}`);
+    emailError = emailErr.message || 'Failed to send invite email';
+    logger.warn(`Invite created but email failed for ${normalizedEmail}: ${emailError}`);
   }
 
-  return { success: true, message: 'Invitation sent', inviteUrl };
+  return {
+    success: true,
+    message: emailSent
+      ? 'Invitation sent'
+      : 'Invitation created, but the email could not be delivered. Share the invite link manually.',
+    inviteUrl,
+    emailSent,
+    emailError,
+    emailFromHint: (process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL || process.env.ZEPTOMAIL_FROM_EMAIL || '').trim() || null,
+  };
 }
 
 async function acceptInvite({ token, name, password }, req) {

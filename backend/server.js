@@ -399,6 +399,8 @@ app.get('/health', (req, res) => {
     version: 'v3-saas-enterprise-byok',
     timestamp: new Date().toISOString(),
     emailConfigured,
+    // Public system sender used for verification/invites (not a secret)
+    emailFrom: zohoFrom || null,
     frontendUrlSet: Boolean((process.env.FRONTEND_URL || '').trim()),
   });
 });

@@ -293,7 +293,14 @@ export default function useOrganizationSettings() {
       if (!res.ok || data.success === false) {
         throw new Error(data.message || 'Failed to send invite');
       }
-      toast.success(`Invitation sent to ${email}`);
+      if (data.emailSent === false) {
+        const link = data.inviteUrl ? ` Link: ${data.inviteUrl}` : '';
+        toast.warning(
+          `Invite saved, but email failed${data.emailError ? `: ${data.emailError}` : '.'}${link}`
+        );
+      } else {
+        toast.success(`Invitation sent to ${email}`);
+      }
       setInviteEmail('');
       setInviteCustomRoleId('');
       fetchMembers();
