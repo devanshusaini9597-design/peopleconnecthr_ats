@@ -7,6 +7,7 @@ const User = require('../models/User');
 const Organization = require('../models/Organization');
 const { sendEmail } = require('./emailService');
 const logger = require('../utils/logger');
+const { validateWorkEmail } = require('../utils/workEmail');
 
 function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
@@ -79,8 +80,13 @@ async function sendVerificationEmail(email, emailVerificationToken) {
 }
 
 async function register({ email, password, name, phone }) {
-  if (!email || !password || password.length < 8) {
+  if (!password || password.length < 8) {
     throw httpError('Invalid email or password (min 8 chars)', 400);
+  }
+
+  const workEmail = validateWorkEmail(email);
+  if (!workEmail.valid) {
+    throw httpError(workEmail.reason, 400, { code: workEmail.code || 'invalid_work_email' });
   }
 
   const normalizedEmail = normalizeEmail(email);
@@ -94,6 +100,7 @@ async function register({ email, password, name, phone }) {
   const hashedPassword = await bcrypt.hash(password, 10);
 
   // Unverified account → refresh password + resend verification (reopen verify step)
+  // Only this path returns pendingVerification / "already registered but not verified"
   if (existingUser && !existingUser.isEmailVerified) {
     existingUser.password = hashedPassword;
     if (name) existingUser.name = name;
@@ -104,35 +111,64 @@ async function register({ email, password, name, phone }) {
 
     return {
       success: true,
+      isNewAccount: false,
       requiresVerification: true,
       pendingVerification: true,
       emailSent: sent,
       message: sent
-        ? 'Account already exists but is not verified. We sent a new verification email.'
-        : 'Account already exists but is not verified. Verification email could not be sent — check Railway ZeptoMail env vars, then click Resend.',
+        ? 'This work email is already registered but not verified. We sent a new verification link.'
+        : 'This work email is already registered but not verified. Verification email could not be sent — click Resend after email delivery is fixed.',
     };
   }
 
-  const user = new User({
-    email: normalizedEmail,
-    password: hashedPassword,
-    name: name || '',
-    phone: phone || '',
-  });
+  let user;
+  try {
+    user = new User({
+      email: normalizedEmail,
+      password: hashedPassword,
+      name: name || '',
+      phone: phone || '',
+    });
+    const token = await issueVerificationToken(user);
+    const { sent } = await sendVerificationEmail(normalizedEmail, token);
 
-  const token = await issueVerificationToken(user);
-  const { sent } = await sendVerificationEmail(normalizedEmail, token);
-
-  // Always return success so the UI can show the verification step.
-  // Email config failures are non-fatal after the account is created.
-  return {
-    success: true,
-    requiresVerification: true,
-    emailSent: sent,
-    message: sent
-      ? 'Registration successful. Please verify your email.'
-      : 'Registration successful, but verification email could not be sent. Set ZOHO_ZEPTOMAIL_* on Railway, then click Resend.',
-  };
+    return {
+      success: true,
+      isNewAccount: true,
+      requiresVerification: true,
+      pendingVerification: false,
+      emailSent: sent,
+      message: sent
+        ? 'Registration successful. Please verify your email.'
+        : 'Registration successful, but verification email could not be sent. Click Resend after email delivery is fixed.',
+    };
+  } catch (err) {
+    // Race: another request created the same email between findOne and save
+    if (err && (err.code === 11000 || String(err.message || '').includes('duplicate'))) {
+      const raced = await User.findOne({ email: normalizedEmail });
+      if (raced && !raced.isEmailVerified) {
+        raced.password = hashedPassword;
+        if (name) raced.name = name;
+        if (phone) raced.phone = phone;
+        const token = await issueVerificationToken(raced);
+        const { sent } = await sendVerificationEmail(normalizedEmail, token);
+        return {
+          success: true,
+          isNewAccount: false,
+          requiresVerification: true,
+          pendingVerification: true,
+          emailSent: sent,
+          message: sent
+            ? 'This work email is already registered but not verified. We sent a new verification link.'
+            : 'This work email is already registered but not verified. Click Resend after email delivery is fixed.',
+        };
+      }
+      if (raced?.isEmailVerified) {
+        throw httpError('Email already exists', 400, { code: 'email_already_exists' });
+      }
+    }
+    throw err;
+  }
 }
 
 async function verifyEmail(token) {

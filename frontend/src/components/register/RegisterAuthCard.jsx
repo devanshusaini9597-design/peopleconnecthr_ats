@@ -164,12 +164,15 @@ export default function RegisterAuthCard({
                 autoComplete="email"
                 value={formData.email}
                 onChange={onChange}
-                placeholder="jane@company.com"
+                placeholder="jane@yourcompany.com"
                 aria-invalid={!!errors.email}
                 className={`input-ats !pl-10 !bg-stone-50/80 focus:!bg-white ${errors.email ? 'input-ats-error' : ''}`}
               />
             </div>
             {errors.email && <p className="field-error">{errors.email}</p>}
+            {!errors.email && (
+              <p className="mt-1.5 text-[11px] text-stone-400">Use your company email — personal inboxes like Gmail are not allowed.</p>
+            )}
           </div>
 
           <div>

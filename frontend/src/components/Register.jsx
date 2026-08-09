@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
 import { ArrowLeft } from 'lucide-react';
 import API_URL from '../config';
-import { staggerContainer, calculateStrength } from './register/registerConstants';
+import { staggerContainer, calculateStrength, validateWorkEmail } from './register/registerConstants';
 import RegisterBrandPanel from './register/RegisterBrandPanel';
 import RegisterAuthCard, { RegisterSuccessCard } from './register/RegisterAuthCard';
 
@@ -44,8 +44,9 @@ const Register = () => {
     if (!formData.name.trim()) newErrors.name = 'Full name is required';
     if (!formData.email.trim()) {
       newErrors.email = 'Work email is required';
-    } else if (!/^\S+@\S+\.\S+$/.test(formData.email)) {
-      newErrors.email = 'Invalid email format';
+    } else {
+      const work = validateWorkEmail(formData.email);
+      if (!work.valid) newErrors.email = work.reason;
     }
     if (!formData.password) {
       newErrors.password = 'Password is required';
@@ -85,18 +86,26 @@ const Register = () => {
           data.code === 'email_already_exists' ||
           data.error === 'email_already_exists' ||
           /email already exists/i.test(data.message || '');
+        const personalBlocked =
+          data.code === 'personal_email_not_allowed' ||
+          /work email|personal email/i.test(data.message || '');
         if (alreadyExists) {
           setApiError('An account with this email already exists and is verified. Please log in.');
+        } else if (personalBlocked) {
+          setApiError(data.message || 'Please use your work email address.');
+          setErrors((prev) => ({ ...prev, email: data.message || 'Please use your work email address.' }));
         } else {
           setApiError(data.message || 'Registration failed. Please try again.');
         }
       } else {
-        // New signup OR existing but unverified — show verification step
+        // Always open verify step; only show "already registered" copy for true re-attempts
         setIsRegistered(true);
-        if (data.emailSent === false) {
-          setResendMessage(data.message || 'Account created, but the verification email could not be sent. Click Resend after email is configured.');
-        } else if (data.pendingVerification) {
-          setResendMessage(data.message || 'We sent a new verification email.');
+        if (data.isNewAccount === false && data.pendingVerification) {
+          setResendMessage(data.message);
+        } else if (data.emailSent === false) {
+          setResendMessage(data.message || 'Account created, but the verification email could not be sent. Click Resend.');
+        } else {
+          setResendMessage('');
         }
       }
     } catch (err) {

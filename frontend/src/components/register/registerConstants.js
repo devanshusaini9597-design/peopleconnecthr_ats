@@ -58,3 +58,42 @@ export const calculateStrength = (password) => {
   if (/[^A-Za-z0-9]/.test(password)) score++;
   return score;
 };
+
+/** Personal / free providers blocked for enterprise work-email signup */
+export const FREE_EMAIL_DOMAINS = new Set([
+  'gmail.com', 'googlemail.com', 'google.com',
+  'outlook.com', 'outlook.in', 'hotmail.com', 'hotmail.co.uk', 'hotmail.fr',
+  'live.com', 'live.in', 'msn.com',
+  'yahoo.com', 'yahoo.co.in', 'yahoo.co.uk', 'ymail.com', 'rocketmail.com',
+  'icloud.com', 'me.com', 'mac.com',
+  'proton.me', 'protonmail.com', 'pm.me', 'tutanota.com',
+  'aol.com', 'zoho.com', 'zohomail.com',
+  'mail.com', 'email.com', 'gmx.com', 'gmx.net',
+  'fastmail.com', 'yandex.com', 'yandex.ru',
+  'mail.ru', 'rediffmail.com', 'rediff.com', 'inbox.com',
+  'mailinator.com', 'guerrillamail.com', '10minutemail.com',
+  'tempmail.com', 'yopmail.com', 'trashmail.com', 'temp-mail.org',
+]);
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+export function validateWorkEmail(email) {
+  const normalized = String(email || '').toLowerCase().trim();
+  if (!normalized) {
+    return { valid: false, reason: 'Work email is required' };
+  }
+  if (!EMAIL_RE.test(normalized)) {
+    return { valid: false, reason: 'Invalid email format' };
+  }
+  const domain = normalized.split('@')[1] || '';
+  if (!domain.includes('.') || domain.split('.').some((p) => !p)) {
+    return { valid: false, reason: 'Invalid email domain' };
+  }
+  if (FREE_EMAIL_DOMAINS.has(domain)) {
+    return {
+      valid: false,
+      reason: 'Please use your work email. Personal providers (Gmail, Yahoo, Outlook, etc.) are not allowed.',
+    };
+  }
+  return { valid: true };
+}
