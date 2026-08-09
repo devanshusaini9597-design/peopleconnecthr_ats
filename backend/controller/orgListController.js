@@ -4,14 +4,15 @@ const logger = require('../utils/logger');
 
 const ALLOWED = new Set(['ctc', 'notice']);
 
-/** Sensible starter sets — lean, not 0–50L noise. */
+/** Sensible starter sets for CTC / notice picklists. */
 const SEEDS = {
   ctc: [
-    '0-50k', '50k-1L', '1L-2L', '2L-3L', '3L-4L', '4L-5L', '5L-6L', '6L-8L',
-    '8L-10L', '10L-12L', '12L-15L', '15L-20L', '20L-25L', '25L-30L', '30L-40L',
-    '40L-50L', 'Above 50L', 'As Per Company Norms',
+    '0-50k', '50k-1L', '1L-2L', '2L-3L', '3L-4L', '4L-5L', '5L-6L', '6L-7L', '7L-8L', '8L-9L', '9L-10L',
+    '10L-12L', '12L-15L', '15L-18L', '18L-20L', '20L-25L', '25L-30L', '30L-40L', '40L-50L',
+    '50L-75L', '75L-1Cr', 'Above 1Cr',
+    'Negotiable', 'Confidential', 'Not Disclosed', 'As Per Company Norms',
   ],
-  notice: ['Immediate', '15 Days', '30 days', '60 days', '90 days'],
+  notice: ['Immediate', '15 Days', '30 days', '45 days', '60 days', '90 days', 'Serving Notice'],
 };
 
 const scopeFilter = (req) => (

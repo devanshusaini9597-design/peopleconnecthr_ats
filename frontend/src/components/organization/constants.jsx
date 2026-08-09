@@ -1,5 +1,5 @@
 import {
-  Building2, Settings, Users, Briefcase, Shield, Eye, UserCog, ListChecks, Calendar, Globe,
+  Settings, Users, Briefcase, Shield, Eye, UserCog, ListChecks, Calendar, Globe, Handshake,
 } from 'lucide-react';
 import { DATE_FORMAT_OPTIONS, TIMEZONE_OPTIONS } from '../../data/locales';
 
@@ -25,9 +25,10 @@ export const ORG_TOUR_STEPS = [
 
 export const INVITE_ROLE_OPTIONS = [
   { value: 'admin', label: 'Admin', description: 'Full org access', icon: Shield },
-  { value: 'recruiter', label: 'Recruiter', description: 'Hiring workflows', icon: Briefcase },
-  { value: 'interviewer', label: 'Interviewer', description: 'Interview schedule', icon: UserCog },
-  { value: 'readonly', label: 'Read Only', description: 'View-only access', icon: Eye },
+  { value: 'hr_recruiter', label: 'HR Recruiter', description: 'Hiring workflows', icon: Briefcase },
+  { value: 'hr_manager', label: 'HR Manager', description: 'Team & settings', icon: UserCog },
+  { value: 'sales', label: 'Sales', description: 'Candidates & pipeline', icon: Handshake },
+  { value: 'other', label: 'Other', description: 'Limited view access', icon: Eye },
 ];
 
 export const MEMBER_ROLE_OPTIONS = INVITE_ROLE_OPTIONS;
@@ -53,10 +54,26 @@ export const TABS = [
 
 export const ROLE_BADGE = {
   admin: 'badge-danger',
+  hr_recruiter: 'badge-warning',
+  hr_manager: 'badge-info',
+  sales: 'badge-brand',
+  other: 'badge-neutral',
   recruiter: 'badge-warning',
   interviewer: 'badge-info',
   readonly: 'badge-neutral',
   owner: 'badge-brand',
+};
+
+export const ROLE_LABELS = {
+  owner: 'Owner',
+  admin: 'Admin',
+  hr_recruiter: 'HR Recruiter',
+  hr_manager: 'HR Manager',
+  sales: 'Sales',
+  other: 'Other',
+  recruiter: 'HR Recruiter',
+  interviewer: 'Other',
+  readonly: 'Other',
 };
 
 export const dateFormatSelectOptions = DATE_FORMAT_OPTIONS.map((d) => ({ ...d, icon: Calendar }));

@@ -54,8 +54,14 @@ export default function PendingReviewEditModal({
   const issueCount = (editing.validationErrors || []).length;
 
   return (
-    <div className="fixed inset-0 z-[180] flex items-center justify-center bg-stone-900/50 p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-[180] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-stone-900/50 backdrop-blur-sm" aria-hidden="true" />
+      <div
+        className="relative bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="sticky top-0 bg-white border-b border-stone-100 px-5 py-4 flex items-start justify-between gap-3 z-10">
           <div className="flex items-start gap-3 min-w-0">
             <div className="icon-box-ats shrink-0 !w-10 !h-10">

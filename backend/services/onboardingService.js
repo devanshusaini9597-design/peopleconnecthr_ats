@@ -234,9 +234,56 @@ async function createOrg(userId, { name }) {
   return { success: true, organization: org };
 }
 
+function buildInviteEmailHtml(inviteUrl, orgName, inviterName) {
+  const safeOrg = orgName || 'your organization';
+  const safeInviter = inviterName || 'A teammate';
+  return `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="text-align: center; padding: 30px 20px; background: linear-gradient(135deg, #0d9488, #0f766e); border-radius: 12px 12px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 24px;">You're invited</h1>
+            <p style="color: rgba(255,255,255,0.85); margin: 8px 0 0;">People Connect HR</p>
+          </div>
+          <div style="padding: 30px 20px; background: #ffffff; border: 1px solid #e5e7eb; border-top: none;">
+            <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi there,</p>
+            <p style="color: #374151; font-size: 15px; line-height: 1.6;">
+              <strong>${safeInviter}</strong> invited you to join <strong>${safeOrg}</strong> on People Connect HR.
+            </p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${inviteUrl}" style="display: inline-block; padding: 14px 32px; background: #0d9488; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px;">Accept invitation</a>
+            </div>
+            <p style="color: #6B7280; font-size: 13px; line-height: 1.6;">This link expires in <strong>7 days</strong>.</p>
+            <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;">
+            <p style="color: #9CA3AF; font-size: 12px;">If the button doesn't work, copy and paste this URL:<br><a href="${inviteUrl}" style="color: #0d9488; word-break: break-all;">${inviteUrl}</a></p>
+          </div>
+        </div>
+      `;
+}
+
+const INVITE_ROLE_ALIASES = {
+  admin: 'admin',
+  'hr recruiter': 'hr_recruiter',
+  hr_recruiter: 'hr_recruiter',
+  recruiter: 'hr_recruiter',
+  'hr manager': 'hr_manager',
+  hr_manager: 'hr_manager',
+  sales: 'sales',
+  other: 'other',
+  interviewer: 'other',
+  readonly: 'other',
+  'read-only': 'other',
+  'read only': 'other',
+};
+
+function normalizeInviteRole(role) {
+  const key = String(role || 'hr_recruiter').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  const compact = key.replace(/\s/g, '_');
+  return INVITE_ROLE_ALIASES[key] || INVITE_ROLE_ALIASES[compact] || 'hr_recruiter';
+}
+
 async function inviteTeammate(actor, { email, role, name, customRoleId }) {
   const inviteToken = crypto.randomBytes(32).toString('hex');
   const normalizedEmail = normalizeEmail(email);
+  const resolvedRole = normalizeInviteRole(role);
 
   const existing = await User.findOne({ email: normalizedEmail });
   if (existing) {
@@ -258,7 +305,7 @@ async function inviteTeammate(actor, { email, role, name, customRoleId }) {
 
   const invitee = new User({
     email: normalizedEmail,
-    role: role || 'recruiter',
+    role: resolvedRole,
     name: name || '',
     // Placeholder until invitee sets their own password on accept
     password: crypto.randomBytes(32).toString('hex'),
@@ -271,8 +318,32 @@ async function inviteTeammate(actor, { email, role, name, customRoleId }) {
   });
   await invitee.save();
 
-  console.log(`[STUB] Invite link: /accept-invite?token=${inviteToken}`);
-  return { success: true, message: 'Invitation sent' };
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const inviteUrl = `${frontendUrl}/accept-invite?token=${inviteToken}`;
+
+  let orgName = '';
+  try {
+    const org = await Organization.findById(actor.organizationId).select('name').lean();
+    orgName = org?.name || '';
+  } catch {
+    /* ignore */
+  }
+
+  const inviterName = actor.name || actor.email || 'A teammate';
+  try {
+    await sendEmail(
+      normalizedEmail,
+      `You're invited to ${orgName || 'People Connect HR'}`,
+      buildInviteEmailHtml(inviteUrl, orgName, inviterName),
+      `Accept your invitation: ${inviteUrl} (expires in 7 days)`
+    );
+    logger.info(`Invite email sent to ${normalizedEmail}`);
+  } catch (emailErr) {
+    logger.warn(`Invite created but email failed for ${normalizedEmail}: ${emailErr.message}`);
+    // Still succeed — invite exists; link can be shared manually
+  }
+
+  return { success: true, message: 'Invitation sent', inviteUrl };
 }
 
 async function acceptInvite({ token, name, password }, req) {

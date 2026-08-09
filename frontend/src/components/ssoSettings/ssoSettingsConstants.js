@@ -26,10 +26,11 @@ export const SSO_TOUR_STEPS = [
 ];
 
 export const ROLE_OPTIONS = [
-  { value: 'recruiter', label: 'Recruiter', description: 'Hiring workflows' },
-  { value: 'interviewer', label: 'Interviewer', description: 'Interview access' },
-  { value: 'readonly', label: 'Read-only', description: 'View only' },
   { value: 'admin', label: 'Admin', description: 'Full org access' },
+  { value: 'hr_recruiter', label: 'HR Recruiter', description: 'Hiring workflows' },
+  { value: 'hr_manager', label: 'HR Manager', description: 'Team & settings' },
+  { value: 'sales', label: 'Sales', description: 'Candidates & pipeline' },
+  { value: 'other', label: 'Other', description: 'Limited view access' },
 ];
 
 export const PROTOCOL_OPTIONS = [
@@ -44,7 +45,7 @@ export const emptySsoForm = () => ({
   idpIssuer: '',
   idpCert: '',
   wantAssertionsSigned: true,
-  defaultRole: 'recruiter',
+  defaultRole: 'hr_recruiter',
   jitProvisioning: true,
   attributeMap: { email: 'email', name: 'name' },
   oidc: {

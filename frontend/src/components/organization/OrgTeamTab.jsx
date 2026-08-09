@@ -71,7 +71,7 @@ export default function OrgTeamTab({
                 <label className="label-ats">System role</label>
                 <PremiumSelect
                   value={inviteRole}
-                  onChange={(v) => setInviteRole(v || 'recruiter')}
+                  onChange={(v) => setInviteRole(v || 'hr_recruiter')}
                   options={INVITE_ROLE_OPTIONS}
                   placeholder="Select role"
                   icon={Shield}

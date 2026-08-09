@@ -215,16 +215,13 @@ const handleInputChange = async (e) => {
       .replace(/@gnail\.com$/, '@gmail.com')
       .replace(/@gmail\.con$/, '@gmail.com')
       .replace(/@gmal\.com$/, '@gmail.com');
-  } else if (name === 'name' || name === 'spoc' || name === 'location' || name === 'companyName') {
-    // Remove leading spaces, collapse multiple spaces to one, proper-case each word
-    // "DeVANshU saINI" → "Devanshu Saini"
+  } else if (
+    name === 'name' || name === 'spoc' || name === 'location' || name === 'companyName' || name === 'remark'
+  ) {
+    // Block letters (ALL CAPS), collapse spaces
     let v = value.replace(/^\s+/, '');
     v = v.replace(/\s{2,}/g, ' ');
-    v = v.split(' ').map(word => {
-      if (!word) return '';
-      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-    }).join(' ');
-    finalValue = v;
+    finalValue = v.toUpperCase();
   }
 
   // Collapse multiple consecutive spaces for all text fields (except email)
@@ -254,7 +251,7 @@ const handleInputChange = async (e) => {
 
           setFormData(prev => ({
             ...prev,
-            name: result.name ? result.name.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') : prev.name,
+            name: result.name ? result.name.trim().replace(/\s{2,}/g, ' ').toUpperCase() : prev.name,
             email: result.email ? result.email.toLowerCase().trim().replace(/@gnail\.con$/, '@gmail.com').replace(/@gmail\.con$/, '@gmail.com') : prev.email,
             contact: result.contact || prev.contact
           }));
@@ -284,12 +281,10 @@ const handleAddCandidate = async (e) => {
     }
   });
 
-  // Proper-case name, spoc, location, companyName on submit
-  ['name', 'spoc', 'location', 'companyName'].forEach(field => {
+  // Block-letter text fields on submit
+  ['name', 'spoc', 'location', 'companyName', 'remark'].forEach(field => {
     if (trimmed[field]) {
-      trimmed[field] = trimmed[field].split(/\s+/)
-        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-        .join(' ');
+      trimmed[field] = trimmed[field].replace(/\s{2,}/g, ' ').toUpperCase();
     }
   });
 

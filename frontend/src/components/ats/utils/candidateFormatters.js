@@ -51,8 +51,8 @@ export function validateAndFixMobile(mobile) {
 export function validateAndFixName(name) {
   if (!name) return { isValid: false, value: '' };
   let fixed = String(name).replace(/[0-9!@#$%^&*()_+=\[\]{};:'",.<>?/\\|`~-]/g, '').trim();
-  fixed = fixed.split(/\s+/).map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
-  const isValid = fixed.length >= 2 && /^[a-zA-Z\s]+$/.test(fixed);
+  fixed = fixed.replace(/\s{2,}/g, ' ').toUpperCase();
+  const isValid = fixed.length >= 2 && /^[A-Z\s]+$/.test(fixed);
   return { isValid, value: fixed };
 }
 

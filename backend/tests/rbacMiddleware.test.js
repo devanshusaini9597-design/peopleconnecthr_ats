@@ -35,13 +35,13 @@ describe('rbacMiddleware.requireRole', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  test('requireRecruiterOrAbove allows owner/admin/recruiter but not interviewer/readonly', () => {
-    for (const role of ['owner', 'admin', 'recruiter']) {
+  test('requireRecruiterOrAbove allows hiring roles but not interviewer/readonly/other', () => {
+    for (const role of ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales']) {
       const next = jest.fn();
       requireRecruiterOrAbove({ user: { role } }, mockRes(), next);
       expect(next).toHaveBeenCalledTimes(1);
     }
-    for (const role of ['interviewer', 'readonly']) {
+    for (const role of ['interviewer', 'readonly', 'other']) {
       const res = mockRes();
       const next = jest.fn();
       requireRecruiterOrAbove({ user: { role } }, res, next);

@@ -1,11 +1,10 @@
 /**
- * Normalize text: Title Case + collapse multiple spaces into one + trim
+ * Normalize text: BLOCK LETTERS (ALL CAPS) + collapse spaces + trim
  * Use for all text fields EXCEPT email addresses
- * Example: "  skillnix  technologies " → "Skillnix Technologies"
  */
 const normalizeText = (str) => {
   if (!str || typeof str !== 'string') return str || '';
-  return str.trim().replace(/\s+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return str.trim().replace(/\s+/g, ' ').toUpperCase();
 };
 
 /**

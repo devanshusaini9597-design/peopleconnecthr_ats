@@ -11,8 +11,10 @@ router.get('/', async (req, res) => {
     const now = new Date();
     const role = req.user.role;
     const audienceFilter = ['all'];
-    if (['owner', 'admin'].includes(role)) audienceFilter.push('admins');
-    if (['owner', 'admin', 'recruiter'].includes(role)) audienceFilter.push('recruiters');
+    if (['owner', 'admin', 'hr_manager'].includes(role)) audienceFilter.push('admins');
+    if (['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales'].includes(role)) {
+      audienceFilter.push('recruiters');
+    }
 
     const rows = await Announcement.find({
       organizationId: req.user.organizationId,

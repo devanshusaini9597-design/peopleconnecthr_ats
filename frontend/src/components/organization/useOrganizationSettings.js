@@ -48,7 +48,7 @@ export default function useOrganizationSettings() {
 
   const [members, setMembers] = useState([]);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState('recruiter');
+  const [inviteRole, setInviteRole] = useState('hr_recruiter');
   const [inviteCustomRoleId, setInviteCustomRoleId] = useState('');
   const [customRoleUpdatingId, setCustomRoleUpdatingId] = useState(null);
 

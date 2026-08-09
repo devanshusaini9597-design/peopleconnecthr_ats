@@ -77,14 +77,18 @@ export default function CandidateFormModal(props) {
           </div>
         );
         const fieldClass = (err) =>
-          `w-full px-3 py-2.5 rounded-lg border bg-white text-sm font-medium outline-none transition-all focus:ring-2 ${
+          `w-full px-3 py-2.5 rounded-lg border bg-white text-sm font-medium outline-none transition-all focus:ring-2 uppercase ${
+            err ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : 'border-stone-200 focus:border-brand-500 focus:ring-brand-500/15'
+          }`;
+        const emailFieldClass = (err) =>
+          `w-full px-3 py-2.5 rounded-lg border bg-white text-sm font-medium outline-none transition-all focus:ring-2 normal-case ${
             err ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : 'border-stone-200 focus:border-brand-500 focus:ring-brand-500/15'
           }`;
 
         return (
         <>
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto animate-fade-in">
-          <div className="absolute inset-0 bg-stone-900/55 backdrop-blur-sm" onClick={() => setShowModal(false)} aria-hidden="true" />
+          <div className="absolute inset-0 bg-stone-900/55 backdrop-blur-sm" aria-hidden="true" />
           <FocusLock returnFocus>
           <div
             role="dialog"
@@ -267,7 +271,7 @@ export default function CandidateFormModal(props) {
                       </div>
                       <div>
                         <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Email <span className="text-red-500">*</span></label>
-                        <input ref={fieldRefs.email} type="email" name="email" value={formData.email || ''} onChange={handleInputChange} placeholder="email@example.com" className={fieldClass(formErrors.email)} />
+                        <input ref={fieldRefs.email} type="email" name="email" value={formData.email || ''} onChange={handleInputChange} placeholder="email@example.com" className={emailFieldClass(formErrors.email)} />
                         {formErrors.email && <p className="text-xs text-red-500 mt-1 font-medium">{formErrors.email}</p>}
                       </div>
                       <div className="sm:col-span-2">
@@ -302,7 +306,7 @@ export default function CandidateFormModal(props) {
                               if (digitsOnly.length > 10) digitsOnly = digitsOnly.slice(0, 10);
                               setFormField('contact', digitsOnly);
                             }}
-                            className={`flex-1 min-w-0 ${fieldClass(formErrors.contact)}`}
+                            className={`flex-1 min-w-0 ${emailFieldClass(formErrors.contact)}`}
                             maxLength="10"
                           />
                         </div>

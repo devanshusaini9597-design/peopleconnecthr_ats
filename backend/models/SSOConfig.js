@@ -61,9 +61,9 @@ const ssoConfigSchema = new mongoose.Schema({
 
     type: String,
 
-    enum: ['admin', 'recruiter', 'interviewer', 'readonly'],
+    enum: ['admin', 'hr_recruiter', 'hr_manager', 'sales', 'other', 'recruiter', 'interviewer', 'readonly'],
 
-    default: 'recruiter'
+    default: 'hr_recruiter'
 
   },
 

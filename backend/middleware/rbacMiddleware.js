@@ -31,9 +31,13 @@ const requireRole = (...allowedRoles) => {
 };
 
 const requireOwner = requireRole('owner');
-const requireAdmin = requireRole('owner', 'admin');
-const requireRecruiterOrAbove = requireRole('owner', 'admin', 'recruiter');
-const requireInterviewerOrAbove = requireRole('owner', 'admin', 'recruiter', 'interviewer');
+const requireAdmin = requireRole('owner', 'admin', 'hr_manager');
+const requireRecruiterOrAbove = requireRole(
+  'owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales'
+);
+const requireInterviewerOrAbove = requireRole(
+  'owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales', 'interviewer'
+);
 
 /**
  * Maps a logical resource name (used throughout routes/checkPlanLimit calls)

@@ -111,7 +111,7 @@ export function OnboardingStep2({
                   onChange={(e) => updateInvite(index, 'role', e.target.value)}
                   className="input-ats !bg-stone-50/80 focus:!bg-white"
                 >
-                  {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                  {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
               </div>
               <button

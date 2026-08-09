@@ -188,7 +188,8 @@ const ALL_MODULES = [...MODULE_PERMISSIONS];
 const DEFAULT_ROLE_PERMISSIONS = {
   owner: [...PERMISSIONS],
   admin: [...PERMISSIONS].filter((p) => p !== 'billing.manage' && p !== 'modules.billing'),
-  recruiter: [
+  hr_manager: [...PERMISSIONS].filter((p) => p !== 'billing.manage' && p !== 'modules.billing'),
+  hr_recruiter: [
     'modules.dashboard', 'modules.analytics', 'modules.search', 'modules.reports', 'modules.announcements',
     'modules.jobs', 'modules.applications', 'modules.candidates', 'modules.pipeline', 'modules.resumeParsing',
     'modules.talentPools', 'modules.skills', 'modules.collaboration', 'modules.formBuilder', 'modules.assessments',
@@ -201,6 +202,19 @@ const DEFAULT_ROLE_PERMISSIONS = {
     'applications.edit', 'applications.reject',
     'interviews.schedule', 'interviews.cancel', 'scorecards.submit',
   ],
+  sales: [
+    'modules.dashboard', 'modules.analytics', 'modules.search', 'modules.announcements',
+    'modules.candidates', 'modules.pipeline', 'modules.talentPools',
+    'modules.inbox', 'modules.consent',
+    'modules.pushNotifications', 'modules.profile',
+    'candidates.create', 'candidates.edit', 'candidates.export',
+  ],
+  other: [
+    'modules.dashboard', 'modules.analytics', 'modules.search',
+    'modules.profile',
+  ],
+  // Legacy aliases (existing users)
+  recruiter: null, // filled below
   interviewer: [
     'modules.dashboard', 'modules.analytics', 'modules.search',
     'modules.interviews',
@@ -212,6 +226,8 @@ const DEFAULT_ROLE_PERMISSIONS = {
     'modules.profile',
   ],
 };
+
+DEFAULT_ROLE_PERMISSIONS.recruiter = [...DEFAULT_ROLE_PERMISSIONS.hr_recruiter];
 
 module.exports = {
   PERMISSIONS,

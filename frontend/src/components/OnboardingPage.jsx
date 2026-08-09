@@ -20,7 +20,7 @@ export default function OnboardingPage() {
 
   const [orgName, setOrgName] = useState('');
   const [orgDomain, setOrgDomain] = useState('');
-  const [invites, setInvites] = useState([{ email: '', role: 'Recruiter' }]);
+  const [invites, setInvites] = useState([{ email: '', role: 'hr_recruiter' }]);
   const [jobForm, setJobForm] = useState({
     title: '',
     location: '',
@@ -238,7 +238,7 @@ export default function OnboardingPage() {
   const handleComplete = () => finishAndGoToDashboard(summary.orgName || orgName || 'My Workspace');
 
   const addInviteRow = () => {
-    setInvites([...invites, { email: '', role: 'Recruiter' }]);
+    setInvites([...invites, { email: '', role: 'hr_recruiter' }]);
   };
 
   const removeInviteRow = (index) => {
