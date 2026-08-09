@@ -75,13 +75,14 @@ const getZohoAuthHeaderValue = (apiKey) => {
  * - Caller responsible for masking key before returning to frontend
  */
 const sendViaZohoZeptomail = async (to, subject, htmlBody, textBody, options = {}) => {
-  const { cc, bcc, senderName, fromEmail, zohoApiKey, zohoApiUrl, userId } = options;
+  const { cc, bcc, senderName, fromEmail, replyToEmail, zohoApiKey, zohoApiUrl, userId } = options;
   
   if (!zohoApiKey || !zohoApiUrl || !fromEmail) {
     throw new Error('ZOHO_ZEPTOMAIL_NOT_CONFIGURED');
   }
 
   const displayName = senderName || 'SkillNix ATS';
+  const replyAddress = (replyToEmail || fromEmail).trim();
   const recipients = Array.isArray(to) ? to : [to];
 
   // Build recipient objects
@@ -116,7 +117,8 @@ const sendViaZohoZeptomail = async (to, subject, htmlBody, textBody, options = {
     htmlbody: htmlBody,
     textbody: textBody || subject,
     reply_to: {
-      address: fromEmail
+      address: replyAddress,
+      name: displayName
     }
   };
 
@@ -214,11 +216,12 @@ const getUserTransporter = async (userId) => {
       'https://api.zeptomail.in/'
     ).replace(/\/?$/, '/');
     if (envKey && envFrom) {
-      // If no userId, this is a system email (verification, password reset, etc.)
+      // System emails (no userId): invites, verification — platform/agent From
       if (!userId) {
         return {
           transporter: null,
           fromEmail: envFrom,
+          replyToEmail: envFrom,
           userName: 'SkillNix ATS',
           configured: true,
           provider: 'zoho-zeptomail',
@@ -228,18 +231,16 @@ const getUserTransporter = async (userId) => {
           configSource: 'env'
         };
       }
-      
-      // If userId exists, check if user is from same domain
+
+      // User-initiated (candidate mail, etc.): send as the logged-in employee
       const User = mongoose.model('User');
       const user = await User.findById(userId).select('emailSettings name email');
-      
-      const verifiedDomain = envFrom.includes('@') ? String(envFrom).trim().split('@')[1].toLowerCase() : '';
-      const userEmail = user?.email ? String(user.email).trim() : '';
-      const userDomain = userEmail.includes('@') ? userEmail.split('@')[1].toLowerCase() : '';
-      const useUserAsSender = userEmail && verifiedDomain && userDomain === verifiedDomain;
+      const userEmail = user?.email ? String(user.email).trim().toLowerCase() : '';
+
       return {
         transporter: null,
-        fromEmail: useUserAsSender ? userEmail : envFrom,
+        fromEmail: userEmail || envFrom,
+        replyToEmail: userEmail || envFrom,
         userName: user?.name || 'SkillNix ATS',
         configured: true,
         provider: 'zoho-zeptomail',
@@ -260,25 +261,29 @@ const getUserTransporter = async (userId) => {
 
         // Check if using Zoho Zeptomail (per-user override)
         if (s.emailProvider === 'zoho-zeptomail' && s.zohoZeptomailApiKey && s.zohoZeptomailFromEmail) {
+          const userEmail = user?.email ? String(user.email).trim().toLowerCase() : '';
           return {
             transporter: null,
-            fromEmail: s.zohoZeptomailFromEmail,
+            fromEmail: userEmail || s.zohoZeptomailFromEmail,
+            replyToEmail: userEmail || s.zohoZeptomailFromEmail,
             userName: user.name || '',
             configured: true,
             provider: 'zoho-zeptomail',
             zohoApiKey: s.zohoZeptomailApiKey,
             zohoApiUrl: s.zohoZeptomailApiUrl || 'https://api.zeptomail.com/',
             userId: userId,
-            configSource: 'user'  // User's own personal config
+            configSource: 'user'
           };
         }
 
         // Check if using SMTP (per-user)
         if (s.smtpEmail && s.smtpAppPassword) {
           let userTransporter = createSmtpTransporter(s);
+          const userEmail = user?.email ? String(user.email).trim().toLowerCase() : '';
           return { 
             transporter: userTransporter, 
-            fromEmail: s.smtpEmail, 
+            fromEmail: userEmail || s.smtpEmail,
+            replyToEmail: userEmail || s.smtpEmail,
             userName: user.name || '', 
             configured: true, 
             provider: 'smtp',
@@ -301,18 +306,30 @@ const getUserTransporter = async (userId) => {
     }
 
     if (companyConfig?.isConfigured) {
+      let companyUserName = 'SkillNix ATS';
+      let companyUserEmail = '';
+      if (userId) {
+        try {
+          const User = mongoose.model('User');
+          const u = await User.findById(userId).select('name email');
+          companyUserName = u?.name || companyUserName;
+          companyUserEmail = u?.email ? String(u.email).trim().toLowerCase() : '';
+        } catch (_) { /* ignore */ }
+      }
+
       // Use company's Zoho Zeptomail (all employees share this)
       if (companyConfig.primaryProvider === 'zoho-zeptomail' && companyConfig.zohoZeptomailApiKey && companyConfig.zohoZeptomailFromEmail) {
         return {
           transporter: null,
-          fromEmail: companyConfig.zohoZeptomailFromEmail,
-          userName: userId ? (user?.name || '') : 'SkillNix ATS',
+          fromEmail: companyUserEmail || companyConfig.zohoZeptomailFromEmail,
+          replyToEmail: companyUserEmail || companyConfig.zohoZeptomailFromEmail,
+          userName: companyUserName,
           configured: true,
           provider: 'zoho-zeptomail',
           zohoApiKey: companyConfig.zohoZeptomailApiKey,
           zohoApiUrl: companyConfig.zohoZeptomailApiUrl || 'https://api.zeptomail.com/',
           userId: userId,
-          configSource: 'company'  // Company-wide shared config
+          configSource: 'company'
         };
       }
 
@@ -321,11 +338,12 @@ const getUserTransporter = async (userId) => {
         let companyTransporter = createSmtpTransporter(companyConfig);
         return {
           transporter: companyTransporter,
-          fromEmail: companyConfig.smtpEmail,
-          userName: userId ? (user?.name || '') : 'SkillNix ATS',
+          fromEmail: companyUserEmail || companyConfig.smtpEmail,
+          replyToEmail: companyUserEmail || companyConfig.smtpEmail,
+          userName: companyUserName,
           configured: true,
           provider: 'smtp',
-          configSource: 'company'  // Company-wide shared config
+          configSource: 'company'
         };
       }
     }
@@ -334,6 +352,7 @@ const getUserTransporter = async (userId) => {
     return {
       transporter: null,
       fromEmail: null,
+      replyToEmail: null,
       userName: 'SkillNix ATS',
       configured: false,
       provider: null,
@@ -341,7 +360,7 @@ const getUserTransporter = async (userId) => {
     };
   } catch (err) {
     logger.error('getUserTransporter error:', err.message);
-    return { transporter: null, fromEmail: null, userName: 'SkillNix ATS', configured: false, provider: null, configSource: 'error' };
+    return { transporter: null, fromEmail: null, replyToEmail: null, userName: 'SkillNix ATS', configured: false, provider: null, configSource: 'error' };
   }
 };
 
@@ -400,7 +419,20 @@ const createSmtpTransporter = (emailSettings) => {
 const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
   const { cc, bcc, senderName, senderEmail, userId } = options;
   
-  const { transporter: activeTransporter, fromEmail, userName, configured, provider, zohoApiKey, zohoApiUrl } = await getUserTransporter(userId);
+  const {
+    transporter: activeTransporter,
+    fromEmail: transporterFrom,
+    replyToEmail: transporterReplyTo,
+    userName,
+    configured,
+    provider,
+    zohoApiKey,
+    zohoApiUrl,
+  } = await getUserTransporter(userId);
+
+  // Prefer explicit override, else transporter (login email for user-initiated sends)
+  const fromEmail = (senderEmail || transporterFrom || '').trim();
+  const replyToEmail = (senderEmail || transporterReplyTo || fromEmail || '').trim();
   
   if (!configured || !fromEmail) {
     throw new Error('EMAIL_NOT_CONFIGURED');
@@ -422,6 +454,7 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
       bcc,
       senderName: senderName || userName,
       fromEmail,
+      replyToEmail,
       zohoApiKey,
       zohoApiUrl,
       userId
@@ -439,7 +472,7 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
   
   const mailOptions = {
     from: fromAddress,
-    replyTo: fromEmail,  // Allow recipients to reply directly
+    replyTo: replyToEmail,
     to: Array.isArray(to) ? to : [to],
     subject: subject,
     html: htmlBody,
@@ -447,8 +480,8 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
     headers: {
       'X-Mailer': 'Skillnix PCHR 1.0',
       'X-Priority': '3',
-      'List-Unsubscribe': `<mailto:${fromEmail}?subject=unsubscribe>`,
-      'Precedence': 'bulk'  // Mark as bulk mail (helps avoid spam)
+      'List-Unsubscribe': `<mailto:${replyToEmail}?subject=unsubscribe>`,
+      'Precedence': 'bulk'
     }
   };
 
@@ -702,27 +735,30 @@ const canUserSendViaZepto = async (userId) => {
   if (!verifiedDomain) return { canSend: false, reason: 'No verified sender configured', verifiedDomain: '' };
   if (!apiKey) return { canSend: false, reason: 'ZeptoMail not configured', verifiedDomain };
 
-  // Company/system Zepto agent: any signed-in user can send; mail goes FROM the verified agent address.
-  if (source === 'env' || source === 'company') {
-    return {
-      canSend: true,
-      verifiedDomain,
-      fromEmail: fromEmail || '',
-      reason: '',
-    };
-  }
-
   try {
     const User = mongoose.model('User');
-    const user = await User.findById(userId).select('email');
-    const userEmail = (user?.email || '').trim();
+    const user = await User.findById(userId).select('email name');
+    const userEmail = (user?.email || '').trim().toLowerCase();
     if (!userEmail || !userEmail.includes('@')) {
       return {
         canSend: false,
-        reason: 'Use your company verified email to send (e.g. name@' + verifiedDomain + ')',
+        reason: 'Your account needs a valid work email to send candidate mail.',
         verifiedDomain,
       };
     }
+
+    // Enterprise pattern: candidate mail is sent as the logged-in employee.
+    // ZeptoMail must allow that address/domain (verify skillnix.com in your Zepto agent).
+    if (source === 'env' || source === 'company') {
+      return {
+        canSend: true,
+        verifiedDomain,
+        fromEmail: userEmail,
+        agentFrom: fromEmail || '',
+        reason: '',
+      };
+    }
+
     const userDomain = userEmail.split('@')[1].toLowerCase();
     const canSend = userDomain === verifiedDomain;
     return {
