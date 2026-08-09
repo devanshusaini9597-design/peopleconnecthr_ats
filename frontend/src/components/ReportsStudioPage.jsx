@@ -18,6 +18,7 @@ import {
 import { ReportsStudioBody } from './reportsStudio/ReportsStudioPanels';
 
 export default function ReportsStudioPage() {
+  const { t } = useTranslation();
   const [tourOpen, setTourOpen] = usePageTour(REPORTS_TOUR_KEY);
   const toast = useToast();
   const [loading, setLoading] = useState(true);
@@ -31,18 +32,18 @@ export default function ReportsStudioPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, s, t, j] = await Promise.all([
+      const [p, s, tthRes, j] = await Promise.all([
         authenticatedFetch('/api/reports-studio/pipeline').then(readApiJson),
         authenticatedFetch('/api/reports-studio/sources').then(readApiJson),
         authenticatedFetch('/api/reports-studio/time-to-hire').then(readApiJson),
         authenticatedFetch('/api/reports-studio/jobs-performance').then(readApiJson).catch(() => ({ success: false }))
       ]);
-      if (!p.success && !s.success && !t.success) {
-        throw new Error(p.message || s.message || t.message || 'Failed to load reports');
+      if (!p.success && !s.success && !tthRes.success) {
+        throw new Error(p.message || s.message || tthRes.message || 'Failed to load reports');
       }
       setPipeline(p.success ? (p.data || []) : []);
       setSources(s.success ? (s.data || []) : []);
-      setTth(t.success ? t.data : null);
+      setTth(tthRes.success ? tthRes.data : null);
       setJobs(j.success ? (j.data || []) : []);
     } catch (err) {
       toast.error(err.message || 'Failed to load reports');
@@ -73,7 +74,6 @@ export default function ReportsStudioPage() {
   };
 
   const exportAll = () => {
-  const { t } = useTranslation();
     const packs = [
       [pipeline, 'pipeline.csv'],
       [sources, 'sources.csv'],

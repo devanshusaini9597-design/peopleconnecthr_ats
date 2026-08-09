@@ -15,7 +15,7 @@ export default function ApplicationsTable({
   onTableDragScrollEnd,
 }) {
   return (
-    <div className="flex-1 overflow-auto p-3 sm:p-5 lg:p-6 min-h-0 max-md:min-h-[min(60vh,520px)] w-full">
+    <div className="p-3 sm:p-4 lg:p-5 min-w-0">
       <div
         ref={tableScrollRef}
         className="table-shell-ats cand-table-scroll overflow-x-auto"

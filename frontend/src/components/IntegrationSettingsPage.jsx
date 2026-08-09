@@ -19,6 +19,7 @@ import IntegrationFilters from './integrationSettings/IntegrationFilters';
 import ConfigureModal from './integrationSettings/ConfigureModal';
 
 export default function IntegrationSettingsPage() {
+  const { t } = useTranslation();
   const { organization } = useAuth();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(INTEGRATIONS_TOUR_KEY);
@@ -78,7 +79,6 @@ export default function IntegrationSettingsPage() {
   };
 
   const closeConfigure = () => {
-  const { t } = useTranslation();
     if (saving || testing) return;
     setActiveProvider(null);
     setFormValues({});

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import API_URL from '../config';
 import { useAuth } from '../context/AuthContext';
+import { BRAND_NAME } from './ui/BrandLogo';
 import {
   OnboardingStep1,
   OnboardingStep2,
@@ -12,7 +13,7 @@ import {
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, organization, updateUser, updateOrganization, refreshProfile } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -51,17 +52,85 @@ export default function OnboardingPage() {
           const freeDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com'];
           if (!freeDomains.includes(domain)) {
             setOrgDomain(domain);
+            if (!orgName) {
+              const label = domain.split('.')[0] || domain;
+              setOrgName(label.charAt(0).toUpperCase() + label.slice(1));
+            }
           }
         }
       }
     } catch (e) {
       console.error('Failed to parse user email', e);
     }
-  }, [user]);
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getAuthHeaders = () => ({
     'Content-Type': 'application/json'
   });
+
+  const markOnboardingDone = async (orgPayload) => {
+    const response = await fetch(`${API_URL}/api/onboarding/complete-onboarding`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.message || 'Failed to complete onboarding');
+    }
+
+    updateUser({ onboardingCompleted: true });
+    if (orgPayload) {
+      updateOrganization(orgPayload);
+      if (orgPayload._id) localStorage.setItem('orgId', orgPayload._id);
+      localStorage.setItem('orgData', JSON.stringify(orgPayload));
+      localStorage.setItem('orgName', orgPayload.name || '');
+    }
+    try {
+      const existing = localStorage.getItem('userData');
+      if (existing) {
+        const parsed = JSON.parse(existing);
+        localStorage.setItem('userData', JSON.stringify({ ...parsed, onboardingCompleted: true }));
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const ensureOrganization = async (nameOverride) => {
+    if (user?.organizationId || organization?._id) {
+      return organization || { name: summary.orgName || orgName || nameOverride };
+    }
+
+    const name = (nameOverride || orgName || 'My Workspace').trim();
+    if (name.length < 2) {
+      throw new Error('Company name must be at least 2 characters');
+    }
+
+    const response = await fetch(`${API_URL}/api/onboarding/create-org`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+      body: JSON.stringify({ name, domain: orgDomain })
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      // Already has an org — treat as success and continue
+      if (response.status === 400 && /already has an organization/i.test(data.message || '')) {
+        await refreshProfile();
+        return organization || { name };
+      }
+      throw new Error(data.message || 'Failed to create organization');
+    }
+
+    const created = data.organization || { name };
+    updateUser({ organizationId: created._id, role: 'owner' });
+    updateOrganization(created);
+    setSummary((prev) => ({ ...prev, orgName: created.name || name }));
+    return created;
+  };
 
   const handleCreateOrg = async (e) => {
     e.preventDefault();
@@ -74,22 +143,9 @@ export default function OnboardingPage() {
     setError('');
 
     try {
-      const response = await fetch(`${API_URL}/api/onboarding/create-org`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        credentials: 'include',
-        body: JSON.stringify({ name: orgName, domain: orgDomain })
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Failed to create organization');
-      }
-
-      const data = await response.json();
-      localStorage.setItem('orgData', JSON.stringify(data.organization || { name: orgName }));
-
-      setSummary(prev => ({ ...prev, orgName }));
+      const created = await ensureOrganization(orgName);
+      localStorage.setItem('orgData', JSON.stringify(created));
+      setSummary((prev) => ({ ...prev, orgName: created.name || orgName }));
       setCurrentStep(2);
     } catch (err) {
       setError(err.message);
@@ -97,6 +153,22 @@ export default function OnboardingPage() {
       setLoading(false);
     }
   };
+
+  const finishAndGoToDashboard = async (nameOverride) => {
+    setLoading(true);
+    setError('');
+    try {
+      const created = await ensureOrganization(nameOverride);
+      await markOnboardingDone(created);
+      navigate('/dashboard', { replace: true });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSkipOnboarding = () => finishAndGoToDashboard(orgName || 'My Workspace');
 
   const handleInviteTeam = async (e, skip = false) => {
     if (e) e.preventDefault();
@@ -163,29 +235,7 @@ export default function OnboardingPage() {
     }
   };
 
-  const handleComplete = async () => {
-    setLoading(true);
-    setError('');
-
-    try {
-      const response = await fetch(`${API_URL}/api/onboarding/complete-onboarding`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        credentials: 'include'
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Failed to complete onboarding');
-      }
-
-      navigate('/dashboard');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleComplete = () => finishAndGoToDashboard(summary.orgName || orgName || 'My Workspace');
 
   const addInviteRow = () => {
     setInvites([...invites, { email: '', role: 'Recruiter' }]);
@@ -206,19 +256,23 @@ export default function OnboardingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0A0A0B] flex flex-col font-sans selection:bg-indigo-500/30">
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-indigo-600/20 blur-[120px] rounded-full mix-blend-screen" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-violet-600/20 blur-[120px] rounded-full mix-blend-screen" />
+    <div className="auth-page-shell flex flex-col bg-stone-50 text-stone-900">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -top-24 -right-16 w-72 h-72 rounded-full bg-brand-300/25 blur-3xl" />
+        <div className="absolute -bottom-28 -left-20 w-80 h-80 rounded-full bg-teal-200/30 blur-3xl" />
       </div>
 
-      <div className="flex-1 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 relative z-10">
+      <div className="relative z-10 flex-1 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700 mb-2">{BRAND_NAME}</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900">Workspace setup</h1>
+          <p className="mt-2 text-sm text-stone-500">A few quick steps to get your hiring workspace ready.</p>
+        </div>
+
         <OnboardingStepper currentStep={currentStep} />
 
         <div className="max-w-xl mx-auto w-full">
-          <div className="bg-[#121214]/80 backdrop-blur-xl border border-white/10 shadow-2xl rounded-3xl p-8 sm:p-12 relative overflow-hidden">
-            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-
+          <div className="auth-form-card !p-8 sm:!p-10">
             {currentStep === 1 && (
               <OnboardingStep1
                 error={error}
@@ -228,6 +282,7 @@ export default function OnboardingPage() {
                 setOrgDomain={setOrgDomain}
                 loading={loading}
                 handleCreateOrg={handleCreateOrg}
+                handleSkip={handleSkipOnboarding}
               />
             )}
             {currentStep === 2 && (
@@ -239,6 +294,7 @@ export default function OnboardingPage() {
                 addInviteRow={addInviteRow}
                 removeInviteRow={removeInviteRow}
                 updateInvite={updateInvite}
+                handleSkipAll={handleSkipOnboarding}
               />
             )}
             {currentStep === 3 && (
@@ -248,6 +304,7 @@ export default function OnboardingPage() {
                 setJobForm={setJobForm}
                 loading={loading}
                 handlePostJob={handlePostJob}
+                handleSkipAll={handleSkipOnboarding}
               />
             )}
             {currentStep === 4 && (

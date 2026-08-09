@@ -18,6 +18,7 @@ import {
 } from './globalSearch/GlobalSearchPanels';
 
 export default function GlobalSearchPage() {
+  const { t } = useTranslation();
   const [tourOpen, setTourOpen] = usePageTour(SEARCH_TOUR_KEY);
   const toast = useToast();
   const inputRef = useRef(null);
@@ -105,7 +106,6 @@ export default function GlobalSearchPage() {
   }, [entity]);
 
   const clearSearch = () => {
-  const { t } = useTranslation();
     setQ('');
     inputRef.current?.focus();
   };

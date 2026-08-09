@@ -546,6 +546,8 @@ select:focus-visible {
 /* Content area under sticky header — full-height pages */
 .content-fill-ats {
   @apply h-full min-h-0 flex flex-col;
+  /* Keep flex children able to shrink so nested boards don't clip */
+  overflow: hidden;
 }
 /* Small screens: let fill pages grow with content so filter + board/list are not clipped */
 @media (max-width: 767px) {

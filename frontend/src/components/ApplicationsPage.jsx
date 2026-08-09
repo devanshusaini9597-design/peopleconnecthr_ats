@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Target, User, Search, Briefcase, GitPullRequest, Kanban } from 'lucide-react';
+import { Plus, Target, User, Search, GitPullRequest, Kanban, Info } from 'lucide-react';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
 import ProductTour from './ui/ProductTour';
@@ -92,154 +92,148 @@ export default function ApplicationsPage() {
   const PageIcon = isApplicationsRoute ? GitPullRequest : Kanban;
 
   return (
-    <div className="content-fill-ats animate-page-enter bg-stone-50/40 overflow-hidden max-md:h-auto max-md:min-h-0 max-md:overflow-visible">
-      <div className="flex-shrink-0 px-4 sm:px-6 lg:px-8 pt-5 sm:pt-6 pb-1 space-y-3 max-w-7xl mx-auto w-full">
-        <PageHeader
-          icon={PageIcon}
-          title={pageTitle}
-          subtitle={selectedJob ? jobTitle(selectedJob) : pageSubtitle}
-          gradientTitle
-        >
-          <button type="button" onClick={openAddModal} className="btn-primary flex-1 sm:flex-none">
-            <Plus className="w-4 h-4" /> Add Application
-          </button>
-        </PageHeader>
+    <div className="page-shell-ats animate-page-enter">
+      <PageHeader
+        icon={PageIcon}
+        title={pageTitle}
+        subtitle={selectedJob ? jobTitle(selectedJob) : pageSubtitle}
+        gradientTitle
+      >
+        <button type="button" onClick={openAddModal} className="btn-primary flex-1 sm:flex-none">
+          <Plus className="w-4 h-4" /> Add Application
+        </button>
+      </PageHeader>
 
-        <div data-tour="apps-tip" className="rounded-xl border border-brand-200/60 bg-gradient-to-r from-brand-50/70 via-white to-teal-50/40 px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-[13px] text-stone-600 leading-relaxed">
+      <div
+        data-tour="apps-tip"
+        className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed flex flex-wrap items-center gap-x-3 gap-y-1.5"
+      >
+        <span className="inline-flex items-center gap-1.5 text-brand-700 font-semibold">
+          <Info size={14} /> Tip
+        </span>
+        <span>
           {selectedJobId
             ? (isApplicationsRoute
-              ? `${stats.total || applications.length} in pipeline · avg time ${stats.avgTime || 'N/A'}. Use list actions for email / call, or switch to board to drag stages.`
-              : `${stats.total || applications.length} in pipeline · avg time ${stats.avgTime || 'N/A'}. Drag cards across columns to change stage — drop zones highlight as you hover.`)
+              ? `${stats.total || applications.length} in pipeline · avg time ${stats.avgTime || 'N/A'}. Switch views or filter by stage anytime.`
+              : `${stats.total || applications.length} in pipeline · avg time ${stats.avgTime || 'N/A'}. Drag cards across columns to change stage.`)
             : (isApplicationsRoute
-              ? 'Select a job to browse applications. Add an application anytime.'
-              : 'Select a job to open the kanban board. Drag candidates across stages once loaded.')}
+              ? 'Select a job to browse applications, or add an application anytime.'
+              : 'Select a job to open the kanban board, or add an application to get started.')}
           {' '}Press <span className="font-semibold text-stone-800">?</span> for a tour.
-        </div>
-
-        <ApplicationsFilters
-          selectedJobId={selectedJobId}
-          setSelectedJobId={setSelectedJobId}
-          jobOptions={jobOptions}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          stageFilter={stageFilter}
-          setStageFilter={setStageFilter}
-          viewMode={viewMode}
-          setViewMode={setViewMode}
-          clearFilters={clearFilters}
-        />
+        </span>
       </div>
 
-      {/* Main — on small screens grow with page scroll so board/list is never clipped away */}
-      <div
-        data-tour="apps-workspace"
-        className="flex-1 overflow-hidden relative flex min-h-0 mt-3 max-md:flex-none max-md:min-h-[min(72vh,640px)] max-md:overflow-visible pb-6 md:pb-0"
-      >
+      <ApplicationsFilters
+        selectedJobId={selectedJobId}
+        setSelectedJobId={setSelectedJobId}
+        jobOptions={jobOptions}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        stageFilter={stageFilter}
+        setStageFilter={setStageFilter}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        clearFilters={clearFilters}
+      />
+
+      <div data-tour="apps-workspace" className="relative min-w-0">
         {!selectedJobId ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center animate-fade-in">
-            <div className="relative mb-6">
-              <div className="absolute inset-0 rounded-full bg-brand-200/40 blur-2xl scale-150" />
-              <div className="relative w-20 h-20 rounded-full border-2 border-dashed border-brand-200 bg-gradient-to-br from-brand-50 to-white flex items-center justify-center">
-                <Target className="w-9 h-9 text-brand-400" />
-              </div>
-            </div>
-            <h2 className="text-xl font-bold text-stone-800 tracking-tight mb-2">Select a Job</h2>
-            <p className="text-sm text-stone-500 max-w-sm leading-relaxed mb-5">
-              {isApplicationsRoute
-                ? 'Choose a job to browse its applications in list view, or add an application to get started.'
-                : 'Choose a job from the dropdown to view its hiring pipeline, or add an application to get started.'}
-            </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              <button type="button" onClick={openAddModal} className="btn-primary" disabled={jobs.length === 0}>
-                <Plus size={16} /> Add Application
-              </button>
-            </div>
+          <div className="card-ats-bordered">
+            <EmptyState
+              icon={Target}
+              tone="brand"
+              message="Select a Job"
+              subMessage={
+                isApplicationsRoute
+                  ? 'Choose a job above to browse applications, or add an application to get started.'
+                  : 'Choose a job above to open the hiring pipeline, or add an application to get started.'
+              }
+              action={(
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <button type="button" onClick={openAddModal} className="btn-primary" disabled={jobs.length === 0}>
+                    <Plus size={16} /> Add Application
+                  </button>
+                </div>
+              )}
+            />
             {jobs.length === 0 && (
-              <EmptyState
-                icon={Briefcase}
-                tone="violet"
-                compact
-                message="No open jobs yet"
-                subMessage="Post a role from Job Openings first."
-                className="mt-2"
-              />
+              <p className="text-center text-xs text-stone-400 pb-6 -mt-2">
+                No open jobs yet — create one from Job Openings first.
+              </p>
             )}
           </div>
         ) : loading ? (
-          <div className="flex-1 p-4 sm:p-6 flex gap-4 sm:gap-5 overflow-x-auto">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="w-[280px] sm:w-[300px] flex-shrink-0 space-y-3">
-                <div className="h-11 skeleton-ats rounded-xl" />
-                <div className="h-28 skeleton-ats rounded-xl" />
-                <div className="h-28 skeleton-ats rounded-xl" />
-              </div>
-            ))}
+          <div className="rounded-xl border border-stone-200/90 bg-white shadow-sm p-4 sm:p-5">
+            <div className="flex gap-4 overflow-x-auto pb-1">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="w-[260px] sm:w-[280px] flex-shrink-0 space-y-3">
+                  <div className="h-11 skeleton-ats rounded-xl" />
+                  <div className="h-28 skeleton-ats rounded-xl" />
+                  <div className="h-28 skeleton-ats rounded-xl" />
+                </div>
+              ))}
+            </div>
           </div>
         ) : applications.length === 0 && !searchQuery && stageFilter === 'all' ? (
-          <div className="flex-1 flex items-center justify-center p-4">
-            <div className="card-ats-bordered w-full max-w-md">
-              <EmptyState
-                icon={User}
-                tone="brand"
-                message="No applications yet"
-                subMessage="Add a candidate to this role or share your careers page."
-                action={
-                  <button type="button" onClick={openAddModal} className="btn-primary">
-                    <Plus size={16} /> Add Application
-                  </button>
-                }
-              />
-            </div>
+          <div className="card-ats-bordered">
+            <EmptyState
+              icon={User}
+              tone="brand"
+              message="No applications yet"
+              subMessage="Add a candidate to this role or share your careers page."
+              action={(
+                <button type="button" onClick={openAddModal} className="btn-primary">
+                  <Plus size={16} /> Add Application
+                </button>
+              )}
+            />
           </div>
         ) : filteredApplications.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center p-4">
-            <div className="card-ats-bordered w-full max-w-md">
-              <EmptyState
-                icon={Search}
-                tone="amber"
-                message="No candidates match"
-                subMessage="Clear search or stage filter."
-                action={
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={clearFilters}
-                  >
-                    Clear filters
-                  </button>
-                }
-              />
-            </div>
+          <div className="card-ats-bordered">
+            <EmptyState
+              icon={Search}
+              tone="amber"
+              message="No candidates match"
+              subMessage="Clear search or stage filter."
+              action={(
+                <button type="button" className="btn-secondary" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              )}
+            />
           </div>
         ) : viewMode === 'kanban' ? (
-          <ApplicationsKanban
-            stageFilter={stageFilter}
-            getAppsByStage={getAppsByStage}
-            dragOverStage={dragOverStage}
-            draggedAppId={draggedAppId}
-            handleDragOver={handleDragOver}
-            handleDrop={handleDrop}
-            handleDragStart={handleDragStart}
-            handleDragEnd={handleDragEnd}
-            openPanel={openPanel}
-            handleRatingChange={handleRatingChange}
-            selectedJob={selectedJob}
-          />
+          <div className="rounded-xl border border-stone-200/90 bg-white shadow-sm overflow-hidden h-[min(70dvh,720px)] min-h-[420px]">
+            <ApplicationsKanban
+              stageFilter={stageFilter}
+              getAppsByStage={getAppsByStage}
+              dragOverStage={dragOverStage}
+              draggedAppId={draggedAppId}
+              handleDragOver={handleDragOver}
+              handleDrop={handleDrop}
+              handleDragStart={handleDragStart}
+              handleDragEnd={handleDragEnd}
+              openPanel={openPanel}
+              handleRatingChange={handleRatingChange}
+              selectedJob={selectedJob}
+            />
+          </div>
         ) : (
-          <ApplicationsTable
-            filteredApplications={filteredApplications}
-            selectedJob={selectedJob}
-            openPanel={openPanel}
-            clearFilters={clearFilters}
-            tableScrollRef={tableScrollRef}
-            dragScrollRef={dragScrollRef}
-            onTableDragScrollStart={onTableDragScrollStart}
-            onTableDragScrollMove={onTableDragScrollMove}
-            onTableDragScrollEnd={onTableDragScrollEnd}
-          />
+          <div className="rounded-xl border border-stone-200/90 bg-white shadow-sm overflow-hidden">
+            <ApplicationsTable
+              filteredApplications={filteredApplications}
+              selectedJob={selectedJob}
+              openPanel={openPanel}
+              clearFilters={clearFilters}
+              tableScrollRef={tableScrollRef}
+              dragScrollRef={dragScrollRef}
+              onTableDragScrollStart={onTableDragScrollStart}
+              onTableDragScrollMove={onTableDragScrollMove}
+              onTableDragScrollEnd={onTableDragScrollEnd}
+            />
+          </div>
         )}
 
-        {/* Detail panel */}
         {isPanelOpen && selectedApp && (
           <ApplicationDetailPanel
             selectedApp={selectedApp}

@@ -14,6 +14,7 @@ import { CONSENT_TOUR_KEY, CONSENT_TOUR_STEPS } from './messagingConsent/consent
 import { ConsentCandidateList, ConsentPanel } from './messagingConsent/ConsentPanels';
 
 export default function MessagingConsentPage() {
+  const { t } = useTranslation();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(CONSENT_TOUR_KEY);
   const [q, setQ] = useState('');
@@ -115,7 +116,6 @@ export default function MessagingConsentPage() {
   };
 
   const requestSave = () => {
-  const { t } = useTranslation();
     if (!selected || !dirty) return;
     if (revokedChannels.length > 0) {
       setConfirmSaveOpen(true);
