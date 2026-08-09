@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Users, Users2, Calendar, Target, Clock, ArrowRight, ArrowUpRight,
-  Briefcase, MapPin, BarChart3, ExternalLink,
+  Briefcase, MapPin, BarChart3, ExternalLink, X,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,

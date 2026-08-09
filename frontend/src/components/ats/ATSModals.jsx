@@ -120,6 +120,7 @@ export default function ATSModals(props) {
         fetchMasterData={form.fetchMasterData}
         isAutoParsing={form.isAutoParsing}
         countryCodes={form.countryCodes}
+        recentStepChangeRef={form.recentStepChangeRef}
       />
 
       <CandidateEmailModal

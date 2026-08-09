@@ -72,22 +72,30 @@ const Register = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          phone: formData.phone,
-          password: formData.password
+          email: formData.email.trim(),
+          password: formData.password,
+          name: formData.name.trim(),
+          phone: formData.phone.trim(),
         })
       });
       const data = await response.json();
 
       if (!response.ok) {
-        if (data.error === 'email_already_exists') {
-          setApiError('An account with this email already exists.');
+        const alreadyExists =
+          data.code === 'email_already_exists' ||
+          data.error === 'email_already_exists' ||
+          /email already exists/i.test(data.message || '');
+        if (alreadyExists) {
+          setApiError('An account with this email already exists and is verified. Please log in.');
         } else {
           setApiError(data.message || 'Registration failed. Please try again.');
         }
       } else {
+        // New signup OR existing but unverified — show verification step
         setIsRegistered(true);
+        if (data.pendingVerification) {
+          setResendMessage(data.message || 'We sent a new verification email.');
+        }
       }
     } catch (err) {
       console.error('[Register] fetch error:', err);
@@ -104,12 +112,13 @@ const Register = () => {
       const response = await fetch(`${API_URL}/api/onboarding/resend-verification`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: formData.email })
+        body: JSON.stringify({ email: formData.email.trim() })
       });
+      const data = await response.json().catch(() => ({}));
       if (response.ok) {
-        setResendMessage('Verification email sent successfully.');
+        setResendMessage(data.message || 'Verification email sent successfully.');
       } else {
-        setResendMessage('Failed to resend. Please try again.');
+        setResendMessage(data.message || 'Failed to resend. Please try again.');
       }
     } catch (err) {
       setResendMessage('Network error. Please try again.');

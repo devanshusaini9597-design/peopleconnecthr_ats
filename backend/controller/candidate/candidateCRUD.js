@@ -223,6 +223,19 @@ async function updateCandidate(req, res) {
         const textFields = ['name', 'position', 'companyName', 'location', 'client', 'spoc', 'source', 'noticePeriod', 'fls', 'remark'];
         textFields.forEach(f => { if (req.body[f] && typeof req.body[f] === 'string') req.body[f] = normalizeText(req.body[f]); });
 
+        // ✅ Sanitize boolean fields — FormData sends empty strings which Mongoose can't cast to Boolean
+        const booleanFields = ['legalHold'];
+        booleanFields.forEach(f => {
+            if (f in req.body) {
+                const val = req.body[f];
+                if (val === true || val === 'true' || val === '1') {
+                    req.body[f] = true;
+                } else if (val === '' || val === null || val === undefined || val === false || val === 'false' || val === '0') {
+                    delete req.body[f]; // Remove empty/false values so they don't trigger cast errors
+                }
+            }
+        });
+
         // Any authenticated user in the SAME organization can update the candidate.
         // Do not allow changing ownership or the org a candidate belongs to.
         const { createdBy, organizationId, _id, __v, ...safeBody } = req.body;

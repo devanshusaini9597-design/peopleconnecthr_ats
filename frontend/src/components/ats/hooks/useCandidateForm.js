@@ -9,6 +9,8 @@ import { INITIAL_FORM_STATE } from '../atsConstants';
 export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, currentPage, setCurrentPage, API_URL } = {}) {
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState(null);
+  // Guard ref to prevent ghost click auto-submit when step transitions
+  const recentStepChangeRef = useRef(false);
   const [formData, setFormData] = useState(INITIAL_FORM_STATE);
   const [formErrors, setFormErrors] = useState({});
   const [orgCandidateFields, setOrgCandidateFields] = useState([]);
@@ -76,7 +78,7 @@ export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, cur
     setFormSection('basic');
     setStepBanner('');
     fetchMasterData();
-  }, [showModal]);
+  }, [showModal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const validateCandidateStep = (step, data = formData) => {
     const errors = {};
@@ -133,7 +135,12 @@ export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, cur
       }
     }
     setStepBanner('');
+    // Set guard flag to prevent ghost click from triggering submit
+    recentStepChangeRef.current = true;
     setFormSection(nextId);
+    // Clear the guard after browser has finished processing the click event
+    // Increased timeout to 500ms to ensure ghost click is fully handled
+    setTimeout(() => { recentStepChangeRef.current = false; }, 500);
   };
 
   const handleEdit = async (candidate) => {
@@ -370,6 +377,12 @@ const handleAddCandidate = async (e) => {
         data.append('customFields', JSON.stringify(bag));
       } else if (typeof trimmed[key] === 'object' && trimmed[key] !== null) {
         return;
+      } else if (key === 'legalHold') {
+        // Handle boolean field - only send if explicitly true, otherwise skip
+        if (trimmed[key] === true || trimmed[key] === 'true' || trimmed[key] === 'Yes') {
+          data.append(key, 'true');
+        }
+        // Don't send anything for false, empty string, or any other value
       } else {
         data.append(key, trimmed[key] || "");
       }
@@ -478,7 +491,7 @@ const handleAddCandidate = async (e) => {
     masterCtcBands, masterNoticePeriods, teamMembers, setTeamMembers, formSection, setFormSection,
     stepBanner, setStepBanner, quickList, setQuickList, countryCode, setCountryCode, countryIso, setCountryIso,
     countryCodes, aiScoreLoading, aiScoreResult, jdForScore, setJdForScore, statusOptions,
-    isAutoParsing,
+    isAutoParsing, recentStepChangeRef,
     fetchMasterData, validateCandidateStep, goCandidateStep, handleEdit, handleAiScore,
     handleInputChange, handleAddCandidate, resolveCountryFromDial, setFormField,
     formPositionOptions, formExperienceOptions, formCtcOptions, formExpectedCtcOptions,

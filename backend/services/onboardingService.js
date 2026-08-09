@@ -5,6 +5,8 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const User = require('../models/User');
 const Organization = require('../models/Organization');
+const { sendEmail } = require('./emailService');
+const logger = require('../utils/logger');
 
 function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
@@ -13,29 +15,122 @@ function httpError(message, statusCode = 400, extra = {}) {
   return err;
 }
 
-async function register({ email, password }) {
+function normalizeEmail(email) {
+  return String(email || '').toLowerCase().trim();
+}
+
+function buildVerificationEmailHtml(verificationUrl) {
+  return `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="text-align: center; padding: 30px 20px; background: linear-gradient(135deg, #4F46E5, #7C3AED); border-radius: 12px 12px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 24px;">Verify Your Email</h1>
+            <p style="color: rgba(255,255,255,0.8); margin: 8px 0 0;">SkillNix ATS</p>
+          </div>
+          <div style="padding: 30px 20px; background: #ffffff; border: 1px solid #e5e7eb; border-top: none;">
+            <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi there,</p>
+            <p style="color: #374151; font-size: 15px; line-height: 1.6;">Please verify your email address by clicking the button below:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${verificationUrl}" style="display: inline-block; padding: 14px 32px; background: #4F46E5; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px;">Verify Email</a>
+            </div>
+            <p style="color: #6B7280; font-size: 13px; line-height: 1.6;">This link expires in <strong>24 hours</strong>. If you didn't create an account, you can safely ignore this email.</p>
+            <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;">
+            <p style="color: #9CA3AF; font-size: 12px;">If the button doesn't work, copy and paste this URL:<br><a href="${verificationUrl}" style="color: #4F46E5; word-break: break-all;">${verificationUrl}</a></p>
+          </div>
+        </div>
+      `;
+}
+
+async function issueVerificationToken(user) {
+  const emailVerificationToken = crypto.randomBytes(32).toString('hex');
+  const emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+  user.emailVerificationToken = emailVerificationToken;
+  user.emailVerificationExpires = emailVerificationExpires;
+  await user.save();
+  return emailVerificationToken;
+}
+
+/**
+ * Send verification email. Returns { sent, verificationUrl }.
+ * Does not throw on EMAIL_NOT_CONFIGURED — caller decides UX.
+ */
+async function sendVerificationEmail(email, emailVerificationToken) {
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const verificationUrl = `${frontendUrl}/verify-email?token=${emailVerificationToken}`;
+
+  try {
+    await sendEmail(
+      email,
+      'Verify Your Email - SkillNix ATS',
+      buildVerificationEmailHtml(verificationUrl),
+      `Verify your email: ${verificationUrl} (expires in 24 hours)`
+    );
+    logger.info(`Verification email sent to ${email}`);
+    return { sent: true, verificationUrl };
+  } catch (emailErr) {
+    logger.error({ err: emailErr }, 'VERIFICATION email send failed');
+    if (emailErr.message === 'EMAIL_NOT_CONFIGURED') {
+      if (process.env.NODE_ENV !== 'production') {
+        logger.warn({ verificationUrl }, 'Dev-only verification URL (NOT sent to client)');
+      }
+      return { sent: false, verificationUrl, reason: 'EMAIL_NOT_CONFIGURED' };
+    }
+    return { sent: false, verificationUrl, reason: 'SEND_FAILED' };
+  }
+}
+
+async function register({ email, password, name, phone }) {
   if (!email || !password || password.length < 8) {
     throw httpError('Invalid email or password (min 8 chars)', 400);
   }
 
-  const existingUser = await User.findOne({ email });
-  if (existingUser) throw httpError('Email already exists', 400);
+  const normalizedEmail = normalizeEmail(email);
+  const existingUser = await User.findOne({ email: normalizedEmail });
+
+  // Verified account → tell them to log in
+  if (existingUser?.isEmailVerified) {
+    throw httpError('Email already exists', 400, { code: 'email_already_exists' });
+  }
 
   const hashedPassword = await bcrypt.hash(password, 10);
-  const emailVerificationToken = crypto.randomBytes(32).toString('hex');
-  const emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+
+  // Unverified account → refresh password + resend verification (reopen verify step)
+  if (existingUser && !existingUser.isEmailVerified) {
+    existingUser.password = hashedPassword;
+    if (name) existingUser.name = name;
+    if (phone) existingUser.phone = phone;
+
+    const token = await issueVerificationToken(existingUser);
+    const { sent } = await sendVerificationEmail(normalizedEmail, token);
+
+    return {
+      success: true,
+      requiresVerification: true,
+      pendingVerification: true,
+      message: sent
+        ? 'Account already exists but is not verified. We sent a new verification email.'
+        : 'Account already exists but is not verified. Please use Resend when email is available, or check server logs for the verification link in development.',
+    };
+  }
 
   const user = new User({
-    email,
+    email: normalizedEmail,
     password: hashedPassword,
-    emailVerificationToken,
-    emailVerificationExpires
+    name: name || '',
+    phone: phone || '',
   });
 
-  await user.save();
-  console.log(`[STUB] Verification Token for ${email}: ${emailVerificationToken}`);
+  const token = await issueVerificationToken(user);
+  const { sent } = await sendVerificationEmail(normalizedEmail, token);
 
-  return { success: true, message: 'Registration successful. Please verify your email.' };
+  // Always return success so the UI can show the verification step.
+  // Email config failures are non-fatal after the account is created.
+  return {
+    success: true,
+    requiresVerification: true,
+    message: sent
+      ? 'Registration successful. Please verify your email.'
+      : 'Registration successful. Verification email could not be sent yet — use Resend, or check server logs for the link in development.',
+  };
 }
 
 async function verifyEmail(token) {
@@ -53,9 +148,32 @@ async function verifyEmail(token) {
   return { success: true, message: 'Email verified successfully' };
 }
 
-function resendVerification() {
-  // STUB: Implement rate limiting and resend logic
-  return { success: true, message: 'Verification email sent' };
+async function resendVerification({ email }) {
+  if (!email) {
+    throw httpError('Email is required', 400);
+  }
+
+  const normalizedEmail = normalizeEmail(email);
+  const user = await User.findOne({ email: normalizedEmail });
+  if (!user) {
+    throw httpError('User not found', 404);
+  }
+
+  if (user.isEmailVerified) {
+    throw httpError('Email is already verified', 400);
+  }
+
+  const token = await issueVerificationToken(user);
+  const { sent, reason } = await sendVerificationEmail(normalizedEmail, token);
+
+  if (!sent) {
+    if (reason === 'EMAIL_NOT_CONFIGURED') {
+      throw httpError('Email service not configured. Please contact support.', 500);
+    }
+    throw httpError('Failed to resend verification email. Please try again later.', 500);
+  }
+
+  return { success: true, message: 'Verification email sent successfully.' };
 }
 
 async function createOrg(userId, { name }) {
@@ -79,8 +197,9 @@ async function createOrg(userId, { name }) {
 
 async function inviteTeammate(actor, { email, role, name, customRoleId }) {
   const inviteToken = crypto.randomBytes(32).toString('hex');
+  const normalizedEmail = normalizeEmail(email);
 
-  const existing = await User.findOne({ email });
+  const existing = await User.findOne({ email: normalizedEmail });
   if (existing) {
     if (existing.organizationId && existing.organizationId.toString() !== actor.organizationId.toString()) {
       throw httpError('Email belongs to another organization', 400);
@@ -99,7 +218,7 @@ async function inviteTeammate(actor, { email, role, name, customRoleId }) {
   }
 
   const invitee = new User({
-    email,
+    email: normalizedEmail,
     role: role || 'recruiter',
     name: name || '',
     // Placeholder until invitee sets their own password on accept

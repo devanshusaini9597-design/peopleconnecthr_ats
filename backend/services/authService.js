@@ -61,6 +61,15 @@ async function login(email, password, req) {
     });
   }
 
+  // Password is correct but email never verified — send them back to verify step
+  if (!user.isEmailVerified) {
+    throw httpError('email_unverified', 403, {
+      displayMessage:
+        'Your email is not verified yet. Please verify your email to continue, or request a new verification link.',
+      email: user.email,
+    });
+  }
+
   let organization = null;
   let entitlements = [];
   if (user.organizationId) {

@@ -23,6 +23,8 @@ function sendAuthError(res, err) {
   const status = err.statusCode || 500;
   const body = { message: err.message };
   if (err.displayMessage) body.displayMessage = err.displayMessage;
+  if (err.email) body.email = err.email;
+  if (err.code) body.code = err.code;
   if (err.success === false) body.success = false;
   return res.status(status).json(body);
 }

@@ -7,6 +7,7 @@ import { AuthProvider } from './context/AuthContext';
 import Home from './components/Home'
 import Login from './components/Login'
 import Register from './components/Register'
+import VerifyEmailPage from './components/VerifyEmailPage'
 import ResetPasswordPage from './components/ResetPasswordPage'
 import SubscribePage from './components/SubscribePage'
 import SubscribeThankYouPage from './components/SubscribeThankYouPage'
@@ -18,6 +19,7 @@ import AddCandidatePage from './components/AddCandidatePage'
 import ResumeParsing from './components/ResumeParsing'
 import AutoImportPage from './components/AutoImportPage'
 import PendingReviewPage from './components/PendingReviewPage'
+import PendingReviewPageEnterprise from './components/PendingReviewPageEnterprise'
 import Jobs from './pages/Jobs'
 import AnalyticsDashboard from './components/AnalyticsDashboard'
 import CandidateSearch from './components/CandidateSearch'
@@ -95,6 +97,7 @@ const router = createBrowserRouter([
   { path: '/', element: <Home /> },
   { path: '/login', element: <Login /> },
   { path: '/register', element: <Register /> },
+  { path: '/verify-email', element: <VerifyEmailPage /> },
   { path: '/reset-password', element: <ResetPasswordPage /> },
   { path: '/subscribe', element: <SubscribePage /> },
   { path: '/subscribe/thank-you', element: <SubscribeThankYouPage /> },
@@ -165,7 +168,7 @@ const router = createBrowserRouter([
       // Related / shared
       { path: '/auto-import', element: <AutoImportPage /> },
       // CSV import staging (Auto Import) — not the Dashboard Pending Review KPI
-      { path: '/pending-review', element: <PendingReviewPage /> },
+      { path: '/pending-review', element: <PendingReviewPageEnterprise /> },
       { path: '/homeunder', element: <Navigate to="/dashboard" replace /> },
       { path: '/manage-positions', element: <Navigate to="/ats" replace /> },
       { path: '/manage-clients', element: <Navigate to="/ats" replace /> },

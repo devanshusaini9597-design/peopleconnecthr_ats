@@ -9,7 +9,7 @@ import {
   ArrowRight, Zap, Check, Server,
   CheckCircle2, Mail,
   Star, Quote, TrendingUp, Clock, Sparkles, Building2, Rocket,
-  Play, Film,
+  Play, Film, X,
 } from 'lucide-react';
 import {
   fadeUp, staggerContainer, Reveal, SpotlightCard, TiltCard, Magnetic,

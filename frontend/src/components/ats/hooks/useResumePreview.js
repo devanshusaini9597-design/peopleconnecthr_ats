@@ -40,8 +40,8 @@ export function useResumePreview({ toast } = {}) {
       return;
     }
     const authUrl = getResumeEndpointUrl(candidateId);
-    // Never open modal or set iframe to a relative URL (would hit Vite and show "Cannot GET /uploads/...")
-    if (!authUrl || !authUrl.startsWith('http')) {
+    // Allow both absolute URLs (http/https) and relative URLs (same-origin via Vercel rewrites)
+    if (!authUrl) {
       console.error('[Resume] API base URL not set. Set VITE_API_URL or run backend on same origin.');
       toast.error('Cannot load resume (API URL not configured)');
       return;

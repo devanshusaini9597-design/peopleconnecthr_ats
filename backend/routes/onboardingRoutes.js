@@ -11,7 +11,10 @@ const svc = require('../services/onboardingService');
 
 function handle(res, error) {
   const status = error.statusCode || 500;
-  return res.status(status).json({ success: false, message: error.message });
+  const body = { success: false, message: error.message };
+  if (error.code) body.code = error.code;
+  if (error.error) body.error = error.error;
+  return res.status(status).json(body);
 }
 
 router.post('/register', async (req, res) => {
@@ -33,7 +36,12 @@ router.post('/verify-email', async (req, res) => {
 });
 
 router.post('/resend-verification', async (req, res) => {
-  res.json(svc.resendVerification());
+  try {
+    const body = await svc.resendVerification(req.body);
+    res.json(body);
+  } catch (error) {
+    handle(res, error);
+  }
 });
 
 router.post('/create-org', verifyToken, async (req, res) => {

@@ -58,9 +58,13 @@ userSchema.index({ organizationId: 1 });
 userSchema.index({ role: 1 });
 userSchema.index({ inviteToken: 1 }, { sparse: true });
 
-// Pre-save hook: hash password
+// Pre-save hook: hash password only if not already hashed
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) {
+    return next();
+  }
+  // Check if password is already hashed (starts with $2)
+  if (this.password.startsWith('$2')) {
     return next();
   }
   try {

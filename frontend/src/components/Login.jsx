@@ -12,6 +12,7 @@ import { PIPELINE_STAGES, PIPELINE_SEED, staggerContainer, validateEmail } from 
 import SignupPromptModal from './login/SignupPromptModal';
 import LoginBrandPanel from './login/LoginBrandPanel';
 import LoginAuthCard from './login/LoginAuthCard';
+import { RegisterSuccessCard } from './register/RegisterAuthCard';
 
 const Login = () => {
   const { t } = useTranslation();
@@ -29,6 +30,9 @@ const Login = () => {
   const [isDemoLoggingIn, setIsDemoLoggingIn] = useState(false);
   const [showSignupModal, setShowSignupModal] = useState(false);
   const [unmatchedEmail, setUnmatchedEmail] = useState('');
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
 
   // ----- Forgot-password state (same panel, swapped view) -----
   const [mode, setMode] = useState('login'); // 'login' | 'forgot'
@@ -149,12 +153,20 @@ const Login = () => {
           }
         }, 700);
       } else {
+        if (data.message === 'email_unverified') {
+          setNeedsVerification(true);
+          setResendMessage(data.displayMessage || 'Please verify your email to continue.');
+          setIsSubmitting(false);
+          return;
+        }
         if (data.message === 'invalid_credentials') {
-          setError(t('auth.invalidCredentials'));
+          setError(data.displayMessage || t('auth.invalidCredentials'));
         } else if (data.message === 'password_upgrade_required') {
-          setError(t('auth.passwordUpgradeRequired'));
+          setError(data.displayMessage || t('auth.passwordUpgradeRequired'));
+        } else if (data.message === 'account_deactivated') {
+          setError(data.displayMessage || 'Your account has been deactivated.');
         } else {
-          setError(t('auth.loginFailed'));
+          setError(data.displayMessage || data.message || t('auth.loginFailed'));
         }
         setIsSubmitting(false);
       }
@@ -316,6 +328,30 @@ const Login = () => {
     }
   };
 
+  const handleResendVerification = async () => {
+    const email = formData.email.trim();
+    if (!email) return;
+    setResendLoading(true);
+    setResendMessage('');
+    try {
+      const res = await fetch(`${API_URL}/api/onboarding/resend-verification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setResendMessage(data.message || 'Verification email sent successfully.');
+      } else {
+        setResendMessage(data.message || 'Failed to resend. Please try again.');
+      }
+    } catch {
+      setResendMessage('Network error. Please try again.');
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
   const handleForgotSubmit = async (e) => {
     e.preventDefault();
     if (!recoveryEmail || !validateEmail(recoveryEmail)) {
@@ -381,6 +417,28 @@ const Login = () => {
         </div>
 
         <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-4 sm:px-6 md:px-10 py-8 sm:py-10 w-full min-w-0">
+          {needsVerification ? (
+            <div className="w-full max-w-md min-w-0">
+              <RegisterSuccessCard
+                prefersReduced={prefersReduced}
+                email={formData.email}
+                resendLoading={resendLoading}
+                resendMessage={resendMessage}
+                onResend={handleResendVerification}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setNeedsVerification(false);
+                  setResendMessage('');
+                  setError('');
+                }}
+                className="mt-4 w-full text-sm text-stone-500 hover:text-stone-800 underline-offset-2 hover:underline"
+              >
+                Back to login
+              </button>
+            </div>
+          ) : (
           <motion.div
             initial="hidden"
             animate="show"
@@ -425,6 +483,7 @@ const Login = () => {
             <span className="auth-trust-chip"><Clock className="w-3.5 h-3.5 text-brand-600" /> 14-day free trial</span>
           </div>
           </motion.div>
+          )}
         </div>
       </motion.div>
       </div>
