@@ -10,6 +10,7 @@ const Candidate = require('../models/Candidate');
 const { generateToken } = require('../middleware/authMiddleware');
 const { getEntitlements } = require('../config/planFeatures');
 const { normalizeText } = require('../utils/textNormalize');
+const { ensureOrgPlanForDomain } = require('../utils/orgDomain');
 
 const UPLOADS_ROOT = path.join(__dirname, '..');
 
@@ -33,8 +34,9 @@ async function getProfile(userId) {
   let organization = null;
   let entitlements = [];
   if (user.organizationId) {
+    await ensureOrgPlanForDomain(user.organizationId, user.email);
     organization = await Organization.findById(user.organizationId)
-      .select('name slug logo plan planExpiresAt atsSettings settings usageCurrent usageLimits')
+      .select('name slug logo plan planExpiresAt atsSettings settings usageCurrent usageLimits domain')
       .lean();
     if (organization) {
       entitlements = getEntitlements(organization.plan);

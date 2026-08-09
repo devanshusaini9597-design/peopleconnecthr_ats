@@ -8,6 +8,7 @@ const Organization = require('../models/Organization');
 const { generateToken, JWT_SECRET } = require('../middleware/authMiddleware');
 const { issueAuthToken } = require('./sessionService');
 const { getEntitlements, planHasFeature } = require('../config/planFeatures');
+const { ensureOrgPlanForDomain } = require('../utils/orgDomain');
 const { sendEmail } = require('./emailService');
 const { normalizeText } = require('../utils/textNormalize');
 const { createDemoAccount } = require('./demoAccountService');
@@ -73,8 +74,9 @@ async function login(email, password, req) {
   let organization = null;
   let entitlements = [];
   if (user.organizationId) {
+    await ensureOrgPlanForDomain(user.organizationId, user.email);
     organization = await Organization.findById(user.organizationId)
-      .select('name slug logo plan planExpiresAt atsSettings settings securitySettings')
+      .select('name slug logo plan planExpiresAt atsSettings settings securitySettings domain')
       .lean();
     if (organization) {
       entitlements = getEntitlements(organization.plan);

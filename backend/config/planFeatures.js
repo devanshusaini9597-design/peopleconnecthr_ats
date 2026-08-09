@@ -7,8 +7,9 @@
  *
  * How it works:
  * - Each feature key maps to the minimum plan tier required to use it.
- * - `free_trial` is treated as the Professional tier for feature checks (a
- *   full-featured trial), matching Organization.plan's enum default.
+ * - `free_trial` is treated as Professional for feature checks (PLG trial).
+ * - Enterprise is granted per-org via Organization.plan (e.g. skillnix.com allowlist),
+ *   not by aliasing every plan to enterprise.
  * - To move a feature between tiers later, change one line here — no need to
  *   touch route files or frontend components.
  *
@@ -23,7 +24,7 @@
 // Order matters: index = rank. Higher index = more access.
 const PLAN_ORDER = ['starter', 'professional', 'enterprise'];
 
-// free_trial gives prospects the full Professional experience (PLG pattern).
+// free_trial gives prospects the Professional experience (not full Enterprise).
 const PLAN_ALIASES = {
   free_trial: 'professional'
 };

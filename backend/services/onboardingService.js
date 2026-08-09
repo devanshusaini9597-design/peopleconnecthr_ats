@@ -7,7 +7,8 @@ const User = require('../models/User');
 const Organization = require('../models/Organization');
 const { sendEmail } = require('./emailService');
 const logger = require('../utils/logger');
-const { validateWorkEmail } = require('../utils/workEmail');
+const { validateWorkEmail, getEmailDomain } = require('../utils/workEmail');
+const { planForOrgDomain, validateInviteEmail } = require('../utils/orgDomain');
 
 function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
@@ -215,7 +216,7 @@ async function resendVerification({ email }) {
   return { success: true, message: 'Verification email sent successfully.' };
 }
 
-async function createOrg(userId, { name }) {
+async function createOrg(userId, { name, domain: domainInput }) {
   if (!name || name.length < 2) throw httpError('Organization name required', 400);
 
   const user = await User.findById(userId);
@@ -223,8 +224,22 @@ async function createOrg(userId, { name }) {
   if (user.organizationId) throw httpError('User already has an organization', 400);
 
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+  const emailDomain = getEmailDomain(user.email);
+  const domain = String(domainInput || emailDomain || '')
+    .toLowerCase()
+    .trim()
+    .replace(/^@/, '');
 
-  const org = new Organization({ name, slug, ownerId: user._id });
+  const plan = planForOrgDomain(domain, 'free_trial');
+  const org = new Organization({
+    name,
+    slug,
+    ownerId: user._id,
+    domain: domain || undefined,
+    allowedDomains: domain ? [domain] : [],
+    plan,
+    productPlans: { ats: plan },
+  });
   await org.save();
 
   user.organizationId = org._id;
@@ -285,6 +300,27 @@ async function inviteTeammate(actor, { email, role, name, customRoleId }) {
   const normalizedEmail = normalizeEmail(email);
   const resolvedRole = normalizeInviteRole(role);
 
+  const org = await Organization.findById(actor.organizationId).select('name domain allowedDomains').lean();
+  if (!org) throw httpError('Organization not found', 404);
+
+  const domainCheck = validateInviteEmail({
+    email: normalizedEmail,
+    orgDomain: org.domain,
+    allowedDomains: org.allowedDomains,
+    actorEmail: actor.email,
+  });
+  if (!domainCheck.valid) {
+    throw httpError(domainCheck.reason, 400, { code: domainCheck.code });
+  }
+
+  // Persist domain on org if missing (first invite / older orgs)
+  if (!org.domain && domainCheck.domain) {
+    await Organization.findByIdAndUpdate(actor.organizationId, {
+      $set: { domain: domainCheck.domain },
+      $addToSet: { allowedDomains: domainCheck.domain },
+    });
+  }
+
   const existing = await User.findOne({ email: normalizedEmail });
   if (existing) {
     if (existing.organizationId && existing.organizationId.toString() !== actor.organizationId.toString()) {
@@ -321,14 +357,7 @@ async function inviteTeammate(actor, { email, role, name, customRoleId }) {
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
   const inviteUrl = `${frontendUrl}/accept-invite?token=${inviteToken}`;
 
-  let orgName = '';
-  try {
-    const org = await Organization.findById(actor.organizationId).select('name').lean();
-    orgName = org?.name || '';
-  } catch {
-    /* ignore */
-  }
-
+  const orgName = org.name || '';
   const inviterName = actor.name || actor.email || 'A teammate';
   try {
     await sendEmail(
@@ -340,7 +369,6 @@ async function inviteTeammate(actor, { email, role, name, customRoleId }) {
     logger.info(`Invite email sent to ${normalizedEmail}`);
   } catch (emailErr) {
     logger.warn(`Invite created but email failed for ${normalizedEmail}: ${emailErr.message}`);
-    // Still succeed — invite exists; link can be shared manually
   }
 
   return { success: true, message: 'Invitation sent', inviteUrl };
