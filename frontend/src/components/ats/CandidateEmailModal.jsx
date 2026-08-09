@@ -9,7 +9,7 @@ export default function CandidateEmailModal(props) {
   const {
     showEmailModal, emailRecipient, setShowEmailModal, bulkEmailRecipients,
     setBulkEmailRecipients, setSelectedIds,
-    emailChannel, setEmailChannel, channelsAvailable, emailMode, setEmailMode,
+    emailChannel, setEmailChannel, channelsAvailable, emailSenderInfo, emailMode, setEmailMode,
     emailCC, setEmailCC, emailBCC, setEmailBCC, teamMembers, ccInput, setCcInput,
     bccInput, setBccInput, showCCPicker, setShowCCPicker, showBCCPicker, setShowBCCPicker,
     emailTemplates, selectedTemplate, selectEmailTemplate, setSelectedTemplate,
@@ -40,6 +40,15 @@ export default function CandidateEmailModal(props) {
                   : `To: ${emailRecipient.name} (${emailRecipient.email})`
                 }
               </p>
+              {emailSenderInfo?.fromEmail && (
+                <p className="text-[11px] text-stone-500 mt-0.5">
+                  From: <span className="font-medium text-stone-700">{emailSenderInfo.displayName || 'Recruiter'}</span>
+                  {' '}&lt;{emailSenderInfo.fromEmail}&gt;
+                  {emailSenderInfo.replyTo ? (
+                    <> · Replies → <span className="font-medium text-stone-700">{emailSenderInfo.replyTo}</span></>
+                  ) : null}
+                </p>
+              )}
             </div>
           </div>
           <button onClick={() => {

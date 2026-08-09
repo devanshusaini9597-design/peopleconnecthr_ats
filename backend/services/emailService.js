@@ -232,16 +232,18 @@ const getUserTransporter = async (userId) => {
         };
       }
 
-      // User-initiated (candidate mail, etc.): send as the logged-in employee
+      // User-initiated (candidate mail): enterprise pattern —
+      // From = verified company/agent address (deliverability)
+      // Reply-To + display name = logged-in employee (identity)
       const User = mongoose.model('User');
       const user = await User.findById(userId).select('emailSettings name email');
       const userEmail = user?.email ? String(user.email).trim().toLowerCase() : '';
 
       return {
         transporter: null,
-        fromEmail: userEmail || envFrom,
+        fromEmail: envFrom,
         replyToEmail: userEmail || envFrom,
-        userName: user?.name || 'SkillNix ATS',
+        userName: user?.name || userEmail || 'Recruiter',
         configured: true,
         provider: 'zoho-zeptomail',
         zohoApiKey: envKey,
@@ -264,9 +266,9 @@ const getUserTransporter = async (userId) => {
           const userEmail = user?.email ? String(user.email).trim().toLowerCase() : '';
           return {
             transporter: null,
-            fromEmail: userEmail || s.zohoZeptomailFromEmail,
+            fromEmail: s.zohoZeptomailFromEmail,
             replyToEmail: userEmail || s.zohoZeptomailFromEmail,
-            userName: user.name || '',
+            userName: user.name || userEmail || 'Recruiter',
             configured: true,
             provider: 'zoho-zeptomail',
             zohoApiKey: s.zohoZeptomailApiKey,
@@ -282,9 +284,9 @@ const getUserTransporter = async (userId) => {
           const userEmail = user?.email ? String(user.email).trim().toLowerCase() : '';
           return { 
             transporter: userTransporter, 
-            fromEmail: userEmail || s.smtpEmail,
+            fromEmail: s.smtpEmail,
             replyToEmail: userEmail || s.smtpEmail,
-            userName: user.name || '', 
+            userName: user.name || userEmail || 'Recruiter', 
             configured: true, 
             provider: 'smtp',
             configSource: 'user'
@@ -321,7 +323,7 @@ const getUserTransporter = async (userId) => {
       if (companyConfig.primaryProvider === 'zoho-zeptomail' && companyConfig.zohoZeptomailApiKey && companyConfig.zohoZeptomailFromEmail) {
         return {
           transporter: null,
-          fromEmail: companyUserEmail || companyConfig.zohoZeptomailFromEmail,
+          fromEmail: companyConfig.zohoZeptomailFromEmail,
           replyToEmail: companyUserEmail || companyConfig.zohoZeptomailFromEmail,
           userName: companyUserName,
           configured: true,
@@ -338,7 +340,7 @@ const getUserTransporter = async (userId) => {
         let companyTransporter = createSmtpTransporter(companyConfig);
         return {
           transporter: companyTransporter,
-          fromEmail: companyUserEmail || companyConfig.smtpEmail,
+          fromEmail: companyConfig.smtpEmail,
           replyToEmail: companyUserEmail || companyConfig.smtpEmail,
           userName: companyUserName,
           configured: true,
@@ -731,7 +733,7 @@ const getVerifiedZeptoConfig = async () => {
 
 const canUserSendViaZepto = async (userId) => {
   if (!userId) return { canSend: false, reason: 'Not logged in', verifiedDomain: '' };
-  const { domain: verifiedDomain, apiKey, fromEmail, source } = await getVerifiedZeptoConfig();
+  const { domain: verifiedDomain, apiKey, fromEmail: agentFrom, source } = await getVerifiedZeptoConfig();
   if (!verifiedDomain) return { canSend: false, reason: 'No verified sender configured', verifiedDomain: '' };
   if (!apiKey) return { canSend: false, reason: 'ZeptoMail not configured', verifiedDomain };
 
@@ -739,6 +741,8 @@ const canUserSendViaZepto = async (userId) => {
     const User = mongoose.model('User');
     const user = await User.findById(userId).select('email name');
     const userEmail = (user?.email || '').trim().toLowerCase();
+    const displayName = (user?.name || userEmail || 'Recruiter').trim();
+
     if (!userEmail || !userEmail.includes('@')) {
       return {
         canSend: false,
@@ -747,14 +751,15 @@ const canUserSendViaZepto = async (userId) => {
       };
     }
 
-    // Enterprise pattern: candidate mail is sent as the logged-in employee.
-    // ZeptoMail must allow that address/domain (verify skillnix.com in your Zepto agent).
+    // Enterprise: one verified company From (agent); Reply-To = employee. No per-employee Zepto verify.
     if (source === 'env' || source === 'company') {
       return {
         canSend: true,
         verifiedDomain,
-        fromEmail: userEmail,
-        agentFrom: fromEmail || '',
+        fromEmail: agentFrom || '',
+        replyTo: userEmail,
+        displayName,
+        agentFrom: agentFrom || '',
         reason: '',
       };
     }
@@ -764,7 +769,9 @@ const canUserSendViaZepto = async (userId) => {
     return {
       canSend,
       verifiedDomain,
-      fromEmail: canSend ? userEmail : fromEmail,
+      fromEmail: canSend ? userEmail : agentFrom,
+      replyTo: userEmail,
+      displayName,
       reason: canSend
         ? ''
         : 'You cannot send emails using a personal email address. Please log in with your company verified email (e.g. name@' + verifiedDomain + ') to send emails.',

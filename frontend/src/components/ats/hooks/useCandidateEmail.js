@@ -31,6 +31,7 @@ export function useCandidateEmail({
   const [emailMode, setEmailMode] = useState('template');
   const [emailChannel, setEmailChannel] = useState('transactional');
   const [channelsAvailable, setChannelsAvailable] = useState({ transactional: true, marketing: false });
+  const [emailSenderInfo, setEmailSenderInfo] = useState(null);
   const [showVerifiedEmailRequiredModal, setShowVerifiedEmailRequiredModal] = useState(false);
   const [verifiedEmailRequiredMessage, setVerifiedEmailRequiredMessage] = useState('');
   const [bulkEmailStep, setBulkEmailStep] = useState(null);
@@ -82,6 +83,7 @@ export function useCandidateEmail({
     setVerifiedEmailRequiredMessage,
     setShowVerifiedEmailRequiredModal,
     setChannelsAvailable,
+    setEmailSenderInfo,
     setEmailRecipient,
     setEmailChannel,
     setEmailType,
@@ -131,6 +133,7 @@ export function useCandidateEmail({
     loadingPreview, setLoadingPreview,
     emailTemplates, selectedTemplate, setSelectedTemplate, templateVars, setTemplateVars, emailMode, setEmailMode,
     emailChannel, setEmailChannel, channelsAvailable, setChannelsAvailable,
+    emailSenderInfo, setEmailSenderInfo,
     showVerifiedEmailRequiredModal, setShowVerifiedEmailRequiredModal,
     verifiedEmailRequiredMessage, setVerifiedEmailRequiredMessage,
     bulkEmailStep, setBulkEmailStep, selectedEmails, setSelectedEmails, campaignStatus, emailStatuses,

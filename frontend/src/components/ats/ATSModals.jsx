@@ -133,6 +133,7 @@ export default function ATSModals(props) {
         emailChannel={email.emailChannel}
         setEmailChannel={email.setEmailChannel}
         channelsAvailable={email.channelsAvailable}
+        emailSenderInfo={email.emailSenderInfo}
         emailMode={email.emailMode}
         setEmailMode={email.setEmailMode}
         emailCC={email.emailCC}

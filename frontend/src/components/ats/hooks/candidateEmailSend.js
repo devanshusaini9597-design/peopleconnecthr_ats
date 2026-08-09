@@ -7,6 +7,7 @@ export function useCandidateEmailSend(deps) {
     setVerifiedEmailRequiredMessage,
     setShowVerifiedEmailRequiredModal,
     setChannelsAvailable,
+    setEmailSenderInfo,
     setEmailRecipient,
     setEmailChannel,
     setEmailType,
@@ -54,12 +55,18 @@ export function useCandidateEmailSend(deps) {
     try {
       const configRes = await authenticatedFetch(`${BASE_API_URL}/api/email-settings`);
       const configData = await configRes.json();
-      if (!configData.success || !configData.settings?.isConfigured) {
-        toast.error(
-          'Please configure your email settings first. Go to Email → Email Settings to set up your SMTP credentials.',
-          6000
-        );
-        return;
+      const personalConfigured = !!(configData.success && configData.settings?.isConfigured);
+      // Env / company Zepto may still allow sending without personal SMTP
+      if (!personalConfigured) {
+        const statusRes = await authenticatedFetch(`${BASE_API_URL}/api/email/sender-status`);
+        const statusData = await statusRes.json().catch(() => ({}));
+        if (!(statusData.success && statusData.canSend)) {
+          toast.error(
+            'Please configure your email settings first. Go to Email → Email Settings to set up your SMTP credentials.',
+            6000
+          );
+          return;
+        }
       }
     } catch (err) {
       toast.error('Please configure your email settings before sending emails.');
@@ -69,12 +76,22 @@ export function useCandidateEmailSend(deps) {
     try {
       const statusRes = await authenticatedFetch(`${BASE_API_URL}/api/email/sender-status`);
       const statusData = await statusRes.json();
+      if (statusData.success) {
+        setEmailSenderInfo?.({
+          fromEmail: statusData.fromEmail || statusData.agentFrom || '',
+          replyTo: statusData.replyTo || '',
+          displayName: statusData.displayName || '',
+          verifiedDomain: statusData.verifiedDomain || '',
+        });
+      }
       if (statusData.success && statusData.canSend === false) {
         setVerifiedEmailRequiredMessage(statusData.reason || 'Please log in with your company verified email to send emails.');
         setShowVerifiedEmailRequiredModal(true);
         return;
       }
-    } catch (_) { /* allow open if status fails */ }
+    } catch (_) {
+      setEmailSenderInfo?.(null);
+    }
 
     try {
       const chRes = await authenticatedFetch(`${BASE_API_URL}/api/email/channels`);
