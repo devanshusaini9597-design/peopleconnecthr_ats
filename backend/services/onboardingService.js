@@ -128,6 +128,7 @@ async function register({ email, password, name, phone }) {
       password: hashedPassword,
       name: name || '',
       phone: phone || '',
+      role: 'admin', // self-signup: org creator privileges until createOrg promotes to owner
     });
     const token = await issueVerificationToken(user);
     const { sent } = await sendVerificationEmail(normalizedEmail, token);

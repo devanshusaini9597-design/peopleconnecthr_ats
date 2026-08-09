@@ -30,7 +30,8 @@ const userSchema = new mongoose.Schema({
   role: {
     type: String,
     enum: ['owner', 'admin', 'recruiter', 'interviewer', 'readonly'],
-    default: 'recruiter'
+    // Self-signup defaults to admin; createOrg promotes founder to owner. Invites pass role explicitly.
+    default: 'admin'
   },
   // Enterprise-only: overrides DEFAULT_ROLE_PERMISSIONS[role] with a custom
   // permission set. Null/unset = use the fixed role's default permissions.
