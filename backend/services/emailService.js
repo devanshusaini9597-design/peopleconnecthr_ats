@@ -698,20 +698,40 @@ const getVerifiedZeptoConfig = async () => {
 
 const canUserSendViaZepto = async (userId) => {
   if (!userId) return { canSend: false, reason: 'Not logged in', verifiedDomain: '' };
-  const { domain: verifiedDomain, apiKey } = await getVerifiedZeptoConfig();
+  const { domain: verifiedDomain, apiKey, fromEmail, source } = await getVerifiedZeptoConfig();
   if (!verifiedDomain) return { canSend: false, reason: 'No verified sender configured', verifiedDomain: '' };
   if (!apiKey) return { canSend: false, reason: 'ZeptoMail not configured', verifiedDomain };
+
+  // Company/system Zepto agent: any signed-in user can send; mail goes FROM the verified agent address.
+  if (source === 'env' || source === 'company') {
+    return {
+      canSend: true,
+      verifiedDomain,
+      fromEmail: fromEmail || '',
+      reason: '',
+    };
+  }
+
   try {
     const User = mongoose.model('User');
     const user = await User.findById(userId).select('email');
     const userEmail = (user?.email || '').trim();
-    if (!userEmail || !userEmail.includes('@')) return { canSend: false, reason: 'Use your company verified email to send (e.g. name@' + verifiedDomain + ')', verifiedDomain };
+    if (!userEmail || !userEmail.includes('@')) {
+      return {
+        canSend: false,
+        reason: 'Use your company verified email to send (e.g. name@' + verifiedDomain + ')',
+        verifiedDomain,
+      };
+    }
     const userDomain = userEmail.split('@')[1].toLowerCase();
     const canSend = userDomain === verifiedDomain;
     return {
       canSend,
       verifiedDomain,
-      reason: canSend ? '' : 'You cannot send emails using a personal email address. Please log in with your company verified email (e.g. name@' + verifiedDomain + ') to send emails.'
+      fromEmail: canSend ? userEmail : fromEmail,
+      reason: canSend
+        ? ''
+        : 'You cannot send emails using a personal email address. Please log in with your company verified email (e.g. name@' + verifiedDomain + ') to send emails.',
     };
   } catch {
     return { canSend: false, reason: 'Unable to verify sender', verifiedDomain };
