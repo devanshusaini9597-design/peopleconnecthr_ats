@@ -75,119 +75,79 @@ const getZohoAuthHeaderValue = (apiKey) => {
  * - Caller responsible for masking key before returning to frontend
  */
 const sendViaZohoZeptomail = async (to, subject, htmlBody, textBody, options = {}) => {
-  const { cc, bcc, senderName, fromEmail, replyToEmail, zohoApiKey, zohoApiUrl, userId } = options;
-  
+  const { cc, bcc, senderName, fromEmail, replyToEmail, zohoApiKey, zohoApiUrl } = options;
+
   if (!zohoApiKey || !zohoApiUrl || !fromEmail) {
     throw new Error('ZOHO_ZEPTOMAIL_NOT_CONFIGURED');
   }
 
   const displayName = senderName || 'SkillNix ATS';
-  const replyAddress = (replyToEmail || fromEmail).trim();
+  const preferredReply = (replyToEmail || fromEmail).trim();
   const recipients = Array.isArray(to) ? to : [to];
 
-  // Build recipient objects
-  const toList = recipients.map(email => ({
-    email_address: { 
-      address: email,
-      name: ''
-    }
+  const toList = recipients.map((email) => ({
+    email_address: { address: email, name: '' },
   }));
+  const ccList = cc
+    ? (Array.isArray(cc) ? cc : [cc]).map((email) => ({
+        email_address: { address: email, name: '' },
+      }))
+    : [];
+  const bccList = bcc
+    ? (Array.isArray(bcc) ? bcc : [bcc]).map((email) => ({
+        email_address: { address: email, name: '' },
+      }))
+    : [];
 
-  const ccList = cc ? (Array.isArray(cc) ? cc : [cc]).map(email => ({
-    email_address: { 
-      address: email,
-      name: ''
-    }
-  })) : [];
+  const apiEndpoint = zohoApiUrl.endsWith('/')
+    ? `${zohoApiUrl}v1.1/email`
+    : `${zohoApiUrl}/v1.1/email`;
+  const authHeader = getZohoAuthHeaderValue(zohoApiKey);
 
-  const bccList = bcc ? (Array.isArray(bcc) ? bcc : [bcc]).map(email => ({
-    email_address: { 
-      address: email,
-      name: ''
-    }
-  })) : [];
+  const postOnce = async (replyAddress) => {
+    const payload = {
+      from: { address: fromEmail, name: displayName },
+      to: toList,
+      subject,
+      htmlbody: htmlBody,
+      textbody: textBody || subject,
+      reply_to: { address: replyAddress, name: displayName },
+    };
+    if (ccList.length > 0) payload.cc = ccList;
+    if (bccList.length > 0) payload.bcc = bccList;
 
-  const payload = {
-    from: {
-      address: fromEmail,
-      name: displayName
-    },
-    to: toList,
-    subject: subject,
-    htmlbody: htmlBody,
-    textbody: textBody || subject,
-    reply_to: {
-      address: replyAddress,
-      name: displayName
-    }
-  };
-
-  // Add CC if provided
-  if (ccList.length > 0) {
-    payload.cc = ccList;
-  }
-
-  // Add BCC if provided
-  if (bccList.length > 0) {
-    payload.bcc = bccList;
-  }
-
-  try {
-    const apiEndpoint = zohoApiUrl.endsWith('/') 
-      ? `${zohoApiUrl}v1.1/email`
-      : `${zohoApiUrl}/v1.1/email`;
-    
-    const authHeader = getZohoAuthHeaderValue(zohoApiKey);
-    const keyPreview = authHeader.length > 30 
-      ? `${authHeader.substring(0, 25)}...${authHeader.substring(authHeader.length - 6)}`
-      : authHeader;
-    logger.info(`[ZeptoMail] POST ${apiEndpoint} | from=${fromEmail} | auth=${keyPreview} (${authHeader.length} chars)`);
-
-    const response = await axios.post(
-      apiEndpoint,
-      payload,
-      {
-        headers: {
-          'Authorization': authHeader,
-          'Content-Type': 'application/json'
-        },
-        timeout: 30000
-      }
+    logger.info(
+      `[ZeptoMail] POST ${apiEndpoint} | from=${fromEmail} | reply_to=${replyAddress}`
     );
 
-    const messageId = response.data?.data?.message_id || 'zoho_' + Date.now();
-    logger.info(`✅ Zoho Zeptomail accepted: to=${recipients.join(', ')} from=${fromEmail} messageId=${messageId}`);
-    if (cc) logger.info(`   CC: ${Array.isArray(cc) ? cc.join(', ') : cc}`);
-    if (bcc) logger.info(`   BCC: ${Array.isArray(bcc) ? bcc.join(', ') : bcc}`);
-
-    return { 
-      success: true, 
-      email: to, 
-      messageId
-    };
-  } catch (error) {
-    logger.error('❌ Zoho Zeptomail Error:', {
-      message: error.message,
-      status: error.response?.status,
-      data: JSON.stringify(error.response?.data, null, 2),
-      email: to,
-      from: fromEmail
+    const response = await axios.post(apiEndpoint, payload, {
+      headers: {
+        Authorization: authHeader,
+        'Content-Type': 'application/json',
+      },
+      timeout: 30000,
     });
 
-    const zohoError = error.response?.data?.error;
-    const zohoCode = zohoError?.code;
-    const details = Array.isArray(zohoError?.details) ? zohoError.details : [];
-    const sm111 = details.find(d => d && d.code === 'SM_111');
-    const status = error.response?.status;
+    const messageId = response.data?.data?.message_id || `zoho_${Date.now()}`;
+    logger.info(
+      `✅ Zoho Zeptomail accepted: to=${recipients.join(', ')} from=${fromEmail} reply_to=${replyAddress} messageId=${messageId}`
+    );
+    return { success: true, email: to, messageId, fromEmail, replyTo: replyAddress };
+  };
 
+  const formatZohoError = (error) => {
+    const zohoError = error.response?.data?.error;
+    const details = Array.isArray(zohoError?.details) ? zohoError.details : [];
+    const sm111 = details.find((d) => d && d.code === 'SM_111');
+    const status = error.response?.status;
     let errorMsg = error.message;
     if (sm111) {
       errorMsg = `ZeptoMail: Sender address not verified. "${sm111.target_value || 'from'}" is not verified in your ZeptoMail agent. Emails are sent from your verified address (check .env ZOHO_ZEPTOMAIL_FROM_EMAIL).`;
     } else if (status === 401) {
       errorMsg = 'ZeptoMail: Invalid API key. Check your Send Mail Token in ZeptoMail dashboard.';
     } else if (status === 403) {
-      logger.error('ZeptoMail 403 – IP may be blocked. Remove all IP restrictions in ZeptoMail > Agent > Settings > IP Restriction to allow all IPs.', { code: zohoCode, data: error.response?.data });
-      errorMsg = 'ZeptoMail 403: Request Denied. Go to ZeptoMail > your Agent > Settings > IP Restriction and remove all IPs (empty list = allow all).';
+      errorMsg =
+        'ZeptoMail 403: Request Denied. Go to ZeptoMail > your Agent > Settings > IP Restriction and remove all IPs (empty list = allow all).';
     } else if (status === 429) {
       errorMsg = 'ZeptoMail rate limit hit. Try again later or upgrade your plan.';
     } else if (error.code === 'ECONNABORTED') {
@@ -195,10 +155,48 @@ const sendViaZohoZeptomail = async (to, subject, htmlBody, textBody, options = {
     } else if (error.response?.data?.message) {
       errorMsg = `ZeptoMail: ${error.response.data.message}`;
     }
-
     const err = new Error(errorMsg);
     err.code = 'ZOHO_ZEPTOMAIL_ERROR';
-    throw err;
+    err.sm111 = Boolean(sm111);
+    err.sm111Target = sm111?.target_value || '';
+    return err;
+  };
+
+  try {
+    return await postOnce(preferredReply);
+  } catch (error) {
+    logger.error('❌ Zoho Zeptomail Error:', {
+      message: error.message,
+      status: error.response?.status,
+      data: JSON.stringify(error.response?.data, null, 2),
+      email: to,
+      from: fromEmail,
+      reply_to: preferredReply,
+    });
+
+    const formatted = formatZohoError(error);
+    const replyDiffers =
+      preferredReply &&
+      preferredReply.toLowerCase() !== String(fromEmail).toLowerCase();
+
+    // Some Zepto agents reject unverified reply_to the same as From (SM_111).
+    // Retry with verified From as reply_to so send still succeeds.
+    if (formatted.sm111 && replyDiffers) {
+      logger.warn(
+        `[ZeptoMail] SM_111 on "${formatted.sm111Target || preferredReply}" — retrying with reply_to=${fromEmail}`
+      );
+      try {
+        return await postOnce(fromEmail);
+      } catch (retryErr) {
+        logger.error('❌ Zoho Zeptomail retry failed:', {
+          message: retryErr.message,
+          data: JSON.stringify(retryErr.response?.data, null, 2),
+        });
+        throw formatZohoError(retryErr);
+      }
+    }
+
+    throw formatted;
   }
 };
 

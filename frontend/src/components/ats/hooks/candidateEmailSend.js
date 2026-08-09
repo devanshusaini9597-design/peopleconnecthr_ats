@@ -194,9 +194,9 @@ export function useCandidateEmailSend(deps) {
         } else {
           if (failedCount > 0) {
             const first = data.data?.failed?.[0];
-            const errMsg = first?.displayMessage || first?.error || 'Send failed';
-            toast.error(`Email not sent: ${errMsg}`, 8000);
-            console.error('[Send email] Failed:', data.data?.failed);
+            const errMsg = first?.displayMessage || first?.error || JSON.stringify(first) || 'Send failed';
+            toast.error(`Email not sent: ${errMsg}`, 10000);
+            console.error('[Send email] Failed:', JSON.stringify(data.data?.failed, null, 2));
           } else {
             const via = emailChannel === 'marketing' ? ' (via Marketing)' : ' (via Transactional)';
             toast.success(`Email sent to ${emailRecipient.email}${via}`);
