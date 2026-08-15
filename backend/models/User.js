@@ -29,8 +29,22 @@ const userSchema = new mongoose.Schema({
   organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', index: true },
   role: {
     type: String,
-    enum: ['owner', 'admin', 'recruiter', 'interviewer', 'readonly'],
-    default: 'recruiter'
+    // owner = org founder. Invite UI: admin, hr_recruiter, hr_manager, sales, other.
+    // Legacy recruiter/interviewer/readonly kept for existing accounts.
+    enum: [
+      'owner',
+      'admin',
+      'hr_recruiter',
+      'hr_manager',
+      'sales',
+      'freelancer',
+      'other',
+      'recruiter',
+      'interviewer',
+      'readonly',
+    ],
+    // Self-signup defaults to admin; createOrg promotes founder to owner. Invites pass role explicitly.
+    default: 'admin'
   },
   // Enterprise-only: overrides DEFAULT_ROLE_PERMISSIONS[role] with a custom
   // permission set. Null/unset = use the fixed role's default permissions.

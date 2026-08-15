@@ -1,16 +1,17 @@
 /**
- * Auth domain logic — login, demo, register, password reset, refresh.
+ * Auth domain logic — login, register, password reset, refresh.
  */
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Organization = require('../models/Organization');
-const { generateToken, JWT_SECRET } = require('../middleware/authMiddleware');
+const { JWT_SECRET } = require('../middleware/authMiddleware');
 const { issueAuthToken } = require('./sessionService');
 const { getEntitlements, planHasFeature } = require('../config/planFeatures');
+const { ensureOrgPlanForDomain } = require('../utils/orgDomain');
 const { sendEmail } = require('./emailService');
+const { wrapBrandedEmailHtml, brandButtonHtml, loadPlatformEmailBrand, loadOrgEmailBrand, escapeHtml: escapeHtmlLocal } = require('./emailBrandLayout');
 const { normalizeText } = require('../utils/textNormalize');
-const { createDemoAccount } = require('./demoAccountService');
 const logger = require('../utils/logger');
 
 function httpError(message, statusCode = 400, extra = {}) {
@@ -61,11 +62,21 @@ async function login(email, password, req) {
     });
   }
 
+  // Password is correct but email never verified — send them back to verify step
+  if (!user.isEmailVerified) {
+    throw httpError('email_unverified', 403, {
+      displayMessage:
+        'Your email is not verified yet. Please verify your email to continue, or request a new verification link.',
+      email: user.email,
+    });
+  }
+
   let organization = null;
   let entitlements = [];
   if (user.organizationId) {
+    await ensureOrgPlanForDomain(user.organizationId, user.email);
     organization = await Organization.findById(user.organizationId)
-      .select('name slug logo plan planExpiresAt atsSettings settings securitySettings')
+      .select('name slug logo plan planExpiresAt atsSettings settings securitySettings domain')
       .lean();
     if (organization) {
       entitlements = getEntitlements(organization.plan);
@@ -111,6 +122,10 @@ async function login(email, password, req) {
   }
 
   user.lastLoginAt = new Date();
+  // Invited / joined users with an org should never remain stuck on org-setup
+  if (user.organizationId && user.onboardingCompleted === false) {
+    user.onboardingCompleted = true;
+  }
   await user.save();
 
   const token = await issueAuthToken(user, req);
@@ -137,28 +152,6 @@ async function login(email, password, req) {
       },
       organization,
       entitlements,
-    },
-  };
-}
-
-async function demoLogin() {
-  const { user, organization } = await createDemoAccount();
-  const token = generateToken(user);
-  return {
-    token,
-    payload: {
-      message: 'Demo login successful',
-      user: {
-        name: user.name || 'Demo Recruiter',
-        email: user.email,
-        role: user.role,
-        organizationId: user.organizationId,
-        isEmailVerified: user.isEmailVerified,
-        onboardingCompleted: user.onboardingCompleted,
-        profilePicture: user.profilePicture || '',
-      },
-      organization,
-      entitlements: getEntitlements(organization.plan),
     },
   };
 }
@@ -204,31 +197,34 @@ async function forgotPassword(email) {
   const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
 
   try {
-    const htmlBody = `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="text-align: center; padding: 30px 20px; background: linear-gradient(135deg, #4F46E5, #7C3AED); border-radius: 12px 12px 0 0;">
-            <h1 style="color: white; margin: 0; font-size: 24px;">Password Reset</h1>
-            <p style="color: rgba(255,255,255,0.8); margin: 8px 0 0;">SkillNix ATS</p>
-          </div>
-          <div style="padding: 30px 20px; background: #ffffff; border: 1px solid #e5e7eb; border-top: none;">
-            <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${user.name || 'there'},</p>
-            <p style="color: #374151; font-size: 15px; line-height: 1.6;">We received a request to reset your password. Click the button below to create a new password:</p>
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${resetUrl}" style="display: inline-block; padding: 14px 32px; background: #4F46E5; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px;">Reset My Password</a>
-            </div>
-            <p style="color: #6B7280; font-size: 13px; line-height: 1.6;">This link expires in <strong>15 minutes</strong>. If you didn't request this, you can safely ignore this email.</p>
-            <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;">
-            <p style="color: #9CA3AF; font-size: 12px;">If the button doesn't work, copy and paste this URL:<br><a href="${resetUrl}" style="color: #4F46E5; word-break: break-all;">${resetUrl}</a></p>
-          </div>
+    const brand = user.organizationId
+      ? await loadOrgEmailBrand(user.organizationId)
+      : loadPlatformEmailBrand();
+    const htmlBody = wrapBrandedEmailHtml({
+      title: 'Reset your password',
+      eyebrow: 'Account security',
+      orgName: brand.name,
+      logoUrl: brand.logoUrl,
+      brandColor: brand.brandColor,
+      wordmark: brand.wordmark,
+      bodyHtml: `
+        <p style="margin:0 0 16px 0;font-size:16px;color:#0f172a;">Hi ${escapeHtmlLocal(user.name) || 'there'},</p>
+        <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;">We received a request to reset the password for your <strong style="color:#0f172a;">${escapeHtmlLocal(brand.name)}</strong> account. Use the button below to choose a new password.</p>
+        <div style="text-align:center;">
+          ${brandButtonHtml({ href: resetUrl, label: 'Reset my password', brandColor: brand.brandColor })}
         </div>
-      `;
+        <p style="margin:24px 0 0 0;color:#64748b;font-size:13px;line-height:1.6;">This one-time link expires in <strong style="color:#334155;">15 minutes</strong>. If you didn't request this, you can ignore this email — your password will not change.</p>
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid #eef0f3;">
+          <p style="margin:0;color:#94a3b8;font-size:12px;line-height:1.6;">Button not working? Copy and paste this link into your browser:<br><a href="${resetUrl}" style="color:${brand.brandColor};word-break:break-all;">${resetUrl}</a></p>
+        </div>`,
+    });
 
     await sendEmail(
       user.email,
-      'Reset Your Password - SkillNix ATS',
+      `Reset your password – ${brand.name}`,
       htmlBody,
       `Reset your password: ${resetUrl} (expires in 15 minutes)`,
-      { userId: user._id }
+      { senderName: brand.name, userId: user._id, organizationId: user.organizationId || undefined, system: true }
     );
   } catch (emailErr) {
     logger.error({ err: emailErr }, 'PASSWORD-RESET email send failed');
@@ -313,7 +309,6 @@ async function refreshSession(userId, req) {
 
 module.exports = {
   login,
-  demoLogin,
   register,
   forgotPassword,
   verifyResetToken,

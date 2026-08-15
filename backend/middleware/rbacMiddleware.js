@@ -31,9 +31,18 @@ const requireRole = (...allowedRoles) => {
 };
 
 const requireOwner = requireRole('owner');
-const requireAdmin = requireRole('owner', 'admin');
-const requireRecruiterOrAbove = requireRole('owner', 'admin', 'recruiter');
-const requireInterviewerOrAbove = requireRole('owner', 'admin', 'recruiter', 'interviewer');
+/** Owner or Admin only — privileged org settings (system role templates, etc.). */
+const requireOwnerOrAdmin = requireRole('owner', 'admin');
+const requireAdmin = requireRole('owner', 'admin', 'hr_manager');
+const requireRecruiterOrAbove = requireRole(
+  'owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales'
+);
+const requireFreelancerOrRecruiter = requireRole(
+  'owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales', 'freelancer'
+);
+const requireInterviewerOrAbove = requireRole(
+  'owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales', 'interviewer'
+);
 
 /**
  * Maps a logical resource name (used throughout routes/checkPlanLimit calls)
@@ -98,8 +107,10 @@ const checkPlanLimit = (resource) => {
 module.exports = {
   requireRole,
   requireOwner,
+  requireOwnerOrAdmin,
   requireAdmin,
   requireRecruiterOrAbove,
+  requireFreelancerOrRecruiter,
   requireInterviewerOrAbove,
   checkPlanLimit
 };

@@ -50,15 +50,24 @@ const CandidateSchema = new mongoose.Schema({
   expectedCtc: { type: String, default: '', trim: true },
   noticePeriod: { type: String, default: '', trim: true },
   skills: { type: String, default: '', trim: true },
+  /** Product / skill line (e.g. Home Loan, Credit Cards) — distinct from free-text resume skills */
+  product: { type: String, default: '', trim: true },
+  /** Indian PAN — required when the selected Client has requiresPan enabled */
+  pan: { type: String, default: '', trim: true, uppercase: true },
 
   // ── Pipeline (DEPRECATED — use Application model for per-job tracking) ──
   status: { 
     type: String, 
-    default: 'Applied',
+    default: 'APPLIED',
     enum: [
-      'Applied', 'Screening', 'Interview', 'Offer', 'Hired', 
-      'Joined', 'Dropped', 'Rejected', 'Interested', 'Interested and scheduled'
-    ] 
+      // Block letters (current)
+      'APPLIED', 'SCREENING', 'INTERVIEW', 'OFFER', 'HIRED',
+      'JOINED', 'DROPPED', 'REJECTED', 'INTERESTED', 'INTERESTED AND SCHEDULED',
+      // Legacy title-case (existing records)
+      'Applied', 'Screening', 'Interview', 'Offer', 'Hired',
+      'Joined', 'Dropped', 'Rejected', 'Interested', 'Interested and scheduled',
+    ],
+    set: (v) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ').toUpperCase() : v),
   },
   statusHistory: [{
     status: { type: String },
@@ -122,6 +131,30 @@ const CandidateSchema = new mongoose.Schema({
     updatedAt: { type: Date }
   },
 
+  // ── Marketing list consent (Zoho Campaigns / enterprise mailing list) ──
+  // Separate from transactional messagingConsent.email — marketing requires
+  // explicit opt-in and syncs to ZOHO list (org IntegrationConfig or platform env).
+  marketingConsent: {
+    optedIn: { type: Boolean, default: false },
+    source: {
+      type: String,
+      default: '',
+      enum: ['', 'subscribe', 'subscribe_confirm', 'marketing_send', 'talent_pool', 'import', 'manual', 'api', 'unsubscribe'],
+    },
+    listKey: { type: String, default: '' },
+    topicId: { type: String, default: '' },
+    // Per-purpose enrollment flags (enterprise multi-list)
+    lists: {
+      subscribe: { type: Boolean, default: false },
+      job_alerts: { type: Boolean, default: false },
+      nurture: { type: Boolean, default: false },
+      general: { type: Boolean, default: false },
+    },
+    optedInAt: { type: Date },
+    optedOutAt: { type: Date },
+    updatedAt: { type: Date },
+  },
+
   // ── GDPR self-service (always available, no plan gate) ─────────────
   gdprErasedAt: { type: Date },
   legalHold: { type: Boolean, default: false },
@@ -181,12 +214,16 @@ CandidateSchema.pre('save', function(next) {
   }
 
   // Other text fields: Trim + collapse spaces
-  const textFields = ['position', 'location', 'companyName', 'client', 'spoc', 'source', 'fls', 'noticePeriod', 'feedback', 'remark'];
+  const textFields = ['position', 'location', 'companyName', 'client', 'spoc', 'source', 'fls', 'noticePeriod', 'feedback', 'remark', 'product', 'skills'];
   textFields.forEach(field => {
     if (this[field] && typeof this[field] === 'string' && this[field].trim()) {
       this[field] = this[field].trim().replace(/\s+/g, ' ');
     }
   });
+
+  if (this.pan && typeof this.pan === 'string') {
+    this.pan = this.pan.replace(/\s+/g, '').toUpperCase();
+  }
 
   // Email: ensure trimmed (lowercase handled by schema)
   if (this.email && typeof this.email === 'string') {
@@ -212,12 +249,15 @@ CandidateSchema.pre('findOneAndUpdate', function(next) {
   }
 
   // Normalize other text fields
-  const textFields = ['position', 'location', 'companyName', 'client', 'spoc', 'source', 'fls', 'noticePeriod', 'feedback', 'remark'];
+  const textFields = ['position', 'location', 'companyName', 'client', 'spoc', 'source', 'fls', 'noticePeriod', 'feedback', 'remark', 'product', 'skills'];
   textFields.forEach(field => {
     if (update.$set?.[field] && typeof update.$set[field] === 'string' && update.$set[field].trim()) {
       update.$set[field] = update.$set[field].trim().replace(/\s+/g, ' ');
     }
   });
+  if (update.$set?.pan && typeof update.$set.pan === 'string') {
+    update.$set.pan = update.$set.pan.replace(/\s+/g, '').toUpperCase();
+  }
 
   // Ensure email has no extra spaces
   if (update.$set?.email && typeof update.$set.email === 'string') {

@@ -4,8 +4,9 @@
  */
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const { verifyToken } = require('../middleware/authMiddleware');
+const { verifyToken, optionalAuth } = require('../middleware/authMiddleware');
 const { setAuthCookie, clearAuthCookie } = require('../utils/authCookies');
+const { revokeSession } = require('../services/sessionService');
 const logger = require('../utils/logger');
 const auth = require('../services/authService');
 
@@ -23,6 +24,8 @@ function sendAuthError(res, err) {
   const status = err.statusCode || 500;
   const body = { message: err.message };
   if (err.displayMessage) body.displayMessage = err.displayMessage;
+  if (err.email) body.email = err.email;
+  if (err.code) body.code = err.code;
   if (err.success === false) body.success = false;
   return res.status(status).json(body);
 }
@@ -39,17 +42,6 @@ router.post('/login', authLimiter, async (req, res) => {
     if (err.statusCode && err.statusCode < 500) return sendAuthError(res, err);
     logger.error({ err }, 'LOGIN ERROR');
     res.status(500).json({ message: 'Internal server error' });
-  }
-});
-
-router.post('/demo-login', authLimiter, async (req, res) => {
-  try {
-    const result = await auth.demoLogin();
-    setAuthCookie(res, result.token);
-    res.json(result.payload);
-  } catch (err) {
-    logger.error({ err }, 'DEMO LOGIN ERROR');
-    res.status(500).json({ message: 'Failed to create demo account.' });
   }
 });
 
@@ -98,8 +90,16 @@ router.post('/auth/reset-password', authLimiter, async (req, res) => {
   }
 });
 
-router.post('/logout', (req, res) => {
+router.post('/logout', optionalAuth, async (req, res) => {
+  try {
+    if (req.user?.jti) {
+      await revokeSession(req.user.jti);
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Logout session revoke failed');
+  }
   clearAuthCookie(res);
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.json({ success: true, message: 'Logged out' });
 });
 

@@ -15,11 +15,10 @@ import UnsubscribePage from './components/UnsubscribePage'
 import UnsubscribeThankYouPage from './components/UnsubscribeThankYouPage'
 import DashboardPage from './components/DashboardPage'
 import ATSPage from './components/ATSPage'
-import AddCandidatePage from './components/AddCandidatePage'
 import ResumeParsing from './components/ResumeParsing'
 import AutoImportPage from './components/AutoImportPage'
 import PendingReviewPage from './components/PendingReviewPage'
-import PendingReviewPageEnterprise from './components/PendingReviewPageEnterprise'
+import PendingReviewWorkbench from './components/pendingReview/workbench/PendingReviewWorkbench'
 import Jobs from './pages/Jobs'
 import AnalyticsDashboard from './components/AnalyticsDashboard'
 import CandidateSearch from './components/CandidateSearch'
@@ -33,6 +32,7 @@ import AppLoadingScreen from './components/ui/AppLoadingScreen'
 
 const OnboardingPage = React.lazy(() => import('./components/OnboardingPage'))
 const AcceptInvitePage = React.lazy(() => import('./components/AcceptInvitePage'))
+const AcceptFreelancerInvitePage = React.lazy(() => import('./components/AcceptFreelancerInvitePage'))
 const OrganizationSettingsPage = React.lazy(() => import('./components/OrganizationSettingsPage'))
 const IntegrationSettingsPage = React.lazy(() => import('./components/IntegrationSettingsPage'))
 const AuditLogPage = React.lazy(() => import('./components/AuditLogPage'))
@@ -77,6 +77,8 @@ const MessagingConsentPage = React.lazy(() => import('./components/MessagingCons
 const PushNotificationsPage = React.lazy(() => import('./components/PushNotificationsPage'))
 const EmbedChatbotPage = React.lazy(() => import('./components/EmbedChatbotPage'))
 const MarketingPage = React.lazy(() => import('./components/MarketingPage'))
+const MandatesPage = React.lazy(() => import('./components/MandatesPage'))
+const FreelancerPipelinePage = React.lazy(() => import('./components/FreelancerPipelinePage'))
 
 const LoadingFallback = () => (
   <AppLoadingScreen
@@ -105,6 +107,7 @@ const router = createBrowserRouter([
   { path: '/unsubscribe/thank-you', element: <UnsubscribeThankYouPage /> },
 
   { path: '/accept-invite', element: <Suspense fallback={<LoadingFallback />}><AcceptInvitePage /></Suspense> },
+  { path: '/accept-freelancer-invite', element: <Suspense fallback={<LoadingFallback />}><AcceptFreelancerInvitePage /></Suspense> },
   { path: '/careers/:orgSlug', element: <Suspense fallback={<LoadingFallback />}><CareersPage /></Suspense> },
   { path: '/careers/:orgSlug/jobs/:jobId', element: <Suspense fallback={<LoadingFallback />}><JobDetailPublic /></Suspense> },
   { path: '/portal', element: <Suspense fallback={<LoadingFallback />}><CandidatePortal /></Suspense> },
@@ -141,10 +144,12 @@ const router = createBrowserRouter([
 
       // Recruitment
       { path: '/jobs', element: <Jobs /> },
+      { path: '/mandates', element: <Suspense fallback={<LoadingFallback />}><MandatesPage /></Suspense> },
+      { path: '/my-pipeline', element: <Suspense fallback={<LoadingFallback />}><FreelancerPipelinePage /></Suspense> },
       { path: '/applications', element: <Suspense fallback={<LoadingFallback />}><ApplicationsPage /></Suspense> },
       { path: '/recruitment', element: <Suspense fallback={<LoadingFallback />}><ApplicationsPage /></Suspense> },
       { path: '/ats', element: <ATSPage /> },
-      { path: '/add-candidate', element: <AddCandidatePage /> },
+      { path: '/add-candidate', element: <Navigate to="/ats?add=1" replace /> },
       { path: '/resume-parsing', element: <ResumeParsing /> },
       { path: '/candidate-search', element: <CandidateSearch /> },
       { path: '/talent-pools', element: <Suspense fallback={<LoadingFallback />}><TalentPoolsPage /></Suspense> },
@@ -168,7 +173,7 @@ const router = createBrowserRouter([
       // Related / shared
       { path: '/auto-import', element: <AutoImportPage /> },
       // CSV import staging (Auto Import) — not the Dashboard Pending Review KPI
-      { path: '/pending-review', element: <PendingReviewPageEnterprise /> },
+      { path: '/pending-review', element: <PendingReviewWorkbench /> },
       { path: '/homeunder', element: <Navigate to="/dashboard" replace /> },
       { path: '/manage-positions', element: <Navigate to="/ats" replace /> },
       { path: '/manage-clients', element: <Navigate to="/ats" replace /> },

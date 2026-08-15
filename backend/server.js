@@ -43,6 +43,8 @@ const Organization = require('./models/Organization');
 const Job = require('./models/Job');
 const Candidate = require('./models/Candidate');
 const Application = require('./models/Application');
+require('./models/ZeptoMailbox');
+require('./models/MarketingListRegistry');
 
 // ── Middleware ────────────────────────────────────────────────────────
 const { verifyToken } = require('./middleware/authMiddleware');
@@ -74,6 +76,7 @@ const emailSettingsRoutes = require('./routes/emailSettingsRoutes');
 const companyEmailSettingsRoutes = require('./routes/companyEmailSettingsRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const teamRoutes = require('./routes/teamRoutes');
+const freelancerRoutes = require('./routes/freelancerRoutes');
 const publicSubscribeRoutes = require('./routes/publicSubscribeRoutes');
 const zohoOAuthRoutes = require('./routes/zohoOAuthRoutes');
 const calendarOAuthRoutes = require('./routes/calendarOAuthRoutes');
@@ -116,6 +119,7 @@ const pushRoutes = require('./routes/pushRoutes');
 const companyBrandRoutes = require('./routes/companyBrandRoutes');
 const reportsStudioRoutes = require('./routes/reportsStudioRoutes');
 const whatsappRoutes = require('./routes/whatsappRoutes');
+const whatsappWebhookRoutes = require('./routes/whatsappWebhookRoutes');
 const assessmentRoutes = require('./routes/assessmentRoutes');
 const whiteLabelRoutes = require('./routes/whiteLabelRoutes');
 const chromeExtensionRoutes = require('./routes/chromeExtensionRoutes');
@@ -165,7 +169,6 @@ app.use(helmet({
 // ── Rate Limiting ────────────────────────────────────────────────────
 // Auth rate limit lives in routes/authRoutes.js
 
-// Demo login kept available for sales demos (user request) — see routes/authRoutes.js
 const APP_FRONTEND_URL = process.env.FRONTEND_URL;
 if (!APP_FRONTEND_URL && process.env.NODE_ENV === 'production') {
   logger.warn('FRONTEND_URL env var not set. CORS and redirects may not work correctly.');
@@ -178,7 +181,7 @@ const globalApiLimiter = rateLimit({
   message: { success: false, message: 'Too many requests. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.path === '/health',
+  skip: (req) => req.path === '/health' || /\/org-logo\//.test(req.originalUrl || req.url || ''),
 });
 
 // ── Request Timeout ──────────────────────────────────────────────────
@@ -192,10 +195,14 @@ app.use((req, res, next) => {
 //    + no auth — Stripe calls this directly, not a logged-in user) ────
 const stripeWebhookRoutes = require('./routes/stripeWebhookRoutes');
 app.use('/api/billing/webhook', stripeWebhookRoutes);
+app.use('/api/whatsapp/webhook', whatsappWebhookRoutes);
 
 // ── CORS ─────────────────────────────────────────────────────────────
 // Production: only FRONTEND_URL + known production hosts (no localhost).
 const productionOrigins = [
+  'https://www.peopleconnecthr.com',
+  'https://peopleconnecthr.com',
+  'https://frontend-self-one-14.vercel.app',
   'https://skillnix-ats-frontend.onrender.com',
   APP_FRONTEND_URL,
 ].filter(Boolean);
@@ -268,6 +275,7 @@ app.use((req, _res, next) => {
 app.use('/api', require('./routes/authRoutes'));
 app.use('/api', homeRoutes);
 app.use('/api/public', publicSubscribeRoutes);
+app.use('/api/public', require('./routes/publicBrandRoutes'));
 app.use('/oauth/zoho', zohoOAuthRoutes);
 app.use('/oauth/google-calendar', calendarOAuthRoutes); // public callback (Google redirects here directly)
 app.use('/api/integrations/oauth/google-calendar', calendarOAuthRoutes); // authenticated auth-url endpoint
@@ -323,6 +331,7 @@ app.use('/api/email-settings', verifyToken, emailSettingsRoutes);
 app.use('/api/company-email-settings', verifyToken, companyEmailSettingsRoutes);
 app.use('/api/notifications', verifyToken, notificationRoutes);
 app.use('/api/team', teamRoutes);
+app.use('/api/freelancer', freelancerRoutes);
 app.use('/api/talent-pools', verifyToken, talentPoolRoutes); // internally applies requireFeature('candidates.talentPools')
 app.use('/api/skills', verifyToken, skillsRoutes); // requireFeature('candidates.skillsTaxonomy')
 app.use('/api/inbox', verifyToken, inboxRoutes); // requireFeature('messaging.inbox')
@@ -341,7 +350,7 @@ app.use('/api/consent', consentRoutes); // public + authenticated (feature-gated
 app.use('/api/push', verifyToken, pushRoutes);
 app.use('/api/company-brand', verifyToken, companyBrandRoutes);
 app.use('/api/reports-studio', verifyToken, reportsStudioRoutes);
-app.use('/api/whatsapp', whatsappRoutes); // internally applies verifyToken + requireFeature('integrations.whatsapp')
+app.use('/api/whatsapp', whatsappRoutes); // internally applies verifyToken + requireFeature('integrations.whatsapp'); webhook is mounted earlier (no auth)
 app.use('/api/assessments', assessmentRoutes); // internally applies verifyToken + requireFeature('assessments') for recruiter routes; candidate-facing routes are token-gated, not session-gated
 app.use('/api/white-label', whiteLabelRoutes); // internally applies verifyToken + requireFeature('whiteLabel')
 app.use('/api/chrome-extension', chromeExtensionRoutes); // internally applies verifyToken (config) or extension-token auth (import)
@@ -351,6 +360,18 @@ app.use('/api/referrals', referralRoutes);
 app.use('/api/integrations/slack', slackAppRoutes);
 app.use('/api/ai', verifyToken, aiFeatureRoutes); // Phase 4 AI product capabilities; each route applies requireFeature
 app.use('/api/data-warehouse', require('./routes/dataWarehouseRoutes'));
+
+// ── Static email brand assets (Gmail-safe public PNGs) ───────────────
+app.use(
+  '/email-brand',
+  express.static(path.join(__dirname, 'public', 'email-brand'), {
+    maxAge: '7d',
+    setHeaders: (res) => {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Cache-Control', 'public, max-age=604800');
+    },
+  })
+);
 
 // ── Static Uploads ───────────────────────────────────────────────────
 const uploadDir = path.join(__dirname, 'uploads');
@@ -390,11 +411,20 @@ app.use('/uploads', (req, res, next) => {
 }, express.static(uploadDir));
 
 // ── Health Check ─────────────────────────────────────────────────────
-app.get('/health', (req, res) => res.json({ 
-  status: 'ok', 
-  version: 'v3-saas-enterprise-byok', 
-  timestamp: new Date().toISOString() 
-}));
+app.get('/health', (req, res) => {
+  const zohoKey = (process.env.ZOHO_ZEPTOMAIL_API_KEY || process.env.ZEPTOMAIL_API_KEY || '').trim();
+  const zohoFrom = (process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL || process.env.ZEPTOMAIL_FROM_EMAIL || '').trim();
+  const emailConfigured = Boolean(zohoKey && zohoFrom);
+  res.json({
+    status: 'ok',
+    version: 'v3-saas-enterprise-byok',
+    timestamp: new Date().toISOString(),
+    emailConfigured,
+    // Public system sender used for verification/invites (not a secret)
+    emailFrom: zohoFrom || null,
+    frontendUrlSet: Boolean((process.env.FRONTEND_URL || '').trim()),
+  });
+});
 
 // ── Database connection guard ──────────────────────────────────────────
 app.use((req, res, next) => {

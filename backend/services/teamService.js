@@ -1,15 +1,27 @@
 /**
  * Team invite / domain helpers — keep HTTP thin in teamRoutes.
  */
-const crypto = require('crypto');
 const mongoose = require('mongoose');
 const TeamMember = require('../models/TeamMember');
 const Company = require('../models/Company');
 const Notification = require('../models/Notification');
 const { normalizeText } = require('../utils/textNormalize');
-const { sendEmailQueued } = require('./emailService');
 const eventBus = require('../events/eventBus');
 const eventTypes = require('../events/eventTypes');
+const { isFreelancer } = require('../utils/dataScope');
+
+const SYSTEM_ROLE_DIRECTORY = {
+  owner: 'Admin',
+  admin: 'Admin',
+  hr_manager: 'HR Manager',
+  hr_recruiter: 'Recruiter',
+  recruiter: 'Recruiter',
+  sales: 'Team Member',
+  freelancer: 'External',
+  interviewer: 'Team Member',
+  other: 'Team Member',
+  readonly: 'Team Member',
+};
 
 const DEFAULT_COMPANY_DOMAIN = 'skillnixrecruitment.com';
 
@@ -60,18 +72,27 @@ function isValidCompanyEmail(email, companyInfo) {
 }
 
 async function inviteTeamMember(user, body) {
-  const { name, email, role, phone, department, message } = body;
+  const { name, email, role, phone, department } = body;
   if (!name || !email) throw httpError('Name and email are required');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
     throw httpError('Invalid email address');
   }
 
   const emailLower = email.toLowerCase().trim();
-  const companyInfo = await getCompanyDomain(user.id);
-  const validation = isValidCompanyEmail(emailLower, companyInfo);
-  if (!validation.valid) throw httpError('Invalid email format');
+  const User = mongoose.model('User');
+  if (user.organizationId) {
+    const orgUser = await User.findOne({
+      organizationId: user.organizationId,
+      email: emailLower,
+    }).select('_id');
+    if (orgUser) {
+      throw httpError(
+        'This person already has workspace access. Use Invite teammate to grant a Skillnix seat.',
+        409
+      );
+    }
+  }
 
-  const isCompanyEmail = validation.isCompanyEmail;
   const teamScope = user.organizationId
     ? { organizationId: user.organizationId }
     : { createdBy: user.id };
@@ -85,7 +106,7 @@ async function inviteTeamMember(user, body) {
       { invitationStatus: { $in: [null, ''] } },
     ],
   });
-  if (existing) throw httpError('Team member with this email already exists');
+  if (existing) throw httpError('This email is already in your directory');
 
   const existingPending = await TeamMember.findOne({
     ...teamScope,
@@ -93,103 +114,23 @@ async function inviteTeamMember(user, body) {
     invitationStatus: 'Pending',
   });
   if (existingPending) {
-    throw httpError(
-      'This user has already been invited. Please wait for them to accept or decline the request.'
-    );
+    throw httpError('This email already has a pending directory invite');
   }
-
-  const User = mongoose.model('User');
-  const invitedUser = await User.findOne({ email: emailLower });
-  if (!invitedUser) {
-    throw httpError(
-      'This user does not exist in the system. They need to sign up with a company account (@skillnixrecruitment.com) first.'
-    );
-  }
-
-  const invitationToken = crypto.randomBytes(32).toString('hex');
-  const invitationStatus = isCompanyEmail ? 'Active' : 'Pending';
 
   const member = new TeamMember({
     createdBy: user.id,
     organizationId: user.organizationId,
     name: normalizeText(name),
     email: emailLower,
-    role: role ? normalizeText(role) : 'Team Member',
+    role: role ? normalizeText(role) : 'External',
     phone: phone?.trim() || '',
     department: department ? normalizeText(department) : '',
-    invitationStatus,
-    invitationToken,
-    invitationMessage: message || '',
+    invitationStatus: 'Active',
     invitedBy: user.id,
     invitedAt: new Date(),
   });
 
   await member.save();
-
-  const inviterUser = await User.findById(user.id).select('name email');
-  const inviterName = inviterUser?.name || inviterUser?.email || 'A team member';
-
-  try {
-    const notification = new Notification({
-      userId: invitedUser._id,
-      senderId: user.id,
-      senderName: inviterName,
-      type: 'invitation',
-      title: 'Team Invitation',
-      message: `${inviterName} has invited you to join their team as ${role || 'Team Member'}${department ? ` in the ${department} department` : ''}.`,
-      priority: 'high',
-      actionRequired: true,
-      status: 'pending',
-      relatedMemberId: member._id,
-      relatedEmail: user.email,
-    });
-    await notification.save();
-  } catch (notifErr) {
-    console.error('Failed to create invitation notification:', notifErr.message);
-  }
-
-  try {
-    const appUrl =
-      process.env.FRONTEND_URL ||
-      (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5173');
-    if (!appUrl) {
-      console.warn('[TEAM] FRONTEND_URL not set — invite links may be incomplete');
-    }
-    const htmlBody = `
-        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); padding: 40px; color: white; text-align: center; border-radius: 12px 12px 0 0;">
-            <h2 style="margin: 0; font-size: 22px;">Team Invitation</h2>
-            <p style="margin: 10px 0 0; opacity: 0.9; font-size: 14px;">You've been invited to join a team</p>
-          </div>
-          <div style="padding: 36px; background: white; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
-            <p style="color: #374151; font-size: 16px; margin: 0 0 16px;">Hello <strong>${normalizeText(name)}</strong>,</p>
-            <p style="color: #6b7280; line-height: 1.7; margin: 0 0 20px;">
-              <strong>${inviterName}</strong> has invited you to join their team on SkillNix as <strong>${role || 'Team Member'}</strong>${department ? ` in the <strong>${department}</strong> department` : ''}.
-            </p>
-            ${message ? `<div style="background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 14px 18px; margin: 0 0 20px; border-radius: 0 8px 8px 0;"><p style="color: #1e40af; font-size: 14px; margin: 0; font-style: italic;">"${message}"</p></div>` : ''}
-            <div style="text-align: center; margin: 28px 0;">
-              <a href="${appUrl}/team" style="display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; text-decoration: none; padding: 14px 36px; border-radius: 8px; font-weight: 600; font-size: 15px;">
-                View Invitation
-              </a>
-            </div>
-            <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 20px 0 0;">
-              Log in to your SkillNix account to accept or decline this invitation.
-            </p>
-          </div>
-        </div>
-      `;
-    const textBody = `Hello ${normalizeText(name)}, ${inviterName} has invited you to join their team on SkillNix as ${role || 'Team Member'}. Log in to your account to accept or decline.`;
-
-    await sendEmailQueued(
-      emailLower,
-      `Team Invitation from ${inviterName} - SkillNix`,
-      htmlBody,
-      textBody,
-      { userId: user.id }
-    );
-  } catch (emailErr) {
-    console.error('Failed to send invitation email:', emailErr.message);
-  }
 
   if (user.organizationId) {
     eventBus.emit(eventTypes.USER_INVITED, {
@@ -198,40 +139,86 @@ async function inviteTeamMember(user, body) {
       resourceType: 'TeamMember',
       resourceId: member._id,
       invitedEmail: emailLower,
-      role: role || 'Team Member',
+      role: member.role,
     });
   }
 
-  const statusMessage = isCompanyEmail
-    ? 'Team member added successfully (company email)'
-    : 'Invitation sent successfully. They need to accept the invitation.';
-
   return {
     member,
-    message: statusMessage,
-    requiresAcceptance: !isCompanyEmail,
+    message: 'Stakeholder added to your directory',
+    requiresAcceptance: false,
+    kind: 'contact',
   };
 }
 
-/** Active/Accepted roster for the current user's org (or legacy per-inviter view). */
+function mapWorkspaceUser(u, currentUser) {
+  const email = (u.email || '').toLowerCase();
+  const currentEmail = (currentUser.email || '').toLowerCase();
+  const pending = u.isActive === false;
+  return {
+    _id: u._id,
+    userId: u._id,
+    name: u.name || email.split('@')[0] || 'Teammate',
+    email: u.email,
+    role: SYSTEM_ROLE_DIRECTORY[u.role] || 'Team Member',
+    systemRole: u.role,
+    phone: u.phone || '',
+    department: '',
+    invitationStatus: pending ? 'Pending' : 'Active',
+    kind: 'workspace',
+    isYou: String(u._id) === String(currentUser.id) || email === currentEmail,
+    isActive: !pending,
+    lastLoginAt: u.lastLoginAt || null,
+    customRoleName: u.customRoleId?.name || '',
+    invitedByMe: false,
+  };
+}
+
+/** Org users (seats) plus stakeholder contacts for CC/BCC. */
 async function listTeamMembers(user) {
+  if (isFreelancer(user)) return [];
   const userId = user.id;
   const userEmail = (user.email || '').toLowerCase();
 
   if (user.organizationId) {
-    const members = await TeamMember.find({
+    const User = mongoose.model('User');
+    const orgUsers = await User.find({ organizationId: user.organizationId })
+      .select('name email role phone isActive lastLoginAt customRoleId')
+      .populate('customRoleId', 'name')
+      .sort({ name: 1 })
+      .lean();
+    const workspace = orgUsers.map((u) => mapWorkspaceUser(u, user));
+    const workspaceEmails = new Set(
+      workspace.map((row) => String(row.email || '').toLowerCase()).filter(Boolean)
+    );
+
+    const contacts = await TeamMember.find({
       organizationId: user.organizationId,
       $or: [
         { invitationStatus: 'Active' },
         { invitationStatus: 'Accepted' },
         { invitationStatus: { $exists: false } },
-        { invitationStatus: { $in: [null, ''] } }
-      ]
+        { invitationStatus: { $in: [null, ''] } },
+      ],
     }).sort({ name: 1 }).lean();
 
-    return members
-      .filter(m => (m.email || '').toLowerCase() !== userEmail)
-      .map(m => ({ ...m, invitedByMe: String(m.createdBy) === String(userId) }));
+    const stakeholders = contacts
+      .filter((m) => !workspaceEmails.has(String(m.email || '').toLowerCase()))
+      .map((m) => ({
+        ...m,
+        kind: 'contact',
+        systemRole: null,
+        isYou: false,
+        isActive: true,
+        invitedByMe: String(m.createdBy) === String(userId),
+      }));
+
+    return [...workspace, ...stakeholders].sort((a, b) => {
+      if (a.isYou && !b.isYou) return -1;
+      if (!a.isYou && b.isYou) return 1;
+      if (a.kind !== b.kind) return a.kind === 'workspace' ? -1 : 1;
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    });
   }
 
   // ── Legacy fallback (no organizationId on this account) ──
@@ -297,7 +284,9 @@ async function updateTeamMember(user, id, body) {
   const { name, email, role, phone, department } = body;
   const teamScope = user.organizationId ? { organizationId: user.organizationId } : { createdBy: user.id };
   const member = await TeamMember.findOne({ _id: id, ...teamScope });
-  if (!member) throw httpError('Team member not found', 404);
+  if (!member) {
+    throw httpError('Workspace members are managed from Organization settings', 404);
+  }
 
   if (name) member.name = normalizeText(name);
   if (email) {
@@ -333,7 +322,9 @@ async function updateTeamMember(user, id, body) {
 async function deleteTeamMember(user, id) {
   const teamScope = user.organizationId ? { organizationId: user.organizationId } : { createdBy: user.id };
   const result = await TeamMember.findOneAndDelete({ _id: id, ...teamScope });
-  if (!result) throw httpError('Team member not found', 404);
+  if (!result) {
+    throw httpError('Workspace members are managed from Organization settings', 404);
+  }
 
   if (user.organizationId) {
     eventBus.emit(eventTypes.USER_REMOVED, {

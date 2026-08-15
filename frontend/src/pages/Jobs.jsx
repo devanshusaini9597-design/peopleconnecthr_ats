@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Plus, MapPin, BookOpen, UserCheck, Briefcase, IndianRupee, Globe2, Loader2,
@@ -20,16 +21,18 @@ import { planHasFeature } from '../config/planFeatures';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import {
   JOBS_TOUR_KEY, JOBS_TOUR_STEPS, STATUS_OPTIONS, FILTER_OPTIONS,
-  JOB_BOARD_OPTIONS, STATUS_STYLES, DOT_STYLES, FALLBACK_MANAGERS, initialForm,
+  JOB_BOARD_OPTIONS, STATUS_STYLES, DOT_STYLES, initialForm,
+  jobFromRecord, composeJobDescriptionHtml, htmlToList, splitLocations,
 } from '../components/jobs/jobsConstants';
 import JobFormModal from '../components/jobs/JobFormModal';
+import FreelanceSubmissionsPanel from '../components/FreelanceSubmissionsPanel';
 
 const Jobs = () => {
   const { t } = useTranslation();
   const API_URL = `${BASE_API_URL}/jobs`;
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(JOBS_TOUR_KEY);
-  const { organization } = useAuth();
+  const { organization, user } = useAuth();
   const hasJobBoard = planHasFeature(organization?.plan, 'integrations.jobBoard');
 
   const [jobs, setJobs] = useState([]);
@@ -51,15 +54,14 @@ const Jobs = () => {
   const [postTarget, setPostTarget] = useState(null);
   const [postProvider, setPostProvider] = useState('indeed_feed');
 
-  const managerOptions = useMemo(() => {
-    if (teamMembers.length > 0) {
-      return teamMembers.map((m) => ({
-        email: m.email,
-        name: m.name || m.email?.split('@')[0] || 'Member',
-      }));
-    }
-    return FALLBACK_MANAGERS;
-  }, [teamMembers]);
+  const managerOptions = useMemo(
+    () => teamMembers.map((m) => ({
+      email: m.email,
+      name: m.name || m.email?.split('@')[0] || 'Member',
+      role: m.role || '',
+    })),
+    [teamMembers],
+  );
 
   const fetchJobs = async () => {
     setLoading(true);
@@ -80,16 +82,60 @@ const Jobs = () => {
     }
   };
 
+  /** Real org staff (+ team directory) — never show placeholder sample managers. */
   const fetchTeamMembers = async () => {
-    if (teamMembers.length > 0) return;
     setLoadingMembers(true);
     try {
-      const res = await authenticatedFetch(`${BASE_API_URL}/api/team`);
-      if (isUnauthorized(res)) return handleUnauthorized();
-      const data = await res.json();
-      if (data.success) setTeamMembers(data.members || []);
+      const [orgRes, teamRes] = await Promise.all([
+        authenticatedFetch(`${BASE_API_URL}/api/organization/members`),
+        authenticatedFetch(`${BASE_API_URL}/api/team`),
+      ]);
+      if (isUnauthorized(orgRes) || isUnauthorized(teamRes)) {
+        handleUnauthorized();
+        return;
+      }
+
+      const byEmail = new Map();
+
+      if (orgRes.ok) {
+        const data = await orgRes.json();
+        const list = Array.isArray(data) ? data : (data?.data || []);
+        for (const m of list) {
+          const email = String(m?.email || '').trim();
+          if (!email) continue;
+          if (m.isActive === false) continue;
+          if (/\b(freelancer|external|stakeholder)\b/i.test(String(m.role || ''))) continue;
+          byEmail.set(email.toLowerCase(), {
+            email,
+            name: m.name || email.split('@')[0],
+            role: m.role || '',
+          });
+        }
+      }
+
+      if (teamRes.ok) {
+        const data = await teamRes.json();
+        for (const m of (data.members || [])) {
+          const email = String(m?.email || '').trim();
+          if (!email) continue;
+          const key = email.toLowerCase();
+          if (byEmail.has(key)) continue;
+          if (/\b(freelancer|external|stakeholder)\b/i.test(String(m.role || m.designation || ''))) continue;
+          byEmail.set(key, {
+            email,
+            name: m.name || email.split('@')[0],
+            role: m.role || m.designation || '',
+          });
+        }
+      }
+
+      setTeamMembers(
+        [...byEmail.values()].sort((a, b) =>
+          String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' })
+        )
+      );
     } catch {
-      /* keep fallback managers */
+      setTeamMembers([]);
     } finally {
       setLoadingMembers(false);
     }
@@ -110,6 +156,10 @@ const Jobs = () => {
       const title = (job.role || job.title || '').toLowerCase();
       const loc = (job.location || '').toLowerCase();
       const matchesSearch = !q || title.includes(q) || loc.includes(q) ||
+        String(job.jobCode || '').toLowerCase().includes(q) ||
+        String(job.clientName || '').toLowerCase().includes(q) ||
+        String(job.industry || '').toLowerCase().includes(q) ||
+        String(job.grade || '').toLowerCase().includes(q) ||
         (job.skills || []).some((s) => String(s).toLowerCase().includes(q));
       const matchesStatus = statusFilter === 'All' || job.status === statusFilter;
       return matchesSearch && matchesStatus;
@@ -118,6 +168,7 @@ const Jobs = () => {
 
   const counts = useMemo(() => ({
     all: jobs.length,
+    draft: jobs.filter((j) => j.status === 'Draft').length,
     open: jobs.filter((j) => j.status === 'Open').length,
     hold: jobs.filter((j) => j.status === 'On Hold').length,
     closed: jobs.filter((j) => j.status === 'Closed').length,
@@ -133,16 +184,7 @@ const Jobs = () => {
 
   const openEdit = (job) => {
     setEditingJob(job);
-    setFormData({
-      role: job.role || job.title || '',
-      location: job.location || '',
-      ctc: job.ctc || '',
-      experience: job.experience || '',
-      skills: job.skills || [],
-      description: job.description || '',
-      hiringManagers: job.hiringManagers || [],
-      status: job.status || 'Open',
-    });
+    setFormData(jobFromRecord(job));
     setSkillsInput((job.skills || []).join(', '));
     setMenuOpenId(null);
     setShowModal(true);
@@ -153,12 +195,11 @@ const Jobs = () => {
     setEditingJob(null);
     setFormData({
       ...initialForm,
-      role: template.role,
-      experience: template.experience || '',
-      location: template.location || '',
-      ctc: template.ctc || '',
-      skills: template.skills || [],
-      description: template.description || '',
+      ...jobFromRecord({
+        ...template,
+        role: template.role,
+        title: template.role,
+      }),
     });
     setSkillsInput((template.skills || []).join(', '));
     setShowLibrary(false);
@@ -174,20 +215,54 @@ const Jobs = () => {
 
   const toggleManager = (email) => {
     setFormData((prev) => {
-      const next = prev.hiringManagers.includes(email)
-        ? prev.hiringManagers.filter((e) => e !== email)
-        : [...prev.hiringManagers, email];
+      const current = prev.hiringManagers || [];
+      const next = current.includes(email)
+        ? current.filter((e) => e !== email)
+        : [...current, email];
       return { ...prev, hiringManagers: next };
     });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (e, { asDraft = false } = {}) => {
+    e?.preventDefault?.();
+    if (!String(formData.role || '').trim()) {
+      toast.error('Job title is required');
+      return;
+    }
     setSaving(true);
+    let locations = splitLocations(formData.locations, formData.location);
+    if (!locations.length) {
+      if (asDraft) {
+        locations = ['TBD'];
+      } else {
+        setSaving(false);
+        toast.error('Add at least one location');
+        return;
+      }
+    }
     const payload = {
-      ...formData,
-      skills: parseSkills(skillsInput),
+      role: formData.role,
       title: formData.role,
+      grade: formData.grade,
+      clientName: formData.clientName,
+      industry: formData.industry,
+      locations,
+      location: locations.join(', '),
+      ctc: formData.ctc,
+      experience: formData.experience,
+      employmentType: formData.employmentType || 'full_time',
+      openings: Number(formData.openings) || 1,
+      skills: (formData.skills || []).length ? formData.skills : parseSkills(skillsInput),
+      summary: formData.summary,
+      responsibilities: htmlToList(formData.responsibilitiesText),
+      requirements: htmlToList(formData.requirementsText),
+      preferredProfile: formData.preferredProfile,
+      description: composeJobDescriptionHtml({ ...formData, locations, location: locations.join(', ') }),
+      hiringManagers: formData.hiringManagers,
+      status: asDraft ? 'Draft' : (formData.status || 'Open'),
+      spocName: formData.spocName || '',
+      spocContact: formData.spocContact || '',
+      internalNotes: formData.internalNotes || '',
       isTemplate: false,
     };
 
@@ -204,7 +279,7 @@ const Jobs = () => {
         setEditingJob(null);
         setFormData(initialForm);
         setSkillsInput('');
-        toast.success(editingJob ? 'Job updated' : 'Job created');
+        toast.success(asDraft ? 'Saved as draft — you can edit it anytime' : (editingJob ? 'Job updated' : 'Job created'));
         fetchJobs();
       } else {
         const err = await response.json().catch(() => ({}));
@@ -291,9 +366,21 @@ const Jobs = () => {
           role: job.role || job.title,
           title: job.role || job.title,
           location: job.location || 'TBD',
+          locations: job.locations || [],
           ctc: job.ctc || '',
           experience: job.experience || '',
+          grade: job.grade || '',
+          clientName: job.clientName || '',
+          industry: job.industry || '',
+          employmentType: job.employmentType || 'full_time',
           skills: job.skills || [],
+          summary: job.summary || '',
+          responsibilities: job.responsibilities || [],
+          requirements: job.requirements || [],
+          preferredProfile: job.preferredProfile || '',
+          spocName: job.spocName || '',
+          spocContact: job.spocContact || '',
+          internalNotes: job.internalNotes || '',
           description: job.description || '',
           hiringManagers: [],
           status: 'Draft',
@@ -319,6 +406,12 @@ const Jobs = () => {
     setSkillsInput('');
   };
 
+  if (user?.role === 'freelancer') {
+    return <Navigate to="/mandates" replace />;
+  }
+
+  const showFreelancePanel = ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales'].includes(user?.role);
+
   return (
     <div className="page-shell-ats animate-page-enter">
       <PageHeader
@@ -339,6 +432,8 @@ const Jobs = () => {
         </div>
       </PageHeader>
 
+      {showFreelancePanel && <FreelanceSubmissionsPanel />}
+
       <div data-tour="jobs-tip" className="rounded-xl border border-brand-200/60 bg-gradient-to-r from-brand-50/70 via-white to-teal-50/40 px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed">
         Search and filter openings, reuse JD templates, and manage status from each card.
         Press <span className="font-semibold text-stone-800">?</span> for a tour.
@@ -353,7 +448,7 @@ const Jobs = () => {
           </span>
           <div>
             <p className="text-xs font-bold text-stone-800">Search & filters</p>
-            <p className="text-[11px] text-stone-400">Find roles by name, location, skills, or status</p>
+            <p className="text-[11px] text-stone-400">Find roles by title, client, location, skills, or status</p>
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
@@ -365,7 +460,7 @@ const Jobs = () => {
                 type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search roles, location, skills…"
+                placeholder="Search title, client, location, skills…"
                 className="input-ats input-ats-icon"
               />
             </div>
@@ -384,6 +479,7 @@ const Jobs = () => {
         <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-stone-100">
           {[
             { key: 'All', label: 'All', count: counts.all },
+            { key: 'Draft', label: 'Draft', count: counts.draft },
             { key: 'Open', label: 'Open', count: counts.open },
             { key: 'On Hold', label: 'On Hold', count: counts.hold },
             { key: 'Closed', label: 'Closed', count: counts.closed },
@@ -459,162 +555,187 @@ const Jobs = () => {
           />
         </div>
       ) : (
-        <div data-tour="jobs-list" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
+        <div data-tour="jobs-list" className="space-y-3">
           {filteredJobs.map((job) => {
             const title = job.role || job.title || 'Untitled role';
             const status = job.status || 'Open';
             return (
               <article
                 key={job._id}
-                className="card-ats-bordered p-5 sm:p-6 relative overflow-visible group flex flex-col transition-shadow duration-300 hover:shadow-md"
+                className="card-ats-bordered relative overflow-visible group px-4 sm:px-5 py-3.5 sm:py-4 transition-shadow duration-200 hover:shadow-md"
               >
-                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 rounded-t-2xl" />
+                <div className="absolute inset-y-0 left-0 w-1 rounded-l-2xl bg-gradient-to-b from-brand-500 via-teal-400 to-brand-600 opacity-90" />
 
-                <div className="flex items-start justify-between gap-3 mb-4">
-                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-100 to-teal-100 border border-brand-200/70 flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
-                    <Briefcase className="w-5 h-5 text-brand-600" />
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full border whitespace-nowrap ${STATUS_STYLES[status] || STATUS_STYLES.Open}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${DOT_STYLES[status] || DOT_STYLES.Open}`} />
-                      {status}
-                    </span>
-                    <div className="relative">
-                      <button
-                        type="button"
-                        aria-label="More job actions"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenuOpenId(menuOpenId === job._id ? null : job._id);
-                        }}
-                        className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-500 shadow-sm hover:bg-stone-50 hover:border-stone-300 transition-all"
-                      >
-                        <MoreHorizontal size={15} strokeWidth={2} />
-                      </button>
-                      {menuOpenId === job._id && (
-                        <div
-                          className="absolute right-0 top-full mt-1 z-20 w-52 rounded-xl border border-stone-200 bg-white shadow-xl py-1.5 animate-fade-in"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {status !== 'Open' && (
-                            <button type="button" onClick={() => handleStatusChange(job, 'Open')} className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] font-medium text-stone-700 hover:bg-stone-50">
-                              <Unlock size={14} className="text-emerald-500" /> Mark Open
-                            </button>
+                <div className="pl-2 sm:pl-3 flex flex-col gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="hidden sm:flex w-10 h-10 rounded-lg bg-stone-100 border border-stone-200/80 items-center justify-center flex-shrink-0">
+                      <Briefcase className="w-4.5 h-4.5 text-brand-700" size={18} />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2 gap-y-1.5">
+                        <h3 className="text-[15px] sm:text-base font-bold text-stone-900 tracking-tight leading-snug uppercase">
+                          {title}
+                        </h3>
+                        {job.jobCode && (
+                          <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-200 bg-stone-50 text-stone-600 tabular-nums tracking-wide">
+                            {job.jobCode}
+                          </span>
+                        )}
+                        <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md border whitespace-nowrap ${STATUS_STYLES[status] || STATUS_STYLES.Open}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${DOT_STYLES[status] || DOT_STYLES.Open}`} />
+                          {status}
+                        </span>
+                      </div>
+                      {(job.clientName || job.grade) && (
+                        <p className="mt-0.5 text-[12px] text-stone-500 truncate">
+                          {[job.clientName, job.grade ? `Grade ${job.grade}` : ''].filter(Boolean).join(' · ')}
+                        </p>
+                      )}
+
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] sm:text-[13px] text-stone-600">
+                        <span className="inline-flex items-center gap-1 min-w-0">
+                          <MapPin size={13} className="text-stone-400 flex-shrink-0" />
+                          <span className="truncate font-medium">{job.location || 'Location TBD'}</span>
+                        </span>
+                        <span className="text-stone-300 hidden sm:inline" aria-hidden="true">·</span>
+                        <span className="inline-flex items-center gap-1 min-w-0">
+                          <Building2 size={13} className="text-stone-400 flex-shrink-0" />
+                          <span className="truncate">{job.experience || 'Exp TBD'}</span>
+                        </span>
+                        <span className="text-stone-300 hidden sm:inline" aria-hidden="true">·</span>
+                        <span className="inline-flex items-center gap-1 min-w-0 font-semibold text-stone-800">
+                          <IndianRupee size={13} className="text-stone-400 flex-shrink-0" />
+                          <span className="truncate">{job.ctc || 'CTC TBD'}</span>
+                        </span>
+                      </div>
+
+                      {(job.skills?.length > 0 || job.hiringManagers?.length > 0) && (
+                        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                          {(job.skills || []).slice(0, 5).map((skill) => (
+                            <span key={skill} className="inline-flex max-w-[14rem] truncate px-2 py-0.5 rounded-md text-[10px] font-semibold bg-brand-50 text-brand-800 border border-brand-100">
+                              {skill}
+                            </span>
+                          ))}
+                          {(job.skills || []).length > 5 && (
+                            <span className="text-[10px] font-semibold text-stone-500">+{job.skills.length - 5}</span>
                           )}
-                          {status !== 'On Hold' && status !== 'Closed' && (
-                            <button type="button" onClick={() => handleStatusChange(job, 'On Hold')} className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] font-medium text-stone-700 hover:bg-stone-50">
-                              <PauseCircle size={14} className="text-amber-500" /> Put On Hold
-                            </button>
+                          {job.hiringManagers?.length > 0 && (
+                            <>
+                              <span className="text-stone-300 mx-0.5" aria-hidden="true">|</span>
+                              {job.hiringManagers.slice(0, 3).map((email, idx) => (
+                                <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-stone-100 text-stone-700 border border-stone-200">
+                                  <UserCheck size={10} /> {String(email).split('@')[0]}
+                                </span>
+                              ))}
+                              {job.hiringManagers.length > 3 && (
+                                <span className="text-[10px] font-semibold text-stone-500">+{job.hiringManagers.length - 3}</span>
+                              )}
+                            </>
                           )}
-                          {status !== 'Closed' && (
-                            <button type="button" onClick={() => handleStatusChange(job, 'Closed')} className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] font-medium text-stone-700 hover:bg-stone-50">
-                              <Lock size={14} className="text-stone-400" /> Close job
-                            </button>
+                          {!job.hiringManagers?.length && (
+                            <>
+                              <span className="text-stone-300 mx-0.5" aria-hidden="true">|</span>
+                              <span className="text-[11px] text-stone-400 italic">No managers assigned</span>
+                            </>
                           )}
-                          {hasJobBoard && (
-                            <button
-                              type="button"
-                              onClick={() => openPostModal(job)}
-                              disabled={postingJobId === job._id}
-                              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
-                            >
-                              {postingJobId === job._id ? <Loader2 size={14} className="animate-spin" /> : <Globe2 size={14} className="text-brand-500" />}
-                              Post to Job Board
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleSaveAsTemplate(job)}
-                            className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] font-medium text-stone-700 hover:bg-stone-50"
-                          >
-                            <BookmarkPlus size={14} className="text-brand-500" /> Save as Template
-                          </button>
                         </div>
                       )}
+                      {!job.skills?.length && !job.hiringManagers?.length && (
+                        <p className="mt-2 text-[11px] text-stone-400 italic">No skills or managers assigned</p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => openEdit(job)}
+                        className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-colors"
+                        title="Edit job"
+                      >
+                        <Pencil size={14} strokeWidth={2} />
+                      </button>
+                      {hasJobBoard && (
+                        <button
+                          type="button"
+                          onClick={() => openPostModal(job)}
+                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-teal-300 hover:text-teal-700 hover:bg-teal-50 transition-colors"
+                          title="Post to job board"
+                        >
+                          <Share2 size={14} strokeWidth={2} />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleSaveAsTemplate(job)}
+                        className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-sky-300 hover:text-sky-700 hover:bg-sky-50 transition-colors"
+                        title="Save as template"
+                      >
+                        <BookmarkPlus size={14} strokeWidth={2} />
+                      </button>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          aria-label="More job actions"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuOpenId(menuOpenId === job._id ? null : job._id);
+                          }}
+                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-500 hover:bg-stone-50 hover:border-stone-300 transition-colors"
+                        >
+                          <MoreHorizontal size={15} strokeWidth={2} />
+                        </button>
+                        {menuOpenId === job._id && (
+                          <div
+                            className="absolute right-0 top-full mt-1 z-20 w-52 rounded-xl border border-stone-200 bg-white shadow-xl py-1.5 animate-fade-in"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {status !== 'Open' && (
+                              <button type="button" onClick={() => handleStatusChange(job, 'Open')} className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] font-medium text-stone-700 hover:bg-stone-50">
+                                <Unlock size={14} className="text-emerald-500" /> Mark Open
+                              </button>
+                            )}
+                            {status !== 'On Hold' && status !== 'Closed' && (
+                              <button type="button" onClick={() => handleStatusChange(job, 'On Hold')} className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] font-medium text-stone-700 hover:bg-stone-50">
+                                <PauseCircle size={14} className="text-amber-500" /> Put On Hold
+                              </button>
+                            )}
+                            {status !== 'Closed' && (
+                              <button type="button" onClick={() => handleStatusChange(job, 'Closed')} className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] font-medium text-stone-700 hover:bg-stone-50">
+                                <Lock size={14} className="text-stone-400" /> Close job
+                              </button>
+                            )}
+                            {hasJobBoard && (
+                              <button
+                                type="button"
+                                onClick={() => openPostModal(job)}
+                                disabled={postingJobId === job._id}
+                                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+                              >
+                                {postingJobId === job._id ? <Loader2 size={14} className="animate-spin" /> : <Globe2 size={14} className="text-brand-500" />}
+                                Post to Job Board
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleSaveAsTemplate(job)}
+                              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] font-medium text-stone-700 hover:bg-stone-50 sm:hidden"
+                            >
+                              <BookmarkPlus size={14} className="text-brand-500" /> Save as Template
+                            </button>
+                            <div className="my-1 border-t border-stone-100" />
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTarget(job)}
+                              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] font-medium text-red-600 hover:bg-red-50"
+                            >
+                              <Trash2 size={14} /> Delete job
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-
-                <h3 className="text-lg font-bold text-stone-900 mb-3 tracking-tight leading-snug line-clamp-2">
-                  {title}
-                </h3>
-
-                <div className="space-y-2 text-sm text-stone-500 flex-1">
-                  <p className="flex items-center gap-2 min-w-0">
-                    <MapPin size={15} className="text-stone-400 flex-shrink-0" />
-                    <span className="truncate">{job.location || 'Location TBD'}</span>
-                  </p>
-                  <p className="flex items-center gap-2 min-w-0">
-                    <Building2 size={15} className="text-stone-400 flex-shrink-0" />
-                    <span className="truncate">{job.experience || 'Exp not specified'}</span>
-                  </p>
-                  <p className="flex items-center gap-2 font-semibold text-stone-800 min-w-0">
-                    <IndianRupee size={15} className="text-stone-400 flex-shrink-0" />
-                    <span className="truncate">{job.ctc || 'As per industry'}</span>
-                  </p>
-                </div>
-
-                {job.skills?.length > 0 && (
-                  <div className="mt-4 flex flex-wrap gap-1.5">
-                    {job.skills.slice(0, 4).map((skill) => (
-                      <span key={skill} className="badge-brand !py-0.5 !text-[10px] whitespace-nowrap">{skill}</span>
-                    ))}
-                    {job.skills.length > 4 && (
-                      <span className="badge-neutral !py-0.5 !text-[10px]">+{job.skills.length - 4}</span>
-                    )}
-                  </div>
-                )}
-
-                <div className="mt-5 pt-4 border-t border-stone-100">
-                  <p className="text-[10px] uppercase font-bold text-stone-400 tracking-wider mb-2">Assigned Managers</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {job.hiringManagers?.length > 0 ? (
-                      job.hiringManagers.map((email, idx) => (
-                        <span key={idx} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold bg-brand-50 text-brand-700 border border-brand-100 whitespace-nowrap">
-                          <UserCheck size={11} /> {String(email).split('@')[0]}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-xs italic text-stone-400">No managers assigned</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-stone-100 flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => openEdit(job)}
-                    className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-brand-100 bg-brand-50/80 text-brand-700 shadow-sm hover:bg-brand-100 hover:border-brand-200 transition-all"
-                    title="Edit job"
-                  >
-                    <Pencil size={15} strokeWidth={2} />
-                  </button>
-                  {hasJobBoard && (
-                    <button
-                      type="button"
-                      onClick={() => openPostModal(job)}
-                      className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-teal-100 bg-teal-50/80 text-teal-700 shadow-sm hover:bg-teal-100 hover:border-teal-200 transition-all"
-                      title="Post to job board"
-                    >
-                      <Share2 size={15} strokeWidth={2} />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => handleSaveAsTemplate(job)}
-                    className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-sky-100 bg-sky-50/80 text-sky-700 shadow-sm hover:bg-sky-100 hover:border-sky-200 transition-all"
-                    title="Save as template"
-                  >
-                    <BookmarkPlus size={15} strokeWidth={2} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDeleteTarget(job)}
-                    className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-red-100 bg-red-50/70 text-red-600 shadow-sm hover:bg-red-100 hover:border-red-200 transition-all ml-auto"
-                    title="Delete job"
-                  >
-                    <Trash2 size={15} strokeWidth={2} />
-                  </button>
                 </div>
               </article>
             );

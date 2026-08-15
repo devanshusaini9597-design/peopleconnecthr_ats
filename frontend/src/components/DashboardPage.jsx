@@ -6,17 +6,18 @@ import CallbackRemindersWidget from './CallbackRemindersWidget';
 import WelcomeModal from './WelcomeModal';
 import ProductTour, { shouldAutoStartTour } from './ui/ProductTour';
 import TourHelpFab from './ui/TourHelpFab';
-import { LayoutDashboard, UserPlus, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, UserPlus, BarChart3, Briefcase } from 'lucide-react';
 import { BASE_API_URL } from '../config';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useAuth } from '../context/AuthContext';
-import { DASH_TOUR_KEY, DASH_TOUR_STEPS } from './dashboard/dashboardConstants';
+import { DASH_TOUR_KEY, DASH_TOUR_STEPS, FREELANCER_DASH_TOUR_KEY, FREELANCER_DASH_TOUR_STEPS } from './dashboard/dashboardConstants';
 import { DashboardKpis, DashboardMainGrid, DashboardLowerGrid } from './dashboard/DashboardPanels';
+import FreelancerDashboard from './dashboard/FreelancerDashboard';
 
 const DashboardPage = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const userEmail = user?.email || 'User';
   const userName = user?.name || '';
   const displayName = userName || (userEmail.includes('@') ? userEmail.split('@')[0] : userEmail);
@@ -28,6 +29,11 @@ const DashboardPage = () => {
   const [tourOpen, setTourOpen] = useState(false);
 
   useEffect(() => {
+    if (authLoading) return undefined;
+    if (user?.role === 'freelancer') {
+      setLoading(false);
+      return undefined;
+    }
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
@@ -52,14 +58,15 @@ const DashboardPage = () => {
       }
     };
     fetchDashboardData();
-  }, [t]);
+    return undefined;
+  }, [t, authLoading, user?.role]);
 
   useEffect(() => {
     if (loading) return;
     if (sessionStorage.getItem('showWelcomeModal') === '1') {
       sessionStorage.removeItem('showWelcomeModal');
       setShowWelcome(true);
-    } else if (shouldAutoStartTour(DASH_TOUR_KEY)) {
+    } else if (shouldAutoStartTour(user?.role === 'freelancer' ? FREELANCER_DASH_TOUR_KEY : DASH_TOUR_KEY)) {
       const t = setTimeout(() => setTourOpen(true), 500);
       return () => clearTimeout(t);
     }
@@ -88,6 +95,9 @@ const DashboardPage = () => {
   }
 
   const d = dashData || {};
+  const isFreelancer = user?.role === 'freelancer';
+  const tourKey = isFreelancer ? FREELANCER_DASH_TOUR_KEY : DASH_TOUR_KEY;
+  const tourSteps = isFreelancer ? FREELANCER_DASH_TOUR_STEPS : DASH_TOUR_STEPS;
 
   return (
     <div className="page-shell-ats animate-page-enter">
@@ -99,29 +109,42 @@ const DashboardPage = () => {
       <PageHeader
         icon={LayoutDashboard}
         title={t('pages.dashboard.welcome', { name: displayName })}
-        subtitle={t('pages.dashboard.subtitle', {
-          period: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
-        })}
+        subtitle={isFreelancer
+          ? `Your freelance desk · ${new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}`
+          : t('pages.dashboard.subtitle', {
+            period: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
+          })}
         gradientTitle
       >
-        <button type="button" onClick={() => navigate('/analytics')} className="btn-secondary flex-1 sm:flex-none">
-          <BarChart3 size={16} /> {t('pages.dashboard.analytics')}
-        </button>
+        {isFreelancer ? (
+          <button type="button" onClick={() => navigate('/mandates')} className="btn-secondary flex-1 sm:flex-none">
+            <Briefcase size={16} /> Open Mandates
+          </button>
+        ) : (
+          <button type="button" onClick={() => navigate('/analytics')} className="btn-secondary flex-1 sm:flex-none">
+            <BarChart3 size={16} /> {t('pages.dashboard.analytics')}
+          </button>
+        )}
         <button type="button" onClick={() => navigate('/ats?add=1')} className="btn-primary flex-1 sm:flex-none">
           <UserPlus size={16} /> {t('pages.dashboard.addCandidate')}
         </button>
       </PageHeader>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm font-medium animate-fade-in">
-          {error}. {t('common.showingCached')}
-        </div>
+      {isFreelancer ? (
+        <FreelancerDashboard />
+      ) : (
+        <>
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm font-medium animate-fade-in">
+              {error}. {t('common.showingCached')}
+            </div>
+          )}
+          <DashboardKpis d={d} navigate={navigate} isFreelancer={false} />
+          <DashboardMainGrid d={d} navigate={navigate} isFreelancer={false} />
+          <CallbackRemindersWidget />
+          <DashboardLowerGrid d={d} navigate={navigate} isFreelancer={false} />
+        </>
       )}
-
-      <DashboardKpis d={d} navigate={navigate} />
-      <DashboardMainGrid d={d} navigate={navigate} />
-      <CallbackRemindersWidget />
-      <DashboardLowerGrid d={d} navigate={navigate} />
 
       <TourHelpFab
         onClick={() => setTourOpen(true)}
@@ -131,8 +154,8 @@ const DashboardPage = () => {
       <ProductTour
         open={tourOpen}
         onClose={() => setTourOpen(false)}
-        steps={DASH_TOUR_STEPS}
-        storageKey={DASH_TOUR_KEY}
+        steps={tourSteps}
+        storageKey={tourKey}
       />
     </div>
   );

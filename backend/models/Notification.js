@@ -26,7 +26,8 @@ const NotificationSchema = new mongoose.Schema({
       'mention',            // @mention on candidate collaboration
       'candidate_hired',
       'interview_reminder',
-      'announcement'
+      'announcement',
+      'freelancer_submission',
     ],
     required: true 
   },
