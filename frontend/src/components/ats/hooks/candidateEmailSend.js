@@ -7,10 +7,12 @@ export function useCandidateEmailSend(deps) {
     setVerifiedEmailRequiredMessage,
     setShowVerifiedEmailRequiredModal,
     setChannelsAvailable,
+    setEmailSenderInfo,
     setEmailRecipient,
     setEmailChannel,
     setEmailType,
     setCustomMessage,
+    setQuickSubject,
     setEmailCC,
     setEmailBCC,
     setCcInput,
@@ -24,6 +26,9 @@ export function useCandidateEmailSend(deps) {
     setQuickPreviewSubject,
     setSelectedTemplate,
     setTemplateVars,
+    setTemplateDraftSubject,
+    setTemplateDraftBody,
+    setTemplateDraftDirty,
     setEmailMode,
     setShowEmailModal,
     setEmailTemplates,
@@ -32,6 +37,8 @@ export function useCandidateEmailSend(deps) {
     setIsSendingEmail,
     bulkEmailRecipients,
     templateVars,
+    templateDraftSubject,
+    templateDraftBody,
     emailChannel,
     emailCC,
     emailBCC,
@@ -39,6 +46,7 @@ export function useCandidateEmailSend(deps) {
     setSelectedIds,
     emailType,
     customMessage,
+    quickSubject,
     quickName,
     quickPosition,
     quickDepartment,
@@ -54,12 +62,18 @@ export function useCandidateEmailSend(deps) {
     try {
       const configRes = await authenticatedFetch(`${BASE_API_URL}/api/email-settings`);
       const configData = await configRes.json();
-      if (!configData.success || !configData.settings?.isConfigured) {
-        toast.error(
-          'Please configure your email settings first. Go to Email → Email Settings to set up your SMTP credentials.',
-          6000
-        );
-        return;
+      const personalConfigured = !!(configData.success && configData.settings?.isConfigured);
+      // Env / company Zepto may still allow sending without personal SMTP
+      if (!personalConfigured) {
+        const statusRes = await authenticatedFetch(`${BASE_API_URL}/api/email/sender-status`);
+        const statusData = await statusRes.json().catch(() => ({}));
+        if (!(statusData.success && statusData.canSend)) {
+          toast.error(
+            'Please configure your email settings first. Go to Email → Email Settings to set up your SMTP credentials.',
+            6000
+          );
+          return;
+        }
       }
     } catch (err) {
       toast.error('Please configure your email settings before sending emails.');
@@ -69,12 +83,25 @@ export function useCandidateEmailSend(deps) {
     try {
       const statusRes = await authenticatedFetch(`${BASE_API_URL}/api/email/sender-status`);
       const statusData = await statusRes.json();
+      if (statusData.success) {
+        setEmailSenderInfo?.({
+          fromEmail: statusData.fromEmail || statusData.agentFrom || '',
+          replyTo: statusData.replyTo || '',
+          displayName: statusData.displayName || '',
+          verifiedDomain: statusData.verifiedDomain || '',
+          sendAsUser: Boolean(statusData.sendAsUser),
+          agentFrom: statusData.agentFrom || '',
+          hint: statusData.hint || '',
+        });
+      }
       if (statusData.success && statusData.canSend === false) {
         setVerifiedEmailRequiredMessage(statusData.reason || 'Please log in with your company verified email to send emails.');
         setShowVerifiedEmailRequiredModal(true);
         return;
       }
-    } catch (_) { /* allow open if status fails */ }
+    } catch (_) {
+      setEmailSenderInfo?.(null);
+    }
 
     try {
       const chRes = await authenticatedFetch(`${BASE_API_URL}/api/email/channels`);
@@ -91,6 +118,7 @@ export function useCandidateEmailSend(deps) {
     setEmailChannel('transactional');
     setEmailType('interview');
     setCustomMessage('');
+    setQuickSubject?.('');
     setEmailCC([]);
     setEmailBCC([]);
     setCcInput('');
@@ -104,6 +132,9 @@ export function useCandidateEmailSend(deps) {
     setQuickPreviewSubject('');
     setSelectedTemplate(null);
     setTemplateVars({});
+    setTemplateDraftSubject?.('');
+    setTemplateDraftBody?.('');
+    setTemplateDraftDirty?.(false);
     setEmailMode('template');
     setShowEmailModal(true);
 
@@ -125,17 +156,42 @@ export function useCandidateEmailSend(deps) {
 
   const selectEmailTemplate = (template) => {
     setSelectedTemplate(template);
+    setTemplateDraftDirty?.(false);
+    let orgCompany = '';
+    try {
+      orgCompany =
+        localStorage.getItem('orgName') ||
+        JSON.parse(localStorage.getItem('orgData') || '{}')?.name ||
+        '';
+    } catch {
+      orgCompany = '';
+    }
     const vars = {};
-    (template.variables || []).forEach(v => {
+    (template.variables || []).forEach((v) => {
       if (v === 'candidateName') vars[v] = emailRecipient?.name || '';
       else if (v === 'position') vars[v] = emailRecipient?.position || '';
-      else if (v === 'company') vars[v] = emailRecipient?.client || emailRecipient?.companyName || '';
-      else if (v === 'ctc') vars[v] = emailRecipient?.ctc || '';
+      else if (v === 'company') {
+        vars[v] =
+          emailRecipient?.client ||
+          emailRecipient?.companyName ||
+          orgCompany ||
+          '';
+      } else if (v === 'ctc') vars[v] = emailRecipient?.ctc || '';
       else if (v === 'experience') vars[v] = emailRecipient?.experience || '';
       else if (v === 'location') vars[v] = emailRecipient?.location || '';
       else vars[v] = '';
     });
     setTemplateVars(vars);
+    // Seed draft immediately (effect also keeps it in sync while not dirty)
+    let subject = String(template.subject || '');
+    let bodyText = String(template.body || '');
+    Object.entries(vars).forEach(([k, v]) => {
+      const re = new RegExp(`\\{\\{${k}\\}\\}`, 'g');
+      subject = subject.replace(re, v || `{{${k}}}`);
+      bodyText = bodyText.replace(re, v || `{{${k}}}`);
+    });
+    setTemplateDraftSubject?.(subject);
+    setTemplateDraftBody?.(bodyText);
   };
 
   const sendTemplateEmail = async () => {
@@ -151,6 +207,8 @@ export function useCandidateEmailSend(deps) {
         recipients: recipients,
         variables: templateVars,
         channel: emailChannel,
+        subjectOverride: templateDraftSubject || selectedTemplate.subject,
+        bodyOverride: templateDraftBody || selectedTemplate.body,
       };
       if (emailCC.length > 0) body.cc = emailCC;
       if (emailBCC.length > 0) body.bcc = emailBCC;
@@ -166,7 +224,7 @@ export function useCandidateEmailSend(deps) {
       if (data.success) {
         if (bulkEmailRecipients.length > 0) {
           if (failedCount > 0) {
-            toast.error(`Bulk email: ${successCount} sent, ${failedCount} failed. ${data.data.failed?.[0]?.error || ''}`);
+            toast.error(`Bulk email: ${successCount} sent, ${failedCount} failed. ${data.data.failed?.[0]?.displayMessage || data.data.failed?.[0]?.error || ''}`, 8000);
             if (data.data?.failed?.length) console.error('[Send email] Failed:', data.data.failed);
           } else {
             toast.success(`Bulk email sent! Sent: ${successCount}`);
@@ -178,23 +236,31 @@ export function useCandidateEmailSend(deps) {
           if (failedCount > 0) {
             const first = data.data?.failed?.[0];
             const errMsg = first?.displayMessage || first?.error || 'Send failed';
-            toast.error(`Email not sent: ${errMsg}`, 8000);
-            console.error('[Send email] Failed:', data.data?.failed);
+            // Show user-friendly message for campaign sender issues
+            if (emailChannel === 'marketing' && /not verified|sender/i.test(errMsg)) {
+              toast.error('Campaign email could not be sent. Your sender address is not verified for campaigns. Please contact your admin.', 10000);
+            } else {
+              toast.error(`Email not sent: ${errMsg}`, 10000);
+            }
+            console.error('[Send email] Failed:', JSON.stringify(data.data?.failed, null, 2));
           } else {
-            const via = emailChannel === 'marketing' ? ' (via Marketing)' : ' (via Transactional)';
+            const via = emailChannel === 'marketing' ? ' (campaign)' : '';
             toast.success(`Email sent to ${emailRecipient.email}${via}`);
             setShowEmailModal(false);
             setEmailRecipient(null);
           }
         }
         setSelectedTemplate(null);
+        setTemplateDraftSubject?.('');
+        setTemplateDraftBody?.('');
+        setTemplateDraftDirty?.(false);
         if (data.data && failedCount === 0) console.log('[Send email] Success:', data.data);
       } else if (data.message === 'EMAIL_NOT_CONFIGURED') {
         console.error('[Send email] Not configured:', data);
         toast.error('Please configure your email settings first. Go to Email → Email Settings.', 6000);
         setShowEmailModal(false);
       } else if (data.code === 'CAMPAIGNS_NOT_CONFIGURED') {
-        toast.error(data.displayMessage || data.message || 'Zoho Campaigns is not configured. Add credentials and ZOHO_CAMPAIGNS_LIST_KEY in backend .env.', 8000);
+        toast.error(data.displayMessage || 'Marketing campaigns are not configured. Please contact your admin.', 8000);
         setShowEmailModal(false);
       } else if (data.code === 'USE_VERIFIED_DOMAIN') {
         setVerifiedEmailRequiredMessage(data.message || 'Please use your company verified email to send.');
@@ -223,24 +289,32 @@ export function useCandidateEmailSend(deps) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            candidates: bulkEmailRecipients.map(c => ({
+            candidates: bulkEmailRecipients.map((c) => ({
               email: c.email,
-              name: c.name,
-              position: c.position,
-              department: c.department || 'N/A',
-              joiningDate: c.joiningDate || 'TBD'
+              name: quickName || c.name,
+              position: quickPosition || c.position,
+              department: quickDepartment || c.department || 'N/A',
+              joiningDate: quickJoiningDate || c.joiningDate || 'TBD',
             })),
-            emailType: emailType,
+            // Quick send always uses the edited subject + body.
+            emailType: 'custom',
+            subject: (quickSubject || '').trim() || 'Message from recruiting team',
             customMessage: customMessage,
             cc: emailCC,
-            bcc: emailBCC
-          })
+            bcc: emailBCC,
+          }),
         });
 
         const data = await response.json();
 
         if (data.success) {
-          toast.success(`Bulk email sent! Total: ${data.data.total}, Sent: ${data.data.sent}, Failed: ${data.data.failed}`);
+          const sent = data.data?.sent ?? 0;
+          const failed = data.data?.failed ?? 0;
+          if (failed > 0) {
+            toast.error(`Sent ${sent}, failed ${failed}. ${data.data?.failedEmails?.[0]?.error || ''}`);
+          } else {
+            toast.success(sent === 1 ? `Email sent` : `Emails sent to ${sent} candidates`);
+          }
           setShowEmailModal(false);
           setBulkEmailRecipients([]);
           setSelectedIds?.([]);
@@ -256,14 +330,16 @@ export function useCandidateEmailSend(deps) {
           setShowEmailModal(false);
         } else {
           console.error('[Send bulk email] API error:', data.message, data);
-          toast.error(`Failed to send bulk emails: ${data.message}`);
+          toast.error(`Failed to send emails: ${data.displayMessage || data.message || 'Unknown error'}`);
         }
       } else {
         const emailBody = {
           email: emailRecipient.email,
           name: quickName || emailRecipient.name,
           position: quickPosition || emailRecipient.position,
-          emailType: emailType,
+          // Always send the edited subject + body (type is only a starter).
+          emailType: 'custom',
+          subject: (quickSubject || '').trim() || 'Message from recruiting team',
           customMessage: customMessage,
           department: quickDepartment || emailRecipient.department || 'N/A',
           joiningDate: quickJoiningDate || emailRecipient.joiningDate || 'TBD'

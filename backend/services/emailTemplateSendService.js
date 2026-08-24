@@ -33,6 +33,15 @@ function buildHtmlContent(emailBody, { isSubscribeInvite }) {
   const bodyLines = emailBody.split('\n');
   let htmlContent = '';
   let inList = false;
+  let inDetailBlock = false;
+  let detailRows = '';
+
+  const closeDetailBlock = () => {
+    if (!inDetailBlock) return;
+    htmlContent += `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:12px 0 18px 0;background-color:#f8fafc;border:1px solid #eef0f3;border-left:3px solid #5b21b6;"><tr><td style="padding:12px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${detailRows}</table></td></tr></table>`;
+    detailRows = '';
+    inDetailBlock = false;
+  };
 
   bodyLines.forEach((line, idx) => {
     const trimmed = line.trim();
@@ -41,36 +50,42 @@ function buildHtmlContent(emailBody, { isSubscribeInvite }) {
         htmlContent += '</ul>';
         inList = false;
       }
-      htmlContent += '<div style="height: 12px;"></div>';
+      closeDetailBlock();
+      htmlContent += '<div style="height:10px;"></div>';
     } else if (isSubscribeInvite && /^Subscribe now:\s*(.+)?$/i.test(trimmed)) {
       if (inList) {
         htmlContent += '</ul>';
         inList = false;
       }
+      closeDetailBlock();
     } else if (/unsubscribe|email preferences|click here:\s*#?unsubscribe/i.test(trimmed)) {
       if (inList) {
         htmlContent += '</ul>';
         inList = false;
       }
+      closeDetailBlock();
     } else if (/^(\d+[\.\)]|[-•●])\s/.test(trimmed)) {
+      closeDetailBlock();
       if (!inList) {
         htmlContent +=
-          '<ul style="margin: 8px 0 8px 4px; padding-left: 20px; color: #374151;">';
+          '<ul style="margin:8px 0 14px 0;padding:0 0 0 18px;color:#334155;">';
         inList = true;
       }
-      htmlContent += `<li style="margin: 4px 0; font-size: 14px; line-height: 1.7; color: #374151;">${trimmed.replace(/^(\d+[\.\)]|[-•●])\s*/, '')}</li>`;
+      htmlContent += `<li style="margin:0 0 6px 0;font-size:14.5px;line-height:1.65;color:#334155;">${trimmed.replace(/^(\d+[\.\)]|[-•●])\s*/, '')}</li>`;
     } else if (trimmed.startsWith('Dear ')) {
       if (inList) {
         htmlContent += '</ul>';
         inList = false;
       }
-      htmlContent += `<p style="margin: 0 0 4px 0; font-size: 15px; color: #1f2937; font-weight: 500;">${trimmed}</p>`;
+      closeDetailBlock();
+      htmlContent += `<p style="margin:0 0 16px 0;font-size:15px;color:#0f172a;font-weight:600;">${trimmed}</p>`;
     } else if (/^(Best regards|Regards|Sincerely|Thank you|Warm regards)/i.test(trimmed)) {
       if (inList) {
         htmlContent += '</ul>';
         inList = false;
       }
-      htmlContent += `<div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e5e7eb;"><p style="margin: 0 0 2px 0; font-size: 14px; color: #6b7280;">${trimmed}</p>`;
+      closeDetailBlock();
+      htmlContent += `<div style="margin-top:24px;"><p style="margin:0 0 2px 0;font-size:14px;color:#64748b;">${trimmed}</p>`;
     } else if (
       idx > 0 &&
       /^(Best regards|Regards|Sincerely|Thank you|Warm regards)/i.test(
@@ -81,29 +96,48 @@ function buildHtmlContent(emailBody, { isSubscribeInvite }) {
           ?.trim() || ''
       )
     ) {
-      htmlContent += `<p style="margin: 0 0 1px 0; font-size: 14px; color: #4b5563; font-weight: 600;">${trimmed}</p>`;
-    } else if (/^[A-Z][A-Za-z\s\/]+:\s/.test(trimmed)) {
+      htmlContent += `<p style="margin:0 0 1px 0;font-size:14px;color:#0f172a;font-weight:700;">${trimmed}</p>`;
+    } else if (/^[A-Z][A-Za-z\s\/]+:\s/.test(trimmed) || /^[•●\-]\s*[A-Za-z].+:\s/.test(trimmed)) {
       if (inList) {
         htmlContent += '</ul>';
         inList = false;
       }
-      const colonIdx = trimmed.indexOf(':');
-      const key = trimmed.substring(0, colonIdx);
-      const val = trimmed.substring(colonIdx + 1).trim();
-      htmlContent += `<div style="display: flex; margin: 6px 0; font-size: 14px; line-height: 1.6;"><span style="color: #6b7280; min-width: 160px; font-weight: 500;">${key}:</span><span style="color: #1e2937; font-weight: 600;">${val}</span></div>`;
+      const cleaned = trimmed.replace(/^[•●\-]\s*/, '');
+      const colonIdx = cleaned.indexOf(':');
+      const key = cleaned.substring(0, colonIdx).trim();
+      const val = cleaned.substring(colonIdx + 1).trim();
+      inDetailBlock = true;
+      detailRows += `<tr>
+        <td style="padding:6px 0;font-size:13px;color:#64748b;width:140px;vertical-align:top;">${key}</td>
+        <td style="padding:6px 0;font-size:13px;color:#0f172a;font-weight:600;vertical-align:top;">${val}</td>
+      </tr>`;
     } else {
       if (inList) {
         htmlContent += '</ul>';
         inList = false;
       }
-      htmlContent += `<p style="margin: 0 0 6px 0; font-size: 14px; line-height: 1.7; color: #374151;">${trimmed}</p>`;
+      closeDetailBlock();
+      htmlContent += `<p style="margin:0 0 12px 0;font-size:15px;line-height:1.7;color:#334155;">${trimmed}</p>`;
     }
   });
   if (inList) htmlContent += '</ul>';
-  if (htmlContent.includes('border-top: 1px solid #e5e7eb')) htmlContent += '</div>';
+  closeDetailBlock();
+  if (htmlContent.includes('margin-top:24px;')) htmlContent += '</div>';
   return htmlContent;
 }
 
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Outer email chrome. `orgBrand` = recruiter organization (e.g. Devlumiq).
+ * Never use job {{company}} here — that belongs in the body only.
+ */
 function wrapEmailHtml({
   emailSubject,
   htmlContent,
@@ -111,43 +145,27 @@ function wrapEmailHtml({
   unsubscribeFooterHtml,
   senderName,
   senderEmail,
+  companyName,
+  orgBrand,
+  logoUrl,
+  brandColor,
+  category,
 }) {
-  const currentYear = new Date().getFullYear();
-  return `
-<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${emailSubject}</title></head>
-<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 40px 20px;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%;">
-        <tr><td style="padding: 0 0 28px 0; text-align: center;">
-          <p style="margin: 0; font-size: 22px; font-weight: 700; color: #312e81; letter-spacing: -0.4px;">Skillnix Recruitment Services</p>
-          <div style="width: 48px; height: 3px; background: linear-gradient(90deg, #4f46e5, #7c3aed); margin: 12px auto 0; border-radius: 2px;"></div>
-        </td></tr>
-        <tr><td>
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px -2px rgba(0,0,0,0.06); overflow: hidden; border: 1px solid #eef2ff;">
-            <tr><td style="height: 5px; background: linear-gradient(90deg, #4f46e5, #7c3aed, #4f46e5); font-size: 0;">&nbsp;</td></tr>
-            <tr><td style="padding: 32px 40px 28px 40px; border-bottom: 1px solid #f1f5f9;">
-              <h1 style="margin: 0; font-size: 20px; font-weight: 700; color: #1e293b; line-height: 1.35;">${emailSubject}</h1>
-            </td></tr>
-            <tr><td style="padding: 32px 40px 36px 40px;">
-              ${htmlContent}
-              ${subscribeCtaHtml}
-            </td></tr>
-          </table>
-        </td></tr>
-        <tr><td style="padding: 28px 0 0 0; text-align: center;">
-          ${unsubscribeFooterHtml}
-          <p style="margin: 0 0 6px 0; font-size: 12px; color: #64748b;">Sent by <strong>${senderName}</strong>${senderEmail ? ' &middot; ' + senderEmail : ''}</p>
-          <p style="margin: 0 0 6px 0; font-size: 11px; color: #94a3b8;">Skillnix Recruitment Services</p>
-          <p style="margin: 0; font-size: 10px; color: #cbd5e1;">&copy; ${currentYear} Skillnix. All rights reserved.</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+  const { wrapBrandedEmailHtml, categoryEyebrow } = require('./emailBrandLayout');
+  return wrapBrandedEmailHtml({
+    title: emailSubject,
+    category: category || '',
+    eyebrow: categoryEyebrow(category),
+    bodyHtml: htmlContent,
+    orgName: orgBrand || companyName || 'Skillnix Recruitment',
+    logoUrl: logoUrl || '',
+    brandColor: brandColor || '#5b21b6',
+    senderName: senderName || '',
+    senderEmail: senderEmail || '',
+    includeSignOff: false,
+    subscribeCtaHtml,
+    unsubscribeFooterHtml,
+  });
 }
 
 function mapSendError(err) {
@@ -162,18 +180,29 @@ function mapSendError(err) {
       : '');
   if (err.displayMessage) {
     errMsg = err.displayMessage;
+  } else if (err.code === 'CAMPAIGNS_SCOPE') {
+    errMsg =
+      'Zoho Campaigns OAuth needs campaign CREATE + UPDATE scopes. Regenerate Self Client code with ZohoCampaigns.campaign.CREATE,ZohoCampaigns.campaign.UPDATE (and contact scopes), then update ZOHO_CAMPAIGNS_REFRESH_TOKEN.';
+  } else if (err.code === 'CAMPAIGNS_FROM_EMAIL' || err.code === 'CAMPAIGNS_FROM_UNVERIFIED') {
+    errMsg =
+      err.displayMessage ||
+      'Campaign email could not be sent. Your sender address is not yet verified for campaigns. Please contact your admin to verify the sender address, or try again.';
+  } else if (err.code === 'CAMPAIGNS_LIST_EMPTY') {
+    errMsg =
+      err.displayMessage ||
+      'Zoho list has no active contacts (pending opt-in). Confirm subscription email or adjust Manage Opt-in, then retry.';
   } else if (zohoMsg && /failed to load|client_id|client_secret|refresh_token|list key/i.test(zohoMsg)) {
     errMsg =
       'Zoho Campaigns config error. In backend .env set: ZOHO_CAMPAIGNS_CLIENT_ID, ZOHO_CAMPAIGNS_CLIENT_SECRET, ZOHO_CAMPAIGNS_REFRESH_TOKEN, ZOHO_CAMPAIGNS_LIST_KEY. Restart the backend after changes.';
   } else if (err.response?.status === 400 && !err.displayMessage) {
     errMsg =
-      'Zoho Campaigns returned an error. In backend .env set: ZOHO_CAMPAIGNS_CLIENT_ID, ZOHO_CAMPAIGNS_CLIENT_SECRET, ZOHO_CAMPAIGNS_REFRESH_TOKEN, ZOHO_CAMPAIGNS_LIST_KEY. Restart the backend after changes.';
+      'Zoho Campaigns returned an error. Check sender verification, list key, and OAuth scopes, then retry.';
   } else if (
     /request failed with status code/i.test(errMsg) &&
     (err.response?.status === 400 || err.response?.status >= 400)
   ) {
     errMsg =
-      'Zoho Campaigns rejected the request. Check ZOHO_CAMPAIGNS_* vars and list key in backend .env, then restart the backend.';
+      'Zoho Campaigns rejected the request. Check ZOHO_CAMPAIGNS_* vars, verified from-address, and campaign scopes.';
   }
   return { error: errMsg, displayMessage: err.displayMessage || errMsg };
 }
@@ -181,16 +210,30 @@ function mapSendError(err) {
 /**
  * Send a template to one or more recipients.
  * @param {object} user - req.user
- * @param {object} body - { templateId, recipients, variables, cc, bcc, channel }
+ * @param {object} body - { templateId, recipients, variables, cc, bcc, channel, subjectOverride?, bodyOverride? }
  */
 async function sendTemplateEmail(user, body) {
-  const { templateId, recipients, variables, cc, bcc, channel } = body;
+  const {
+    templateId,
+    recipients,
+    variables,
+    cc,
+    bcc,
+    channel,
+    subjectOverride,
+    bodyOverride,
+  } = body;
 
   if (!templateId) throw httpError('Template ID is required');
 
+  if (!user.organizationId) {
+    throw httpError('Create your organization first to send template emails.', 400, {
+      code: 'ORG_REQUIRED',
+    });
+  }
   const template = await EmailTemplate.findOne({
     _id: templateId,
-    $or: [{ createdBy: user.id }, { isDefault: true }],
+    organizationId: user.organizationId,
   });
   if (!template) throw httpError('Template not found', 404);
 
@@ -202,17 +245,15 @@ async function sendTemplateEmail(user, body) {
   const isMarketing = channel === 'marketing';
 
   if (isMarketing) {
-    const { isCampaignsConfigured } = require('./campaignService');
-    if (!isCampaignsConfigured()) {
-      throw httpError('CAMPAIGNS_NOT_CONFIGURED', 400, {
-        displayMessage: 'Zoho Campaigns is not configured.',
-      });
-    }
-    const listKey = (process.env.ZOHO_CAMPAIGNS_LIST_KEY || '').trim();
-    if (!listKey) {
+    const {
+      resolveCampaignsSettings,
+      isSettingsConfigured,
+    } = require('./marketingListService');
+    const settings = await resolveCampaignsSettings(user.organizationId);
+    if (!isSettingsConfigured(settings)) {
       throw httpError('CAMPAIGNS_NOT_CONFIGURED', 400, {
         displayMessage:
-          'Add ZOHO_CAMPAIGNS_LIST_KEY in backend .env (from Zoho Campaigns → Mailing Lists → list key), then restart the backend.',
+          'Zoho Campaigns is not configured. Add it under Organization → Integrations → Marketing, or set platform ZOHO_CAMPAIGNS_* env vars.',
       });
     }
   }
@@ -233,11 +274,28 @@ async function sendTemplateEmail(user, body) {
   const senderName = user.name || 'HR Team';
   const senderEmail = user.email || '';
 
+  // Org brand for email chrome (header/footer). Separate from job {{company}}.
+  let orgBrand = '';
+  let orgLogoUrl = '';
+  let orgBrandColor = '#0f766e';
+  try {
+    const { loadOrgEmailBrand } = require('./emailBrandLayout');
+    const brand = await loadOrgEmailBrand(user.organizationId);
+    orgBrand = brand.name;
+    orgLogoUrl = brand.logoUrl;
+    orgBrandColor = brand.brandColor;
+  } catch (_) {
+    orgBrand = '';
+  }
+  if (!orgBrand) orgBrand = 'Talent Acquisition';
+
   for (const recipient of recipientList) {
     try {
       const vars = {
         ...variables,
         candidateName: recipient.name || variables?.candidateName || 'Candidate',
+        // Job / client company in body — do not overwrite with org brand if user set it
+        company: (variables?.company || '').trim() || orgBrand,
       };
       if (isMarketing) {
         vars.unsubscribeLink =
@@ -274,8 +332,18 @@ async function sendTemplateEmail(user, body) {
         vars.unsubscribeLink = `${backendBase}/api/public/unsubscribe/confirm?email=${encodeURIComponent(recipient.email)}&sig=${signEmail(recipient.email)}`;
       }
 
-      let emailSubject = applyVariables(template.subject, vars);
-      let emailBody = applyVariables(template.body, vars);
+      let emailSubject = applyVariables(
+        typeof subjectOverride === 'string' && subjectOverride.length
+          ? subjectOverride
+          : template.subject,
+        vars
+      );
+      let emailBody = applyVariables(
+        typeof bodyOverride === 'string' && bodyOverride.length
+          ? bodyOverride
+          : template.body,
+        vars
+      );
 
       const isSubscribeInvite =
         template.name === 'Subscribe for Updates' && template.category === 'marketing';
@@ -287,7 +355,7 @@ async function sendTemplateEmail(user, body) {
           : '';
       const unsubscribeFooterHtml =
         unsubscribeUrl && !isSubscribeInvite
-          ? `<p style="margin: 0 0 8px 0; font-size: 11px;"><a href="${unsubscribeUrl}" style="color: #6366f1; text-decoration: underline;">Unsubscribe</a> or <a href="${unsubscribeUrl}" style="color: #6366f1; text-decoration: underline;">update email preferences</a></p>`
+          ? `<p style="margin:0 0 12px 0;font-size:11px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;"><a href="${unsubscribeUrl}" style="color:#0f766e;text-decoration:underline;">Unsubscribe</a> or <a href="${unsubscribeUrl}" style="color:#0f766e;text-decoration:underline;">update email preferences</a></p>`
           : '';
       const subscribeUrl =
         vars.subscribeLink &&
@@ -295,8 +363,9 @@ async function sendTemplateEmail(user, body) {
         vars.subscribeLink.startsWith('http')
           ? vars.subscribeLink
           : '';
+      const { brandButtonHtml } = require('./emailBrandLayout');
       const subscribeCtaHtml = subscribeUrl
-        ? `<div style="margin: 28px 0 24px 0; text-align: center;"><a href="${subscribeUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 16px 32px; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: #ffffff !important; text-decoration: none; font-weight: 600; font-size: 15px; border-radius: 10px; box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4);">Subscribe for updates</a></div>`
+        ? `<div style="margin:20px 0 4px 0;text-align:center;">${brandButtonHtml({ href: subscribeUrl, label: 'Subscribe for updates', brandColor: orgBrandColor })}</div>`
         : '';
 
       const htmlBody = wrapEmailHtml({
@@ -306,6 +375,11 @@ async function sendTemplateEmail(user, body) {
         unsubscribeFooterHtml,
         senderName,
         senderEmail,
+        orgBrand,
+        companyName: orgBrand,
+        logoUrl: orgLogoUrl,
+        brandColor: orgBrandColor,
+        category: template.category,
       });
 
       const emailOptions = { senderName, senderEmail, userId: user.id };
@@ -331,6 +405,14 @@ async function sendTemplateEmail(user, body) {
         await sendMarketingEmail(recipient.email, emailSubject, htmlBody, {
           userId: user.id,
           senderName,
+          fromEmail: senderEmail,
+          campaignName: template.name || 'ATS Marketing',
+          organizationId: user.organizationId,
+          listPurpose: require('./marketingListService').inferListPurpose({
+            templateName: template.name,
+            category: template.category,
+            subject: emailSubject,
+          }),
         });
       } else {
         await sendEmail(
