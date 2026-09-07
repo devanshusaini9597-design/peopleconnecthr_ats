@@ -14,6 +14,8 @@
 
 const mongoose = require('mongoose');
 const crypto = require('crypto');
+const { normalizeText, applyBlockLettersToObject, BLOCK_LETTER_FIELDS } = require('../utils/textNormalize');
+const { resolveAppliedAt } = require('../utils/candidateActivityDate');
 
 const CandidateSchema = new mongoose.Schema({
   // ── Multi-tenancy ──────────────────────────────────────────────────
@@ -56,17 +58,11 @@ const CandidateSchema = new mongoose.Schema({
   pan: { type: String, default: '', trim: true, uppercase: true },
 
   // ── Pipeline (DEPRECATED — use Application model for per-job tracking) ──
-  status: { 
-    type: String, 
+  status: {
+    type: String,
     default: 'APPLIED',
-    enum: [
-      // Block letters (current)
-      'APPLIED', 'SCREENING', 'INTERVIEW', 'OFFER', 'HIRED',
-      'JOINED', 'DROPPED', 'REJECTED', 'INTERESTED', 'INTERESTED AND SCHEDULED',
-      // Legacy title-case (existing records)
-      'Applied', 'Screening', 'Interview', 'Offer', 'Hired',
-      'Joined', 'Dropped', 'Rejected', 'Interested', 'Interested and scheduled',
-    ],
+    // Org pipeline stages are free-text (Organization.atsSettings.pipelineStages).
+    // Keep uppercase storage; do not clamp to a fixed enum.
     set: (v) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ').toUpperCase() : v),
   },
   statusHistory: [{
@@ -143,6 +139,8 @@ const CandidateSchema = new mongoose.Schema({
     },
     listKey: { type: String, default: '' },
     topicId: { type: String, default: '' },
+    /** true only when Zoho accepted listsubscribe — used so soft-ok does not hide Subscribe CTA */
+    zohoEnrolled: { type: Boolean, default: undefined },
     // Per-purpose enrollment flags (enterprise multi-list)
     lists: {
       subscribe: { type: Boolean, default: false },
@@ -167,17 +165,29 @@ const CandidateSchema = new mongoose.Schema({
     sharedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
   }],
 
-  createdAt: { type: Date, default: Date.now }
+  /**
+   * Freelancer desk soft-hide: candidate stays in the company/org DB but is
+   * removed from the freelancer's own ATS list. Company users still see it.
+   */
+  hiddenFromFreelancerIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  freelancerHiddenAt: { type: Date },
+
+  createdAt: { type: Date, default: Date.now },
+  /** Real application/add date (from Excel `date` column) — used for analytics, not import time */
+  appliedAt: { type: Date, index: true },
 }, { timestamps: true });
 
 // ── Indexes ──────────────────────────────────────────────────────────
 
 // Primary tenant-scoped queries
+CandidateSchema.index({ organizationId: 1, appliedAt: -1 });
 CandidateSchema.index({ organizationId: 1, createdAt: -1 });
 CandidateSchema.index({ organizationId: 1, position: 1 });
 CandidateSchema.index({ organizationId: 1, email: 1 }, { unique: true, partialFilterExpression: { organizationId: { $exists: true } } });
 CandidateSchema.index({ organizationId: 1, status: 1 });
 CandidateSchema.index({ organizationId: 1, source: 1 });
+CandidateSchema.index({ organizationId: 1, spoc: 1, createdAt: -1 });
+CandidateSchema.index({ organizationId: 1, createdBy: 1, createdAt: -1 });
 
 // Legacy user-scoped queries (backward compat during migration)
 CandidateSchema.index({ createdBy: 1, createdAt: -1 });
@@ -188,6 +198,15 @@ CandidateSchema.index({ name: 'text', email: 'text', position: 'text', skills: '
 
 // Sharing queries
 CandidateSchema.index({ 'sharedWith.userId': 1 });
+
+// ── Pre-save hook: appliedAt from Excel / manual date column ────────
+CandidateSchema.pre('save', function appliedAtHook(next) {
+  if (!this.appliedAt || this.isModified('date')) {
+    const resolved = resolveAppliedAt(this);
+    if (resolved) this.appliedAt = resolved;
+  }
+  next();
+});
 
 // ── Pre-save hook: Derive personId ────────────────────────────────────
 CandidateSchema.pre('save', function(next) {
@@ -201,33 +220,13 @@ CandidateSchema.pre('save', function(next) {
   next();
 });
 
-// ── Pre-save hook: Normalize text fields ─────────────────────────────
+// ── Pre-save hook: Normalize text fields (BLOCK LETTERS; email stays lowercase)
 CandidateSchema.pre('save', function(next) {
-  // Name: Title Case
-  if (this.name && typeof this.name === 'string' && this.name.trim()) {
-    this.name = this.name
-      .trim()
-      .replace(/\s+/g, ' ')
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
-  }
-
-  // Other text fields: Trim + collapse spaces
-  const textFields = ['position', 'location', 'companyName', 'client', 'spoc', 'source', 'fls', 'noticePeriod', 'feedback', 'remark', 'product', 'skills'];
-  textFields.forEach(field => {
-    if (this[field] && typeof this[field] === 'string' && this[field].trim()) {
-      this[field] = this[field].trim().replace(/\s+/g, ' ');
-    }
-  });
-
-  if (this.pan && typeof this.pan === 'string') {
-    this.pan = this.pan.replace(/\s+/g, '').toUpperCase();
-  }
+  applyBlockLettersToObject(this);
 
   // Email: ensure trimmed (lowercase handled by schema)
   if (this.email && typeof this.email === 'string') {
-    this.email = this.email.trim();
+    this.email = this.email.trim().toLowerCase();
   }
 
   next();
@@ -238,30 +237,24 @@ CandidateSchema.pre('findOneAndUpdate', function(next) {
   const update = this.getUpdate();
   if (!update) return next();
 
-  // Normalize name if being updated
-  if (update.$set?.name && typeof update.$set.name === 'string' && update.$set.name.trim()) {
-    update.$set.name = update.$set.name
-      .trim()
-      .replace(/\s+/g, ' ')
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
+  if (update.$set && typeof update.$set === 'object') {
+    applyBlockLettersToObject(update.$set);
+  } else {
+    // Direct update object (no $set)
+    applyBlockLettersToObject(update);
   }
 
-  // Normalize other text fields
-  const textFields = ['position', 'location', 'companyName', 'client', 'spoc', 'source', 'fls', 'noticePeriod', 'feedback', 'remark', 'product', 'skills'];
-  textFields.forEach(field => {
-    if (update.$set?.[field] && typeof update.$set[field] === 'string' && update.$set[field].trim()) {
-      update.$set[field] = update.$set[field].trim().replace(/\s+/g, ' ');
+  for (const field of BLOCK_LETTER_FIELDS) {
+    if (update[field] && typeof update[field] === 'string') {
+      update[field] = normalizeText(update[field]);
     }
-  });
-  if (update.$set?.pan && typeof update.$set.pan === 'string') {
-    update.$set.pan = update.$set.pan.replace(/\s+/g, '').toUpperCase();
   }
 
-  // Ensure email has no extra spaces
   if (update.$set?.email && typeof update.$set.email === 'string') {
-    update.$set.email = update.$set.email.trim();
+    update.$set.email = update.$set.email.trim().toLowerCase();
+  }
+  if (update.email && typeof update.email === 'string') {
+    update.email = update.email.trim().toLowerCase();
   }
 
   next();

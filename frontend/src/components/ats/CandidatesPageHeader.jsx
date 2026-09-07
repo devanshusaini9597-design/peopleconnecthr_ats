@@ -4,23 +4,24 @@ import { useTranslation } from 'react-i18next';
 import PageHeader from '../ui/PageHeader';
 import FeatureGate from '../FeatureGate';
 import { planHasFeature } from '../../config/planFeatures';
-import { INITIAL_FORM_STATE } from './atsConstants';
+import { blankCandidateForm } from './atsConstants';
 
 export default function CandidatesPageHeader(props) {
   const { t } = useTranslation();
   const {
-    filteredCandidates, showImportMenu, setShowImportMenu, orgPlan, navigate, toast,
+    filteredCandidates, filteredCount, showImportMenu, setShowImportMenu, orgPlan, navigate, toast,
     fileInputRef, candidatesViewMode, handleImportAllToMineClick, isImportingShared,
     isImportingAll, handleImportSharedToMineClick, selectedIds, handleFindDuplicates,
-    dedupeLoading, setEditId, setFormData, setFormErrors, setCountryCode, setCountryIso,
-    setShowModal, isLoadingInitial, candidates,
+    dedupeLoading,     setEditId, setFormData, setFormErrors, setCountryCode, setCountryIso,
+    setShowModal, isLoadingInitial, candidates, isFreelancer,
+    initialFormState, openAddCandidate,
   } = props;
   return (
     <>
       <PageHeader
         icon={Users}
         title={t('candidates.title')}
-        subtitle={t('candidates.subtitle', { count: filteredCandidates.length.toLocaleString() })}
+        subtitle={t('candidates.subtitle', { count: (typeof filteredCount === 'number' ? filteredCount : filteredCandidates.length).toLocaleString() })}
         gradientTitle
       >
         <div className="relative w-full sm:w-auto" data-tour="cand-actions">
@@ -45,7 +46,7 @@ export default function CandidatesPageHeader(props) {
                     type="button"
                     onClick={() => {
                       setShowImportMenu(false);
-                      if (!planHasFeature(orgPlan, 'jobs.bulkImport')) {
+                      if (!isFreelancer && !planHasFeature(orgPlan, 'jobs.bulkImport')) {
                         toast.info(t('candidates.bulkImportRequiresPro'));
                         return;
                       }
@@ -79,7 +80,7 @@ export default function CandidatesPageHeader(props) {
                       <span className="block text-[11px] text-stone-500 mt-0.5 leading-snug">{t('candidates.mapColumnsDesc')}</span>
                     </span>
                   </button>
-                  {candidatesViewMode === 'all' && (
+                  {!isFreelancer && candidatesViewMode === 'all' && (
                     <button
                       type="button"
                       onClick={() => { setShowImportMenu(false); handleImportAllToMineClick(); }}
@@ -95,7 +96,7 @@ export default function CandidatesPageHeader(props) {
                       </span>
                     </button>
                   )}
-                  {candidatesViewMode === 'all' && filteredCandidates.some(c => c._isShared) && (
+                  {!isFreelancer && candidatesViewMode === 'all' && filteredCandidates.some(c => c._isShared) && (
                     <button
                       type="button"
                       onClick={() => { setShowImportMenu(false); handleImportSharedToMineClick(); }}
@@ -118,6 +119,7 @@ export default function CandidatesPageHeader(props) {
             </>
           )}
         </div>
+        {!isFreelancer && (
         <FeatureGate feature="candidates.dedupe">
           <button
             type="button"
@@ -130,11 +132,16 @@ export default function CandidatesPageHeader(props) {
             {t('candidates.findDuplicates')}
           </button>
         </FeatureGate>
+        )}
         <button
           type="button"
           onClick={() => {
+            if (typeof openAddCandidate === 'function') {
+              openAddCandidate();
+              return;
+            }
             setEditId(null);
-            setFormData(INITIAL_FORM_STATE);
+            setFormData(typeof initialFormState === 'function' ? initialFormState() : blankCandidateForm(isFreelancer ? 'freelancer' : ''));
             setFormErrors({});
             setCountryCode('+91');
             setCountryIso('IN');
@@ -146,6 +153,7 @@ export default function CandidatesPageHeader(props) {
         </button>
       </PageHeader>
 
+      {!isFreelancer && (
       <div data-tour="cand-tip" className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <span className="inline-flex items-center gap-1.5 text-brand-700 font-semibold">
           <Info size={14} /> Tip
@@ -156,6 +164,7 @@ export default function CandidatesPageHeader(props) {
           Press <span className="font-semibold text-stone-800">?</span> for a tour.
         </span>
       </div>
+      )}
 
       {isLoadingInitial && candidates.length === 0 && (
         <div className="h-1 w-full bg-stone-100 rounded-full overflow-hidden">

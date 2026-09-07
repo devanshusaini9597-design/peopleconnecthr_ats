@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { Briefcase } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useParsing } from '../hooks/useParsing';
@@ -8,10 +8,15 @@ import usePageTour from '../hooks/usePageTour';
 import { useAuth } from '../context/AuthContext';
 import { planHasFeature } from '../config/planFeatures';
 import { ctcRanges } from '../utils/ctcRanges';
+import { canViewOrgAnalytics } from '../utils/analyticsScope';
+import useEmployeeAnalyticsScope from '../hooks/useEmployeeAnalyticsScope';
+import EmployeeScopeSelect from './analytics/EmployeeScopeSelect';
+import { buildAtsHref } from '../utils/atsLinks';
 
 import {
   CAND_TOUR_KEY,
-  INITIAL_FORM_STATE,
+  CANDIDATE_EXPORT_ROLES,
+  blankCandidateForm,
 } from './ats/atsConstants';
 import { useCandidatesData } from './ats/hooks/useCandidatesData';
 import { useCandidateFilters } from './ats/hooks/useCandidateFilters';
@@ -39,31 +44,55 @@ const ATS = forwardRef((props, ref) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(CAND_TOUR_KEY);
-  const { organization } = useAuth();
+  const { organization, user } = useAuth();
+  const isFreelancer = user?.role === 'freelancer';
+  const canExportCandidates = CANDIDATE_EXPORT_ROLES.includes(user?.role);
   const orgPlan = organization?.plan;
   const { onImportComplete } = props || {};
 
-  const [candidatesViewMode] = useState('all');
+  const viewFromUrl = String(searchParams.get('view') || '').toLowerCase();
+  const canSeeOrgCandidates = canViewOrgAnalytics(user?.role);
+  const employeeScope = useEmployeeAnalyticsScope();
+  // Recruiters: default to SPOC desk (mine). Owner/admin/manager: org-wide unless employee selected.
+  const candidatesViewMode = isFreelancer
+    ? 'mine'
+    : employeeScope.userId
+      ? 'mine'
+      : (viewFromUrl === 'mine' || viewFromUrl === 'shared' || viewFromUrl === 'all'
+        ? viewFromUrl
+        : (canSeeOrgCandidates ? 'all' : 'mine'));
+  const [freelanceOnly, setFreelanceOnly] = useState(false);
   const [showImportMenu, setShowImportMenu] = useState(false);
-  const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
-  const [remarkPopover, setRemarkPopover] = useState(null);
-  const remarkPopoverTimeoutRef = useRef(null);
-  const viewMode = 'all';
+  const viewMode = candidatesViewMode;
 
-  const data = useCandidatesData({ candidatesViewMode, toast });
+  const data = useCandidatesData({
+    candidatesViewMode,
+    scopeUserId: employeeScope.userId || '',
+    toast,
+  });
   const {
-    API_URL, candidates, blindMode, setBlindMode, isLoadingInitial, fetchData,
+    API_URL, candidates, blindMode, setBlindMode, isLoadingInitial, fetchData, fetchMatchingIds,
+    totalRecordsInDB, totalPages: serverTotalPages,
   } = data;
 
-  const filters = useCandidateFilters(candidates);
+  const filters = useCandidateFilters(candidates, {
+    freelanceOnly: freelanceOnly && !isFreelancer,
+    serverMode: true,
+    serverTotalCount: totalRecordsInDB,
+    serverTotalPages,
+  });
   const {
-    searchQuery, setSearchQuery, filterJob,
+    searchQuery, setSearchQuery, searchScope, setSearchScope, filterJob,
+    statusFilter, setStatusFilter,
     showAdvancedSearch, setShowAdvancedSearch,
     advancedSearchFilters, setAdvancedSearchFilters,
+    activityPeriod, setActivityPeriod,
+    activityFrom, setActivityFrom,
+    activityTo, setActivityTo,
     sortField, setSortField, sortOrder, setSortOrder,
     currentPage, setCurrentPage, clearAdvancedFilters, activeAdvFilterCount,
-    filteredCandidates, visibleCandidates, totalFilteredPages,
+    listQueryOptions, filteredCandidates, visibleCandidates, totalFilteredPages, filteredCount,
   } = filters;
 
   const importer = useCandidateImport({
@@ -75,17 +104,19 @@ const ATS = forwardRef((props, ref) => {
     handleBulkUpload, handleAutoUpload, handleUploadWithMapping,
   } = importer;
 
-  const { selectedIds, setSelectedIds, toggleSelection, selectAll } = useParsing(async () => {
-    await fetchData(1, { search: searchQuery, position: filterJob });
+  const { selectedIds, setSelectedIds, toggleSelection, selectAll, togglePageSelection } = useParsing(async () => {
+    await fetchData(1, listQueryOptions);
   });
 
   const bulk = useBulkCandidateActions({
     toast, candidates, selectedIds, setSelectedIds, API_URL,
     searchQuery, filterJob, currentPage, setCurrentPage, fetchData,
+    isFreelancer,
   });
   const {
     sendWhatsApp, handleBulkWhatsApp, handleBulkDelete, handleBulkStatusUpdate,
-    handleDelete, handleFindDuplicates, dedupeLoading,
+    openBulkEdit, handleDelete, handleFindDuplicates, dedupeLoading,
+    bulkStatusOpen, setBulkStatusOpen,
   } = bulk;
 
   const email = useCandidateEmail({
@@ -111,24 +142,27 @@ const ATS = forwardRef((props, ref) => {
   const {
     setShowModal, setEditId, setFormData, setFormErrors,
     orgCandidateFields, masterPositions,
-    setCountryCode, setCountryIso, handleEdit, initialFormState,
+    setCountryCode, setCountryIso, handleEdit, initialFormState, openAddCandidate,
   } = form;
 
-  const resume = useResumePreview({ toast });
+  const resume = useResumePreview({ toast, viewMode: candidatesViewMode });
   const { handleResumePreview, handleResumeDownload } = resume;
   const { tableScrollRef, onTableDragScrollStart, onTableDragScrollMove, onTableDragScrollEnd } = useTableDragScroll();
 
   useImperativeHandle(ref, () => ({
     triggerAutoImport: () => autoUploadInputRef.current?.click(),
     openAddCandidateModal: () => {
-      setEditId(null);
-      setFormData(initialFormState);
-      setFormErrors({});
-      setCountryCode('+91');
-      setCountryIso('IN');
-      setShowModal(true);
+      if (typeof openAddCandidate === 'function') openAddCandidate();
+      else {
+        setEditId(null);
+        setFormData(typeof initialFormState === 'function' ? initialFormState() : blankCandidateForm(user?.role));
+        setFormErrors({});
+        setCountryCode('+91');
+        setCountryIso('IN');
+        setShowModal(true);
+      }
     },
-    refreshCandidates: () => fetchData(1, { search: '', position: '' }),
+    refreshCandidates: () => fetchData(1, listQueryOptions),
     autoUploadInputRef,
     fileInputRef,
   }));
@@ -136,24 +170,47 @@ const ATS = forwardRef((props, ref) => {
   useEffect(() => {
     const q = searchParams.get('q');
     if (q) setSearchQuery(q);
-  }, [searchParams, setSearchQuery]);
+    setStatusFilter(searchParams.get('status') || '');
+    const period = searchParams.get('period') || '';
+    const from = searchParams.get('from') || '';
+    const to = searchParams.get('to') || '';
+    setActivityPeriod(period);
+    setActivityFrom(from);
+    setActivityTo(to);
+  }, [searchParams, setSearchQuery, setStatusFilter, setActivityPeriod, setActivityFrom, setActivityTo]);
 
   useEffect(() => {
     if (searchParams.get('add') !== '1') return;
-    setEditId(null);
-    setFormData(INITIAL_FORM_STATE);
-    setFormErrors({});
-    setCountryCode('+91');
-    setCountryIso('IN');
-    setShowModal(true);
+    if (typeof openAddCandidate === 'function') openAddCandidate();
+    else {
+      setEditId(null);
+      setFormData(typeof initialFormState === 'function' ? initialFormState() : blankCandidateForm(user?.role));
+      setFormErrors({});
+      setCountryCode('+91');
+      setCountryIso('IN');
+      setShowModal(true);
+    }
     const next = new URLSearchParams(searchParams);
     next.delete('add');
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, setEditId, setFormData, setFormErrors, setCountryCode, setCountryIso, setShowModal]);
+    // Only react to the add=1 flag — not to blankForm identity changes while typing
+  }, [searchParams.get('add')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    fetchData(1, { search: searchQuery || '', position: filterJob || '' });
-  }, [candidatesViewMode]); // eslint-disable-line react-hooks/exhaustive-deps
+    const handle = setTimeout(() => {
+      fetchData(currentPage, listQueryOptions);
+    }, 280);
+    return () => clearTimeout(handle);
+  }, [
+    currentPage,
+    listQueryOptions,
+    candidatesViewMode,
+    employeeScope.userId,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [listQueryOptions, candidatesViewMode, employeeScope.userId, setSelectedIds]);
 
   useEffect(() => {
     if (!planHasFeature(orgPlan, 'analytics.dei')) return undefined;
@@ -175,15 +232,48 @@ const ATS = forwardRef((props, ref) => {
     return () => { document.body.style.overflow = prev; };
   }, [form.showModal]);
 
-  const isAllSelected = filteredCandidates.length > 0 && selectedIds.length === filteredCandidates.length;
+  const pageIds = visibleCandidates.map((c) => c._id);
+  const isPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
+  const isPagePartial = !isPageSelected && pageIds.some((id) => selectedIds.includes(id));
+  const isAllFilteredSelected =
+    filteredCount > 0
+    && selectedIds.length > 0
+    && selectedIds.length >= filteredCount;
+  const selectionScopeLabel = isAllFilteredSelected
+    ? 'all matching results'
+    : (isPageSelected && selectedIds.length === pageIds.length ? 'this page' : '');
+
+  const handleSelectAllFiltered = async () => {
+    try {
+      const { ids, totalCount, capped } = await fetchMatchingIds(listQueryOptions);
+      if (!ids.length) {
+        toast.warning('No matching candidates to select.');
+        return;
+      }
+      // Replace selection (do not toggle — click again must keep all selected)
+      setSelectedIds(ids);
+      const matchTotal = totalCount || filteredCount;
+      if (capped) {
+        toast.warning(
+          `Selected ${ids.length.toLocaleString()} of ${matchTotal.toLocaleString()} matches (maximum). Refine filters to target the rest.`,
+        );
+      } else if (ids.length < matchTotal) {
+        toast.info(`Selected ${ids.length.toLocaleString()} of ${matchTotal.toLocaleString()} matches.`);
+      } else {
+        toast.success(`Selected all ${ids.length.toLocaleString()} matching candidates.`);
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Could not select all matching candidates.');
+    }
+  };
 
   const orderedColumns = useMemo(
     () => buildCandidateTableColumns({
       handleEdit, handleShareClick, handleDelete, handleResumePreview, handleResumeDownload,
-      handleSendEmail, sendWhatsApp, blindMode, currentPage, remarkPopoverTimeoutRef,
-      setRemarkPopover, orgCandidateFields, candidates,
+      handleSendEmail, sendWhatsApp, blindMode, currentPage,
+      orgCandidateFields, candidates, isFreelancer,
     }),
-    [blindMode, currentPage, orgCandidateFields, candidates, handleEdit, handleShareClick] // eslint-disable-line react-hooks/exhaustive-deps
+    [blindMode, currentPage, orgCandidateFields, candidates, handleEdit, handleShareClick, isFreelancer] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const expOptions = useMemo(
@@ -212,6 +302,7 @@ const ATS = forwardRef((props, ref) => {
     <div className="page-shell-ats font-sans text-stone-900 animate-page-enter" role="main" aria-label="Candidates">
       <CandidatesPageHeader
         filteredCandidates={filteredCandidates}
+        filteredCount={filteredCount}
         showImportMenu={showImportMenu}
         setShowImportMenu={setShowImportMenu}
         orgPlan={orgPlan}
@@ -234,7 +325,21 @@ const ATS = forwardRef((props, ref) => {
         setShowModal={setShowModal}
         isLoadingInitial={isLoadingInitial}
         candidates={candidates}
+        isFreelancer={isFreelancer}
+        initialFormState={initialFormState}
+        openAddCandidate={openAddCandidate}
       />
+
+      {!isFreelancer && employeeScope.canSelect ? (
+        <div className="mb-4">
+          <EmployeeScopeSelect
+            value={employeeScope.employeeParam}
+            employees={employeeScope.employees}
+            onChange={employeeScope.setEmployee}
+            loading={employeeScope.loadingEmployees}
+          />
+        </div>
+      ) : null}
 
       <input type="file" accept=".csv, .xlsx, .xls" ref={fileInputRef} onChange={handleBulkUpload} className="hidden" aria-hidden />
       <input type="file" accept=".csv, .xlsx, .xls" ref={autoUploadInputRef} onChange={handleAutoUpload} className="hidden" aria-hidden />
@@ -247,14 +352,22 @@ const ATS = forwardRef((props, ref) => {
         startBulkEmailFlow={startBulkEmailFlow}
         handleBulkWhatsApp={handleBulkWhatsApp}
         handleBulkStatusUpdate={handleBulkStatusUpdate}
+        openBulkEdit={openBulkEdit}
         handleShareClick={handleShareClick}
         handleBulkDelete={handleBulkDelete}
+        isFreelancer={isFreelancer}
+        filteredCount={filteredCount}
+        isAllFilteredSelected={isAllFilteredSelected}
+        selectionScopeLabel={selectionScopeLabel}
+        onSelectAllFiltered={handleSelectAllFiltered}
       />
 
       <div className="card-ats-bordered relative overflow-hidden min-h-[320px]">
         <CandidatesSearchToolbar
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
+          searchScope={searchScope}
+          setSearchScope={setSearchScope}
           setCurrentPage={setCurrentPage}
           showAdvancedSearch={showAdvancedSearch}
           setShowAdvancedSearch={setShowAdvancedSearch}
@@ -263,9 +376,57 @@ const ATS = forwardRef((props, ref) => {
           toast={toast}
           navigate={navigate}
           filteredCandidates={filteredCandidates}
+          filteredCount={filteredCount}
           setShowDownloadModal={setShowDownloadModal}
           selectedIds={selectedIds}
+          freelanceOnly={freelanceOnly}
+          setFreelanceOnly={setFreelanceOnly}
+          isFreelancer={isFreelancer}
+          canExportCandidates={canExportCandidates}
+          statusFilter={statusFilter}
+          onClearStatusFilter={() => {
+            setStatusFilter('');
+            const next = new URLSearchParams(searchParams);
+            next.delete('status');
+            setSearchParams(next, { replace: true });
+          }}
         />
+
+        {activityPeriod && activityPeriod !== 'all' ? (
+          <div className="mx-4 sm:mx-5 mt-3 mb-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border border-brand-100 bg-brand-50/60 px-3.5 py-2.5">
+            <p className="text-xs text-brand-900 min-w-0">
+              <span className="font-semibold">Period filter:</span>{' '}
+              <span className="tabular-nums">
+                {activityPeriod === 'custom' && activityFrom && activityTo
+                  ? `${activityFrom} – ${activityTo}`
+                  : ({
+                    today: 'Today',
+                    yesterday: 'Yesterday',
+                    week: 'Last 7 Days',
+                    month: 'This Month',
+                    quarter: 'This Quarter',
+                    year: 'This Year',
+                  }[activityPeriod] || activityPeriod)}
+              </span>
+            </p>
+            <button
+              type="button"
+              className="text-xs font-semibold text-brand-700 hover:text-brand-900 flex-shrink-0 self-start sm:self-auto"
+              onClick={() => {
+                setActivityPeriod('');
+                setActivityFrom('');
+                setActivityTo('');
+                const next = new URLSearchParams(searchParams);
+                next.delete('period');
+                next.delete('from');
+                next.delete('to');
+                setSearchParams(next, { replace: true });
+              }}
+            >
+              Clear period
+            </button>
+          </div>
+        ) : null}
 
         <CandidatesAdvancedFilters
           showAdvancedSearch={showAdvancedSearch}
@@ -288,9 +449,9 @@ const ATS = forwardRef((props, ref) => {
           onTableDragScrollStart={onTableDragScrollStart}
           onTableDragScrollMove={onTableDragScrollMove}
           onTableDragScrollEnd={onTableDragScrollEnd}
-          selectAll={selectAll}
-          filteredCandidates={filteredCandidates}
-          isAllSelected={isAllSelected}
+          togglePageSelection={togglePageSelection}
+          isPageSelected={isPageSelected}
+          isPagePartial={isPagePartial}
           orderedColumns={orderedColumns}
           visibleCandidates={visibleCandidates}
           selectedIds={selectedIds}
@@ -305,6 +466,9 @@ const ATS = forwardRef((props, ref) => {
           setCountryCode={setCountryCode}
           setCountryIso={setCountryIso}
           setShowModal={setShowModal}
+          isFreelancer={isFreelancer}
+          initialFormState={initialFormState}
+          openAddCandidate={openAddCandidate}
         />
 
         <CandidatesPagination
@@ -313,6 +477,7 @@ const ATS = forwardRef((props, ref) => {
           setCurrentPage={setCurrentPage}
           filteredCandidates={filteredCandidates}
           totalFilteredPages={totalFilteredPages}
+          totalCount={filteredCount}
         />
       </div>
 
@@ -327,9 +492,6 @@ const ATS = forwardRef((props, ref) => {
         verifiedEmailRequiredMessage={verifiedEmailRequiredMessage}
         setShowVerifiedEmailRequiredModal={setShowVerifiedEmailRequiredModal}
         setVerifiedEmailRequiredMessage={setVerifiedEmailRequiredMessage}
-        remarkPopover={remarkPopover}
-        remarkPopoverTimeoutRef={remarkPopoverTimeoutRef}
-        setRemarkPopover={setRemarkPopover}
         form={form}
         email={email}
         filters={filters}
@@ -347,6 +509,7 @@ const ATS = forwardRef((props, ref) => {
         setShowDownloadModal={setShowDownloadModal}
         selectedIds={selectedIds}
         setSelectedIds={setSelectedIds}
+        fetchMatchingIds={fetchMatchingIds}
       />
     </div>
   );

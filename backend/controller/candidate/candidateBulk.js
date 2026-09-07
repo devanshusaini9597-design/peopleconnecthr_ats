@@ -7,7 +7,11 @@ const { normalizeText } = require('../../utils/textNormalize');
 const mongoose = require('mongoose');
 const Notification = require('../../models/Notification');
 const logger = require('../../utils/logger');
-const { orgOrOwnerScope } = require('./candidateValidation');
+const { orgOrOwnerScope, candidateWriteScope } = require('./candidateValidation');
+const { candidateListScope } = require('../../utils/dataScope');
+const { promoteNamesSafe: promoteSkillsSafe } = require('../../services/skillCatalogSync');
+const { promoteNamesSafe: promotePositionsSafe } = require('../../services/positionCatalogSync');
+const { resolveStage, stageKey, loadOrgStages } = require('../../services/pipelineStageSync');
 
 // Bulk create candidates from parsed resumes (no file upload)
 async function bulkCreateFromParsed(req, res) {
@@ -63,6 +67,8 @@ async function bulkCreateFromParsed(req, res) {
                     experience: (c.experience || '').toString().trim() || '',
                     location: (c.location || '').trim() || '',
                     skills: (c.skills || '').trim() || '',
+                    product: (c.product || '').trim() || '',
+                    pan: String(c.pan || '').replace(/\s+/g, '').toUpperCase(),
                     remark: (c.remark || '').trim() || '',
                     status: 'Applied',
                     createdBy: userId,
@@ -77,6 +83,8 @@ async function bulkCreateFromParsed(req, res) {
                 const doc = new Candidate(payload);
                 await doc.save();
                 created.push({ index: i + 1, name, email });
+                await promoteSkillsSafe(req.user.organizationId, userId, payload.product);
+                await promotePositionsSafe(req.user.organizationId, userId, payload.position);
             } catch (err) {
                 if (err.code === 11000) {
                     skipped.push({ index: i + 1, name, reason: 'Duplicate (email or contact)' });
@@ -275,12 +283,16 @@ async function importSharedCandidates(req, res) {
         }
 
         const created = [];
+        const { loadOrgEmployeeNames, resolveEmployeeSpocLabel, canEditCandidateSpoc } = require('../../utils/spocIdentity');
+        const orgNames = await loadOrgEmployeeNames(req.user.organizationId);
+        const mySpoc = resolveEmployeeSpocLabel(req.user, orgNames);
         for (const c of shared) {
             const { _id, createdBy, sharedWith, createdAt, __v, ...rest } = c;
             const doc = new Candidate({
                 ...rest,
                 createdBy: userId,
-                sharedWith: []
+                sharedWith: [],
+                spoc: canEditCandidateSpoc(req.user) ? (rest.spoc || mySpoc) : mySpoc,
             });
             await doc.save();
             created.push({ id: doc._id, name: doc.name });
@@ -298,26 +310,33 @@ async function importSharedCandidates(req, res) {
     }
 };
 
-// Import all candidates (from database) into current user's list (copy as own). Skips already-owned.
+// Import candidates the caller can already list into their own desk. Never unscoped.
 async function importAllToMine(req, res) {
     try {
-        const mongoose = require('mongoose');
         const userId = req.user.id;
-        const userIdObj = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+        if (!req.user?.organizationId) {
+            return res.status(403).json({ success: false, message: 'Organization required' });
+        }
 
-        const allCandidates = await Candidate.find({}).lean();
+        const scope = await candidateListScope(req, 'all');
+        const allCandidates = await Candidate.find(scope).lean();
         const toImport = allCandidates.filter(c => {
             const owner = c.createdBy != null ? String(c.createdBy) : '';
             return owner !== String(userId);
         });
 
         const created = [];
+        const { loadOrgEmployeeNames, resolveEmployeeSpocLabel, canEditCandidateSpoc } = require('../../utils/spocIdentity');
+        const orgNames = await loadOrgEmployeeNames(req.user.organizationId);
+        const mySpoc = resolveEmployeeSpocLabel(req.user, orgNames);
         for (const c of toImport) {
-            const { _id, createdBy, sharedWith, createdAt, __v, ...rest } = c;
+            const { _id, createdBy, sharedWith, createdAt, __v, organizationId, ...rest } = c;
             const doc = new Candidate({
                 ...rest,
+                organizationId: req.user.organizationId,
                 createdBy: userId,
-                sharedWith: []
+                sharedWith: [],
+                spoc: canEditCandidateSpoc(req.user) ? (rest.spoc || mySpoc) : mySpoc,
             });
             await doc.save();
             created.push({ id: doc._id, name: doc.name });
@@ -343,7 +362,25 @@ async function bulkDeleteCandidates(req, res) {
             return res.status(400).json({ success: false, message: 'No candidate IDs provided' });
         }
 
-        const result = await Candidate.deleteMany({ _id: { $in: ids }, ...orgOrOwnerScope(req) });
+        const { isFreelancer } = require('../../utils/dataScope');
+        if (isFreelancer(req.user)) {
+            const userId = req.user.id || req.user._id;
+            const result = await Candidate.updateMany(
+                { _id: { $in: ids }, ...candidateWriteScope(req) },
+                {
+                    $addToSet: { hiddenFromFreelancerIds: userId },
+                    $set: { freelancerHiddenAt: new Date() },
+                }
+            );
+            return res.json({
+                success: true,
+                soft: true,
+                message: `Removed ${result.modifiedCount} of ${ids.length} from your desk (company records kept)`,
+                deletedCount: result.modifiedCount,
+            });
+        }
+
+        const result = await Candidate.deleteMany({ _id: { $in: ids }, ...candidateWriteScope(req) });
 
         res.json({
             success: true,
@@ -352,6 +389,126 @@ async function bulkDeleteCandidates(req, res) {
         });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Error deleting candidates', error: err.message });
+    }
+}
+
+const BULK_UPDATE_FIELDS = [
+    'status', 'source', 'client', 'spoc', 'position', 'companyName',
+    'location', 'noticePeriod', 'remark', 'product', 'fls',
+];
+
+/**
+ * Bulk field update for selected candidates.
+ * Body: { ids: string[], updates: { status?, source?, client?, spoc?, position?, ... } }
+ */
+async function bulkUpdateCandidates(req, res) {
+    try {
+        if (!req.user?.id) return res.status(401).json({ success: false, message: 'Unauthorized' });
+
+        const { ids, updates } = req.body || {};
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ success: false, message: 'No candidate IDs provided' });
+        }
+        if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+            return res.status(400).json({ success: false, message: 'updates object is required' });
+        }
+
+        const { canEditCandidateSpoc } = require('../../utils/spocIdentity');
+
+        const $set = {};
+        for (const key of BULK_UPDATE_FIELDS) {
+            if (!Object.prototype.hasOwnProperty.call(updates, key)) continue;
+            let val = updates[key];
+            if (val == null) continue;
+            val = String(val).trim();
+            if (key === 'status') val = normalizeText(val) || val;
+            else val = normalizeText(val) || val;
+            $set[key] = val;
+        }
+
+        if (Object.keys($set).length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No valid fields to update. Choose at least one field.',
+            });
+        }
+
+        if ('spoc' in $set && !canEditCandidateSpoc(req.user)) {
+            delete $set.spoc;
+            if (Object.keys($set).length === 0) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'You cannot change SPOC. Ask an owner/admin/HR manager.',
+                });
+            }
+        }
+
+        const MAX_IDS = 20000;
+        const CHUNK = 2000;
+        const idList = ids
+            .slice(0, MAX_IDS)
+            .filter((id) => mongoose.Types.ObjectId.isValid(id));
+        if (!idList.length) {
+            return res.status(400).json({ success: false, message: 'No valid candidate IDs' });
+        }
+        const truncated = ids.length > MAX_IDS;
+
+        const scope = candidateWriteScope(req);
+
+        if ('status' in $set) {
+            const orgStages = await loadOrgStages(req.user.organizationId);
+            const resolved = resolveStage($set.status, orgStages, { unknownFallback: 'Rejected' });
+            $set.status = stageKey(resolved.label) || 'REJECTED';
+        }
+
+        let matchedCount = 0;
+        let modifiedCount = 0;
+        for (let i = 0; i < idList.length; i += CHUNK) {
+            const chunk = idList.slice(i, i + CHUNK);
+            const filter = { _id: { $in: chunk }, ...scope };
+            const matched = await Candidate.countDocuments(filter);
+            matchedCount += matched;
+            if (matched === 0) continue;
+            const result = await Candidate.updateMany(filter, { $set });
+            modifiedCount += result.modifiedCount || 0;
+        }
+
+        if (matchedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No matching candidates found (or you do not have permission to edit them).',
+            });
+        }
+
+        // Fire-and-forget catalog promote for position/product
+        if ($set.position || $set.product) {
+            setImmediate(() => {
+                Promise.all([
+                    $set.product
+                        ? promoteSkillsSafe(req.user.organizationId, req.user.id, $set.product)
+                        : Promise.resolve(),
+                    $set.position
+                        ? promotePositionsSafe(req.user.organizationId, req.user.id, $set.position)
+                        : Promise.resolve(),
+                ]).catch((err) => logger.warn({ err }, '[BULK-UPDATE] catalog promote failed'));
+            });
+        }
+
+        res.json({
+            success: true,
+            message: truncated
+                ? `Updated ${modifiedCount} of ${matchedCount} candidates (capped at ${MAX_IDS} per request)`
+                : `Updated ${modifiedCount} of ${matchedCount} candidates`,
+            matchedCount,
+            modifiedCount,
+            requested: idList.length,
+            truncated,
+            fields: Object.keys($set),
+        });
+        return;
+    } catch (err) {
+        logger.error({ err }, '[BULK-UPDATE] error');
+        res.status(500).json({ success: false, message: err.message || 'Bulk update failed' });
     }
 }
 
@@ -379,5 +536,6 @@ module.exports = {
     importSharedCandidates,
     importAllToMine,
     bulkDeleteCandidates,
+    bulkUpdateCandidates,
     clearAllCandidates,
 };

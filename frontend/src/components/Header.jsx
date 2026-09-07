@@ -2,27 +2,37 @@ import React, { useState, useEffect } from 'react';
 import { Menu, Search, ChevronDown, User, LogOut, Building2, CreditCard, Settings, Plug, Command, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { handleLogout } from '../utils/authUtils';
 import NotificationBell from './NotificationBell';
+import LivePresenceBar from './header/LivePresenceBar';
 import ConfirmationModal from './ConfirmationModal';
 import { authenticatedFetch } from '../utils/fetchUtils';
 import BASE_API_URL from '../config';
+import { resolveAssetSrc } from '../utils/orgLogo';
 import { useAuth } from '../context/AuthContext';
+import { formatRoleLabel } from './organization/constants';
+import { usePresence } from '../context/PresenceContext';
 
 const Header = ({ setSidebarOpen, sidebarOpen }) => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { user, organization } = useAuth();
+  const { user, organization, logout } = useAuth();
+  const { people } = usePresence();
+  const self = people.find((p) => p.isYou);
+  const selfOnline = self?.status !== 'offline';
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [profilePicture, setProfilePicture] = useState('');
+  const [profilePicture, setProfilePicture] = useState(user?.profilePicture || '');
+  const [photoFailed, setPhotoFailed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const userEmail = user?.email || 'User';
   const userName = user?.name || '';
   const displayName = userName || (userEmail.includes('@') ? userEmail.split('@')[0] : userEmail);
   const initials = (userName ? userName.split(' ').map((w) => w[0]).join('').slice(0, 2) : displayName.slice(0, 2)).toUpperCase();
+  const photoSrc = resolveAssetSrc(profilePicture || self?.profilePicture || user?.profilePicture || '');
+  const showPhoto = Boolean(photoSrc) && !photoFailed;
   const userRole = user?.role || 'recruiter';
+  const roleLabel = formatRoleLabel(userRole);
   const orgName = organization?.name || '';
   const isAdmin = ['owner', 'admin'].includes(userRole);
 
@@ -40,6 +50,10 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
     owner: 'bg-amber-100 text-amber-700 border-amber-200',
     admin: 'bg-sky-100 text-sky-700 border-sky-200',
     recruiter: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    hr_recruiter: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    hr_manager: 'bg-cyan-100 text-cyan-700 border-cyan-200',
+    sales: 'bg-orange-100 text-orange-700 border-orange-200',
+    freelancer: 'bg-indigo-100 text-indigo-700 border-indigo-200',
     interviewer: 'bg-violet-100 text-violet-700 border-violet-200',
     readonly: 'bg-stone-100 text-stone-600 border-stone-200',
   };
@@ -52,6 +66,7 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
           const data = await res.json();
           if (data.success && data.user?.profilePicture) {
             setProfilePicture(data.user.profilePicture);
+            setPhotoFailed(false);
           } else {
             setProfilePicture('');
           }
@@ -64,15 +79,24 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
 
     const onPictureUpdated = (e) => {
       setProfilePicture(e.detail ?? '');
+      setPhotoFailed(false);
     };
     window.addEventListener('profilePictureUpdated', onPictureUpdated);
     return () => window.removeEventListener('profilePictureUpdated', onPictureUpdated);
   }, []);
 
+  const isFreelancer = userRole === 'freelancer';
+
   const handleSearch = (e) => {
     e.preventDefault();
     const q = searchQuery.trim();
     if (!q) return;
+    // Freelancers search their own ATS desk; company users keep global candidate search.
+    if (isFreelancer) {
+      navigate(`/ats?q=${encodeURIComponent(q)}`);
+      setSearchQuery('');
+      return;
+    }
     navigate(`/candidate-search?q=${encodeURIComponent(q)}`);
   };
 
@@ -90,7 +114,7 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
 
   return (
     <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-stone-200/60 flex-shrink-0">
-      <div className="flex items-center justify-between h-14 sm:h-16 px-3 sm:px-6 gap-2 sm:gap-4 min-w-0">
+      <div className="flex items-center justify-between h-14 sm:h-16 px-2.5 sm:px-6 gap-1.5 sm:gap-4 min-w-0">
         <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
           <button
             type="button"
@@ -119,38 +143,42 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
           </form>
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
+        <div className="flex items-center gap-1 sm:gap-3 flex-shrink-0 min-w-0">
+          {!isFreelancer ? <LivePresenceBar /> : null}
           <NotificationBell />
 
           <div className="relative user-menu-container">
             <button
               type="button"
               onClick={() => setShowUserMenu(!showUserMenu)}
-              className="flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 py-2 hover:bg-stone-100 rounded-xl transition-all duration-200"
+              className="flex items-center gap-1.5 sm:gap-2.5 px-1.5 sm:px-3 py-1.5 sm:py-2 hover:bg-stone-100 rounded-xl transition-all duration-200 min-w-0"
               title={t('common.userMenu')}
             >
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-teal-600 flex items-center justify-center font-bold text-sm text-white shadow-md flex-shrink-0 overflow-hidden ring-2 ring-white">
-                {profilePicture ? (
-                  <img src={`${BASE_API_URL}${profilePicture}`} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  initials
-                )}
+              <div className="relative w-9 h-9 flex-shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-teal-600 flex items-center justify-center font-bold text-sm text-white shadow-md overflow-hidden ring-2 ring-white">
+                  {showPhoto ? (
+                    <img src={photoSrc} alt="" className="w-full h-full object-cover" onError={() => setPhotoFailed(true)} />
+                  ) : (
+                    initials
+                  )}
+                </div>
+                <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-white ${selfOnline ? 'bg-emerald-500' : 'bg-stone-300'}`} />
               </div>
-              <span className="hidden sm:inline text-sm font-semibold text-stone-700">{t('common.hiName', { name: displayName })}</span>
-              <span className={`hidden sm:inline text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border ${roleBadgeColors[userRole] || roleBadgeColors.readonly}`}>
-                {userRole}
+              <span className="hidden lg:inline text-sm font-semibold text-stone-700 truncate max-w-[9rem]">{t('common.hiName', { name: displayName })}</span>
+              <span className={`hidden lg:inline text-[10px] font-bold px-2 py-0.5 rounded-full tracking-wide border flex-shrink-0 ${roleBadgeColors[userRole] || roleBadgeColors.readonly}`}>
+                {roleLabel}
               </span>
-              <ChevronDown className={`hidden sm:inline w-4 h-4 text-stone-500 transition-transform duration-200 ${showUserMenu ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`hidden lg:inline w-4 h-4 text-stone-500 transition-transform duration-200 ${showUserMenu ? 'rotate-180' : ''}`} />
             </button>
 
             {showUserMenu && (
-              <div className="absolute right-0 mt-2 w-[280px] bg-white rounded-2xl shadow-xl border border-stone-200/80 overflow-hidden z-50 animate-fade-in">
+              <div className="absolute right-0 mt-2 w-[min(280px,calc(100vw-1.25rem))] bg-white rounded-2xl shadow-xl border border-stone-200/80 overflow-hidden z-50 animate-fade-in">
                 <div className="h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
                 <div className="px-4 py-4 bg-gradient-to-br from-brand-50/40 via-white to-teal-50/30">
                   <div className="flex items-start gap-3">
                     <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-500 to-teal-600 flex items-center justify-center font-bold text-sm text-white shadow-md flex-shrink-0 overflow-hidden">
-                      {profilePicture ? (
-                        <img src={`${BASE_API_URL}${profilePicture}`} alt="" className="w-full h-full object-cover" />
+                      {showPhoto ? (
+                        <img src={photoSrc} alt="" className="w-full h-full object-cover" onError={() => setPhotoFailed(true)} />
                       ) : (
                         initials
                       )}
@@ -158,8 +186,8 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-sm font-bold text-stone-900 truncate tracking-tight">{displayName}</p>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize border flex-shrink-0 ${roleBadgeColors[userRole] || roleBadgeColors.readonly}`}>
-                          {userRole}
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 ${roleBadgeColors[userRole] || roleBadgeColors.readonly}`}>
+                          {roleLabel}
                         </span>
                       </div>
                       <p className="text-xs text-stone-500 mt-0.5 truncate">{userEmail}</p>
@@ -224,7 +252,7 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
         onClose={() => setShowLogoutConfirm(false)}
         onConfirm={() => {
           setShowLogoutConfirm(false);
-          handleLogout(navigate);
+          logout();
         }}
         title={t('common.logOutConfirm')}
         message="End your session on this device? You’ll need to sign in again to continue."
