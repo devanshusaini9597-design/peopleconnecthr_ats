@@ -2,8 +2,9 @@
   "name": "peopleconnecthr-ats",
   "private": true,
   "scripts": {
-    "start": "npm start --prefix backend",
-    "build": "npm install --omit=dev --prefix backend"
+    "postinstall": "npm install --omit=dev --prefix backend",
+    "build": "npm install --omit=dev --prefix backend",
+    "start": "cd backend && node --max-old-space-size=4096 server.js"
   },
   "dependencies": {
     "@railway/cli": "^5.30.1"
