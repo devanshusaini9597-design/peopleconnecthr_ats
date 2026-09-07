@@ -1,0 +1,9 @@
+# Monorepo root: API is under /backend (do not run npm start at root alone).
+[build]
+builder = "NIXPACKS"
+buildCommand = "cd backend && npm install --omit=dev"
+
+[deploy]
+startCommand = "cd backend && npm start"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

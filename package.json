@@ -1,4 +1,10 @@
 {
+  "name": "peopleconnecthr-ats",
+  "private": true,
+  "scripts": {
+    "start": "npm start --prefix backend",
+    "build": "npm install --omit=dev --prefix backend"
+  },
   "dependencies": {
     "@railway/cli": "^5.30.1"
   }
