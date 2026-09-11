@@ -26,14 +26,9 @@ export default function EmailCampaignResultModal({
     total = 0,
     sent = 0,
     failed = 0,
-    successRate,
     failures = [],
     successes = [],
   } = result;
-
-  const rate =
-    successRate ||
-    (total > 0 ? `${((sent / total) * 100).toFixed(1)}%` : '0%');
 
   const allFailed = failed > 0 && sent === 0;
   const allOk = failed === 0 && sent > 0;
@@ -121,16 +116,6 @@ export default function EmailCampaignResultModal({
             <div className="rounded-2xl border border-rose-200/80 bg-rose-50/50 px-3 py-3 text-center">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Failed</p>
               <p className="mt-1 text-2xl font-bold tabular-nums text-rose-800">{failed}</p>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Success rate</p>
-                <p className="text-sm text-stone-600">Overall campaign performance</p>
-              </div>
-              <p className="text-2xl font-bold tabular-nums text-brand-700">{rate}</p>
             </div>
           </div>
 

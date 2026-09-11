@@ -761,9 +761,50 @@ async function listEmailReports(organizationId, query = {}) {
   } = query;
 
   const filter = { organizationId };
+  const andClauses = [];
+
   if (channel && channel !== 'all') filter.channel = channel;
   if (provider && provider !== 'all') filter.provider = provider;
   if (status && status !== 'all') filter.status = status;
+
+  const metric = String(query.metric || '').trim().toLowerCase();
+  if (metric && metric !== 'all') {
+    if (metric === 'delivered') {
+      andClauses.push({
+        $or: [
+          { 'totals.delivered': { $gt: 0 } },
+          { status: { $in: ['delivered', 'opened', 'clicked', 'replied', 'completed'] } },
+        ],
+      });
+    } else if (metric === 'opened') {
+      andClauses.push({
+        $or: [
+          { 'totals.opened': { $gt: 0 } },
+          { status: { $in: ['opened', 'clicked', 'replied'] } },
+        ],
+      });
+    } else if (metric === 'clicked') {
+      andClauses.push({
+        $or: [{ 'totals.clicked': { $gt: 0 } }, { status: 'clicked' }],
+      });
+    } else if (metric === 'bounced') {
+      andClauses.push({
+        $or: [
+          { 'totals.bounced': { $gt: 0 } },
+          { status: { $in: ['bounced', 'soft_bounced', 'hard_bounced'] } },
+        ],
+      });
+    } else if (metric === 'failed') {
+      andClauses.push({
+        $or: [{ 'totals.failed': { $gt: 0 } }, { status: 'failed' }],
+      });
+    } else if (metric === 'replied') {
+      andClauses.push({
+        $or: [{ 'totals.replied': { $gt: 0 } }, { status: 'replied' }],
+      });
+    }
+  }
+
   if (from || to) {
     filter.sentAt = {};
     if (from) filter.sentAt.$gte = new Date(from);
@@ -771,15 +812,18 @@ async function listEmailReports(organizationId, query = {}) {
   }
   if (search) {
     const q = String(search).trim();
-    filter.$or = [
-      { subject: new RegExp(q, 'i') },
-      { campaignName: new RegExp(q, 'i') },
-      { fromEmail: new RegExp(q, 'i') },
-      { campaignKey: q },
-      { messageId: new RegExp(q, 'i') },
-      { 'recipients.email': new RegExp(q, 'i') },
-    ];
+    andClauses.push({
+      $or: [
+        { subject: new RegExp(q, 'i') },
+        { campaignName: new RegExp(q, 'i') },
+        { fromEmail: new RegExp(q, 'i') },
+        { campaignKey: q },
+        { messageId: new RegExp(q, 'i') },
+        { 'recipients.email': new RegExp(q, 'i') },
+      ],
+    });
   }
+  if (andClauses.length) filter.$and = andClauses;
 
   const pageNum = Math.max(1, Number(page) || 1);
   const lim = Math.min(100, Math.max(1, Number(limit) || 25));

@@ -25,6 +25,7 @@ import {
   CHANNEL_TABS,
   EMAIL_REPORTS_TOUR_KEY,
   EMAIL_REPORTS_TOUR_STEPS,
+  METRIC_LABELS,
   buildKpiFunnel,
 } from './emailReports/emailReportsConstants';
 
@@ -114,9 +115,6 @@ function emptySummary() {
     bounced: 0,
     replied: 0,
     failed: 0,
-    openRate: 0,
-    clickRate: 0,
-    bounceRate: 0,
   };
 }
 
@@ -124,7 +122,6 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
   if (!item) return null;
   const recipients = item.recipients || [];
   const totals = item.totals || {};
-  const rates = item.rates || {};
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-stone-900/40 backdrop-blur-[1px] animate-page-enter">
@@ -186,9 +183,6 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
 
           <div className="flex flex-wrap gap-2">
             <Badge tone={item.status}>{item.status}</Badge>
-            {rates.openRate != null && <Badge tone="opened">Open {rates.openRate}%</Badge>}
-            {rates.clickRate != null && <Badge tone="clicked">Click {rates.clickRate}%</Badge>}
-            {rates.bounceRate != null && <Badge tone="bounced">Bounce {rates.bounceRate}%</Badge>}
           </div>
 
           <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
@@ -311,6 +305,7 @@ const EmailReportsPage = () => {
   const [filters, setFilters] = useState({
     status: 'all',
     search: '',
+    metric: 'all',
     page: 1,
   });
 
@@ -332,6 +327,7 @@ const EmailReportsPage = () => {
     if (activeTab === 'marketing') p.set('channel', 'marketing');
     else if (activeTab === 'transactional') p.set('channel', 'transactional');
     if (filters.status !== 'all') p.set('status', filters.status);
+    if (filters.metric && filters.metric !== 'all') p.set('metric', filters.metric);
     if (filters.search.trim()) p.set('search', filters.search.trim());
     p.set('page', String(filters.page || 1));
     p.set('limit', '25');
@@ -443,7 +439,16 @@ const EmailReportsPage = () => {
 
   const switchTab = (id) => {
     setActiveTab(id);
-    setFilters((f) => ({ ...f, page: 1 }));
+    setFilters((f) => ({ ...f, page: 1, metric: 'all' }));
+  };
+
+  const onKpiClick = (kpi) => {
+    const next = kpi.metric || 'all';
+    setFilters((f) => ({
+      ...f,
+      page: 1,
+      metric: f.metric === next ? 'all' : next,
+    }));
   };
 
   return (
@@ -531,46 +536,58 @@ const EmailReportsPage = () => {
           </div>
         ) : null}
 
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-start gap-2.5">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-start gap-2.5">
             <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700 ring-1 ring-brand-100">
               <GitBranch size={16} strokeWidth={2.25} />
             </div>
-            <div>
+            <div className="min-w-0">
               <h2 className="text-sm font-bold tracking-tight text-stone-900">
                 {activeMeta.label} · engagement funnel
               </h2>
               <p className="text-xs text-stone-500">
-                Related steps in order — each rate is measured against the previous stage
+                Click a card to filter the table to matching sends
               </p>
             </div>
           </div>
+          {filters.metric && filters.metric !== 'all' ? (
+            <button
+              type="button"
+              onClick={() => setFilters((f) => ({ ...f, metric: 'all', page: 1 }))}
+              className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-800 ring-1 ring-brand-200/80"
+            >
+              Filtered: {METRIC_LABELS[filters.metric] || filters.metric}
+              <XCircle className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
         </div>
 
         <div
           data-tour="email-reports-kpis"
-          className="grid min-w-0 w-full grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6"
+          className="grid min-w-0 w-full grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6"
         >
-          {kpiFunnel.map((kpi, idx) => (
-            <div key={kpi.key} className="relative min-w-0">
-              {idx > 0 && (
-                <div
-                  className="pointer-events-none absolute -left-1.5 top-1/2 z-10 hidden -translate-y-1/2 text-stone-300 xl:block"
-                  aria-hidden
-                >
-                  →
-                </div>
-              )}
-              <KpiCard
-                icon={kpi.icon}
-                label={kpi.label}
-                value={kpi.value}
-                caption={kpi.caption}
-                loading={loading}
-                gradient={kpi.gradient}
-              />
-            </div>
-          ))}
+          {kpiFunnel.map((kpi) => {
+            const isActiveFilter =
+              filters.metric !== 'all' && filters.metric === kpi.metric;
+            return (
+              <div
+                key={kpi.key}
+                className={`min-w-0 rounded-2xl transition-shadow ${
+                  isActiveFilter ? 'ring-2 ring-brand-500 ring-offset-2' : ''
+                }`}
+              >
+                <KpiCard
+                  icon={kpi.icon}
+                  label={kpi.label}
+                  value={kpi.value}
+                  caption={kpi.caption}
+                  loading={loading}
+                  gradient={kpi.gradient}
+                  onClick={() => onKpiClick(kpi)}
+                />
+              </div>
+            );
+          })}
         </div>
 
         <div className="card-ats-bordered relative overflow-hidden p-4 sm:p-5">
@@ -617,6 +634,7 @@ const EmailReportsPage = () => {
           error={error}
           activeTab={activeTab}
           activeMeta={activeMeta}
+          metricFilter={filters.metric}
           pagination={pagination}
           onPageChange={(page) => setFilters((f) => ({ ...f, page }))}
           onOpenDetail={openDetail}
