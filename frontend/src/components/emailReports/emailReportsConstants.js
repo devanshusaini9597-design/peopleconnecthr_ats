@@ -14,10 +14,11 @@ import {
   XCircle,
   Megaphone,
   Zap,
+  UserMinus,
 } from 'lucide-react';
 
 /** Email Reports product tour + channel tabs */
-export const EMAIL_REPORTS_TOUR_KEY = 'skillnix_tour_email_reports_v3';
+export const EMAIL_REPORTS_TOUR_KEY = 'skillnix_tour_email_reports_v4';
 
 export const EMAIL_REPORTS_TOUR_STEPS = [
   {
@@ -33,19 +34,19 @@ export const EMAIL_REPORTS_TOUR_STEPS = [
   {
     target: '[data-tour="email-reports-kpis"]',
     title: 'Engagement funnel',
-    body: 'Cards follow sends → recipients → delivered → opened → clicked → bounced. Click a card to filter the table to matching sends.',
+    body: 'Campaigns ≠ recipients — one campaign can email many people. Click Delivered, Opened, Unsubscribed, etc. to filter the table. Open Details to see which contacts opted out.',
     placement: 'bottom',
   },
   {
     target: '[data-tour="email-reports-columns"]',
     title: 'Choose columns',
-    body: 'Show or hide table fields. Use Select all, Clear, or Reset to defaults.',
+    body: 'Show or hide table fields. Use Select all, Uncheck all, or Reset to defaults.',
     placement: 'left',
   },
   {
     target: '[data-tour="email-reports-table"]',
     title: 'Send history',
-    body: 'Drag horizontally to scroll. Open Details for per-recipient opens, clicks, bounces, and replies.',
+    body: 'Drag horizontally to scroll. Open Details for per-contact opens, clicks, bounces, and unsubscribes.',
     placement: 'top',
   },
 ];
@@ -56,7 +57,7 @@ export const CHANNEL_TABS = [
     label: 'Marketing campaigns',
     short: 'Campaigns',
     provider: 'Zoho Campaigns',
-    blurb: 'Bulk / nurture — funnel from campaign send through opens, clicks, and bounces.',
+    blurb: 'Bulk / nurture — funnel from campaign send through opens, clicks, unsubscribes, and bounces.',
   },
   {
     id: 'transactional',
@@ -84,6 +85,7 @@ export function buildKpiFunnel(summary, channel) {
   const bounced = s.bounced || 0;
   const failed = s.failed || 0;
   const replied = s.replied || 0;
+  const unsubscribed = s.unsubscribed || 0;
   const sends = s.sends || 0;
 
   if (channel === 'marketing') {
@@ -94,7 +96,7 @@ export function buildKpiFunnel(summary, channel) {
         icon: Megaphone,
         label: 'Campaigns',
         value: sends,
-        caption: 'Campaigns started',
+        caption: 'Campaign jobs (not people)',
         gradient: 'from-brand-500 to-teal-400',
       },
       {
@@ -103,7 +105,7 @@ export function buildKpiFunnel(summary, channel) {
         icon: Users,
         label: 'Recipients',
         value: recipients,
-        caption: 'People reached',
+        caption: 'People emailed across campaigns',
         gradient: 'from-sky-500 to-brand-400',
       },
       {
@@ -112,7 +114,7 @@ export function buildKpiFunnel(summary, channel) {
         icon: CheckCircle2,
         label: 'Delivered',
         value: delivered,
-        caption: 'Inbox accepted',
+        caption: 'Reached the inbox',
         gradient: 'from-emerald-500 to-teal-400',
       },
       {
@@ -121,7 +123,7 @@ export function buildKpiFunnel(summary, channel) {
         icon: Eye,
         label: 'Opened',
         value: opened,
-        caption: 'Opened at least once',
+        caption: 'Unique opens',
         gradient: 'from-teal-500 to-cyan-400',
       },
       {
@@ -130,8 +132,17 @@ export function buildKpiFunnel(summary, channel) {
         icon: MousePointerClick,
         label: 'Clicked',
         value: clicked,
-        caption: 'Link clicked',
+        caption: 'Unique link clicks',
         gradient: 'from-indigo-500 to-violet-400',
+      },
+      {
+        key: 'unsubscribed',
+        metric: 'unsubscribed',
+        icon: UserMinus,
+        label: 'Unsubscribed',
+        value: unsubscribed,
+        caption: 'Opted out of list',
+        gradient: 'from-rose-500 to-orange-400',
       },
       {
         key: 'bounced',
@@ -153,7 +164,7 @@ export function buildKpiFunnel(summary, channel) {
         icon: Send,
         label: 'Sends',
         value: sends,
-        caption: 'Jobs sent',
+        caption: 'Send jobs',
         gradient: 'from-brand-500 to-teal-400',
       },
       {
@@ -171,7 +182,7 @@ export function buildKpiFunnel(summary, channel) {
         icon: CheckCircle2,
         label: 'Delivered',
         value: delivered,
-        caption: 'Inbox accepted',
+        caption: 'Reached the inbox',
         gradient: 'from-emerald-500 to-teal-400',
       },
       {
@@ -180,7 +191,7 @@ export function buildKpiFunnel(summary, channel) {
         icon: Eye,
         label: 'Opened',
         value: opened,
-        caption: 'Opened at least once',
+        caption: 'Unique opens',
         gradient: 'from-teal-500 to-cyan-400',
       },
       {
@@ -220,7 +231,7 @@ export function buildKpiFunnel(summary, channel) {
       icon: Users,
       label: 'Recipients',
       value: recipients,
-      caption: 'Across all sends',
+      caption: 'People emailed',
       gradient: 'from-sky-500 to-brand-400',
     },
     {
@@ -229,7 +240,7 @@ export function buildKpiFunnel(summary, channel) {
       icon: CheckCircle2,
       label: 'Delivered',
       value: delivered,
-      caption: 'Inbox accepted',
+      caption: 'Reached the inbox',
       gradient: 'from-emerald-500 to-teal-400',
     },
     {
@@ -238,7 +249,7 @@ export function buildKpiFunnel(summary, channel) {
       icon: Eye,
       label: 'Opened',
       value: opened,
-      caption: 'Opened at least once',
+      caption: 'Unique opens',
       gradient: 'from-teal-500 to-cyan-400',
     },
     {
@@ -247,8 +258,17 @@ export function buildKpiFunnel(summary, channel) {
       icon: MousePointerClick,
       label: 'Clicked',
       value: clicked,
-      caption: 'Link clicked',
+      caption: 'Unique link clicks',
       gradient: 'from-indigo-500 to-violet-400',
+    },
+    {
+      key: 'unsubscribed',
+      metric: 'unsubscribed',
+      icon: UserMinus,
+      label: 'Unsubscribed',
+      value: unsubscribed,
+      caption: 'Opted out',
+      gradient: 'from-rose-500 to-orange-400',
     },
     {
       key: 'replied',
@@ -274,12 +294,13 @@ export const TABLE_COLUMNS = [
   { id: 'delivered', label: 'Delivered', icon: CheckCircle2, defaultVisible: false },
   { id: 'opened', label: 'Opened', icon: Eye, defaultVisible: true },
   { id: 'clicked', label: 'Clicked', icon: MousePointerClick, defaultVisible: true },
+  { id: 'unsubscribed', label: 'Unsubscribed', icon: UserMinus, defaultVisible: true },
   { id: 'bounced', label: 'Bounced', icon: AlertTriangle, defaultVisible: true },
-  { id: 'replied', label: 'Replied', icon: MessageSquareReply, defaultVisible: true },
+  { id: 'replied', label: 'Replied', icon: MessageSquareReply, defaultVisible: false },
   { id: 'failed', label: 'Failed', icon: XCircle, defaultVisible: false },
 ];
 
-export const COLUMNS_STORAGE_KEY = 'skillnix_email_reports_columns_v2';
+export const COLUMNS_STORAGE_KEY = 'skillnix_email_reports_columns_v3';
 
 export function defaultVisibleColumnIds() {
   return TABLE_COLUMNS.filter((c) => c.defaultVisible).map((c) => c.id);
@@ -319,6 +340,7 @@ export const METRIC_LABELS = {
   bounced: 'Bounced',
   failed: 'Failed',
   replied: 'Replied',
+  unsubscribed: 'Unsubscribed',
 };
 
 export { Zap };

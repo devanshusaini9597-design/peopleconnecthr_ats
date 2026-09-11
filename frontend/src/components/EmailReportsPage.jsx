@@ -13,7 +13,6 @@ import {
   Loader2,
 } from 'lucide-react';
 import PageHeader from './ui/PageHeader';
-import KpiCard from './analytics/KpiCard';
 import ProductTour from './ui/ProductTour';
 import TourHelpFab from './ui/TourHelpFab';
 import usePageTour from '../hooks/usePageTour';
@@ -21,6 +20,7 @@ import { useToast } from './Toast';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import API_URL from '../config';
 import EmailReportsTable from './emailReports/EmailReportsTable';
+import FunnelMetricCard from './emailReports/FunnelMetricCard';
 import {
   CHANNEL_TABS,
   EMAIL_REPORTS_TOUR_KEY,
@@ -115,6 +115,7 @@ function emptySummary() {
     bounced: 0,
     replied: 0,
     failed: 0,
+    unsubscribed: 0,
   };
 }
 
@@ -122,6 +123,17 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
   if (!item) return null;
   const recipients = item.recipients || [];
   const totals = item.totals || {};
+  const unsubscribedContacts = recipients.filter(
+    (r) => r.status === 'unsubscribed' || r.unsubscribedAt
+  );
+  const subscribedContacts = recipients.filter(
+    (r) =>
+      r.status !== 'unsubscribed' &&
+      !r.unsubscribedAt &&
+      r.status !== 'failed' &&
+      r.status !== 'hard_bounced' &&
+      r.status !== 'soft_bounced'
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-stone-900/40 backdrop-blur-[1px] animate-page-enter">
@@ -168,10 +180,10 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
               ['Delivered', totals.delivered],
               ['Opened', totals.opened],
               ['Clicked', totals.clicked],
+              ['Unsubscribed', totals.unsubscribed],
               ['Bounced', totals.bounced],
               ['Replied', totals.replied],
               ['Failed', totals.failed],
-              ['Unsub', totals.unsubscribed],
               ['Spam', totals.spam],
             ].map(([label, val]) => (
               <div key={label} className="rounded-2xl border border-stone-200/80 bg-stone-50/80 px-3 py-2.5">
@@ -228,9 +240,54 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
             ) : null}
           </dl>
 
+          {unsubscribedContacts.length > 0 && (
+            <div>
+              <h3 className="mb-2 text-sm font-bold tracking-tight text-rose-800">
+                Unsubscribed contacts ({unsubscribedContacts.length})
+              </h3>
+              <div className="overflow-hidden rounded-2xl border border-rose-200/80">
+                <ul className="divide-y divide-rose-100 bg-white">
+                  {unsubscribedContacts.map((r) => (
+                    <li key={`unsub-${r.email}`} className="px-3 py-2.5 text-sm">
+                      <div className="break-all font-medium text-stone-800">{r.email}</div>
+                      <div className="mt-0.5 flex flex-wrap gap-2 text-xs text-stone-500">
+                        {r.name ? <span>{r.name}</span> : null}
+                        {r.unsubscribedAt ? <span>Opted out {fmtDate(r.unsubscribedAt)}</span> : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {subscribedContacts.length > 0 && item.channel === 'marketing' && (
+            <div>
+              <h3 className="mb-2 text-sm font-bold tracking-tight text-stone-900">
+                Still subscribed / active ({subscribedContacts.length})
+              </h3>
+              <p className="mb-2 text-xs text-stone-500">
+                Contacts on this send who have not opted out or bounced.
+              </p>
+              <div className="max-h-40 overflow-y-auto rounded-2xl border border-stone-200/80">
+                <ul className="divide-y divide-stone-100 bg-white">
+                  {subscribedContacts.slice(0, 100).map((r) => (
+                    <li key={`sub-${r.email}`} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                      <span className="min-w-0 break-all font-medium text-stone-800">{r.email}</span>
+                      <Badge tone={r.status}>{r.status}</Badge>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {subscribedContacts.length > 100 ? (
+                <p className="mt-1 text-xs text-stone-400">Showing first 100 contacts.</p>
+              ) : null}
+            </div>
+          )}
+
           <div>
             <h3 className="mb-2 text-sm font-bold tracking-tight text-stone-900">
-              Recipients ({recipients.length})
+              All recipients ({recipients.length})
             </h3>
             <div className="overflow-hidden rounded-2xl border border-stone-200/80">
               <table className="min-w-full divide-y divide-stone-100 text-sm">
@@ -271,6 +328,7 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
                         {r.openedAt && <div>Opened: {fmtDate(r.openedAt)}</div>}
                         {r.clickedAt && <div>Clicked: {fmtDate(r.clickedAt)}</div>}
                         {r.bouncedAt && <div>Bounced: {fmtDate(r.bouncedAt)}</div>}
+                        {r.unsubscribedAt && <div>Unsubscribed: {fmtDate(r.unsubscribedAt)}</div>}
                         {r.repliedAt && <div>Replied: {fmtDate(r.repliedAt)}</div>}
                       </td>
                     </tr>
@@ -546,7 +604,7 @@ const EmailReportsPage = () => {
                 {activeMeta.label} · engagement funnel
               </h2>
               <p className="text-xs text-stone-500">
-                Click a card to filter the table to matching sends
+                Campaigns = jobs · Recipients = people · Click a card to filter the table
               </p>
             </div>
           </div>
@@ -562,32 +620,27 @@ const EmailReportsPage = () => {
           ) : null}
         </div>
 
-        <div
-          data-tour="email-reports-kpis"
-          className="grid min-w-0 w-full grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6"
-        >
-          {kpiFunnel.map((kpi) => {
-            const isActiveFilter =
-              filters.metric !== 'all' && filters.metric === kpi.metric;
-            return (
-              <div
-                key={kpi.key}
-                className={`min-w-0 rounded-2xl transition-shadow ${
-                  isActiveFilter ? 'ring-2 ring-brand-500 ring-offset-2' : ''
-                }`}
-              >
-                <KpiCard
-                  icon={kpi.icon}
-                  label={kpi.label}
-                  value={kpi.value}
-                  caption={kpi.caption}
-                  loading={loading}
-                  gradient={kpi.gradient}
-                  onClick={() => onKpiClick(kpi)}
-                />
-              </div>
-            );
-          })}
+        <div data-tour="email-reports-kpis" className="min-w-0 w-full">
+          <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
+            {kpiFunnel.map((kpi) => {
+              const isActiveFilter =
+                filters.metric !== 'all' && filters.metric === kpi.metric;
+              return (
+                <div key={kpi.key} className="w-[158px] shrink-0 sm:w-[168px]">
+                  <FunnelMetricCard
+                    icon={kpi.icon}
+                    label={kpi.label}
+                    value={kpi.value}
+                    caption={kpi.caption}
+                    loading={loading}
+                    gradient={kpi.gradient}
+                    active={isActiveFilter}
+                    onClick={() => onKpiClick(kpi)}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <div className="card-ats-bordered relative overflow-hidden p-4 sm:p-5">

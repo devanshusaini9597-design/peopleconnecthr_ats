@@ -100,6 +100,8 @@ function cellValue(row, colId) {
       return <span className="tabular-nums text-indigo-800">{t.clicked ?? 0}</span>;
     case 'bounced':
       return <span className="tabular-nums text-amber-800">{t.bounced ?? 0}</span>;
+    case 'unsubscribed':
+      return <span className="tabular-nums text-rose-700">{t.unsubscribed ?? 0}</span>;
     case 'replied':
       return <span className="tabular-nums text-violet-800">{t.replied ?? 0}</span>;
     case 'failed':

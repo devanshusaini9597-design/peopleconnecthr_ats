@@ -57,9 +57,24 @@ function recomputeTotals(doc) {
 
   for (const r of recipients) {
     const s = r.status;
-    if (s === 'delivered' || s === 'opened' || s === 'clicked' || s === 'replied') totals.delivered += 1;
-    if (s === 'opened' || s === 'clicked' || s === 'replied') totals.opened += 1;
-    if (s === 'clicked') totals.clicked += 1;
+    const opened =
+      Boolean(r.openedAt) ||
+      num(r.openCount) > 0 ||
+      s === 'opened' ||
+      s === 'clicked' ||
+      s === 'replied';
+    const clicked = Boolean(r.clickedAt) || num(r.clickCount) > 0 || s === 'clicked';
+    const delivered =
+      Boolean(r.deliveredAt) ||
+      opened ||
+      clicked ||
+      s === 'delivered' ||
+      s === 'unsubscribed'; // opted out after delivery
+    const unsubscribed = Boolean(r.unsubscribedAt) || s === 'unsubscribed';
+
+    if (delivered) totals.delivered += 1;
+    if (opened) totals.opened += 1;
+    if (clicked) totals.clicked += 1;
     if (s === 'soft_bounced') {
       totals.softBounced += 1;
       totals.bounced += 1;
@@ -69,9 +84,9 @@ function recomputeTotals(doc) {
       totals.bounced += 1;
     }
     if (s === 'failed') totals.failed += 1;
-    if (s === 'unsubscribed') totals.unsubscribed += 1;
+    if (unsubscribed) totals.unsubscribed += 1;
     if (s === 'spam') totals.spam += 1;
-    if (s === 'replied') totals.replied += 1;
+    if (s === 'replied' || r.repliedAt) totals.replied += 1;
     if (s === 'sent' || s === 'unopened' || s === 'queued') totals.unopened += 1;
   }
 
@@ -261,6 +276,14 @@ function upsertRecipient(map, email, patch) {
   } else {
     Object.assign(existing, { ...patch, status: existing.status, email: key });
   }
+  // Keep engagement timestamps even when latest status is opt-out / bounce
+  if (patch.openedAt || existing.openedAt) existing.openedAt = patch.openedAt || existing.openedAt;
+  if (patch.clickedAt || existing.clickedAt) existing.clickedAt = patch.clickedAt || existing.clickedAt;
+  if (patch.unsubscribedAt || existing.unsubscribedAt) {
+    existing.unsubscribedAt = patch.unsubscribedAt || existing.unsubscribedAt;
+  }
+  existing.openCount = Math.max(num(existing.openCount), num(patch.openCount));
+  existing.clickCount = Math.max(num(existing.clickCount), num(patch.clickCount));
   if (patch.name) existing.name = patch.name;
   map.set(key, existing);
 }
@@ -389,10 +412,41 @@ async function syncZohoCampaign(doc, settings = null) {
   const detailsArr = reportRes?.['campaign-details'] || reportRes?.campaign_details || [];
   const details = Array.isArray(detailsArr) ? detailsArr[0] : detailsArr || {};
   applyCampaignReportMetrics(doc, reportBlock, details);
+  const reportTotals = { ...(doc.totals || {}) };
 
   await syncCampaignRecipients(doc, campaignKey, cfg);
-  // Prefer recipient-derived totals when we have them
-  if (doc.recipients?.length) recomputeTotals(doc);
+
+  // Keep Zoho campaign-report totals as source of truth (recipient buckets are
+  // often incomplete / status-collapsed and were making Campaigns≈Recipients
+  // and Delivered≈Opened). Only fill zeros from recipient-derived counts.
+  if (doc.recipients?.length) {
+    const before = { ...reportTotals };
+    recomputeTotals(doc);
+    const fromRecipients = { ...(doc.totals || {}) };
+    doc.totals = {
+      sent: Math.max(num(before.sent), num(fromRecipients.sent)),
+      delivered: Math.max(num(before.delivered), num(fromRecipients.delivered)),
+      opened: Math.max(num(before.opened), num(fromRecipients.opened)),
+      clicked: Math.max(num(before.clicked), num(fromRecipients.clicked)),
+      bounced: Math.max(num(before.bounced), num(fromRecipients.bounced)),
+      softBounced: Math.max(num(before.softBounced), num(fromRecipients.softBounced)),
+      hardBounced: Math.max(num(before.hardBounced), num(fromRecipients.hardBounced)),
+      unsubscribed: Math.max(num(before.unsubscribed), num(fromRecipients.unsubscribed)),
+      spam: Math.max(num(before.spam), num(fromRecipients.spam)),
+      failed: Math.max(num(before.failed), num(fromRecipients.failed)),
+      replied: Math.max(num(before.replied), num(fromRecipients.replied)),
+      unopened: Math.max(num(before.unopened), num(fromRecipients.unopened)),
+    };
+    const base = doc.totals.delivered || doc.totals.sent || 0;
+    doc.rates = {
+      deliveryRate: pct(doc.totals.delivered, doc.totals.sent),
+      openRate: pct(doc.totals.opened, base || doc.totals.sent),
+      clickRate: pct(doc.totals.clicked, base || doc.totals.sent),
+      bounceRate: pct(doc.totals.bounced, doc.totals.sent),
+      unsubscribeRate: pct(doc.totals.unsubscribed, doc.totals.sent),
+    };
+  }
+
   await detectReplies(doc);
 
   doc.lastSyncedAt = new Date();
@@ -802,6 +856,13 @@ async function listEmailReports(organizationId, query = {}) {
       andClauses.push({
         $or: [{ 'totals.replied': { $gt: 0 } }, { status: 'replied' }],
       });
+    } else if (metric === 'unsubscribed') {
+      andClauses.push({
+        $or: [
+          { 'totals.unsubscribed': { $gt: 0 } },
+          { 'recipients.status': 'unsubscribed' },
+        ],
+      });
     }
   }
 
@@ -848,11 +909,23 @@ async function listEmailReports(organizationId, query = {}) {
     bounced: 0,
     replied: 0,
     failed: 0,
+    unsubscribed: 0,
   };
+  const emptyChannel = () => ({
+    sends: 0,
+    recipients: 0,
+    delivered: 0,
+    opened: 0,
+    clicked: 0,
+    bounced: 0,
+    replied: 0,
+    failed: 0,
+    unsubscribed: 0,
+  });
   let channelSummaries = {
-    marketing: { sends: 0, recipients: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, replied: 0, failed: 0 },
-    transactional: { sends: 0, recipients: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, replied: 0, failed: 0 },
-    system: { sends: 0, recipients: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, replied: 0, failed: 0 },
+    marketing: emptyChannel(),
+    transactional: emptyChannel(),
+    system: emptyChannel(),
   };
 
   try {
@@ -873,6 +946,7 @@ async function listEmailReports(organizationId, query = {}) {
             bounced: { $sum: { $ifNull: ['$totals.bounced', 0] } },
             replied: { $sum: { $ifNull: ['$totals.replied', 0] } },
             failed: { $sum: { $ifNull: ['$totals.failed', 0] } },
+            unsubscribed: { $sum: { $ifNull: ['$totals.unsubscribed', 0] } },
           },
         },
       ]);
@@ -894,6 +968,7 @@ async function listEmailReports(organizationId, query = {}) {
             bounced: { $sum: { $ifNull: ['$totals.bounced', 0] } },
             replied: { $sum: { $ifNull: ['$totals.replied', 0] } },
             failed: { $sum: { $ifNull: ['$totals.failed', 0] } },
+            unsubscribed: { $sum: { $ifNull: ['$totals.unsubscribed', 0] } },
           },
         },
       ]);
@@ -909,6 +984,7 @@ async function listEmailReports(organizationId, query = {}) {
           bounced: row.bounced || 0,
           replied: row.replied || 0,
           failed: row.failed || 0,
+          unsubscribed: row.unsubscribed || 0,
         };
       }
     }
