@@ -1,4 +1,4 @@
-export const CAND_TOUR_KEY = 'skillnix_tour_candidates_v2';
+export const CAND_TOUR_KEY = 'skillnix_tour_candidates_v3';
 export const CANDIDATE_EXPORT_ROLES = ['owner', 'admin', 'hr_manager'];
 export const CAND_TOUR_STEPS = [
   {
@@ -19,8 +19,14 @@ export const CAND_TOUR_STEPS = [
   },
   {
     target: '[data-tour="cand-search"]',
-    title: 'Search, filters & import',
-    body: 'Search the list, open Filters, Export selected, or Import Excel for a review-before-add workflow.',
+    title: 'Search, columns & export',
+    body: 'Search the list, open Filters, choose Columns (new org fields appear here automatically), or Export. Import stays in the page header.',
+    placement: 'bottom',
+  },
+  {
+    target: '[data-tour="cand-columns"]',
+    title: 'Choose columns',
+    body: 'Show or hide table fields. Use Select all, Uncheck all, or Reset. New custom fields show up here automatically.',
     placement: 'bottom',
   },
   {

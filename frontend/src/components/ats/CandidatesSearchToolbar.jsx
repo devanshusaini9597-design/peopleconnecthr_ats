@@ -1,8 +1,8 @@
 import React from 'react';
-import { Search, Filter, FileSpreadsheet, Download, X } from 'lucide-react';
+import { Search, Filter, Download, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { planHasFeature } from '../../config/planFeatures';
 import PremiumSelect from '../ui/PremiumSelect';
+import ColumnsPicker from '../ui/ColumnsPicker';
 import { CANDIDATE_SEARCH_SCOPES } from './atsConstants';
 
 export default function CandidatesSearchToolbar(props) {
@@ -10,9 +10,15 @@ export default function CandidatesSearchToolbar(props) {
   const {
     searchQuery, setSearchQuery, searchScope, setSearchScope, setCurrentPage,
     showAdvancedSearch, setShowAdvancedSearch,
-    activeAdvFilterCount, orgPlan, toast, navigate, filteredCandidates, filteredCount, setShowDownloadModal,
+    activeAdvFilterCount, toast, filteredCandidates, filteredCount, setShowDownloadModal,
     selectedIds, freelanceOnly, setFreelanceOnly, isFreelancer,
     statusFilter, onClearStatusFilter, canExportCandidates,
+    columnOptions = [],
+    visibleColumnIds = [],
+    onVisibleColumnsChange,
+    onSelectAllColumns,
+    onClearAllColumns,
+    onResetColumns,
   } = props;
 
   const scopeLabel = CANDIDATE_SEARCH_SCOPES.find((s) => s.value === searchScope)?.label || 'All fields';
@@ -87,20 +93,15 @@ export default function CandidatesSearchToolbar(props) {
                   </span>
                 )}
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!isFreelancer && !planHasFeature(orgPlan, 'jobs.bulkImport')) {
-                    toast.info('Bulk Excel import requires Professional or higher.');
-                    return;
-                  }
-                  navigate('/auto-import');
-                }}
-                className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 h-11 px-4 rounded-lg font-semibold border border-stone-200 bg-white hover:border-brand-300 hover:bg-brand-50/40 text-stone-700 hover:text-brand-800 text-sm transition-colors"
-                title="Upload Excel/CSV with review before import"
-              >
-                <FileSpreadsheet size={15} strokeWidth={1.75} /> {t('candidates.import')}
-              </button>
+              <ColumnsPicker
+                data-tour="cand-columns"
+                columns={columnOptions}
+                visibleIds={visibleColumnIds}
+                onChange={onVisibleColumnsChange}
+                onSelectAll={onSelectAllColumns}
+                onClearAll={onClearAllColumns}
+                onReset={onResetColumns}
+              />
               {canExportCandidates && (
               <button
                 type="button"

@@ -28,6 +28,12 @@ import { useResumePreview } from './ats/hooks/useResumePreview';
 import { useTableDragScroll } from './ats/hooks/useTableDragScroll';
 import { useBulkCandidateActions } from './ats/hooks/useBulkCandidateActions';
 import { buildCandidateTableColumns } from './ats/candidateTableColumns';
+import {
+  CANDIDATE_LOCKED_COLUMN_KEYS,
+  loadCandidateColumnPrefs,
+  saveCandidateColumnPrefs,
+  resolveVisibleColumnIds,
+} from './ats/candidateColumnPrefs';
 import CandidatesPageHeader from './ats/CandidatesPageHeader';
 import CandidatesBulkToolbar from './ats/CandidatesBulkToolbar';
 import CandidatesSearchToolbar from './ats/CandidatesSearchToolbar';
@@ -324,7 +330,7 @@ const ATS = forwardRef((props, ref) => {
     }
   };
 
-  const orderedColumns = useMemo(
+  const allColumns = useMemo(
     () => buildCandidateTableColumns({
       handleEdit, handleShareClick, handleDelete, handleResumePreview, handleResumeDownload,
       handleSendEmail, sendWhatsApp, blindMode, currentPage,
@@ -332,6 +338,57 @@ const ATS = forwardRef((props, ref) => {
     }),
     [blindMode, currentPage, orgCandidateFields, candidates, handleEdit, handleShareClick, isFreelancer] // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  const availableColumnKeys = useMemo(() => allColumns.map((c) => c.key), [allColumns]);
+
+  const [visibleColumnIds, setVisibleColumnIds] = useState(() => {
+    const resolved = resolveVisibleColumnIds(availableColumnKeys, loadCandidateColumnPrefs());
+    return resolved.visible;
+  });
+
+  // Keep prefs in sync when column catalog changes (new custom fields, etc.)
+  useEffect(() => {
+    setVisibleColumnIds((prev) => {
+      const resolved = resolveVisibleColumnIds(availableColumnKeys, {
+        visible: prev,
+        known: loadCandidateColumnPrefs()?.known || prev,
+      });
+      return resolved.visible;
+    });
+  }, [availableColumnKeys.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    saveCandidateColumnPrefs(visibleColumnIds, availableColumnKeys);
+  }, [visibleColumnIds, availableColumnKeys]);
+
+  const columnOptions = useMemo(
+    () =>
+      allColumns.map((c) => ({
+        id: c.key,
+        label: c.label,
+        locked: CANDIDATE_LOCKED_COLUMN_KEYS.includes(c.key),
+      })),
+    [allColumns]
+  );
+
+  const orderedColumns = useMemo(() => {
+    const visible = new Set(visibleColumnIds);
+    return allColumns.filter((c) => visible.has(c.key));
+  }, [allColumns, visibleColumnIds]);
+
+  const selectAllColumns = useCallback(() => {
+    setVisibleColumnIds([...availableColumnKeys]);
+  }, [availableColumnKeys]);
+
+  const clearAllColumns = useCallback(() => {
+    setVisibleColumnIds(
+      CANDIDATE_LOCKED_COLUMN_KEYS.filter((k) => availableColumnKeys.includes(k))
+    );
+  }, [availableColumnKeys]);
+
+  const resetColumns = useCallback(() => {
+    setVisibleColumnIds([...availableColumnKeys]);
+  }, [availableColumnKeys]);
 
   const expOptions = useMemo(
     () => [
@@ -433,9 +490,7 @@ const ATS = forwardRef((props, ref) => {
           showAdvancedSearch={showAdvancedSearch}
           setShowAdvancedSearch={setShowAdvancedSearch}
           activeAdvFilterCount={activeAdvFilterCount}
-          orgPlan={orgPlan}
           toast={toast}
-          navigate={navigate}
           filteredCandidates={filteredCandidates}
           filteredCount={filteredCount}
           setShowDownloadModal={setShowDownloadModal}
@@ -451,6 +506,12 @@ const ATS = forwardRef((props, ref) => {
             next.delete('status');
             setSearchParams(next, { replace: true });
           }}
+          columnOptions={columnOptions}
+          visibleColumnIds={visibleColumnIds}
+          onVisibleColumnsChange={setVisibleColumnIds}
+          onSelectAllColumns={selectAllColumns}
+          onClearAllColumns={clearAllColumns}
+          onResetColumns={resetColumns}
         />
 
         {isFreelancer && Array.isArray(idFilter) && idFilter.length > 0 ? (

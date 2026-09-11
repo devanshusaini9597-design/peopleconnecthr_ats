@@ -1,9 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Columns3,
   ChevronRight,
   Loader2,
-  Check,
 } from 'lucide-react';
 import {
   TABLE_COLUMNS,
@@ -13,6 +11,7 @@ import {
   saveVisibleColumns,
 } from './emailReportsConstants';
 import useHorizontalDragScroll from '../../hooks/useHorizontalDragScroll';
+import ColumnsPicker from '../ui/ColumnsPicker';
 
 const STATUS_STYLES = {
   accepted: 'bg-sky-50 text-sky-800 ring-sky-200/80',
@@ -129,7 +128,6 @@ export default function EmailReportsTable({
     dragHandlers,
   } = useHorizontalDragScroll({ allowOnInteractive: false });
   const [visibleIds, setVisibleIds] = useState(() => loadVisibleColumns());
-  const [columnsOpen, setColumnsOpen] = useState(false);
 
   useEffect(() => {
     saveVisibleColumns(visibleIds);
@@ -145,17 +143,10 @@ export default function EmailReportsTable({
     []
   );
 
-  const toggleColumn = (id) => {
-    const col = TABLE_COLUMNS.find((c) => c.id === id);
-    if (col?.locked) return;
-    setVisibleIds((prev) => {
-      if (prev.includes(id)) {
-        if (prev.length <= 2) return prev;
-        return prev.filter((x) => x !== id);
-      }
-      return [...prev, id];
-    });
-  };
+  const columnOptions = useMemo(
+    () => TABLE_COLUMNS.map((c) => ({ id: c.id, label: c.label, locked: Boolean(c.locked) })),
+    []
+  );
 
   const selectAllColumns = () => {
     setVisibleIds(TABLE_COLUMNS.map((c) => c.id));
@@ -197,90 +188,16 @@ export default function EmailReportsTable({
           </p>
         </div>
 
-        <div className="relative shrink-0" data-tour="email-reports-columns">
-          <button
-            type="button"
-            className="btn-secondary inline-flex items-center gap-2"
-            onClick={() => setColumnsOpen((o) => !o)}
-            aria-expanded={columnsOpen}
-          >
-            <Columns3 size={16} />
-            Columns
-          </button>
-          {columnsOpen && (
-            <>
-              <button
-                type="button"
-                className="fixed inset-0 z-10 cursor-default"
-                aria-label="Close columns"
-                onClick={() => setColumnsOpen(false)}
-              />
-              <div className="absolute right-0 z-20 mt-2 w-72 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl">
-                <div className="border-b border-stone-100 bg-stone-50 px-3 py-2">
-                  <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
-                    Show fields
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <button
-                      type="button"
-                      onClick={selectAllColumns}
-                      className="rounded-lg bg-white px-2 py-1 text-[11px] font-semibold text-stone-700 ring-1 ring-stone-200 hover:bg-stone-50"
-                    >
-                      Select all
-                    </button>
-                    <button
-                      type="button"
-                      onClick={clearAllColumns}
-                      className="rounded-lg bg-white px-2 py-1 text-[11px] font-semibold text-stone-700 ring-1 ring-stone-200 hover:bg-stone-50"
-                    >
-                      Uncheck all
-                    </button>
-                    <button
-                      type="button"
-                      onClick={resetColumns}
-                      className="rounded-lg bg-brand-50 px-2 py-1 text-[11px] font-semibold text-brand-800 ring-1 ring-brand-200 hover:bg-brand-100"
-                    >
-                      Reset
-                    </button>
-                  </div>
-                </div>
-                <ul className="max-h-72 overflow-y-auto py-1">
-                  {TABLE_COLUMNS.map((col) => {
-                    const on = visibleIds.includes(col.id);
-                    const Icon = col.icon;
-                    return (
-                      <li key={col.id}>
-                        <button
-                          type="button"
-                          disabled={col.locked && on}
-                          onClick={() => toggleColumn(col.id)}
-                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-stone-50 disabled:opacity-60"
-                        >
-                          <span
-                            className={`flex h-5 w-5 items-center justify-center rounded border ${
-                              on
-                                ? 'border-brand-500 bg-brand-500 text-white'
-                                : 'border-stone-300 bg-white text-transparent'
-                            }`}
-                          >
-                            <Check size={12} strokeWidth={3} />
-                          </span>
-                          <Icon size={14} className="shrink-0 text-stone-400" />
-                          <span className="font-medium text-stone-800">{col.label}</span>
-                          {col.locked ? (
-                            <span className="ml-auto text-[10px] font-semibold uppercase text-stone-400">
-                              Required
-                            </span>
-                          ) : null}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            </>
-          )}
-        </div>
+        <ColumnsPicker
+          data-tour="email-reports-columns"
+          columns={columnOptions}
+          visibleIds={visibleIds}
+          onChange={setVisibleIds}
+          onSelectAll={selectAllColumns}
+          onClearAll={clearAllColumns}
+          onReset={resetColumns}
+          buttonClassName="btn-secondary inline-flex items-center gap-2"
+        />
       </div>
 
       <div
