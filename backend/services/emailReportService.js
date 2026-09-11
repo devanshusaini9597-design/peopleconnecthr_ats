@@ -753,6 +753,11 @@ async function listEmailReports(organizationId, query = {}) {
     replied: 0,
     failed: 0,
   };
+  let channelSummaries = {
+    marketing: { sends: 0, recipients: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, replied: 0, failed: 0 },
+    transactional: { sends: 0, recipients: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, replied: 0, failed: 0 },
+    system: { sends: 0, recipients: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, replied: 0, failed: 0 },
+  };
 
   try {
     const orgOid = mongoose.Types.ObjectId.isValid(String(organizationId))
@@ -779,19 +784,61 @@ async function listEmailReports(organizationId, query = {}) {
         summary = { ...summary, ...aggregate[0] };
         delete summary._id;
       }
+
+      const byChannel = await EmailSendLog.aggregate([
+        { $match: { organizationId: orgOid } },
+        {
+          $group: {
+            _id: '$channel',
+            sends: { $sum: 1 },
+            recipients: { $sum: { $ifNull: ['$totals.sent', 0] } },
+            delivered: { $sum: { $ifNull: ['$totals.delivered', 0] } },
+            opened: { $sum: { $ifNull: ['$totals.opened', 0] } },
+            clicked: { $sum: { $ifNull: ['$totals.clicked', 0] } },
+            bounced: { $sum: { $ifNull: ['$totals.bounced', 0] } },
+            replied: { $sum: { $ifNull: ['$totals.replied', 0] } },
+            failed: { $sum: { $ifNull: ['$totals.failed', 0] } },
+          },
+        },
+      ]);
+      for (const row of byChannel) {
+        const key = row._id || 'transactional';
+        if (!channelSummaries[key]) continue;
+        channelSummaries[key] = {
+          sends: row.sends || 0,
+          recipients: row.recipients || 0,
+          delivered: row.delivered || 0,
+          opened: row.opened || 0,
+          clicked: row.clicked || 0,
+          bounced: row.bounced || 0,
+          replied: row.replied || 0,
+          failed: row.failed || 0,
+        };
+      }
     }
   } catch (err) {
     logger.warn({ err: err.message }, '[emailReports] summary aggregate failed');
   }
 
-  summary.openRate = pct(summary.opened, summary.delivered || summary.recipients);
-  summary.clickRate = pct(summary.clicked, summary.delivered || summary.recipients);
-  summary.bounceRate = pct(summary.bounced, summary.recipients);
+  const decorate = (s) => ({
+    ...s,
+    openRate: pct(s.opened, s.delivered || s.recipients),
+    clickRate: pct(s.clicked, s.delivered || s.recipients),
+    bounceRate: pct(s.bounced, s.recipients),
+  });
+
+  summary = decorate(summary);
+  channelSummaries = {
+    marketing: decorate(channelSummaries.marketing),
+    transactional: decorate(channelSummaries.transactional),
+    system: decorate(channelSummaries.system),
+  };
 
   return {
     items,
     pagination: { page: pageNum, limit: lim, total, pages: Math.ceil(total / lim) || 1 },
     summary,
+    channelSummaries,
   };
 }
 

@@ -102,9 +102,14 @@ router.get('/reports', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Organization required' });
     }
     const data = await emailReports.listEmailReports(req.user.organizationId, req.query);
-    res.json({ success: true, ...data });
+    return res.json({ success: true, ...data });
   } catch (error) {
-    handle(res, error, 'Email reports list error:');
+    logger.error({ err: error.message, stack: error.stack }, 'Email reports list error');
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to load email reports',
+      displayMessage: error.displayMessage || 'Could not load email reports. Please retry.',
+    });
   }
 });
 
@@ -113,22 +118,17 @@ router.get('/reports/:id', async (req, res) => {
     if (!req.user?.organizationId) {
       return res.status(400).json({ success: false, message: 'Organization required' });
     }
-    const item = await emailReports.getEmailReportDetail(req.params.id, req.user.organizationId);
-    res.json({ success: true, item });
-  } catch (error) {
-    handle(res, error, 'Email report detail error:');
-  }
-});
-
-router.post('/reports/:id/sync', async (req, res) => {
-  try {
-    if (!req.user?.organizationId) {
-      return res.status(400).json({ success: false, message: 'Organization required' });
+    if (req.params.id === 'sync') {
+      return res.status(404).json({ success: false, message: 'Not found' });
     }
-    const item = await emailReports.syncEmailSend(req.params.id, req.user.organizationId);
-    res.json({ success: true, item });
+    const item = await emailReports.getEmailReportDetail(req.params.id, req.user.organizationId);
+    return res.json({ success: true, item });
   } catch (error) {
-    handle(res, error, 'Email report sync error:');
+    logger.error({ err: error.message }, 'Email report detail error');
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to load report',
+    });
   }
 });
 
@@ -146,14 +146,34 @@ router.post('/reports/sync', async (req, res) => {
         total: 0,
       })),
     ]);
-    res.json({
+    return res.json({
       success: true,
       message: 'Email reports refreshed from ZeptoMail / Zoho Campaigns',
       stale,
       campaigns,
     });
   } catch (error) {
-    handle(res, error, 'Email reports sync-all error:');
+    logger.error({ err: error.message }, 'Email reports sync-all error');
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Refresh failed',
+    });
+  }
+});
+
+router.post('/reports/:id/sync', async (req, res) => {
+  try {
+    if (!req.user?.organizationId) {
+      return res.status(400).json({ success: false, message: 'Organization required' });
+    }
+    const item = await emailReports.syncEmailSend(req.params.id, req.user.organizationId);
+    return res.json({ success: true, item });
+  } catch (error) {
+    logger.error({ err: error.message }, 'Email report sync error');
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Sync failed',
+    });
   }
 });
 

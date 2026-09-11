@@ -15,12 +15,22 @@ import {
   ChevronRight,
   Inbox,
   AlertCircle,
+  Megaphone,
+  Zap,
 } from 'lucide-react';
 import PageHeader from './ui/PageHeader';
 import KpiCard from './analytics/KpiCard';
+import ProductTour from './ui/ProductTour';
+import TourHelpFab from './ui/TourHelpFab';
+import usePageTour from '../hooks/usePageTour';
 import { useToast } from './Toast';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import API_URL from '../config';
+import {
+  CHANNEL_TABS,
+  EMAIL_REPORTS_TOUR_KEY,
+  EMAIL_REPORTS_TOUR_STEPS,
+} from './emailReports/emailReportsConstants';
 
 const BASE = API_URL;
 
@@ -67,14 +77,24 @@ function fmtDate(v) {
 }
 
 async function readJson(res) {
+  const ct = String(res.headers.get('content-type') || '');
   const text = await res.text();
   const trimmed = (text || '').trim();
   if (!trimmed) return {};
-  if (trimmed.startsWith('<') || trimmed.startsWith('<!DOCTYPE')) {
+  if (ct.includes('application/json') || trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      const err = new Error(`Invalid JSON from server (HTTP ${res.status}).`);
+      err.status = res.status;
+      throw err;
+    }
+  }
+  if (trimmed.startsWith('<')) {
     const err = new Error(
-      res.status === 404
-        ? 'Email reports API is not available on the server yet. Wait for Railway deploy, then refresh.'
-        : `Server returned an HTML error page (HTTP ${res.status}). Try again in a moment.`
+      res.status >= 500
+        ? 'Backend is restarting or unavailable. Wait ~1 minute, then click Retry.'
+        : `Unexpected HTML response (HTTP ${res.status}). If this persists, Railway may still be deploying.`
     );
     err.status = res.status;
     throw err;
@@ -86,6 +106,22 @@ async function readJson(res) {
     err.status = res.status;
     throw err;
   }
+}
+
+function emptySummary() {
+  return {
+    sends: 0,
+    recipients: 0,
+    delivered: 0,
+    opened: 0,
+    clicked: 0,
+    bounced: 0,
+    replied: 0,
+    failed: 0,
+    openRate: 0,
+    clickRate: 0,
+    bounceRate: 0,
+  };
 }
 
 function DetailPanel({ item, onClose, onSync, syncing }) {
@@ -157,7 +193,6 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
             {rates.openRate != null && <Badge tone="opened">Open {rates.openRate}%</Badge>}
             {rates.clickRate != null && <Badge tone="clicked">Click {rates.clickRate}%</Badge>}
             {rates.bounceRate != null && <Badge tone="bounced">Bounce {rates.bounceRate}%</Badge>}
-            {rates.deliveryRate != null && <Badge tone="delivered">Delivery {rates.deliveryRate}%</Badge>}
           </div>
 
           <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
@@ -195,10 +230,6 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
               <dt className="text-xs font-semibold uppercase text-stone-500">Last synced</dt>
               <dd className="mt-0.5 font-medium text-stone-800">{fmtDate(item.lastSyncedAt)}</dd>
             </div>
-            <div>
-              <dt className="text-xs font-semibold uppercase text-stone-500">Sync source</dt>
-              <dd className="mt-0.5 font-medium text-stone-800">{item.syncSource || '—'}</dd>
-            </div>
             {item.lastError ? (
               <div className="sm:col-span-2 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2 text-rose-800">
                 <p className="text-xs font-semibold uppercase">Last sync note</p>
@@ -226,7 +257,7 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
                   {recipients.length === 0 && (
                     <tr>
                       <td colSpan={5} className="px-3 py-8 text-center text-stone-500">
-                        No per-recipient rows yet. Click Sync to pull Zoho / Zepto details.
+                        No per-recipient rows yet. Click Sync to pull provider details.
                       </td>
                     </tr>
                   )}
@@ -237,15 +268,6 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
                         {r.name ? <div className="text-xs text-stone-500">{r.name}</div> : null}
                         {r.bounceReason ? (
                           <div className="mt-1 text-xs text-rose-600">{r.bounceReason}</div>
-                        ) : null}
-                        {r.clickUrls?.length ? (
-                          <div className="mt-1 space-y-0.5">
-                            {r.clickUrls.slice(0, 3).map((u) => (
-                              <div key={u} className="truncate text-[11px] text-indigo-600">
-                                {u}
-                              </div>
-                            ))}
-                          </div>
                         ) : null}
                       </td>
                       <td className="px-3 py-2.5">
@@ -275,32 +297,45 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
 
 const EmailReportsPage = () => {
   const toast = useToast();
+  const [tourOpen, setTourOpen] = usePageTour(EMAIL_REPORTS_TOUR_KEY);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [syncingAll, setSyncingAll] = useState(false);
   const [syncingId, setSyncingId] = useState(null);
   const [items, setItems] = useState([]);
-  const [summary, setSummary] = useState({});
+  const [summary, setSummary] = useState(emptySummary());
+  const [channelSummaries, setChannelSummaries] = useState({
+    marketing: emptySummary(),
+    transactional: emptySummary(),
+    system: emptySummary(),
+  });
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0, limit: 25 });
   const [selected, setSelected] = useState(null);
+  const [activeTab, setActiveTab] = useState('marketing');
   const [filters, setFilters] = useState({
-    channel: 'all',
-    provider: 'all',
     status: 'all',
     search: '',
     page: 1,
   });
 
+  const activeMeta = CHANNEL_TABS.find((t) => t.id === activeTab) || CHANNEL_TABS[0];
+
+  const displaySummary = useMemo(() => {
+    if (activeTab === 'marketing') return channelSummaries.marketing || emptySummary();
+    if (activeTab === 'transactional') return channelSummaries.transactional || emptySummary();
+    return summary;
+  }, [activeTab, channelSummaries, summary]);
+
   const queryString = useMemo(() => {
     const p = new URLSearchParams();
-    if (filters.channel !== 'all') p.set('channel', filters.channel);
-    if (filters.provider !== 'all') p.set('provider', filters.provider);
+    if (activeTab === 'marketing') p.set('channel', 'marketing');
+    else if (activeTab === 'transactional') p.set('channel', 'transactional');
     if (filters.status !== 'all') p.set('status', filters.status);
     if (filters.search.trim()) p.set('search', filters.search.trim());
     p.set('page', String(filters.page || 1));
     p.set('limit', '25');
     return p.toString();
-  }, [filters]);
+  }, [activeTab, filters]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -310,10 +345,17 @@ const EmailReportsPage = () => {
       if (isUnauthorized(res)) return handleUnauthorized();
       const data = await readJson(res);
       if (!res.ok || data.success === false) {
-        throw new Error(data.displayMessage || data.message || `Failed to load reports (HTTP ${res.status})`);
+        throw new Error(
+          data.displayMessage || data.message || `Failed to load reports (HTTP ${res.status})`
+        );
       }
       setItems(data.items || []);
-      setSummary(data.summary || {});
+      setSummary({ ...emptySummary(), ...(data.summary || {}) });
+      setChannelSummaries({
+        marketing: { ...emptySummary(), ...(data.channelSummaries?.marketing || {}) },
+        transactional: { ...emptySummary(), ...(data.channelSummaries?.transactional || {}) },
+        system: { ...emptySummary(), ...(data.channelSummaries?.system || {}) },
+      });
       setPagination(data.pagination || { page: 1, pages: 1, total: 0, limit: 25 });
     } catch (err) {
       setError(err.message || 'Failed to load email reports');
@@ -332,9 +374,7 @@ const EmailReportsPage = () => {
       const res = await authenticatedFetch(`${BASE}/api/email/reports/${id}`);
       if (isUnauthorized(res)) return handleUnauthorized();
       const data = await readJson(res);
-      if (!res.ok || data.success === false) {
-        throw new Error(data.message || 'Failed to load detail');
-      }
+      if (!res.ok || data.success === false) throw new Error(data.message || 'Failed to load detail');
       setSelected(data.item);
     } catch (err) {
       toast.error(err.message || 'Failed to open report');
@@ -366,9 +406,7 @@ const EmailReportsPage = () => {
       const res = await authenticatedFetch(`${BASE}/api/email/reports/sync`, { method: 'POST' });
       if (isUnauthorized(res)) return handleUnauthorized();
       const data = await readJson(res);
-      if (!res.ok || data.success === false) {
-        throw new Error(data.message || 'Refresh failed');
-      }
+      if (!res.ok || data.success === false) throw new Error(data.message || 'Refresh failed');
       const camp = data.campaigns || {};
       toast.success(
         `Refreshed · ${data.stale?.ok || 0} sends synced` +
@@ -383,276 +421,327 @@ const EmailReportsPage = () => {
     }
   };
 
-  if (loading && !items.length && !error) {
-    return (
+  const switchTab = (id) => {
+    setActiveTab(id);
+    setFilters((f) => ({ ...f, page: 1 }));
+  };
+
+  return (
+    <>
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={Inbox}
           title="Email Reports"
-          subtitle="Delivery and engagement for ZeptoMail transactional mail and Zoho Campaigns marketing."
-        />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-            <div key={i} className="skeleton-ats h-[118px] rounded-2xl" />
-          ))}
-        </div>
-        <div className="skeleton-ats mt-2 h-64 rounded-2xl" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="page-shell-ats animate-page-enter">
-      <PageHeader
-        icon={Inbox}
-        title="Email Reports"
-        subtitle="Enterprise delivery & engagement — sent, delivered, opened, clicked, bounced, replied — matching your ATS analytics style."
-      >
-        <button type="button" onClick={syncAll} disabled={syncingAll} className="btn-secondary">
-          <RefreshCw size={16} className={syncingAll ? 'animate-spin' : ''} />
-          Refresh from Zoho
-        </button>
-      </PageHeader>
-
-      {error ? (
-        <div className="card-ats-bordered flex flex-col gap-4 border-red-200 bg-red-50/40 p-6 sm:flex-row sm:items-center">
-          <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600">
-            <AlertCircle size={20} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="font-bold text-stone-900">Unable to load email reports</p>
-            <p className="mt-0.5 text-sm text-red-600">{error}</p>
-          </div>
-          <button type="button" onClick={load} className="btn-primary">
-            Retry
+          subtitle="Separate views for Zoho Campaigns (marketing) and ZeptoMail (transactional) — opens, clicks, bounces, and replies."
+        >
+          <button
+            type="button"
+            data-tour="email-reports-refresh"
+            onClick={syncAll}
+            disabled={syncingAll}
+            className="btn-secondary"
+          >
+            <RefreshCw size={16} className={syncingAll ? 'animate-spin' : ''} />
+            Refresh from Zoho
           </button>
-        </div>
-      ) : null}
+        </PageHeader>
 
-      <div className="grid min-w-0 w-full grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-        <KpiCard icon={Send} label="Sends" value={summary.sends || 0} gradient="from-brand-500 to-teal-400" />
-        <KpiCard icon={Mail} label="Recipients" value={summary.recipients || 0} gradient="from-sky-500 to-brand-400" />
-        <KpiCard icon={CheckCircle2} label="Delivered" value={summary.delivered || 0} gradient="from-emerald-500 to-teal-400" />
-        <KpiCard
-          icon={Eye}
-          label="Opened"
-          value={summary.opened || 0}
-          caption={`${summary.openRate ?? 0}% open rate`}
-          gradient="from-teal-500 to-cyan-400"
-        />
-        <KpiCard
-          icon={MousePointerClick}
-          label="Clicked"
-          value={summary.clicked || 0}
-          caption={`${summary.clickRate ?? 0}% click rate`}
-          gradient="from-indigo-500 to-violet-400"
-        />
-        <KpiCard
-          icon={AlertTriangle}
-          label="Bounced"
-          value={summary.bounced || 0}
-          caption={`${summary.bounceRate ?? 0}% bounce rate`}
-          gradient="from-amber-500 to-orange-400"
-        />
-        <KpiCard
-          icon={MessageSquareReply}
-          label="Replied"
-          value={summary.replied || 0}
-          gradient="from-violet-500 to-fuchsia-400"
-        />
-        <KpiCard icon={XCircle} label="Failed" value={summary.failed || 0} gradient="from-rose-500 to-red-400" />
-      </div>
-
-      <div className="card-ats-bordered relative overflow-hidden p-4 sm:p-5">
-        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-        <div className="mb-3 flex items-center gap-2 text-sm font-bold text-stone-800">
-          <Filter className="h-4 w-4 text-brand-600" />
-          Filters
+        <div data-tour="email-reports-tabs" className="card-ats-bordered relative overflow-hidden p-2 sm:p-2.5">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+            {CHANNEL_TABS.map((tab) => {
+              const active = activeTab === tab.id;
+              const Icon = tab.id === 'marketing' ? Megaphone : tab.id === 'transactional' ? Zap : Mail;
+              const count =
+                tab.id === 'marketing'
+                  ? channelSummaries.marketing?.sends || 0
+                  : tab.id === 'transactional'
+                    ? channelSummaries.transactional?.sends || 0
+                    : summary.sends || 0;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => switchTab(tab.id)}
+                  className={`flex min-w-0 flex-1 items-start gap-3 rounded-2xl border px-3.5 py-3 text-left transition-all ${
+                    active
+                      ? 'border-brand-300 bg-gradient-to-br from-brand-50 to-teal-50/80 shadow-sm ring-1 ring-brand-200/60'
+                      : 'border-transparent bg-stone-50/70 hover:border-stone-200 hover:bg-white'
+                  }`}
+                >
+                  <div
+                    className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                      active
+                        ? 'bg-gradient-to-br from-brand-500 to-teal-600 text-white shadow-md shadow-brand-500/20'
+                        : 'bg-white text-stone-500 ring-1 ring-stone-200'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" strokeWidth={2.25} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className={`text-sm font-bold ${active ? 'text-stone-900' : 'text-stone-700'}`}>
+                        {tab.label}
+                      </p>
+                      <span className="tabular-nums text-xs font-semibold text-stone-500">{count}</span>
+                    </div>
+                    <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-stone-400">
+                      {tab.provider}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-xs leading-snug text-stone-500">{tab.blurb}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-semibold text-stone-500">
-            Search
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-              <input
-                className="input-ats w-full pl-9"
-                placeholder="Subject, recipient, campaign key…"
-                value={filters.search}
-                onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value, page: 1 }))}
-              />
+
+        {error ? (
+          <div className="card-ats-bordered flex flex-col gap-4 border-red-200 bg-red-50/40 p-6 sm:flex-row sm:items-center">
+            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600">
+              <AlertCircle size={20} />
             </div>
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-stone-500">
-            Channel
-            <select
-              className="input-ats"
-              value={filters.channel}
-              onChange={(e) => setFilters((f) => ({ ...f, channel: e.target.value, page: 1 }))}
-            >
-              <option value="all">All</option>
-              <option value="transactional">Transactional</option>
-              <option value="marketing">Marketing</option>
-              <option value="system">System</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-stone-500">
-            Provider
-            <select
-              className="input-ats"
-              value={filters.provider}
-              onChange={(e) => setFilters((f) => ({ ...f, provider: e.target.value, page: 1 }))}
-            >
-              <option value="all">All</option>
-              <option value="zeptomail">ZeptoMail</option>
-              <option value="zoho_campaigns">Zoho Campaigns</option>
-              <option value="smtp">SMTP</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-stone-500">
-            Status
-            <select
-              className="input-ats"
-              value={filters.status}
-              onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value, page: 1 }))}
-            >
-              <option value="all">All</option>
-              <option value="accepted">Accepted</option>
-              <option value="sending">Sending</option>
-              <option value="sent">Sent</option>
-              <option value="completed">Completed</option>
-              <option value="failed">Failed</option>
-              <option value="bounced">Bounced</option>
-            </select>
-          </label>
-        </div>
-      </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-stone-900">Unable to load email reports</p>
+              <p className="mt-0.5 text-sm text-red-600">{error}</p>
+            </div>
+            <button type="button" onClick={load} className="btn-primary">
+              Retry
+            </button>
+          </div>
+        ) : null}
 
-      <div className="card-ats-bordered relative overflow-hidden">
-        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-stone-100 text-sm">
-            <thead className="bg-stone-50/90 text-left text-xs font-semibold uppercase tracking-wide text-stone-500">
-              <tr>
-                <th className="px-4 py-3">When</th>
-                <th className="px-4 py-3">Subject / Campaign</th>
-                <th className="px-4 py-3">Channel</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Sent</th>
-                <th className="px-4 py-3">Open</th>
-                <th className="px-4 py-3">Click</th>
-                <th className="px-4 py-3">Bounce</th>
-                <th className="px-4 py-3">Reply</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100">
-              {loading && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-bold tracking-tight text-stone-900">{activeMeta.label}</h2>
+            <p className="text-xs text-stone-500">{activeMeta.blurb}</p>
+          </div>
+        </div>
+
+        <div
+          data-tour="email-reports-kpis"
+          className="grid min-w-0 w-full grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4"
+        >
+          <KpiCard
+            icon={Send}
+            label="Sends"
+            value={displaySummary.sends || 0}
+            loading={loading}
+            gradient="from-brand-500 to-teal-400"
+          />
+          <KpiCard
+            icon={Mail}
+            label="Recipients"
+            value={displaySummary.recipients || 0}
+            loading={loading}
+            gradient="from-sky-500 to-brand-400"
+          />
+          <KpiCard
+            icon={CheckCircle2}
+            label="Delivered"
+            value={displaySummary.delivered || 0}
+            loading={loading}
+            gradient="from-emerald-500 to-teal-400"
+          />
+          <KpiCard
+            icon={Eye}
+            label="Opened"
+            value={displaySummary.opened || 0}
+            caption={`${displaySummary.openRate ?? 0}% open rate`}
+            loading={loading}
+            gradient="from-teal-500 to-cyan-400"
+          />
+          <KpiCard
+            icon={MousePointerClick}
+            label="Clicked"
+            value={displaySummary.clicked || 0}
+            caption={`${displaySummary.clickRate ?? 0}% click rate`}
+            loading={loading}
+            gradient="from-indigo-500 to-violet-400"
+          />
+          <KpiCard
+            icon={AlertTriangle}
+            label="Bounced"
+            value={displaySummary.bounced || 0}
+            caption={`${displaySummary.bounceRate ?? 0}% bounce rate`}
+            loading={loading}
+            gradient="from-amber-500 to-orange-400"
+          />
+          <KpiCard
+            icon={MessageSquareReply}
+            label="Replied"
+            value={displaySummary.replied || 0}
+            loading={loading}
+            gradient="from-violet-500 to-fuchsia-400"
+          />
+          <KpiCard
+            icon={XCircle}
+            label="Failed"
+            value={displaySummary.failed || 0}
+            loading={loading}
+            gradient="from-rose-500 to-red-400"
+          />
+        </div>
+
+        <div className="card-ats-bordered relative overflow-hidden p-4 sm:p-5">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+          <div className="mb-3 flex items-center gap-2 text-sm font-bold text-stone-800">
+            <Filter className="h-4 w-4 text-brand-600" />
+            Filters · {activeMeta.short}
+          </div>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+            <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-semibold text-stone-500">
+              Search
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                <input
+                  className="input-ats w-full pl-9"
+                  placeholder="Subject, recipient, campaign key…"
+                  value={filters.search}
+                  onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value, page: 1 }))}
+                />
+              </div>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-stone-500">
+              Status
+              <select
+                className="input-ats"
+                value={filters.status}
+                onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value, page: 1 }))}
+              >
+                <option value="all">All</option>
+                <option value="accepted">Accepted</option>
+                <option value="sending">Sending</option>
+                <option value="sent">Sent</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+                <option value="bounced">Bounced</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div data-tour="email-reports-table" className="card-ats-bordered relative overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-stone-100 text-sm">
+              <thead className="bg-stone-50/90 text-left text-xs font-semibold uppercase tracking-wide text-stone-500">
                 <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center text-stone-500">
-                    <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-brand-600" />
-                    Loading email reports…
-                  </td>
+                  <th className="px-4 py-3">When</th>
+                  <th className="px-4 py-3">Subject / Campaign</th>
+                  <th className="px-4 py-3">Provider</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Sent</th>
+                  <th className="px-4 py-3">Open</th>
+                  <th className="px-4 py-3">Click</th>
+                  <th className="px-4 py-3">Bounce</th>
+                  <th className="px-4 py-3">Reply</th>
+                  <th className="px-4 py-3" />
                 </tr>
-              )}
-              {!loading && items.length === 0 && !error && (
-                <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center text-stone-500">
-                    No tracked sends yet. Send a candidate email or marketing campaign, then click{' '}
-                    <strong className="text-stone-700">Refresh from Zoho</strong>.
-                  </td>
-                </tr>
-              )}
-              {!loading &&
-                items.map((row) => (
-                  <tr key={row._id} className="transition-colors hover:bg-stone-50/80">
-                    <td className="whitespace-nowrap px-4 py-3 text-stone-600">{fmtDate(row.sentAt)}</td>
-                    <td className="max-w-xs px-4 py-3">
-                      <div className="truncate font-semibold text-stone-900">
-                        {row.subject || row.campaignName || '—'}
-                      </div>
-                      <div className="truncate text-xs text-stone-500">
-                        {row.fromEmail || '—'}
-                        {row.sentByUserId?.name ? ` · ${row.sentByUserId.name}` : ''}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium capitalize text-stone-800">{row.channel}</div>
-                      <div className="text-xs capitalize text-stone-500">
-                        {(row.provider || '').replace(/_/g, ' ')}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge tone={row.status}>{row.status}</Badge>
-                    </td>
-                    <td className="px-4 py-3 font-medium tabular-nums">{row.totals?.sent ?? 0}</td>
-                    <td className="px-4 py-3 tabular-nums">
-                      {row.totals?.opened ?? 0}
-                      <span className="text-xs text-stone-400"> · {row.rates?.openRate ?? 0}%</span>
-                    </td>
-                    <td className="px-4 py-3 tabular-nums">
-                      {row.totals?.clicked ?? 0}
-                      <span className="text-xs text-stone-400"> · {row.rates?.clickRate ?? 0}%</span>
-                    </td>
-                    <td className="px-4 py-3 tabular-nums">{row.totals?.bounced ?? 0}</td>
-                    <td className="px-4 py-3 tabular-nums">{row.totals?.replied ?? 0}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => openDetail(row._id)}
-                        className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-900"
-                      >
-                        Details <ChevronRight className="h-4 w-4" />
-                      </button>
+              </thead>
+              <tbody className="divide-y divide-stone-100">
+                {loading && (
+                  <tr>
+                    <td colSpan={10} className="px-4 py-12 text-center text-stone-500">
+                      <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-brand-600" />
+                      Loading {activeMeta.short.toLowerCase()} reports…
                     </td>
                   </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-        {pagination.pages > 1 && (
-          <div className="flex items-center justify-between border-t border-stone-100 px-4 py-3 text-sm">
-            <span className="text-stone-500">
-              Page {pagination.page} of {pagination.pages} · {pagination.total} sends
-            </span>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="btn-secondary px-3 py-1.5"
-                disabled={pagination.page <= 1}
-                onClick={() => setFilters((f) => ({ ...f, page: Math.max(1, f.page - 1) }))}
-              >
-                Previous
-              </button>
-              <button
-                type="button"
-                className="btn-secondary px-3 py-1.5"
-                disabled={pagination.page >= pagination.pages}
-                onClick={() => setFilters((f) => ({ ...f, page: f.page + 1 }))}
-              >
-                Next
-              </button>
-            </div>
+                )}
+                {!loading && items.length === 0 && !error && (
+                  <tr>
+                    <td colSpan={10} className="px-4 py-12 text-center text-stone-500">
+                      {activeTab === 'marketing'
+                        ? 'No marketing campaigns logged yet. Send a campaign from the ATS, then click Refresh from Zoho.'
+                        : activeTab === 'transactional'
+                          ? 'No transactional sends logged yet. Email a candidate (interview / custom) to see ZeptoMail tracking here.'
+                          : 'No tracked sends yet. Send mail from the ATS, then refresh.'}
+                    </td>
+                  </tr>
+                )}
+                {!loading &&
+                  items.map((row) => (
+                    <tr key={row._id} className="transition-colors hover:bg-stone-50/80">
+                      <td className="whitespace-nowrap px-4 py-3 text-stone-600">{fmtDate(row.sentAt)}</td>
+                      <td className="max-w-xs px-4 py-3">
+                        <div className="truncate font-semibold text-stone-900">
+                          {row.subject || row.campaignName || '—'}
+                        </div>
+                        <div className="truncate text-xs text-stone-500">
+                          {row.fromEmail || '—'}
+                          {row.sentByUserId?.name ? ` · ${row.sentByUserId.name}` : ''}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 capitalize text-stone-700">
+                        {(row.provider || '').replace(/_/g, ' ')}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge tone={row.status}>{row.status}</Badge>
+                      </td>
+                      <td className="px-4 py-3 font-medium tabular-nums">{row.totals?.sent ?? 0}</td>
+                      <td className="px-4 py-3 tabular-nums">
+                        {row.totals?.opened ?? 0}
+                        <span className="text-xs text-stone-400"> · {row.rates?.openRate ?? 0}%</span>
+                      </td>
+                      <td className="px-4 py-3 tabular-nums">
+                        {row.totals?.clicked ?? 0}
+                        <span className="text-xs text-stone-400"> · {row.rates?.clickRate ?? 0}%</span>
+                      </td>
+                      <td className="px-4 py-3 tabular-nums">{row.totals?.bounced ?? 0}</td>
+                      <td className="px-4 py-3 tabular-nums">{row.totals?.replied ?? 0}</td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => openDetail(row._id)}
+                          className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-900"
+                        >
+                          Details <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
           </div>
-        )}
+          {pagination.pages > 1 && (
+            <div className="flex items-center justify-between border-t border-stone-100 px-4 py-3 text-sm">
+              <span className="text-stone-500">
+                Page {pagination.page} of {pagination.pages} · {pagination.total} sends
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary px-3 py-1.5"
+                  disabled={pagination.page <= 1}
+                  onClick={() => setFilters((f) => ({ ...f, page: Math.max(1, f.page - 1) }))}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary px-3 py-1.5"
+                  disabled={pagination.page >= pagination.pages}
+                  onClick={() => setFilters((f) => ({ ...f, page: f.page + 1 }))}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="card-ats-bordered border-dashed bg-stone-50/50 p-4 text-xs leading-relaxed text-stone-600">
-        <p className="font-semibold text-stone-800">Tracking checklist</p>
-        <ul className="mt-2 list-disc space-y-1 pl-4">
-          <li>
-            <strong>Zoho Campaigns (marketing):</strong> Settings → Campaign Policy → Campaign Tracking — your
-            screenshot already shows <em>Complete Tracking</em> for Opens and Link Clicks. Nothing else to enable there.
-          </li>
-          <li>
-            <strong>ZeptoMail (transactional / OTP / alerts):</strong> ZeptoMail → your Agent →{' '}
-            <em>Email Tracking</em> → turn on Open tracking and Click tracking.
-          </li>
-          <li>
-            New sends are logged automatically. Use <strong>Refresh from Zoho</strong> to import recent campaigns and
-            update opens/clicks/bounces.
-          </li>
-        </ul>
-      </div>
+      <TourHelpFab
+        onClick={() => setTourOpen(true)}
+        label="Take a tour"
+        title="Take a tour of Email Reports"
+      />
+      <ProductTour
+        open={tourOpen}
+        onClose={() => setTourOpen(false)}
+        steps={EMAIL_REPORTS_TOUR_STEPS}
+        storageKey={EMAIL_REPORTS_TOUR_KEY}
+      />
 
       <DetailPanel
         item={selected}
@@ -660,7 +749,7 @@ const EmailReportsPage = () => {
         onSync={syncOne}
         syncing={Boolean(syncingId)}
       />
-    </div>
+    </>
   );
 };
 
