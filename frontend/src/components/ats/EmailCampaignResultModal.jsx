@@ -6,11 +6,13 @@ import {
   Mail,
   Megaphone,
   X,
+  Info,
 } from 'lucide-react';
 
 /**
  * Enterprise campaign / bulk-send results summary.
- * Shows sent vs failed counts and per-recipient failure reasons.
+ * Shows provider-accepted vs immediate failures with per-recipient reasons.
+ * Later delivery / bounce detail lives in Email Reports after sync.
  */
 export default function EmailCampaignResultModal({
   open,
@@ -37,20 +39,20 @@ export default function EmailCampaignResultModal({
     ? {
         wrap: 'bg-emerald-50 border-emerald-200',
         iconWrap: 'bg-emerald-100 text-emerald-700',
-        title: 'All emails processed successfully',
+        title: 'All emails accepted by the provider',
         Icon: CheckCircle2,
       }
     : allFailed
       ? {
           wrap: 'bg-rose-50 border-rose-200',
           iconWrap: 'bg-rose-100 text-rose-700',
-          title: 'No emails were delivered',
+          title: 'No emails were accepted',
           Icon: XCircle,
         }
       : {
           wrap: 'bg-amber-50 border-amber-200',
           iconWrap: 'bg-amber-100 text-amber-700',
-          title: 'Campaign finished with some failures',
+          title: 'Some recipients failed at send time',
           Icon: AlertTriangle,
         };
 
@@ -100,7 +102,7 @@ export default function EmailCampaignResultModal({
             </div>
             <p className="font-bold text-stone-900">{banner.title}</p>
             <p className="mt-1 text-sm text-stone-600">
-              {sent} sent · {failed} failed · {total} total
+              {sent} accepted · {failed} failed · {total} total
             </p>
           </div>
 
@@ -110,7 +112,7 @@ export default function EmailCampaignResultModal({
               <p className="mt-1 text-2xl font-bold tabular-nums text-stone-900">{total}</p>
             </div>
             <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/50 px-3 py-3 text-center">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Sent</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Accepted</p>
               <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-800">{sent}</p>
             </div>
             <div className="rounded-2xl border border-rose-200/80 bg-rose-50/50 px-3 py-3 text-center">
@@ -119,10 +121,22 @@ export default function EmailCampaignResultModal({
             </div>
           </div>
 
+          <div className="flex gap-2.5 rounded-2xl border border-sky-200/80 bg-sky-50/60 px-3.5 py-3 text-left text-sm text-sky-900">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" strokeWidth={2.25} />
+            <div className="min-w-0 space-y-1">
+              <p className="font-semibold">What this modal shows</p>
+              <p className="text-xs leading-relaxed text-sky-800/90">
+                <strong>Failed</strong> = rejected right away (invalid address, opt-out, provider error) with a reason below.
+                <strong> Accepted</strong> = provider took the mail — not the same as inbox delivered.
+                Later delivered / bounced / opened counts appear in Email Reports after sync (e.g. 40 delivered, 10 bounced).
+              </p>
+            </div>
+          </div>
+
           {failures.length > 0 && (
             <div>
               <h3 className="mb-2 text-sm font-bold text-stone-900">
-                Failed recipients ({failures.length})
+                Failed at send ({failures.length}) — with reasons
               </h3>
               <div className="max-h-48 overflow-y-auto rounded-2xl border border-rose-200/80">
                 <table className="min-w-full divide-y divide-rose-100 text-sm">
@@ -152,7 +166,7 @@ export default function EmailCampaignResultModal({
           {successes.length > 0 && successes.length <= 20 && (
             <div>
               <h3 className="mb-2 text-sm font-bold text-stone-900">
-                Sent successfully ({successes.length})
+                Accepted ({successes.length})
               </h3>
               <div className="rounded-2xl border border-emerald-100 bg-emerald-50/30 px-3 py-2 text-xs text-stone-600">
                 {successes.map((s) => (typeof s === 'string' ? s : s.email)).filter(Boolean).join(', ')}
@@ -161,7 +175,7 @@ export default function EmailCampaignResultModal({
           )}
           {successes.length > 20 && (
             <p className="text-xs text-stone-500">
-              {successes.length} recipients accepted successfully.
+              {successes.length} recipients accepted by the provider.
             </p>
           )}
         </div>
@@ -169,7 +183,7 @@ export default function EmailCampaignResultModal({
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-stone-100 bg-stone-50/60 px-5 py-3">
           {onViewReports && (
             <button type="button" className="btn-secondary" onClick={onViewReports}>
-              View email reports
+              View delivery & bounces
             </button>
           )}
           <button type="button" className="btn-primary" onClick={onClose}>

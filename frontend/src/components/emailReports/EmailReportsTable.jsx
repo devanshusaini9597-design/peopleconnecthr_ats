@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Columns3,
   ChevronRight,
@@ -12,6 +12,7 @@ import {
   loadVisibleColumns,
   saveVisibleColumns,
 } from './emailReportsConstants';
+import useHorizontalDragScroll from '../../hooks/useHorizontalDragScroll';
 
 const STATUS_STYLES = {
   accepted: 'bg-sky-50 text-sky-800 ring-sky-200/80',
@@ -122,8 +123,11 @@ export default function EmailReportsTable({
   onPageChange,
   onOpenDetail,
 }) {
-  const tableScrollRef = useRef(null);
-  const dragScrollRef = useRef({ active: false, moved: false, startX: 0, scrollLeft: 0 });
+  const {
+    scrollRef: tableScrollRef,
+    didDrag,
+    dragHandlers,
+  } = useHorizontalDragScroll({ allowOnInteractive: false });
   const [visibleIds, setVisibleIds] = useState(() => loadVisibleColumns());
   const [columnsOpen, setColumnsOpen] = useState(false);
 
@@ -165,45 +169,9 @@ export default function EmailReportsTable({
     setVisibleIds(defaultVisibleColumnIds());
   };
 
-  const isClickOnScrollbar = (el, e) => {
-    const rect = el.getBoundingClientRect();
-    const canScrollX = el.scrollWidth > el.clientWidth;
-    const canScrollY = el.scrollHeight > el.clientHeight;
-    const hBar = Math.max(el.offsetHeight - el.clientHeight, 0);
-    const vBar = Math.max(el.offsetWidth - el.clientWidth, 0);
-    if (canScrollX && e.clientY >= rect.bottom - Math.max(hBar, 16)) return true;
-    if (canScrollY && e.clientX >= rect.right - Math.max(vBar, 16)) return true;
-    return false;
-  };
-
-  const onTableDragScrollStart = (e) => {
-    if (e.button !== 0) return;
-    if (e.target.closest('button, a, input, select, textarea, label, [role="button"]')) return;
-    if (!e.target.closest('td, th, .email-reports-drag')) return;
-    const el = tableScrollRef.current;
-    if (!el) return;
-    if (isClickOnScrollbar(el, e)) return;
-    dragScrollRef.current = { active: true, moved: false, startX: e.pageX, scrollLeft: el.scrollLeft };
-    el.dataset.dragging = '1';
-  };
-
-  const onTableDragScrollMove = (e) => {
-    const state = dragScrollRef.current;
-    if (!state.active) return;
-    const el = tableScrollRef.current;
-    if (!el) return;
-    e.preventDefault();
-    const dx = e.pageX - state.startX;
-    if (Math.abs(dx) > 3) state.moved = true;
-    el.scrollLeft = state.scrollLeft - dx;
-  };
-
-  const onTableDragScrollEnd = () => {
-    const state = dragScrollRef.current;
-    if (!state.active) return;
-    state.active = false;
-    const el = tableScrollRef.current;
-    if (el) delete el.dataset.dragging;
+  const openDetail = (id) => {
+    if (didDrag()) return;
+    onOpenDetail(id);
   };
 
   const colSpan = orderedColumns.length + 1;
@@ -317,14 +285,12 @@ export default function EmailReportsTable({
 
       <div
         ref={tableScrollRef}
-        className="cand-table-scroll min-w-0 overflow-x-auto select-none"
-        onMouseDown={onTableDragScrollStart}
-        onMouseMove={onTableDragScrollMove}
-        onMouseUp={onTableDragScrollEnd}
-        onMouseLeave={onTableDragScrollEnd}
+        {...dragHandlers}
+        className="cand-table-scroll min-w-0 cursor-grab overflow-x-auto select-none scrollbar-hide active:cursor-grabbing"
+        style={{ WebkitOverflowScrolling: 'touch' }}
       >
         <table
-          className="email-reports-drag w-max min-w-full border-collapse border border-stone-200 text-left text-sm select-text"
+          className="cand-table-drag w-max min-w-full border-collapse border border-stone-200 text-left text-sm select-text"
           role="table"
           aria-label="Email reports history"
         >
@@ -391,7 +357,7 @@ export default function EmailReportsTable({
                   <td className="border border-stone-200 px-3.5 py-3 text-right">
                     <button
                       type="button"
-                      onClick={() => onOpenDetail(row._id)}
+                      onClick={() => openDetail(row._id)}
                       className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-900"
                     >
                       Details <ChevronRight className="h-4 w-4" />

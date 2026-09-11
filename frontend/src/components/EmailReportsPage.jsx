@@ -11,11 +11,13 @@ import {
   GitBranch,
   XCircle,
   Loader2,
+  X,
 } from 'lucide-react';
 import PageHeader from './ui/PageHeader';
 import ProductTour from './ui/ProductTour';
 import TourHelpFab from './ui/TourHelpFab';
 import usePageTour from '../hooks/usePageTour';
+import useHorizontalDragScroll from '../hooks/useHorizontalDragScroll';
 import { useToast } from './Toast';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import API_URL from '../config';
@@ -30,6 +32,17 @@ import {
 } from './emailReports/emailReportsConstants';
 
 const BASE = API_URL;
+
+const STATUS_FILTERS = [
+  { value: 'all', label: 'All statuses' },
+  { value: 'accepted', label: 'Accepted' },
+  { value: 'sending', label: 'Sending' },
+  { value: 'sent', label: 'Sent' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'partial', label: 'Partial' },
+  { value: 'failed', label: 'Failed' },
+  { value: 'bounced', label: 'Bounced' },
+];
 
 const STATUS_STYLES = {
   accepted: 'bg-sky-50 text-sky-800 ring-sky-200/80',
@@ -366,6 +379,13 @@ const EmailReportsPage = () => {
     metric: 'all',
     page: 1,
   });
+  const [searchInput, setSearchInput] = useState('');
+
+  const {
+    scrollRef: kpiScrollRef,
+    didDrag: kpiDidDrag,
+    dragHandlers: kpiDragHandlers,
+  } = useHorizontalDragScroll({ allowOnInteractive: true });
 
   const activeMeta = CHANNEL_TABS.find((t) => t.id === activeTab) || CHANNEL_TABS[0];
 
@@ -380,6 +400,17 @@ const EmailReportsPage = () => {
     [displaySummary, activeTab]
   );
 
+  // Debounce search so typing feels premium and doesn't spam the API
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setFilters((f) => {
+        if (f.search === searchInput) return f;
+        return { ...f, search: searchInput, page: 1 };
+      });
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
   const queryString = useMemo(() => {
     const p = new URLSearchParams();
     if (activeTab === 'marketing') p.set('channel', 'marketing');
@@ -391,6 +422,16 @@ const EmailReportsPage = () => {
     p.set('limit', '25');
     return p.toString();
   }, [activeTab, filters]);
+
+  const filtersActive =
+    filters.status !== 'all' ||
+    Boolean(filters.search.trim()) ||
+    (filters.metric && filters.metric !== 'all');
+
+  const clearFilters = () => {
+    setSearchInput('');
+    setFilters({ status: 'all', search: '', metric: 'all', page: 1 });
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -501,6 +542,7 @@ const EmailReportsPage = () => {
   };
 
   const onKpiClick = (kpi) => {
+    if (kpiDidDrag()) return;
     const next = kpi.metric || 'all';
     setFilters((f) => ({
       ...f,
@@ -621,7 +663,12 @@ const EmailReportsPage = () => {
         </div>
 
         <div data-tour="email-reports-kpis" className="min-w-0 w-full">
-          <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
+          <div
+            ref={kpiScrollRef}
+            {...kpiDragHandlers}
+            className="email-reports-drag-strip -mx-1 flex cursor-grab gap-3 overflow-x-auto px-1 pb-1 scrollbar-hide select-none active:cursor-grabbing"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
             {kpiFunnel.map((kpi) => {
               const isActiveFilter =
                 filters.metric !== 'all' && filters.metric === kpi.metric;
@@ -645,40 +692,118 @@ const EmailReportsPage = () => {
 
         <div className="card-ats-bordered relative overflow-hidden p-4 sm:p-5">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-          <div className="mb-3 flex items-center gap-2 text-sm font-bold text-stone-800">
-            <Filter className="h-4 w-4 text-brand-600" />
-            Filters · {activeMeta.short}
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-bold text-stone-800">
+              <Filter className="h-4 w-4 text-brand-600" />
+              Filters · {activeMeta.short}
+            </div>
+            {filtersActive ? (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-900"
+              >
+                <X className="h-3.5 w-3.5" />
+                Clear all
+              </button>
+            ) : null}
           </div>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-            <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-semibold text-stone-500">
+            <label className="flex min-w-0 flex-1 flex-col gap-1.5 text-xs font-semibold uppercase tracking-wide text-stone-500">
               Search
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
                 <input
-                  className="input-ats w-full pl-9"
+                  className="input-ats input-ats-icon w-full"
                   placeholder="Subject, recipient, campaign key…"
-                  value={filters.search}
-                  onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value, page: 1 }))}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      setFilters((f) => ({ ...f, search: searchInput, page: 1 }));
+                    }
+                    if (e.key === 'Escape') {
+                      setSearchInput('');
+                      setFilters((f) => ({ ...f, search: '', page: 1 }));
+                    }
+                  }}
                 />
+                {searchInput ? (
+                  <button
+                    type="button"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                    aria-label="Clear search"
+                    onClick={() => {
+                      setSearchInput('');
+                      setFilters((f) => ({ ...f, search: '', page: 1 }));
+                    }}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
               </div>
             </label>
-            <label className="flex flex-col gap-1 text-xs font-semibold text-stone-500">
+            <label className="flex w-full flex-col gap-1.5 text-xs font-semibold uppercase tracking-wide text-stone-500 lg:w-56">
               Status
               <select
-                className="input-ats"
+                className="select-ats w-full"
                 value={filters.status}
                 onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value, page: 1 }))}
               >
-                <option value="all">All</option>
-                <option value="accepted">Accepted</option>
-                <option value="sending">Sending</option>
-                <option value="sent">Sent</option>
-                <option value="completed">Completed</option>
-                <option value="failed">Failed</option>
-                <option value="bounced">Bounced</option>
+                {STATUS_FILTERS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </label>
           </div>
+          {filtersActive ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {filters.metric && filters.metric !== 'all' ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-800 ring-1 ring-brand-200/80">
+                  Metric: {METRIC_LABELS[filters.metric] || filters.metric}
+                  <button
+                    type="button"
+                    className="rounded-full p-0.5 hover:bg-brand-100"
+                    aria-label="Clear metric filter"
+                    onClick={() => setFilters((f) => ({ ...f, metric: 'all', page: 1 }))}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ) : null}
+              {filters.status !== 'all' ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1 text-[11px] font-semibold text-stone-700 ring-1 ring-stone-200">
+                  Status: {STATUS_FILTERS.find((s) => s.value === filters.status)?.label || filters.status}
+                  <button
+                    type="button"
+                    className="rounded-full p-0.5 hover:bg-stone-200"
+                    aria-label="Clear status filter"
+                    onClick={() => setFilters((f) => ({ ...f, status: 'all', page: 1 }))}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ) : null}
+              {filters.search.trim() ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1 text-[11px] font-semibold text-stone-700 ring-1 ring-stone-200">
+                  Search: {filters.search.trim()}
+                  <button
+                    type="button"
+                    className="rounded-full p-0.5 hover:bg-stone-200"
+                    aria-label="Clear search filter"
+                    onClick={() => {
+                      setSearchInput('');
+                      setFilters((f) => ({ ...f, search: '', page: 1 }));
+                    }}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <EmailReportsTable

@@ -133,8 +133,14 @@ body {
 .cand-table-scroll .cand-table-drag {
   cursor: grab;
 }
-.cand-table-scroll[data-dragging='1'] .cand-table-drag {
+.cand-table-scroll[data-dragging='1'] {
   cursor: grabbing;
+}
+.email-reports-drag-strip[data-dragging='1'] {
+  cursor: grabbing;
+}
+.email-reports-drag-strip[data-dragging='1'] button {
+  pointer-events: none;
 }
 .cand-table-scroll .cand-table-drag button,
 .cand-table-scroll .cand-table-drag a,
