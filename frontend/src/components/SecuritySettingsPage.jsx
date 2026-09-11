@@ -14,6 +14,7 @@ import {
 } from './securitySettings/securityConstants';
 import MfaSection from './securitySettings/MfaSection';
 import OrgPoliciesSection from './securitySettings/OrgPoliciesSection';
+import SignedInDevices from './securitySettings/SignedInDevices';
 
 export default function SecuritySettingsPage() {
   const { t } = useTranslation();
@@ -24,7 +25,7 @@ export default function SecuritySettingsPage() {
   const [mfaStatus, setMfaStatus] = useState({ mfaEnabled: false, backupCodesRemaining: 0 });
   const [settings, setSettings] = useState({
     mfaEnforced: false,
-    sessionIdleMinutes: 480,
+    sessionIdleMinutes: 10080,
     maxConcurrentSessions: 10,
     ipAllowlist: []
   });
@@ -49,7 +50,8 @@ export default function SecuritySettingsPage() {
   };
 
   const idleValue = useMemo(() => {
-    const n = String(settings.sessionIdleMinutes);
+    const minutes = settings.sessionIdleMinutes === 480 ? 10080 : settings.sessionIdleMinutes;
+    const n = String(minutes);
     if (IDLE_OPTIONS.some((o) => o.value === n)) return n;
     return n;
   }, [settings.sessionIdleMinutes]);
@@ -95,7 +97,7 @@ export default function SecuritySettingsPage() {
         const s = settingsData.data.securitySettings || {};
         setSettings({
           mfaEnforced: !!s.mfaEnforced,
-          sessionIdleMinutes: s.sessionIdleMinutes ?? 480,
+          sessionIdleMinutes: s.sessionIdleMinutes === 480 ? 10080 : (s.sessionIdleMinutes ?? 10080),
           maxConcurrentSessions: s.maxConcurrentSessions ?? 10,
           ipAllowlist: s.ipAllowlist || []
         });
@@ -282,6 +284,8 @@ export default function SecuritySettingsPage() {
           onRemoveIp={setIpRemoveTarget}
         />
       </div>
+
+      <SignedInDevices />
 
       <ConfirmationModal
         isOpen={!!ipRemoveTarget}

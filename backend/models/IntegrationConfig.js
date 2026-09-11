@@ -26,7 +26,8 @@ const integrationConfigSchema = new mongoose.Schema({
     required: true,
     enum: [
       'email', 'calendar', 'sms', 'ai', 'job_board', 'background_check', 'esign', 'whatsapp',
-      'storage', 'encryption', 'video', 'crm', 'hris', 'siem', 'data_warehouse', 'slack_app'
+      'storage', 'encryption', 'video', 'crm', 'hris', 'siem', 'data_warehouse', 'slack_app',
+      'marketing'
     ]
   },
   displayName: { type: String },
@@ -53,6 +54,8 @@ const integrationConfigSchema = new mongoose.Schema({
 integrationConfigSchema.index({ organizationId: 1, product: 1, provider: 1 }, { unique: true });
 integrationConfigSchema.index({ organizationId: 1, category: 1 });
 integrationConfigSchema.index({ organizationId: 1, isActive: 1 });
+integrationConfigSchema.index({ 'metadata.phoneNumberId': 1 });
+integrationConfigSchema.index({ 'metadata.wabaId': 1 });
 
 // Encrypt credentials before every save, unless already encrypted (e.g. doc
 // re-saved without touching credentials).

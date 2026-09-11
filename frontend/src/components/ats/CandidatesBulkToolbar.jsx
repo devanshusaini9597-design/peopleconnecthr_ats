@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mail, RefreshCw, Share2, Trash2, X } from 'lucide-react';
+import { Mail, Pencil, RefreshCw, Share2, Trash2, X } from 'lucide-react';
 import { WhatsAppIcon } from '../icons/BrandIcons';
 import { BULK_STATUS_OPTIONS } from './atsConstants';
 
@@ -7,9 +7,12 @@ export default function CandidatesBulkToolbar(props) {
   const {
     selectedIds, setSelectedIds, bulkStatusOpen, setBulkStatusOpen,
     startBulkEmailFlow, handleBulkWhatsApp, handleBulkStatusUpdate,
-    handleShareClick, handleBulkDelete,
+    openBulkEdit, handleShareClick, handleBulkDelete, isFreelancer,
+    filteredCount = 0, isAllFilteredSelected = false, onSelectAllFiltered,
+    selectionScopeLabel = '',
   } = props;
   if (!selectedIds?.length) return null;
+  const canExpand = !isAllFilteredSelected && filteredCount > selectedIds.length && typeof onSelectAllFiltered === 'function';
   return (
         <div
           data-tour="cand-bulk"
@@ -17,7 +20,6 @@ export default function CandidatesBulkToolbar(props) {
         >
           <div className="rounded-2xl border border-brand-200/70 bg-gradient-to-r from-brand-50/90 via-white to-white shadow-[var(--shadow-elevated)] overflow-hidden">
             <div className="px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              {/* Identity — makes it obvious this is the bulk zone */}
               <div className="flex items-center gap-3.5 min-w-0">
                 <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-brand-500 to-teal-700 text-white flex items-center justify-center text-sm font-bold tabular-nums shadow-lg shadow-brand-500/25 ring-1 ring-white/20 flex-shrink-0">
                   {selectedIds.length}
@@ -28,6 +30,9 @@ export default function CandidatesBulkToolbar(props) {
                   </p>
                   <p className="text-sm font-semibold text-stone-900 mt-0.5 truncate">
                     {selectedIds.length === 1 ? '1 candidate selected' : `${selectedIds.length} candidates selected`}
+                    {selectionScopeLabel ? (
+                      <span className="text-stone-500 font-medium"> · {selectionScopeLabel}</span>
+                    ) : null}
                   </p>
                 </div>
                 <button
@@ -41,9 +46,9 @@ export default function CandidatesBulkToolbar(props) {
                 </button>
               </div>
 
-              {/* Icon actions — roomy, tooltip labels */}
               <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
                 <div className="inline-flex items-center gap-2 p-1 rounded-xl bg-stone-50/80 border border-stone-100">
+                  {!isFreelancer && (
                   <button
                     type="button"
                     onClick={startBulkEmailFlow}
@@ -53,6 +58,8 @@ export default function CandidatesBulkToolbar(props) {
                   >
                     <Mail size={17} strokeWidth={1.75} />
                   </button>
+                  )}
+                  {!isFreelancer ? (
                   <button
                     type="button"
                     onClick={handleBulkWhatsApp}
@@ -62,9 +69,29 @@ export default function CandidatesBulkToolbar(props) {
                   >
                     <WhatsAppIcon size={17} />
                   </button>
+                  ) : (
+                  <span
+                    className="h-10 px-2.5 rounded-lg bg-stone-100 border border-stone-200 text-stone-400 inline-flex items-center justify-center gap-1.5 cursor-not-allowed opacity-70"
+                    title="Paid company feature — messaging tools are for company recruiters only"
+                  >
+                    <WhatsAppIcon size={15} />
+                    <span className="text-[9px] font-bold uppercase tracking-wide text-amber-700">Paid</span>
+                  </span>
+                  )}
                 </div>
 
+                {!isFreelancer && (
                 <div className="inline-flex items-center gap-2 p-1 rounded-xl bg-stone-50/80 border border-stone-100">
+                  <button
+                    type="button"
+                    onClick={openBulkEdit}
+                    className="h-10 px-3 rounded-lg bg-white border border-stone-200/80 text-stone-700 inline-flex items-center justify-center gap-1.5 shadow-sm hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-all text-xs font-bold"
+                    title="Bulk edit fields"
+                    aria-label="Bulk edit fields"
+                  >
+                    <Pencil size={15} strokeWidth={1.75} />
+                    Edit
+                  </button>
                   <div className="relative">
                     <button
                       type="button"
@@ -114,6 +141,7 @@ export default function CandidatesBulkToolbar(props) {
                     <Share2 size={17} strokeWidth={1.75} />
                   </button>
                 </div>
+                )}
 
                 <button
                   type="button"
@@ -126,6 +154,31 @@ export default function CandidatesBulkToolbar(props) {
                 </button>
               </div>
             </div>
+            {canExpand && (
+              <div className="px-4 sm:px-5 py-2.5 border-t border-brand-100/80 bg-brand-50/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <p className="text-xs sm:text-sm text-stone-600">
+                  {selectedIds.length} selected on this view.
+                  {' '}
+                  <span className="text-stone-500">
+                    {filteredCount.toLocaleString()} match your current search/filters.
+                  </span>
+                </p>
+                <button
+                  type="button"
+                  onClick={onSelectAllFiltered}
+                  className="text-sm font-bold text-brand-700 hover:text-brand-800 underline underline-offset-2 decoration-brand-300 hover:decoration-brand-500 transition-colors text-left sm:text-right"
+                >
+                  Select all {filteredCount.toLocaleString()} matching results
+                </button>
+              </div>
+            )}
+            {isAllFilteredSelected && filteredCount > 0 && (
+              <div className="px-4 sm:px-5 py-2 border-t border-brand-100/80 bg-white/70">
+                <p className="text-xs sm:text-sm text-stone-600 font-medium">
+                  All {filteredCount.toLocaleString()} matching candidates are selected.
+                </p>
+              </div>
+            )}
           </div>
         </div>
   );

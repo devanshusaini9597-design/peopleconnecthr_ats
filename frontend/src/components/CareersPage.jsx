@@ -2,8 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Search, MapPin, Briefcase, Clock, Building, ArrowRight, Tag } from 'lucide-react';
 import API_URL from '../config';
+import { employmentLabel } from './jobs/jobsConstants';
 import CareersChatbotWidget from './CareersChatbotWidget';
 import PublicAnnouncementBanner from './PublicAnnouncementBanner';
+import { sanitizeHtml } from '../utils/sanitizeHtml';
 
 const CareersPage = () => {
   const { orgSlug } = useParams();
@@ -114,7 +116,7 @@ const CareersPage = () => {
         );
       case 'text':
         return (
-          <div key={idx} className="prose max-w-3xl mx-auto mb-8 text-gray-600" dangerouslySetInnerHTML={{ __html: block.content || '' }} />
+          <div key={idx} className="prose max-w-3xl mx-auto mb-8 text-gray-600" dangerouslySetInnerHTML={{ __html: sanitizeHtml(block.content || '') }} />
         );
       case 'testimonials':
         return (
@@ -196,7 +198,7 @@ const CareersPage = () => {
               value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
             >
               <option value="">All Job Types</option>
-              {types.map(t => <option key={t} value={t}>{t}</option>)}
+              {types.map(t => <option key={t} value={t}>{employmentLabel(t)}</option>)}
             </select>
           </div>
           
@@ -241,7 +243,7 @@ const CareersPage = () => {
                   {job.employmentType && (
                     <div className="flex items-center text-sm text-gray-600">
                       <Clock className="h-4 w-4 mr-2 text-gray-400" />
-                      {job.employmentType}
+                      {employmentLabel(job.employmentType)}
                     </div>
                   )}
                 </div>

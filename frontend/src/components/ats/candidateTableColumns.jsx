@@ -1,9 +1,31 @@
 import React from 'react';
-import { SquarePen, Share2, Trash2, Eye, FileDown, Mail } from 'lucide-react';
+import { SquarePen, Share2, Trash2, Eye, FileDown, Mail, Lock } from 'lucide-react';
 import { WhatsAppIcon } from '../icons/BrandIcons';
 import SendWhatsAppButton from '../SendWhatsAppButton';
 import CandidateRemarkIndicator from './CandidateRemarkIndicator';
+import { openNativeMail, freelancerCandidateMailDraft } from '../ui/ContactActionButtons';
 import { PAGE_SIZE } from './atsConstants';
+
+function formatStatusLabel(status) {
+  const raw = String(status || '').trim();
+  if (!raw) return '—';
+  if (raw === raw.toUpperCase() && raw.includes(' ')) {
+    return raw.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  if (raw === raw.toUpperCase()) {
+    return raw.charAt(0) + raw.slice(1).toLowerCase();
+  }
+  return raw;
+}
+
+function statusBadgeClass(status) {
+  const key = String(status || '').toUpperCase();
+  if (key.includes('HIRE') || key.includes('JOIN')) return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+  if (key.includes('REJECT') || key.includes('DROP')) return 'bg-red-50 text-red-800 border-red-200';
+  if (key.includes('INTERVIEW') || key.includes('SCREEN')) return 'bg-amber-50 text-amber-900 border-amber-200';
+  if (key.includes('OFFER') || key.includes('SELECT') || key.includes('SHORT')) return 'bg-violet-50 text-violet-800 border-violet-200';
+  return 'bg-sky-50 text-sky-800 border-sky-200';
+}
 
 export function buildCandidateTableColumns(ctx) {
   const {
@@ -50,25 +72,30 @@ export function buildCandidateTableColumns(ctx) {
       render: (candidate) => {
         if (isFreelancer) {
           const email = String(candidate.email || '').trim();
-          const subject = encodeURIComponent(`Regarding ${candidate.name || 'candidate'}`);
-          const mailto = email ? `mailto:${email}?subject=${subject}` : '';
-          const creditsTitle = 'In-app messaging requires credits. Use the mail button to open your email app.';
+          const hasEmail = Boolean(email);
+          const draft = freelancerCandidateMailDraft(candidate);
           return (
-            <div className="inline-flex items-center gap-1.5 whitespace-nowrap" title={creditsTitle}>
-              {mailto ? (
-                <a
-                  href={mailto}
+            <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+              {hasEmail ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openNativeMail(email, draft);
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
                   className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-brand-100 bg-brand-50/80 text-brand-700 shadow-sm hover:bg-brand-100 hover:border-brand-200 transition-all"
-                  title={`Open email app · ${email}`}
-                  aria-label={`Email ${candidate.name || email}`}
+                  title="Open mail app"
+                  aria-label={`Email ${candidate.name || 'candidate'}`}
                 >
                   <Mail size={15} strokeWidth={2} />
-                </a>
+                </button>
               ) : (
                 <span
                   className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-stone-50 text-stone-300 opacity-50 cursor-not-allowed"
-                  aria-disabled="true"
                   title="No email on file"
+                  aria-disabled="true"
                 >
                   <Mail size={15} strokeWidth={2} />
                 </span>
@@ -77,15 +104,9 @@ export function buildCandidateTableColumns(ctx) {
                 className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-stone-50 text-stone-300 opacity-50 cursor-not-allowed"
                 aria-disabled="true"
                 aria-label="WhatsApp messaging requires credits"
-                title={creditsTitle}
+                title="In-app WhatsApp requires credits"
               >
                 <WhatsAppIcon size={15} />
-              </span>
-              <span
-                className="ml-0.5 max-w-[9.5rem] px-1.5 py-0.5 rounded text-[9px] font-semibold tracking-wide bg-amber-50 text-amber-800 border border-amber-200 whitespace-normal leading-tight"
-                title={creditsTitle}
-              >
-                Credits required
               </span>
             </div>
           );
@@ -181,7 +202,7 @@ export function buildCandidateTableColumns(ctx) {
             type="button"
             onClick={() => handleDelete(candidate._id)}
             className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-red-100 bg-red-50/70 text-red-600 shadow-sm hover:bg-red-100 hover:border-red-200 transition-all"
-            title="Delete candidate"
+            title={isFreelancer ? 'Remove candidate' : 'Delete candidate'}
           >
             <Trash2 size={15} strokeWidth={2} />
           </button>
@@ -232,19 +253,19 @@ export function buildCandidateTableColumns(ctx) {
     {
       key: 'status',
       label: 'Status',
-      className: 'w-auto min-w-[120px]',
+      className: 'w-auto min-w-[130px]',
       render: (candidate) => (
         <div className="flex items-center gap-2 whitespace-nowrap">
-          <span className={
-            `inline-flex px-3 py-1 rounded-md text-xs font-bold whitespace-nowrap ` +
-            (candidate.status === 'Hired' ? 'bg-green-100 text-green-700' :
-              candidate.status === 'Rejected' ? 'bg-red-100 text-red-700' :
-              candidate.status === 'Interview' ? 'bg-brand-100 text-brand-700' :
-              'bg-brand-50 text-brand-700')
-          }>
-            {candidate.status}
+          <span
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold border whitespace-nowrap ${statusBadgeClass(candidate.status)}`}
+            title={isFreelancer ? 'Status is managed by the hiring team' : undefined}
+          >
+            {isFreelancer ? <Lock size={11} className="opacity-70 shrink-0" strokeWidth={2.5} /> : null}
+            {formatStatusLabel(candidate.status)}
           </span>
-          <CandidateRemarkIndicator remark={candidate.remark} candidateName={candidate.name} />
+          {!isFreelancer ? (
+            <CandidateRemarkIndicator remark={candidate.remark} candidateName={candidate.name} />
+          ) : null}
         </div>
       )
     },
@@ -301,9 +322,6 @@ export function buildCandidateTableColumns(ctx) {
     dateColumn,
   ];
 
-  if (isFreelancer) {
-    return tableColumns.filter((column) => column.key !== 'status');
-  }
-
+  // Freelancers keep Status as view-only (company-driven); never editable in the table.
   return tableColumns;
 }

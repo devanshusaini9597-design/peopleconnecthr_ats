@@ -87,6 +87,7 @@ export const HALF_WIDTH_FIELDS = new Set([
   'port', 'region', 'model', 'bucket', 'container', 'subdomain',
   'packageId', 'packageSlug', 'packageCode', 'index', 'sourcetype',
   'env', 'role', 'schema', 'location', 'keyRing', 'tenant',
+  'phoneNumberId', 'wabaId',
 ]);
 
 export const card = (id, name, desc, category, icon, color, bg, feature, fields) =>
@@ -123,8 +124,7 @@ export const SMS_PROVIDERS = [
 ];
 
 export const WHATSAPP_PROVIDERS = [
-  card('twilio', 'Twilio WhatsApp', 'WhatsApp via Twilio (same credentials as SMS)', 'whatsapp', WaIcon, 'text-emerald-600', 'bg-emerald-50', 'integrations.whatsapp', ['accountSid', 'authToken', 'fromNumber']),
-  card('gupshup', 'Gupshup WhatsApp', 'WhatsApp Business via Gupshup', 'whatsapp', WaIcon, 'text-emerald-600', 'bg-emerald-50', 'integrations.whatsapp', ['apiKey', 'appName', 'sourceNumber']),
+  card('meta', 'WhatsApp Business', 'Connect WhatsApp to send and receive as your company on Meta Cloud API.', 'whatsapp', WaIcon, 'text-emerald-600', 'bg-emerald-50', 'integrations.whatsapp', ['accessToken', 'phoneNumberId', 'wabaId']),
 ];
 
 export const JOB_BOARD_PROVIDERS = [
@@ -199,6 +199,7 @@ export const FIELD_LABELS = {
   fromEmail: 'From Email', apiKey: 'API Key', feedUrl: 'Public Feed URL', webhookUrl: 'Relay Webhook URL',
   packageSlug: 'Package Slug', packageId: 'Package ID', packageCode: 'Package Code',
   accessToken: 'Access Token', accountId: 'Account ID', basePath: 'API Base Path',
+  phoneNumberId: 'Phone Number ID', wabaId: 'WhatsApp Business Account ID',
   accountSid: 'Account SID', authToken: 'Auth Token', fromNumber: 'From Number',
   serverToken: 'Server Token', domain: 'Mailgun Domain',
   accessKeyId: 'AWS Access Key ID', secretAccessKey: 'AWS Secret Access Key', region: 'AWS Region',
@@ -219,20 +220,34 @@ export const FIELD_LABELS = {
   site: 'Datadog Site URL', service: 'Service Name', source: 'Log Source', env: 'Environment Tag',
   account: 'Snowflake Account', warehouse: 'Warehouse', database: 'Database', schema: 'Schema', role: 'Role (optional)',
   teamId: 'Slack Team ID (for workspace mapping)',
-  signingSecret: 'Signing Secret', botToken: 'Bot Token'
+  signingSecret: 'Signing Secret', botToken: 'Bot Token',
+  listKey: 'Zoho Mailing List Key (default / general)',
+  listKeySubscribe: 'Subscribe list key',
+  listKeyJobAlerts: 'Job alerts list key',
+  listKeyNurture: 'Talent pool / nurture list key',
+  topicId: 'Zoho Topic ID (optional)',
 };
 
 export const FIELD_HINTS = {
   host: 'e.g. smtp.gmail.com', port: 'e.g. 587', fromEmail: 'Appears as the sender',
-  apiKey: 'From your provider dashboard', feedUrl: 'Public XML feed URL',
+  accessToken: 'From Meta → WhatsApp → API Setup → Generate token',
+  phoneNumberId: 'Phone number ID from Meta → WhatsApp → API Setup',
+  wabaId: 'WhatsApp Business Account ID from Meta',
   webhookUrl: 'HTTPS endpoint for job posts', fromNumber: 'E.164 format, e.g. +14155551234',
-  organizationUrn: 'urn:li:organization:12345', refreshToken: 'OAuth refresh token from connect flow',
-  privateKey: 'PEM key with \\n line breaks', prefix: 'Optional folder prefix in bucket'
+  organizationUrn: 'urn:li:organization:12345',
+  privateKey: 'PEM key with \\n line breaks', prefix: 'Optional folder prefix in bucket',
+  listKey: 'Fallback / general list (used when a purpose list is empty)',
+  listKeySubscribe: 'Zoho list for “Subscribe for Updates”',
+  listKeyJobAlerts: 'Zoho list for new job / hiring marketing',
+  listKeyNurture: 'Zoho list for talent-pool nurture',
+  topicId: 'From Zoho Campaigns → Contacts → Topics (required on newer accounts)',
+  refreshToken: 'OAuth refresh token — leave blank to keep existing',
 };
 
 export const SECRET_FIELDS = new Set([
   'password', 'apiKey', 'authToken', 'accessToken', 'secretAccessKey', 'serverToken',
-  'apiSecret', 'privateKey', 'hecToken', 'clientSecret', 'botToken', 'signingSecret'
+  'apiSecret', 'privateKey', 'hecToken', 'clientSecret', 'botToken', 'signingSecret',
+  'refreshToken'
 ]);
 
 export const EMAIL_FIELDS = new Set(['fromEmail', 'clientEmail', 'username']);
@@ -286,8 +301,23 @@ export const SLACK_PROVIDERS = [
   card('teams', 'Microsoft Teams', 'Outgoing webhook for candidate search stub', 'slack_app', Plug, 'text-sky-600', 'bg-sky-50', 'integrations.slackApp', ['botToken', 'signingSecret'])
 ];
 
+export const MARKETING_PROVIDERS = [
+  card(
+    'zoho_campaigns',
+    'Zoho Campaigns',
+    'Marketing list + campaigns (list key, topic, OAuth or zapikey)',
+    'marketing',
+    Mail,
+    'text-amber-600',
+    'bg-amber-50',
+    'integrations.marketing',
+    ['listKey', 'listKeySubscribe', 'listKeyJobAlerts', 'listKeyNurture', 'topicId', 'fromEmail', 'clientId', 'clientSecret', 'refreshToken', 'apiKey']
+  ),
+];
+
 export const SECTIONS = [
   { title: 'Email Providers', icon: Mail, providers: EMAIL_PROVIDERS },
+  { title: 'Marketing / Campaigns', icon: Mail, providers: MARKETING_PROVIDERS },
   { title: 'Calendar', icon: Calendar, providers: CALENDAR_PROVIDERS },
   { title: 'AI / Scoring', icon: Bot, providers: AI_PROVIDERS },
   { title: 'SMS', icon: MessageSquare, providers: SMS_PROVIDERS },

@@ -17,8 +17,27 @@ const { findOrgPhoneConflict } = require('./dedupeService');
 const logger = require('../utils/logger');
 
 const SPOC_ROLES = ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales'];
-const LEADERSHIP = ['owner', 'admin', 'hr_manager'];
+/** Org-wide freelance queue visibility — Owner only (need-to-know for admin/manager). */
+const ORG_WIDE_VIEW = ['owner'];
+/** Desk ownership ops (archive, reassign, edit) — still scoped to visible desks. */
+const DESK_OPS = ['owner', 'admin', 'hr_manager'];
+const LEADERSHIP = DESK_OPS; // back-compat alias for manage gates
 const HARD_DELETE_ROLES = ['owner', 'admin'];
+/** Stages that require approval when moved by a non-owner. */
+const GATED_HANDOFF_STATUSES = ['selection', 'joined'];
+
+function isOrgWideViewer(user) {
+  return ORG_WIDE_VIEW.includes(user?.role);
+}
+
+function canDeskOps(user) {
+  return DESK_OPS.includes(user?.role);
+}
+
+function isGatedAtsStage(label) {
+  const k = String(label || '').toUpperCase();
+  return /OFFER|SELECT|HIRE|JOIN/.test(k) && !/REJECT|DROP|SHORT/.test(k);
+}
 
 const DEFAULT_DESK = {
   slaDays: 3,
@@ -47,7 +66,8 @@ function submissionScopeQuery(user, id) {
   const query = { _id: id, organizationId: user.organizationId };
   if (isFreelancer(user)) {
     query.freelancerId = user.id;
-  } else if (!LEADERSHIP.includes(user.role)) {
+  } else if (!isOrgWideViewer(user)) {
+    // Admin, manager, recruiter, sales: only handoffs shared to them as SPOC
     query.spocUserId = user.id;
   }
   return query;
@@ -203,7 +223,7 @@ async function validateBeforeSubmit(user, { candidate, jobId, note }) {
   // Hard block: never overwrite / re-add an existing company ATS profile.
   if (duplicates.length) {
     throw httpError(
-      'This candidate is already available in the company ATS. The profile was not overwritten or added again. The hiring team has been notified that a freelancer shared a candidate who already exists.',
+      'The candidate is duplicate kindly check with the hiring manager',
       409,
       { code: 'DUPLICATE', duplicates, quality, capacity, blocked: true }
     );
@@ -230,6 +250,9 @@ async function listReviewers(user) {
 
 async function reassignSpoc(user, id, spocUserId) {
   if (isFreelancer(user)) throw httpError('Company reviewers only', 403);
+  if (!canDeskOps(user)) {
+    throw httpError('Only owners, admins, and HR managers can transfer ownership', 403);
+  }
   if (!spocUserId) throw httpError('spocUserId is required');
 
   const next = await User.findOne({
@@ -343,6 +366,9 @@ async function bulkDeskAction(user, body = {}) {
   const allowed = ['archive', 'restore', 'submitted', 'reviewing', 'shortlisted', 'selection', 'joined', 'rejected'];
   if (!ids.length) throw httpError('Select at least one handoff');
   if (!allowed.includes(action)) throw httpError('Invalid bulk action');
+  if ((action === 'archive' || action === 'restore') && !canDeskOps(user)) {
+    throw httpError('Only owners, admins, and HR managers can archive or restore handoffs', 403);
+  }
 
   const results = { ok: [], failed: [] };
   const { updateSubmissionStatus, archiveSubmission, restoreSubmission } = require('./freelancerService');
@@ -418,6 +444,9 @@ async function hardDeleteSubmission(user, id, { deleteCandidate = false } = {}) 
 
 async function updateCandidateFromDesk(user, submissionId, body = {}) {
   if (isFreelancer(user)) throw httpError('Company reviewers only', 403);
+  if (!canDeskOps(user)) {
+    throw httpError('Only owners, admins, and HR managers can edit candidate records from the desk', 403);
+  }
   const query = { ...submissionScopeQuery(user, submissionId), archivedAt: null };
   const submission = await FreelancerSubmission.findOne(query);
   if (!submission) throw httpError('Submission not found', 404);
@@ -469,7 +498,7 @@ async function getPlacementStats(user) {
   const match = { organizationId: new mongoose.Types.ObjectId(user.organizationId) };
   if (isFreelancer(user)) {
     match.freelancerId = new mongoose.Types.ObjectId(user.id);
-  } else if (!LEADERSHIP.includes(user.role)) {
+  } else if (!isOrgWideViewer(user)) {
     match.spocUserId = new mongoose.Types.ObjectId(user.id);
   }
 
@@ -567,16 +596,248 @@ async function previewSubmissionQuality(user, { candidateId, note }) {
   return { quality, duplicates, settings };
 }
 
+const DEFAULT_SCORE_CRITERIA = ['Skills fit', 'Experience', 'Communication', 'Culture fit'];
+
+async function saveDeskScorecard(user, id, body = {}) {
+  if (isFreelancer(user)) throw httpError('Company reviewers only', 403);
+  const query = { ...submissionScopeQuery(user, id), archivedAt: null };
+  const submission = await FreelancerSubmission.findOne(query);
+  if (!submission) throw httpError('Submission not found', 404);
+
+  const recommendation = String(body.recommendation || '').trim();
+  const allowedRec = ['strong_hire', 'hire', 'hold', 'no_hire', ''];
+  if (!allowedRec.includes(recommendation)) throw httpError('Invalid recommendation');
+
+  let scores = Array.isArray(body.scores) ? body.scores : [];
+  if (!scores.length && body.scoreMap && typeof body.scoreMap === 'object') {
+    scores = Object.entries(body.scoreMap).map(([criterion, score]) => ({ criterion, score }));
+  }
+  scores = scores
+    .map((row) => ({
+      criterion: String(row.criterion || '').trim().slice(0, 80),
+      score: Math.min(5, Math.max(1, Number(row.score) || 0)),
+    }))
+    .filter((row) => row.criterion && row.score >= 1);
+
+  if (!scores.length) {
+    scores = DEFAULT_SCORE_CRITERIA.map((criterion) => ({ criterion, score: 3 }));
+  }
+
+  submission.scorecard = {
+    recommendation,
+    scores,
+    summary: String(body.summary || '').trim().slice(0, 2000),
+    stage: String(body.stage || '').trim().slice(0, 80),
+    updatedAt: new Date(),
+    updatedBy: user.id,
+    updatedByName: user.name || user.email || '',
+  };
+
+  const stageKey = String(body.stage || '').trim();
+  if (stageKey) {
+    const list = Array.isArray(submission.stageScorecards) ? [...submission.stageScorecards] : [];
+    const idx = list.findIndex((s) => String(s.stage || '').toLowerCase() === stageKey.toLowerCase());
+    const entry = {
+      stage: stageKey,
+      recommendation,
+      scores,
+      summary: String(body.summary || '').trim().slice(0, 2000),
+      updatedAt: new Date(),
+      updatedBy: user.id,
+      updatedByName: user.name || user.email || '',
+    };
+    if (idx >= 0) list[idx] = entry;
+    else list.push(entry);
+    submission.stageScorecards = list.slice(-40);
+  }
+
+  historyPush(submission, user, 'scorecard', {
+    recommendation,
+    stage: stageKey || undefined,
+    avg: scores.reduce((s, r) => s + r.score, 0) / scores.length,
+  });
+  await submission.save();
+  await writeAudit(user, 'freelancer.scorecard', submission._id, { recommendation, stage: stageKey });
+
+  const populated = await FreelancerSubmission.findById(submission._id)
+    .populate('candidateId', 'name email contact position resume noticePeriod expectedCtc ctc phone status')
+    .populate('jobId', 'title role location jobCode clientName priority')
+    .populate('freelancerId', 'name email lastActiveAt lastLoginAt profilePicture')
+    .populate('spocUserId', 'name email role phone');
+
+  try {
+    const { notifyFreelancerOfDeskUpdate } = require('./freelancerService');
+    const recLabel = String(recommendation || 'updated').replace(/_/g, ' ');
+    const candidateName = populated?.candidateId?.name || 'your candidate';
+    const jobTitle = populated?.jobId?.title || populated?.jobId?.role || 'the mandate';
+    await notifyFreelancerOfDeskUpdate({
+      user,
+      submission: populated,
+      title: `Scorecard update · ${candidateName}`,
+      message: `${user.name || user.email || 'Hiring team'} saved a stage scorecard (${recLabel}) for ${candidateName} on ${jobTitle}${stageKey ? ` · ${stageKey}` : ''}.`,
+      priority: 'high',
+      statusLabel: stageKey || undefined,
+    });
+  } catch (err) {
+    logger.warn({ err }, 'Scorecard freelancer notify failed');
+  }
+
+  return populated;
+}
+
+async function decideDeskApproval(user, id, body = {}) {
+  if (isFreelancer(user)) throw httpError('Company reviewers only', 403);
+  if (!canDeskOps(user)) {
+    throw httpError('Only owners, admins, and HR managers can decide stage approvals', 403);
+  }
+  const decision = String(body.decision || '').toLowerCase();
+  if (!['approve', 'reject'].includes(decision)) throw httpError('decision must be approve or reject');
+
+  const query = { ...submissionScopeQuery(user, id), archivedAt: null };
+  const submission = await FreelancerSubmission.findOne(query);
+  if (!submission) throw httpError('Submission not found', 404);
+  if (submission.approval?.status !== 'pending') {
+    throw httpError('No pending approval on this handoff', 409);
+  }
+
+  const targetStatus = submission.approval.targetStage || 'selection';
+  const targetAts = submission.approval.targetAtsStage || '';
+  submission.approval = {
+    ...(submission.approval?.toObject?.() || submission.approval || {}),
+    status: decision === 'approve' ? 'approved' : 'rejected',
+    note: String(body.note || '').trim().slice(0, 1000),
+    decidedAt: new Date(),
+    decidedBy: user.id,
+    decidedByName: user.name || user.email || '',
+  };
+  historyPush(submission, user, decision === 'approve' ? 'approval_granted' : 'approval_rejected', {
+    targetStage: targetStatus,
+    targetAtsStage: targetAts,
+  });
+  await submission.save();
+  await writeAudit(user, `freelancer.approval_${decision}`, submission._id, { targetStatus, targetAts });
+
+  if (decision === 'approve') {
+    const { updateSubmissionStatus } = require('./freelancerService');
+    return updateSubmissionStatus(user, id, {
+      status: targetAts || targetStatus,
+      forceApproved: true,
+      feedback: body.feedback,
+    });
+  }
+
+  return FreelancerSubmission.findById(submission._id)
+    .populate('candidateId', 'name email contact position resume noticePeriod expectedCtc ctc phone status')
+    .populate('jobId', 'title role location jobCode clientName priority')
+    .populate('freelancerId', 'name email lastActiveAt lastLoginAt profilePicture')
+    .populate('spocUserId', 'name email role phone');
+}
+
+async function notifyDeskUsers({ organizationId, userIds, title, message, link, type = 'freelancer_submission' }) {
+  const unique = [...new Set((userIds || []).map(String).filter(Boolean))];
+  const allowedTypes = new Set([
+    'system', 'freelancer_submission', 'candidate_update', 'team_activity',
+  ]);
+  const safeType = allowedTypes.has(type) ? type : 'freelancer_submission';
+  for (const uid of unique) {
+    try {
+      await Notification.create({
+        userId: uid,
+        title,
+        message,
+        linkUrl: link || '/freelance-review',
+        type: safeType,
+        priority: 'high',
+        actionRequired: true,
+        status: 'pending',
+      });
+    } catch (err) {
+      logger.warn({ err, uid }, 'Desk notify failed');
+    }
+  }
+}
+
+/** Escalate SLA-breached handoffs once: notify SPOC + org owners. */
+async function escalateSlaBreaches() {
+  const orgs = await Organization.find({}).select('_id atsSettings.freelanceDesk').lean();
+  let escalated = 0;
+  for (const org of orgs) {
+    const slaDays = Number(org?.atsSettings?.freelanceDesk?.slaDays) > 0
+      ? Number(org.atsSettings.freelanceDesk.slaDays)
+      : DEFAULT_DESK.slaDays;
+    const cutoff = new Date(Date.now() - slaDays * 86_400_000);
+    const rows = await FreelancerSubmission.find({
+      organizationId: org._id,
+      archivedAt: null,
+      status: { $in: ['submitted', 'reviewing'] },
+      createdAt: { $lte: cutoff },
+      slaEscalatedAt: null,
+    })
+      .populate('candidateId', 'name')
+      .populate('spocUserId', 'name')
+      .limit(40)
+      .lean();
+    if (!rows.length) continue;
+
+    const owners = await User.find({
+      organizationId: org._id,
+      role: 'owner',
+      isActive: { $ne: false },
+    }).select('_id').lean();
+
+    for (const row of rows) {
+      const name = row.candidateId?.name || 'Candidate';
+      const days = agingDays(row.createdAt);
+      const recipients = [
+        ...owners.map((o) => o._id),
+        row.spocUserId?._id || row.spocUserId,
+      ];
+      await notifyDeskUsers({
+        organizationId: org._id,
+        userIds: recipients,
+        title: 'Freelance SLA breach',
+        message: `${name} has been waiting ${days}d without review. Open Freelance Review to act.`,
+        link: '/freelance-review',
+        type: 'freelancer_submission',
+      });
+      await FreelancerSubmission.updateOne(
+        { _id: row._id },
+        {
+          $set: { slaEscalatedAt: new Date() },
+          $push: {
+            history: {
+              action: 'sla_escalated',
+              at: new Date(),
+              byName: 'System',
+              meta: { agingDays: days, slaDays },
+            },
+          },
+        }
+      );
+      escalated += 1;
+    }
+  }
+  return { escalated };
+}
+
 module.exports = {
   DEFAULT_DESK,
-  loadDeskSettings,
-  buildQuality,
+  DEFAULT_SCORE_CRITERIA,
+  ORG_WIDE_VIEW,
+  DESK_OPS,
+  LEADERSHIP,
+  HARD_DELETE_ROLES,
+  GATED_HANDOFF_STATUSES,
+  isOrgWideViewer,
+  canDeskOps,
+  isGatedAtsStage,
   agingDays,
   enrichAging,
+  loadDeskSettings,
+  buildQuality,
   writeAudit,
   historyPush,
   findDuplicateCandidates,
-  validateBeforeSubmit,
   listReviewers,
   reassignSpoc,
   bulkDeskAction,
@@ -587,4 +848,9 @@ module.exports = {
   getMandateCapacity,
   previewSubmissionQuality,
   submissionScopeQuery,
+  saveDeskScorecard,
+  decideDeskApproval,
+  escalateSlaBreaches,
+  notifyDeskUsers,
+  validateBeforeSubmit,
 };

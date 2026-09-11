@@ -60,13 +60,22 @@ const runDueReports = async () => {
         const downloadUrl = `${backendUrl}/api/report-schedules/download/${token}`;
 
         if (schedule.recipients.length > 0) {
-          const html = `
-            <div style="font-family: sans-serif; max-width: 560px; margin: 0 auto;">
-              <h2>${schedule.name}</h2>
-              <p>Your scheduled ${schedule.reportType.replace(/-/g, ' ')} report for <strong>${org.name}</strong> is ready.</p>
-              <p><a href="${downloadUrl}" style="display:inline-block;padding:10px 20px;background:#4F46E5;color:#fff;border-radius:6px;text-decoration:none;">Download report</a></p>
-              <p style="color:#888;font-size:12px;">This link expires in 7 days. Manage this schedule from Organization &rarr; Scheduled Reports.</p>
-            </div>`;
+          const { wrapBrandedEmailHtml, brandButtonHtml, loadOrgEmailBrand, escapeHtml } = require('./emailBrandLayout');
+          const brand = await loadOrgEmailBrand(schedule.organizationId);
+          const html = wrapBrandedEmailHtml({
+            title: schedule.name,
+            eyebrow: 'Scheduled report',
+            orgName: brand.name,
+            logoUrl: brand.logoUrl,
+            brandColor: brand.brandColor,
+            wordmark: brand.wordmark,
+            bodyHtml: `
+              <p style="margin:0 0 12px 0;color:#57534e;line-height:1.65;">Your scheduled <strong style="color:#1c1917;">${escapeHtml(schedule.reportType.replace(/-/g, ' '))}</strong> report for <strong style="color:#1c1917;">${escapeHtml(org.name)}</strong> is ready to download.</p>
+              <div style="text-align:center;">
+                ${brandButtonHtml({ href: downloadUrl, label: 'Download report', brandColor: brand.brandColor })}
+              </div>
+              <p style="margin:24px 0 0 0;color:#a8a29e;font-size:12px;text-align:center;line-height:1.6;">This link expires in 7 days. Manage this schedule from Organization &rarr; Scheduled Reports.</p>`,
+          });
           await sendEmailQueued(schedule.recipients, `Scheduled report: ${schedule.name}`, html, `Download your report: ${downloadUrl}`).catch((err) => {
             console.error(`[reportScheduler] Failed to email schedule ${schedule._id}:`, err.message);
           });

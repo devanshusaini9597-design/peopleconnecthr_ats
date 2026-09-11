@@ -3,6 +3,7 @@ import { HomeFeatures } from './HomeFeatures';
 import { HomeProductTour } from './HomeProductTour';
 import { HomeVideoDemo } from './HomeVideoDemo';
 import { HomeHowItWorks, HomeIntegrations, HomeTestimonials } from './HomeHowItWorks';
+import { IndustrySolutions } from './IndustrySolutions';
 import { PricingSection } from './PricingSection';
 import { SecuritySection } from './SecuritySection';
 import { DemoSection } from './DemoSection';
@@ -28,6 +29,7 @@ export function HomeLandingSections({
       />
       <HomeHowItWorks />
       <HomeIntegrations />
+      <IndustrySolutions />
       <HomeTestimonials />
       <PricingSection />
       <SecuritySection />

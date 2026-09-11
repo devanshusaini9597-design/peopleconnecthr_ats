@@ -4,24 +4,30 @@ export const ANALYTICS_TOUR_KEY = 'skillnix_tour_analytics_v1';
 export const ANALYTICS_TOUR_STEPS = [
   {
     title: 'Reports & Analytics',
-    body: 'Track hiring KPIs, pipeline health, and sources — then export or share branded PDF reports.',
+    body: 'Track hiring KPIs, pipeline health, and sources — then export or share branded reports. Owners, admins, and managers can select an employee to view that desk’s metrics.',
   },
   {
     target: '[data-tour="analytics-tip"]',
-    title: 'Quick tip',
-    body: 'Use Analytics for live dashboards and Export Data for PDF reports. Press ? anytime to reopen this tour.',
+    title: 'Filters',
+    body: 'Use Analytics for live dashboards and Export for PDF or Excel reports. Press ? anytime to reopen this tour.',
+    placement: 'bottom',
+  },
+  {
+    target: '[data-tour="analytics-period"]',
+    title: 'Report period',
+    body: 'Switch between weekly, monthly, quarterly, yearly, or a custom date range. All KPIs and charts update to match.',
     placement: 'bottom',
   },
   {
     target: '[data-tour="analytics-tabs"]',
     title: 'Views',
-    body: 'Switch between the live Analytics dashboard and Export Data for report generation.',
+    body: 'Switch between the live Analytics dashboard and Export for report generation.',
     placement: 'bottom',
   },
   {
     target: '[data-tour="analytics-kpis"]',
     title: 'Headline metrics',
-    body: 'Click a KPI card to jump into Candidates, Applications, or Pending Review.',
+    body: 'Total candidates, plus a card for every hiring status. New statuses you add in settings appear here automatically.',
     placement: 'bottom',
   },
   {
@@ -33,7 +39,7 @@ export const ANALYTICS_TOUR_STEPS = [
   {
     target: '[data-tour="analytics-activity"]',
     title: 'Recent activity',
-    body: 'Latest candidates at a glance. Use the view action or drag across table cells to scroll columns.',
+    body: 'Latest candidates for the selected period. Open any row to view matching records in Candidates.',
     placement: 'top',
   },
 ];

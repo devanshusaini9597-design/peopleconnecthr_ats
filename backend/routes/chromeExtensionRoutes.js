@@ -99,7 +99,12 @@ router.post('/import', requireExtensionToken, async (req, res) => {
         candidate.customFields = { ...candidate.customFields, linkedinUrl };
       }
       await candidate.save();
-      return res.json({ success: true, message: 'Existing candidate updated from LinkedIn', data: candidate, created: false });
+      return res.json({
+        success: true,
+        message: 'Existing candidate updated from LinkedIn',
+        data: { id: candidate._id, name: candidate.name, email: candidate.email },
+        created: false,
+      });
     }
 
     candidate = await Candidate.create({
@@ -115,7 +120,12 @@ router.post('/import', requireExtensionToken, async (req, res) => {
       customFields: linkedinUrl ? { linkedinUrl } : {}
     });
 
-    res.status(201).json({ success: true, message: 'Candidate imported from LinkedIn', data: candidate, created: true });
+    res.status(201).json({
+      success: true,
+      message: 'Candidate imported from LinkedIn',
+      data: { id: candidate._id, name: candidate.name, email: candidate.email },
+      created: true,
+    });
   } catch (error) {
     if (error.code === 11000) {
       return res.status(409).json({ success: false, message: 'A candidate with this email already exists' });

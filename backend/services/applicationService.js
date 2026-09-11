@@ -6,6 +6,7 @@ const Application = require('../models/Application');
 const Candidate = require('../models/Candidate');
 const eventBus = require('../events/eventBus');
 const eventTypes = require('../events/eventTypes');
+const { applicationListFilter } = require('../utils/dataScope');
 
 function httpError(message, statusCode = 400) {
   const err = new Error(message);
@@ -13,14 +14,16 @@ function httpError(message, statusCode = 400) {
   return err;
 }
 
-async function listApplications(organizationId, query = {}) {
+async function listApplications(organizationId, query = {}, user) {
   const { jobId, stage, assignedTo, isRejected, page = 1, limit = 200 } = query;
-  const filter = { organizationId };
-  if (jobId) filter.jobId = jobId;
-  if (stage) filter.stage = stage;
-  if (assignedTo) filter.assignedTo = assignedTo;
-  if (isRejected !== undefined) filter.isRejected = isRejected === 'true' || isRejected === true;
-  else filter.isRejected = { $ne: true };
+  const extra = {};
+  if (jobId && jobId !== 'all') extra.jobId = jobId;
+  if (stage) extra.stage = stage;
+  if (assignedTo) extra.assignedTo = assignedTo;
+  if (isRejected !== undefined) extra.isRejected = isRejected === 'true' || isRejected === true;
+  else extra.isRejected = { $ne: true };
+
+  const filter = applicationListFilter(organizationId, user, extra);
 
   return Application.find(filter)
     .skip((Number(page) - 1) * Number(limit))
@@ -29,9 +32,12 @@ async function listApplications(organizationId, query = {}) {
     .populate('candidateId jobId assignedTo');
 }
 
-async function getStats(organizationId, { jobId } = {}) {
-  const filter = { organizationId, isRejected: { $ne: true } };
-  if (jobId) filter.jobId = jobId;
+async function getStats(organizationId, { jobId } = {}, user) {
+  const extra = { isRejected: { $ne: true } };
+  if (jobId && jobId !== 'all') extra.jobId = jobId;
+  const filter = user
+    ? applicationListFilter(organizationId, user, extra)
+    : { organizationId, ...extra };
 
   const applications = await Application.find(filter).select('stage createdAt hiredAt isHired').lean();
   const byStage = {};
@@ -61,7 +67,7 @@ async function getStats(organizationId, { jobId } = {}) {
 async function createApplication(user, body) {
   let { jobId, candidateId, stage = 'Applied', source = 'Direct', assignedTo, candidate } = body;
 
-  if (!jobId) throw httpError('jobId is required');
+  if (!jobId || jobId === 'all') throw httpError('jobId is required');
 
   if (!candidateId && candidate) {
     const name = (candidate.name || '').trim();
@@ -91,6 +97,12 @@ async function createApplication(user, body) {
 
   if (!candidateId) throw httpError('candidateId or candidate details required');
 
+  const ownedCandidate = await Candidate.findOne({
+    _id: candidateId,
+    organizationId: user.organizationId,
+  }).select('_id');
+  if (!ownedCandidate) throw httpError('Candidate not found', 404);
+
   const existing = await Application.findOne({
     jobId,
     candidateId,
@@ -105,7 +117,7 @@ async function createApplication(user, body) {
     stage,
     source,
     assignedTo,
-    stageHistory: [{ stage, changedAt: new Date(), changedBy: user.id }],
+    stageHistory: [{ stage, movedAt: new Date(), movedBy: user.id }],
   });
 
   await application.save();
@@ -122,6 +134,9 @@ async function createApplication(user, body) {
 }
 
 async function changeStage(user, applicationId, { stage, remark }) {
+  const nextStage = String(stage || '').trim();
+  if (!nextStage) throw httpError('stage is required');
+
   const application = await Application.findOne({
     _id: applicationId,
     organizationId: user.organizationId,
@@ -129,20 +144,40 @@ async function changeStage(user, applicationId, { stage, remark }) {
   if (!application) throw httpError('Not found', 404);
 
   const previousStage = application.stage;
-  application.stage = stage;
+  application.stage = nextStage;
+  application.lastActivityAt = new Date();
   application.stageHistory.push({
-    stage,
-    changedAt: new Date(),
-    changedBy: user.id,
+    stage: nextStage,
+    movedAt: new Date(),
+    movedBy: user.id,
     remark,
   });
 
-  if (stage === 'Hired') {
+  if (/^(hired|joined)$/i.test(nextStage)) {
     application.isHired = true;
-    application.hiredAt = new Date();
+    application.hiredAt = application.hiredAt || new Date();
   }
 
   await application.save();
+  await application.populate('candidateId jobId assignedTo');
+
+  try {
+    const talentPoolService = require('./talentPoolService');
+    const cand = application.candidateId;
+    const job = application.jobId;
+    const candidateDoc = cand && cand._id ? cand : { _id: cand };
+    if (/^interview$/i.test(nextStage)) {
+      await talentPoolService.enrollByTrigger(user.organizationId, candidateDoc, { trigger: 'interview', job });
+    } else if (/^(hired|joined)$/i.test(nextStage)) {
+      await talentPoolService.enrollByTrigger(user.organizationId, candidateDoc, { trigger: 'hired', job });
+    } else if (/^(rejected)$/i.test(nextStage)) {
+      await talentPoolService.enrollByTrigger(user.organizationId, candidateDoc, { trigger: 'reject', job });
+    } else if (/^(dropped|withdrawn)$/i.test(nextStage)) {
+      await talentPoolService.enrollByTrigger(user.organizationId, candidateDoc, { trigger: 'dropped', job });
+    }
+  } catch (poolErr) {
+    console.warn('[stage] talent pool automation skipped:', poolErr.message);
+  }
 
   eventBus.emit(eventTypes.APPLICATION_STAGE_CHANGED, {
     organizationId: user.organizationId,
@@ -152,10 +187,10 @@ async function changeStage(user, applicationId, { stage, remark }) {
     candidateId: application.candidateId,
     jobId: application.jobId,
     previousStage,
-    newStage: stage,
+    newStage: nextStage,
   });
 
-  if (stage === 'Hired') {
+  if (/^(hired|joined)$/i.test(nextStage)) {
     eventBus.emit(eventTypes.CANDIDATE_HIRED, {
       organizationId: user.organizationId,
       userId: user.id,
@@ -171,7 +206,7 @@ async function changeStage(user, applicationId, { stage, remark }) {
   return application;
 }
 
-async function rejectApplication(user, applicationId, { reason } = {}) {
+async function rejectApplication(user, applicationId, { reason, talentPoolIds } = {}) {
   const application = await Application.findOneAndUpdate(
     { _id: applicationId, organizationId: user.organizationId },
     {
@@ -199,19 +234,23 @@ async function rejectApplication(user, applicationId, { reason } = {}) {
     try {
       const { planHasFeature } = require('../config/planFeatures');
       const Organization = require('../models/Organization');
-      const TalentPool = require('../models/TalentPool');
+      const Job = require('../models/Job');
+      const talentPoolService = require('./talentPoolService');
       const org = await Organization.findById(user.organizationId).select('plan');
-      if (planHasFeature(org?.plan, 'candidates.talentPoolAutomation') && application.candidateId) {
-        const pools = await TalentPool.find({
+      if (planHasFeature(org?.plan, 'candidates.talentPools') && application.candidateId) {
+        const candidate = await Candidate.findOne({
+          _id: application.candidateId,
           organizationId: user.organizationId,
-          $or: [{ addOnReject: true }, { isDefaultRejectPool: true }],
-        }).select('_id');
-        if (pools.length) {
-          await Candidate.updateOne(
-            { _id: application.candidateId, organizationId: user.organizationId },
-            { $addToSet: { talentPoolIds: { $each: pools.map((p) => p._id) } } }
-          );
-        }
+        }).select('_id position skills product client remark talentPoolConsent');
+        const job = await Job.findOne({
+          _id: application.jobId,
+          organizationId: user.organizationId,
+        }).select('title role industry skills clientName description summary');
+        await talentPoolService.enrollByTrigger(user.organizationId, candidate, {
+          trigger: 'reject',
+          job,
+          talentPoolIds,
+        });
       }
     } catch (poolErr) {
       console.warn('[reject] talent pool automation skipped:', poolErr.message);
@@ -221,11 +260,11 @@ async function rejectApplication(user, applicationId, { reason } = {}) {
   return application;
 }
 
-async function getApplication(organizationId, applicationId) {
-  const application = await Application.findOne({
-    _id: applicationId,
-    organizationId,
-  }).populate('candidateId jobId assignedTo');
+async function getApplication(organizationId, applicationId, user) {
+  const filter = user
+    ? applicationListFilter(organizationId, user, { _id: applicationId })
+    : { _id: applicationId, organizationId };
+  const application = await Application.findOne(filter).populate('candidateId jobId assignedTo');
   if (!application) throw httpError('Application not found', 404);
   return application;
 }
@@ -317,12 +356,12 @@ async function scheduleInterview(user, applicationId, body) {
   application.notes = `${application.notes || ''}${stamp}`.trim();
 
   const earlyStages = ['Applied', 'Screening'];
-  if (earlyStages.includes(application.stage)) {
+  if (earlyStages.some((s) => s.toLowerCase() === String(application.stage || '').toLowerCase())) {
     application.stage = 'Interview';
     application.stageHistory.push({
       stage: 'Interview',
-      changedAt: new Date(),
-      changedBy: user.id,
+      movedAt: new Date(),
+      movedBy: user.id,
       remark: 'Auto-moved on schedule',
     });
   }

@@ -27,6 +27,25 @@ export default function CandidateCollaborationPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
+  const [mentionables, setMentionables] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authenticatedFetch('/api/comments/mentionables');
+        const data = await readApiJson(res);
+        if (!cancelled && data.success) {
+          const people = data.data || [];
+          const tags = (data.tags || []).map((t) => ({ ...t, type: 'tag' }));
+          setMentionables([...people, ...tags]);
+        }
+      } catch {
+        /* picker stays empty; typed @FirstName still works */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (shouldAutoStartTour(TOUR_KEY)) {
@@ -173,9 +192,7 @@ export default function CandidateCollaborationPage() {
 
         <div className="rounded-xl border border-brand-200/70 bg-brand-50/40 px-4 py-3 text-sm text-stone-700 leading-relaxed">
           <p>
-            <span className="font-semibold text-stone-900">@FirstName</span> or{' '}
-            <span className="font-semibold text-stone-900">@emailPrefix</span> mentions notify teammates in-app.
-            Use the help icon (bottom right) for a quick tour.
+            Type @ to tag a person or a team handle like @interns. Only people in your company can be mentioned.
           </p>
         </div>
 
@@ -200,6 +217,7 @@ export default function CandidateCollaborationPage() {
             post={post}
             onComposerKeyDown={onComposerKeyDown}
             setDeleteTarget={setDeleteTarget}
+            mentionables={mentionables}
           />
         </div>
 

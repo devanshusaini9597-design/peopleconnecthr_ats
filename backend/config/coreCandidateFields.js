@@ -18,6 +18,8 @@ const CORE_CANDIDATE_FIELDS = [
   { key: 'source', label: 'Source', type: 'text', required: false, showInTable: true, showInForm: true, importAliases: ['source', 'source of cv', 'cv source'], order: 120 },
   { key: 'client', label: 'Client', type: 'text', required: false, showInTable: true, showInForm: true, importAliases: ['client', 'client name'], order: 130 },
   { key: 'spoc', label: 'SPOC', type: 'text', required: false, showInTable: true, showInForm: true, importAliases: ['spoc', 'poc', 'hr'], order: 140 },
+  { key: 'product', label: 'Product / Skill', type: 'select', required: false, showInTable: true, showInForm: true, importAliases: ['product', 'product/skill', 'product skill', 'skill', 'skills'], order: 145 },
+  { key: 'pan', label: 'PAN No.', type: 'text', required: false, showInTable: true, showInForm: true, importAliases: ['pan', 'pan no', 'pan number', 'pan card'], order: 148 },
   { key: 'remark', label: 'Remark', type: 'text', required: false, showInTable: false, showInForm: true, importAliases: ['remark', 'remarks', 'notes'], order: 150 },
   { key: 'date', label: 'Date', type: 'date', required: false, showInTable: true, showInForm: true, importAliases: ['date', 'created date'], order: 160 },
   { key: 'fls', label: 'FLS', type: 'text', required: false, showInTable: true, showInForm: true, importAliases: ['fls'], order: 170 },

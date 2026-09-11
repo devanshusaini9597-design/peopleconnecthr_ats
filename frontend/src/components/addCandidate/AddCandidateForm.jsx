@@ -1,6 +1,7 @@
 import React from 'react';
-import { Upload } from 'lucide-react';
+import { Upload, Info } from 'lucide-react';
 import { ctcRanges, expectedCtcOptions, noticePeriodOptions } from '../../utils/ctcRanges';
+import { clientRequiresPan, PAN_INFO_TITLE, PAN_INFO_MESSAGE } from '../../utils/panClientRules';
 
 export default function AddCandidateForm({
   formData,
@@ -14,6 +15,7 @@ export default function AddCandidateForm({
   positions,
   clients,
   sources,
+  products = [],
   isLoading,
   isAutoParsing,
   handleInputChange,
@@ -21,8 +23,12 @@ export default function AddCandidateForm({
   handleReset,
   handleSubmit,
   onCancel,
+  showPanRequiredModal,
+  setShowPanRequiredModal,
+  isFreelancer = false,
 }) {
   return (
+    <>
     <form onSubmit={handleSubmit} className="card-ats-bordered p-5 sm:p-8 space-y-8">
             
             {/* Basic Information Section */}
@@ -111,7 +117,7 @@ export default function AddCandidateForm({
                 </div>
 
                 <div>
-                  <label className="label-ats">Company <span className="text-red-500">*</span></label>
+                  <label className="label-ats">Company</label>
                   <input
                     ref={fieldRefs.companyName}
                     type="text"
@@ -153,10 +159,10 @@ export default function AddCandidateForm({
                     onChange={handleInputChange}
                     className="input-ats"
                   >
-                    <option value="">Select</option>
-                    <option value="Fresher">Fresher</option>
+                    <option value="">SELECT</option>
+                    <option value="FRESHER">FRESHER</option>
                     {[...Array(31).keys()].slice(1).map(num => (
-                      <option key={num} value={num}>{num} {num === 1 ? 'year' : 'years'}</option>
+                      <option key={num} value={num}>{num}</option>
                     ))}
                   </select>
                 </div>
@@ -217,9 +223,9 @@ export default function AddCandidateForm({
                     onChange={handleInputChange}
                     className="input-ats"
                   >
-                    <option value="">Select</option>
+                    <option value="">SELECT</option>
                     <option value="FLS">FLS</option>
-                    <option value="Non-FLS">Non-FLS</option>
+                    <option value="NON-FLS">NON-FLS</option>
                   </select>
                 </div>
 
@@ -231,16 +237,16 @@ export default function AddCandidateForm({
                     onChange={handleInputChange}
                     className="input-ats"
                   >
-                    <option value="Applied">Applied</option>
-                    <option value="Screening">Screening</option>
-                    <option value="Interview">Interview</option>
-                    <option value="Offer">Offer</option>
-                    <option value="Hired">Hired</option>
-                    <option value="Joined">Joined</option>
-                    <option value="Dropped">Dropped</option>
-                    <option value="Rejected">Rejected</option>
-                    <option value="Interested">Interested</option>
-                    <option value="Interested and scheduled">Interested and scheduled</option>
+                    <option value="APPLIED">APPLIED</option>
+                    <option value="SCREENING">SCREENING</option>
+                    <option value="INTERVIEW">INTERVIEW</option>
+                    <option value="OFFER">OFFER</option>
+                    <option value="HIRED">HIRED</option>
+                    <option value="JOINED">JOINED</option>
+                    <option value="DROPPED">DROPPED</option>
+                    <option value="REJECTED">REJECTED</option>
+                    <option value="INTERESTED">INTERESTED</option>
+                    <option value="INTERESTED AND SCHEDULED">INTERESTED AND SCHEDULED</option>
                   </select>
                 </div>
               </div>
@@ -269,6 +275,45 @@ export default function AddCandidateForm({
                 </div>
 
                 <div>
+                  <label className="label-ats">
+                    PAN No.{clientRequiresPan(formData.client, clients) ? <span className="text-red-500"> *</span> : null}
+                  </label>
+                  <input
+                    ref={fieldRefs.pan}
+                    type="text"
+                    name="pan"
+                    value={formData.pan || ''}
+                    onChange={handleInputChange}
+                    onBlur={handleBlur}
+                    placeholder="ABCDE1234F"
+                    maxLength={10}
+                    className={`input-ats tracking-wider ${formErrors.pan ? 'border-red-400 focus:border-red-500 focus:ring-red-200/60 bg-red-50/70' : ''}`}
+                    autoComplete="off"
+                  />
+                  {formErrors.pan && <p className="field-error">{formErrors.pan}</p>}
+                  {!formErrors.pan && clientRequiresPan(formData.client, clients) && (
+                    <p className="text-xs text-amber-700 mt-1 font-medium">Required for this client</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="label-ats">Product / Skill</label>
+                  <select
+                    ref={fieldRefs.product}
+                    name="product"
+                    value={formData.product || ''}
+                    onChange={handleInputChange}
+                    data-long-list={products.length > 8 ? 'true' : undefined}
+                    className="input-ats"
+                  >
+                    <option value="">Select Product / Skill</option>
+                    {products.map((p) => (
+                      <option key={p._id || p.name} value={p.name}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
                   <label className="label-ats">SPOC</label>
                   <input
                     type="text"
@@ -282,18 +327,25 @@ export default function AddCandidateForm({
 
                 <div>
                   <label className="label-ats">Source of CV</label>
-                  <select
-                    name="source"
-                    value={formData.source}
-                    onChange={handleInputChange}
-                    data-long-list={sources.length > 8 ? 'true' : undefined}
-                    className="input-ats"
-                  >
-                    <option value="">Select Source</option>
-                    {sources.map(source => (
-                      <option key={source._id} value={source.name}>{source.name}</option>
-                    ))}
-                  </select>
+                  {isFreelancer ? (
+                    <>
+                      <div className="input-ats bg-stone-50 text-stone-700 font-semibold flex items-center">Freelance</div>
+                      <p className="text-[11px] text-stone-400 mt-1">Locked — always Freelance for freelancer desks.</p>
+                    </>
+                  ) : (
+                    <select
+                      name="source"
+                      value={formData.source}
+                      onChange={handleInputChange}
+                      data-long-list={sources.length > 8 ? 'true' : undefined}
+                      className="input-ats"
+                    >
+                      <option value="">Select Source</option>
+                      {sources.map(source => (
+                        <option key={source._id} value={source.name}>{source.name}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 <div>
@@ -349,9 +401,12 @@ export default function AddCandidateForm({
             {/* Resume Upload Section */}
             <div>
               <h2 className="section-title-ats">
-                Resume (Optional)
+                {isFreelancer ? 'Resume (Required)' : 'Resume (Optional)'}
               </h2>
-              <div className="dropzone-ats p-8">
+              <div
+                ref={fieldRefs.resume}
+                className={`dropzone-ats p-8 ${formErrors.resume ? 'ring-2 ring-red-200 border-red-300' : ''}`}
+              >
                 <input
                   type="file"
                   name="resume"
@@ -362,7 +417,9 @@ export default function AddCandidateForm({
                 <div className="flex flex-col items-center gap-3">
                   <Upload size={24} className="text-stone-500" />
                   <div>
-                    <p className="text-sm font-semibold text-stone-700">Click to upload resume</p>
+                    <p className="text-sm font-semibold text-stone-700">
+                      {isFreelancer ? 'Click to upload CV (mandatory)' : 'Click to upload resume'}
+                    </p>
                     <p className="text-xs text-stone-500">or drag and drop (PDF, DOC, DOCX)</p>
                   </div>
                   {isAutoParsing && (
@@ -373,6 +430,9 @@ export default function AddCandidateForm({
                   )}
                   {formData.resume && (
                     <p className="text-sm text-emerald-600 font-semibold">{formData.resume.name}</p>
+                  )}
+                  {formErrors.resume && (
+                    <p className="text-sm text-red-600 font-semibold">{formErrors.resume}</p>
                   )}
                 </div>
               </div>
@@ -412,5 +472,42 @@ export default function AddCandidateForm({
               </button>
             </div>
           </form>
+          {showPanRequiredModal && (
+            <div
+              className="fixed inset-0 z-[80] flex items-center justify-center bg-stone-900/55 backdrop-blur-sm p-4"
+              onClick={() => setShowPanRequiredModal?.(false)}
+              role="presentation"
+            >
+              <div
+                className="bg-white rounded-2xl border border-stone-200/60 shadow-2xl w-full max-w-md p-5 sm:p-6"
+                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+              >
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 border border-amber-100 flex items-center justify-center flex-shrink-0">
+                    <Info size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-stone-900 tracking-tight">{PAN_INFO_TITLE}</h3>
+                    <p className="text-sm text-stone-600 mt-1.5 leading-relaxed">{PAN_INFO_MESSAGE}</p>
+                  </div>
+                </div>
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="button"
+                    className="btn-primary min-w-[100px]"
+                    onClick={() => {
+                      setShowPanRequiredModal?.(false);
+                      setTimeout(() => fieldRefs.pan?.current?.focus?.(), 40);
+                    }}
+                  >
+                    Got it
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
   );
 }

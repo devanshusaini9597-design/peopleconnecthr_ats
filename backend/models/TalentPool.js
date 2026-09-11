@@ -21,9 +21,17 @@ const talentPoolSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   description: { type: String, default: '', trim: true },
   color: { type: String, default: '#6366f1' }, // hex, used as a chip color in the UI
+  /** Optional org industry (e.g. BANKING) so rejects/reuse can match without searching names */
+  industry: { type: String, default: '', trim: true },
+  /** Optional product / skill line (e.g. HOME LOAN) for the same auto-match */
+  product: { type: String, default: '', trim: true },
   // Automation (candidates.talentPoolAutomation)
-  addOnReject: { type: Boolean, default: false }, // silver-medalist: auto-add on reject
+  addOnReject: { type: Boolean, default: false },
   isDefaultRejectPool: { type: Boolean, default: false },
+  addOnDropped: { type: Boolean, default: false },
+  addOnInterview: { type: Boolean, default: false },
+  addOnHired: { type: Boolean, default: false },
+  addOnCreate: { type: Boolean, default: false },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 

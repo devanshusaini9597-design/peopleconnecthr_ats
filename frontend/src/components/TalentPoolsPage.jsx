@@ -69,7 +69,9 @@ const TalentPoolsPage = () => {
       if (!q) return true;
       return (
         (p.name || '').toLowerCase().includes(q) ||
-        (p.description || '').toLowerCase().includes(q)
+        (p.description || '').toLowerCase().includes(q) ||
+        (p.industry || '').toLowerCase().includes(q) ||
+        (p.product || '').toLowerCase().includes(q)
       );
     });
     list = [...list].sort((a, b) => {
@@ -94,14 +96,36 @@ const TalentPoolsPage = () => {
     setShowForm(true);
   };
 
-  const handleSave = async ({ name, description, color }) => {
+  const [seeding, setSeeding] = useState(false);
+
+  const handleSeed = async () => {
+    setSeeding(true);
+    try {
+      const res = await authenticatedFetch('/api/talent-pools/seed-starters', { method: 'POST' });
+      const data = await readApiJson(res);
+      if (!res.ok || !data.success) {
+        toast?.error?.(data.message || 'Could not set up starter pools');
+        return;
+      }
+      const created = data.data?.created || 0;
+      toast?.success?.(created ? `Set up ${created} starter pool${created === 1 ? '' : 's'}` : 'Starter pools are already in place');
+      if (Array.isArray(data.data?.pools)) setPools(data.data.pools);
+      else load();
+    } catch (err) {
+      toast?.error?.(err?.message || 'Could not set up starter pools');
+    } finally {
+      setSeeding(false);
+    }
+  };
+
+  const handleSave = async ({ name, description, color, industry, product }) => {
     setSaving(true);
     try {
       if (editPool?._id) {
         const res = await authenticatedFetch(`/api/talent-pools/${editPool._id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, description, color }),
+          body: JSON.stringify({ name, description, color, industry, product }),
         });
         const data = await readApiJson(res);
         if (!res.ok || !data.success) {
@@ -116,7 +140,7 @@ const TalentPoolsPage = () => {
       } else {
         const res = await authenticatedFetch('/api/talent-pools', {
           method: 'POST',
-          body: JSON.stringify({ name, description, color }),
+          body: JSON.stringify({ name, description, color, industry, product }),
         });
         const data = await readApiJson(res);
         if (!res.ok || !data.success) {
@@ -203,6 +227,10 @@ const TalentPoolsPage = () => {
             subtitle="Keep strong candidates warm for future roles — independent of any single requisition."
             gradientTitle
           >
+            <button type="button" onClick={handleSeed} disabled={seeding} className="btn-secondary flex-1 sm:flex-none">
+              {seeding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
+              Set up starters
+            </button>
             <button type="button" onClick={openCreate} className="btn-primary flex-1 sm:flex-none">
               <Plus className="w-4 h-4" /> New pool
             </button>
@@ -216,7 +244,7 @@ const TalentPoolsPage = () => {
               <Info size={14} /> Tip
             </span>
             <span>
-              Create pools for benches and referrals. Open a pool to add members.
+              Rejected on Banking, hired on Finance — same person, two jobs. Pools keep them findable without searching everyone.
               Press <span className="font-semibold text-stone-800">?</span> for a tour.
             </span>
           </div>
@@ -246,11 +274,17 @@ const TalentPoolsPage = () => {
                 icon={Layers}
                 tone="violet"
                 message="No talent pools yet"
-                subMessage={'Create one to start bucketing candidates like "Frontend Bench" or "Referrals 2026".'}
+                subMessage={'Set up starters pulls Warm bench plus pools from your industry and skill/product lists — and from jobs/candidates already in the ATS.'}
                 action={(
-                  <button type="button" onClick={openCreate} className="btn-primary">
-                    <Plus className="w-4 h-4" /> New pool
-                  </button>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <button type="button" onClick={handleSeed} disabled={seeding} className="btn-primary">
+                      {seeding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
+                      Set up starter pools
+                    </button>
+                    <button type="button" onClick={openCreate} className="btn-secondary">
+                      <Plus className="w-4 h-4" /> New pool
+                    </button>
+                  </div>
                 )}
               />
             </div>
@@ -346,6 +380,16 @@ const TalentPoolsPage = () => {
                         </div>
                       </div>
                       <h3 className="font-bold text-stone-900 mt-3.5 tracking-tight break-words">{pool.name}</h3>
+                      {pool.industry && (
+                        <span className="mt-1.5 inline-flex text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-stone-100 text-stone-600">
+                          {pool.industry}
+                        </span>
+                      )}
+                      {pool.product && (
+                        <span className="mt-1.5 ml-1 inline-flex text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-teal-50 text-teal-700">
+                          {pool.product}
+                        </span>
+                      )}
                       {pool.description && (
                         <p className="text-sm text-stone-500 mt-1 line-clamp-2 leading-relaxed">{pool.description}</p>
                       )}

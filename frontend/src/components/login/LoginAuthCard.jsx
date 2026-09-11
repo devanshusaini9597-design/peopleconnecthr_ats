@@ -20,7 +20,6 @@ export default function LoginAuthCard({
   showPassword,
   setShowPassword,
   isSubmitting,
-  isDemoLoggingIn,
   mfaCode,
   setMfaCode,
   mfaSetup,
@@ -29,16 +28,20 @@ export default function LoginAuthCard({
   setRecoveryEmail,
   recoveryStatus,
   recoveryMessage,
+  otpResendLoading,
+  otpResendMessage,
   onChange,
   onSubmit,
   onMfaVerify,
+  onOtpVerify,
+  onResendOtp,
   onStartEnrollment,
   onCompleteEnrollment,
-  onDemoLogin,
   onForgotSubmit,
   onBackToLogin,
   onForgotMode,
   onBackFromMfa,
+  autoFocusPassword = false,
 }) {
   const { t } = useTranslation();
 
@@ -59,12 +62,14 @@ export default function LoginAuthCard({
                 {t('auth.welcomeBack')}
               </div>
               <h1 className="text-2xl sm:text-[1.75rem] font-bold text-stone-900 tracking-tight">
-                {mfaStep === 'mfa' ? t('auth.mfaTitle') : mfaStep === 'enroll' ? t('auth.mfaSetupTitle') : (
+                {mfaStep === 'otp' ? t('auth.otpTitle') : mfaStep === 'mfa' ? t('auth.mfaTitle') : mfaStep === 'enroll' ? t('auth.mfaSetupTitle') : (
                   <>{t('auth.title')} <span className="text-gradient">{BRAND_NAME}</span></>
                 )}
               </h1>
               <p className="text-sm text-stone-500 mt-2 leading-relaxed">
-                {mfaStep === 'mfa'
+                {mfaStep === 'otp'
+                  ? t('auth.otpEnterCode', { email: formData.email })
+                  : mfaStep === 'mfa'
                   ? t('auth.mfaEnterCode')
                   : mfaStep === 'enroll'
                     ? t('auth.mfaOrgRequired')
@@ -104,7 +109,43 @@ export default function LoginAuthCard({
               </AnimatePresence>
             </div>
 
-            {mfaStep === 'mfa' ? (
+            {mfaStep === 'otp' ? (
+              <form onSubmit={onOtpVerify} className="space-y-5" noValidate>
+                <div>
+                  <label htmlFor="login-otp" className="label-ats">
+                    {t('auth.otpLabel')}
+                  </label>
+                  <input
+                    id="login-otp"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    autoFocus
+                    value={mfaCode}
+                    onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="000000"
+                    className="input-ats font-mono tracking-[0.4em] text-center text-lg"
+                  />
+                </div>
+                <button type="submit" disabled={isSubmitting || mfaCode.length < 6} className="btn-primary w-full">
+                  {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : t('auth.mfaVerify')}
+                </button>
+                <button
+                  type="button"
+                  onClick={onResendOtp}
+                  disabled={otpResendLoading || isSubmitting}
+                  className="btn-ghost w-full text-sm text-brand-700"
+                >
+                  {otpResendLoading ? t('auth.otpSending') : t('auth.otpResend')}
+                </button>
+                {otpResendMessage && (
+                  <p className="text-sm text-center text-brand-700">{otpResendMessage}</p>
+                )}
+                <button type="button" onClick={onBackFromMfa} className="btn-ghost w-full text-sm text-stone-500">
+                  Back to sign in
+                </button>
+              </form>
+            ) : mfaStep === 'mfa' ? (
               <form onSubmit={onMfaVerify} className="space-y-5" noValidate>
                 <div>
                   <label htmlFor="mfa-code" className="label-ats">
@@ -210,6 +251,7 @@ export default function LoginAuthCard({
                       value={formData.password}
                       onChange={onChange}
                       placeholder="••••••••"
+                      autoFocus={autoFocusPassword}
                       className={`input-ats !pl-10 !pr-11 !bg-stone-50/80 focus:!bg-white ${fieldErrors.password ? 'input-ats-error' : ''}`}
                       aria-invalid={!!fieldErrors.password}
                       aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
@@ -233,7 +275,7 @@ export default function LoginAuthCard({
                   <motion.button
                     whileTap={{ scale: 0.97 }}
                     type="submit"
-                    disabled={isSubmitting || isDemoLoggingIn}
+                    disabled={isSubmitting}
                     className="btn-cta-primary w-full !py-3.5"
                   >
                     {isSubmitting ? (
@@ -250,41 +292,13 @@ export default function LoginAuthCard({
                   </motion.button>
                 </Magnetic>
 
-                <div className="relative py-1">
-                  <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                    <div className="w-full border-t border-stone-200" />
-                  </div>
-                  <div className="relative flex justify-center">
-                    <span className="bg-white px-3 text-xs text-stone-400 uppercase tracking-wider">{t('common.or')}</span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={onDemoLogin}
-                  disabled={isSubmitting || isDemoLoggingIn}
-                  className="btn-secondary w-full !py-3 !border-brand-200 !text-brand-700 hover:!bg-brand-50"
-                >
-                  {isDemoLoggingIn ? (
-                    <>
-                      <Loader2 size={18} className="animate-spin" />
-                      {t('auth.demoEntering')}
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={16} />
-                      {t('auth.demoLogin')}
-                    </>
-                  )}
-                </button>
-
                 <div className="auth-switch">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-stone-800">New to {BRAND_NAME}?</p>
-                    <p className="text-xs text-stone-500 mt-0.5">Start hiring in minutes — no credit card.</p>
+                    <p className="text-sm font-semibold text-stone-800">{t('auth.newToBrand', { brand: BRAND_NAME })}</p>
+                    <p className="text-xs text-stone-500 mt-0.5">{t('auth.startHiring')}</p>
                   </div>
                   <Link to="/register" className="auth-switch-cta">
-                    Start free trial
+                    {t('auth.startFreeTrial')}
                     <ArrowRight size={14} />
                   </Link>
                 </div>

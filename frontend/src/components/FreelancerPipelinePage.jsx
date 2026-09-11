@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import {
   Kanban, RefreshCw, Send, User, Briefcase, Clock, Eye,
   Search, CheckCircle2, XCircle, Loader2,
-  X, Users, Filter, Lock, Info,
+  X, Users, Info, SlidersHorizontal,
 } from 'lucide-react';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
@@ -11,86 +11,22 @@ import PremiumSelect from './ui/PremiumSelect';
 import ProductTour from './ui/ProductTour';
 import TourHelpFab from './ui/TourHelpFab';
 import usePageTour from '../hooks/usePageTour';
-import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
+import { authenticatedFetch, isUnauthorized, handleUnauthorized, readApiJson } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import { useAuth } from '../context/AuthContext';
 import PipelineStageSummary from './ui/PipelineStageSummary';
 import FreelanceKanbanBoard from './freelance/FreelanceKanbanBoard';
 import {
+  buildStageDefs,
+  resolveCompanyStage,
+  DEFAULT_COMPANY_STAGES,
+} from './freelance/companyPipelineStages';
+import {
   FREELANCER_PIPELINE_TOUR_KEY,
   FREELANCER_PIPELINE_TOUR_STEPS,
 } from './freelance/freelanceTourConstants';
 
-const AUTO_REFRESH_MS = 60_000;
-
-const STAGES = [
-  {
-    id: 'submitted',
-    label: 'Submitted',
-    hint: 'Awaiting hiring manager',
-    icon: Send,
-    bar: 'bg-sky-500',
-    soft: 'bg-sky-50',
-    border: 'border-sky-200',
-    text: 'text-sky-800',
-    chip: 'bg-sky-50 text-sky-800 border-sky-200',
-  },
-  {
-    id: 'reviewing',
-    label: 'Reviewing',
-    hint: 'In progress',
-    icon: Search,
-    bar: 'bg-amber-500',
-    soft: 'bg-amber-50',
-    border: 'border-amber-200',
-    text: 'text-amber-900',
-    chip: 'bg-amber-50 text-amber-900 border-amber-200',
-  },
-  {
-    id: 'shortlisted',
-    label: 'Shortlisting',
-    hint: 'Shortlist / screening forward',
-    icon: CheckCircle2,
-    bar: 'bg-emerald-500',
-    soft: 'bg-emerald-50',
-    border: 'border-emerald-200',
-    text: 'text-emerald-800',
-    chip: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-  },
-  {
-    id: 'selection',
-    label: 'Selection',
-    hint: 'Offer / selection stage',
-    icon: Users,
-    bar: 'bg-violet-500',
-    soft: 'bg-violet-50',
-    border: 'border-violet-200',
-    text: 'text-violet-800',
-    chip: 'bg-violet-50 text-violet-800 border-violet-200',
-  },
-  {
-    id: 'joined',
-    label: 'Joined',
-    hint: 'Candidate joined',
-    icon: Briefcase,
-    bar: 'bg-teal-500',
-    soft: 'bg-teal-50',
-    border: 'border-teal-200',
-    text: 'text-teal-800',
-    chip: 'bg-teal-50 text-teal-800 border-teal-200',
-  },
-  {
-    id: 'rejected',
-    label: 'Rejected',
-    hint: 'Not progressing',
-    icon: XCircle,
-    bar: 'bg-red-500',
-    soft: 'bg-red-50',
-    border: 'border-red-200',
-    text: 'text-red-800',
-    chip: 'bg-red-50 text-red-800 border-red-200',
-  },
-];
+const AUTO_REFRESH_MS = 30_000;
 
 const RECENCY_OPTIONS = [
   { value: 'all', label: 'Any time' },
@@ -133,6 +69,7 @@ function candidateOf(row) {
     email: c.email || snap.email || '',
     contact: c.contact || snap.contact || '',
     position: c.position || snap.position || '',
+    status: c.status || snap.status || '',
   };
 }
 
@@ -163,16 +100,13 @@ function rowTime(row) {
   return new Date(row.reviewedAt || row.updatedAt || row.createdAt || 0).getTime();
 }
 
-function stageOf(row) {
-  return STAGES.some((s) => s.id === row.status) ? row.status : 'submitted';
-}
-
 export default function FreelancerPipelinePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(FREELANCER_PIPELINE_TOUR_KEY);
   const [rows, setRows] = useState([]);
+  const [orgStageLabels, setOrgStageLabels] = useState(DEFAULT_COMPANY_STAGES);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
@@ -183,15 +117,30 @@ export default function FreelancerPipelinePage() {
   const [recencyFilter, setRecencyFilter] = useState('all');
   const [sortBy, setSortBy] = useState('updated-desc');
 
+  const stages = useMemo(() => buildStageDefs(orgStageLabels), [orgStageLabels]);
+
   const load = useCallback(async ({ silent = false } = {}) => {
     if (silent) setRefreshing(true);
     else setLoading(true);
     try {
-      const res = await authenticatedFetch('/api/freelancer/submissions');
-      if (isUnauthorized(res)) return handleUnauthorized();
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Failed to load pipeline');
-      setRows(Array.isArray(data.data) ? data.data : []);
+      const [subRes, statusRes] = await Promise.all([
+        authenticatedFetch('/api/freelancer/submissions'),
+        authenticatedFetch('/api/statuses'),
+      ]);
+      if (isUnauthorized(subRes) || isUnauthorized(statusRes)) return handleUnauthorized();
+      const subData = await subRes.json();
+      if (!subRes.ok) throw new Error(subData.message || 'Failed to load pipeline');
+      setRows(Array.isArray(subData.data) ? subData.data : []);
+
+      try {
+        const statusJson = await readApiJson(statusRes);
+        const labels = Array.isArray(statusJson)
+          ? statusJson
+          : (Array.isArray(statusJson?.data) ? statusJson.data : null);
+        if (labels?.length) setOrgStageLabels(labels);
+      } catch {
+        /* keep defaults */
+      }
       setLastSyncedAt(new Date());
     } catch (err) {
       if (!silent) toast.error(err.message || 'Could not load pipeline');
@@ -206,29 +155,28 @@ export default function FreelancerPipelinePage() {
   useEffect(() => {
     const id = window.setInterval(() => load({ silent: true }), AUTO_REFRESH_MS);
     const onFocus = () => load({ silent: true });
+    const onVis = () => {
+      if (document.visibilityState === 'visible') load({ silent: true });
+    };
     window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
     return () => {
       window.clearInterval(id);
       window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVis);
     };
   }, [load]);
 
   const counts = useMemo(() => {
-    const base = {
-      all: rows.length,
-      submitted: 0,
-      reviewing: 0,
-      shortlisted: 0,
-      selection: 0,
-      joined: 0,
-      rejected: 0,
-    };
+    const base = { all: rows.length };
+    for (const s of stages) base[s.id] = 0;
     for (const row of rows) {
-      const status = stageOf(row);
+      const status = resolveCompanyStage(row, stages);
       if (base[status] !== undefined) base[status] += 1;
+      else base[status] = 1;
     }
     return base;
-  }, [rows]);
+  }, [rows, stages]);
 
   const jobOptions = useMemo(() => {
     const map = new Map();
@@ -275,6 +223,7 @@ export default function FreelancerPipelinePage() {
         candidate.name,
         candidate.email,
         candidate.position,
+        candidate.status,
         jobTitle(job),
         job.jobCode,
         jobClient(job),
@@ -284,19 +233,29 @@ export default function FreelancerPipelinePage() {
         row.status,
         row.note,
         row.feedback,
+        ...(Array.isArray(row.stageNotes) ? row.stageNotes.map((n) => n?.note) : []),
       ].filter(Boolean).join(' ').toLowerCase();
       return hay.includes(q);
-    });
+    }).map((row) => ({
+      ...row,
+      // Board uses company stage ids
+      boardStatus: resolveCompanyStage(row, stages),
+      status: resolveCompanyStage(row, stages),
+      _submissionStatus: row.status,
+    }));
 
     next.sort((a, b) => {
       if (sortBy === 'name') {
         return String(candidateOf(a).name || '').localeCompare(String(candidateOf(b).name || ''));
       }
+      const urgentA = String(asDoc(a.jobId).priority || '').toLowerCase() === 'urgent' ? 1 : 0;
+      const urgentB = String(asDoc(b.jobId).priority || '').toLowerCase() === 'urgent' ? 1 : 0;
+      if (urgentA !== urgentB) return urgentB - urgentA;
       const diff = rowTime(a) - rowTime(b);
       return sortBy === 'updated-asc' ? diff : -diff;
     });
     return next;
-  }, [rows, query, jobFilter, spocFilter, recencyFilter, sortBy]);
+  }, [rows, query, jobFilter, spocFilter, recencyFilter, sortBy, stages]);
 
   const hasActiveFilters = Boolean(
     query.trim()
@@ -326,7 +285,7 @@ export default function FreelancerPipelinePage() {
         icon={Kanban}
         title="My Pipeline"
         gradientTitle
-        subtitle="Separate Kanban board for each candidate you shared. Status updates when the hiring team reviews them."
+        subtitle="Track submissions across your company’s hiring stages. Progress updates when the hiring team advances candidates."
       >
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
@@ -351,121 +310,133 @@ export default function FreelancerPipelinePage() {
 
       <div
         data-tour="freelancer-pipeline-tip"
-        className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-5"
+        className="rounded-xl border border-stone-200/90 bg-stone-50/80 px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed flex flex-wrap items-start gap-x-2.5 gap-y-1 mb-5"
       >
-        <span className="inline-flex items-center gap-1.5 text-brand-700 font-semibold">
-          <Info size={14} /> Tip
-        </span>
-        <span>
-          This board is private to you. Status and reviewer notes update when the company reviews your submissions.
-          {' '}Press the help button for a tour.
-        </span>
+        <Info size={15} className="text-brand-600 shrink-0 mt-0.5" strokeWidth={2.25} />
+        <p className="min-w-0 flex-1">
+          Stages follow your company pipeline. Cards stay in place until the hiring team moves them —
+          open the info icon on a board for company notes.
+        </p>
       </div>
 
       <div className="mb-5">
         <PipelineStageSummary
-          stages={STAGES}
+          stages={stages}
           counts={counts}
           stageFilter={statusFilter}
           setStageFilter={setStatusFilter}
           total={counts.all}
-          hint="Tap a stage to focus that column"
+          hint="Hiring pipeline"
           tourAttr="freelancer-stage-summary"
         />
       </div>
 
       <div
         data-tour="freelancer-pipeline-filters"
-        className="rounded-2xl border border-stone-200/90 bg-white shadow-[var(--shadow-card)] mb-5 overflow-hidden"
+        className="rounded-2xl border border-stone-200/90 bg-white shadow-[var(--shadow-card)] mb-5 overflow-visible"
       >
-        <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-3 border-b border-stone-100 bg-gradient-to-r from-brand-50/70 via-white to-teal-50/30">
-          <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-stone-500">
-            <Lock size={13} className="text-brand-600" />
-            Private to you · {filtered.length.toLocaleString()} of {rows.length.toLocaleString()} candidates
-          </span>
-          <span className="text-[11px] text-stone-400 tabular-nums inline-flex items-center gap-1.5 rounded-lg bg-white/80 border border-stone-100 px-2.5 py-1">
-            <Clock size={12} className="text-brand-600" />
-            {lastSyncedAt
-              ? `Synced ${relativeTime(lastSyncedAt)} · auto every ${AUTO_REFRESH_MS / 1000}s`
-              : 'Syncing…'}
-          </span>
-        </div>
-
-        <div className="px-4 sm:px-5 py-4 space-y-4">
-          <div className="flex items-center gap-2.5">
-            <span className="w-8 h-8 rounded-xl bg-brand-50 border border-brand-100 text-brand-700 inline-flex items-center justify-center">
-              <Filter size={14} />
-            </span>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-700">Filters</p>
-              <p className="text-[11px] text-stone-400">Search, mandate, hiring manager</p>
+        {/* Enterprise command bar */}
+        <div className="px-4 sm:px-5 pt-4 pb-3 space-y-3">
+          <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+            <div className="relative min-w-0 flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-600 pointer-events-none z-[1]" />
+              <input
+                id="pipeline-search"
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by candidate, job ID, mandate, client, or hiring manager"
+                className="input-ats input-ats-icon !pr-10 !h-11 !rounded-xl w-full min-w-0 border-stone-200 shadow-sm"
+                aria-label="Search pipeline"
+              />
+              {query ? (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100"
+                  aria-label="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-[12px] font-semibold text-stone-700 tabular-nums">
+                <Users size={13} className="text-brand-600" strokeWidth={2.25} />
+                {filtered.length.toLocaleString()}
+                <span className="font-medium text-stone-400">/ {rows.length.toLocaleString()}</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-[11px] font-medium text-stone-500 tabular-nums">
+                <Clock size={12} className="text-brand-600" strokeWidth={2.25} />
+                {lastSyncedAt
+                  ? `Synced ${relativeTime(lastSyncedAt)} · auto ${AUTO_REFRESH_MS / 1000}s`
+                  : 'Syncing…'}
+              </span>
+              {hasActiveFilters ? (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-[11px] font-semibold text-brand-800 hover:bg-brand-100 transition-colors"
+                >
+                  <X size={12} strokeWidth={2.5} />
+                  Clear all
+                </button>
+              ) : null}
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div className="min-w-0">
-              <label className="label-ats" htmlFor="pipeline-search">Search</label>
-              <div className="relative">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-600 pointer-events-none z-[1]" />
-                <input
-                  id="pipeline-search"
-                  type="search"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search candidate, mandate, or hiring manager"
-                  className="input-ats input-ats-icon !pr-9 !h-11 rounded-xl"
-                />
-                {query ? (
-                  <button
-                    type="button"
-                    onClick={() => setQuery('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100"
-                    aria-label="Clear search"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                ) : null}
+          <div className="rounded-xl border border-stone-200/90 bg-stone-50/60 p-3 sm:p-3.5">
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="w-7 h-7 rounded-lg bg-white border border-stone-200 text-brand-700 inline-flex items-center justify-center shadow-sm">
+                <SlidersHorizontal size={13} strokeWidth={2.25} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[12px] font-semibold text-stone-800 leading-none">Refine results</p>
+                <p className="text-[11px] text-stone-400 mt-1 leading-none">
+                  Mandate · hiring manager · timeframe · sort
+                </p>
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
               <div className="min-w-0">
-                <label className="label-ats">Mandate</label>
+                <label className="sr-only">Mandate</label>
                 <PremiumSelect
                   variant="list"
                   compact
-                  className="rounded-xl"
+                  className="rounded-xl w-full min-w-0 bg-white"
                   value={jobFilter}
                   onChange={(v) => setJobFilter(v || 'all')}
                   options={jobOptions}
                   placeholder="All mandates"
                   icon={Briefcase}
                   searchable
-                  searchPlaceholder="Mandate…"
+                  searchPlaceholder="Search mandates…"
                   emptyLabel="No mandates"
                 />
               </div>
               <div className="min-w-0">
-                <label className="label-ats">Hiring manager</label>
+                <label className="sr-only">Hiring manager</label>
                 <PremiumSelect
                   variant="list"
                   compact
-                  className="rounded-xl"
+                  className="rounded-xl w-full min-w-0 bg-white"
                   value={spocFilter}
                   onChange={(v) => setSpocFilter(v || 'all')}
                   options={spocOptions}
-                  placeholder="All managers"
+                  placeholder="All hiring managers"
                   icon={User}
                   searchable
-                  searchPlaceholder="Manager…"
+                  searchPlaceholder="Search managers…"
                   emptyLabel="No managers"
                 />
               </div>
               <div className="min-w-0">
-                <label className="label-ats">Recency</label>
+                <label className="sr-only">Recency</label>
                 <PremiumSelect
                   variant="list"
                   compact
-                  className="rounded-xl"
+                  className="rounded-xl w-full min-w-0 bg-white"
                   value={recencyFilter}
                   onChange={(v) => setRecencyFilter(v || 'all')}
                   options={RECENCY_OPTIONS}
@@ -474,26 +445,65 @@ export default function FreelancerPipelinePage() {
                 />
               </div>
               <div className="min-w-0">
-                <label className="label-ats">Sort</label>
+                <label className="sr-only">Sort</label>
                 <PremiumSelect
                   variant="list"
                   compact
-                  className="rounded-xl"
+                  className="rounded-xl w-full min-w-0 bg-white"
                   value={sortBy}
                   onChange={(v) => setSortBy(v || 'updated-desc')}
                   options={SORT_OPTIONS}
-                  placeholder="Sort"
+                  placeholder="Sort order"
                   icon={Eye}
                 />
               </div>
             </div>
-          </div>
 
-          {hasActiveFilters ? (
-            <button type="button" onClick={clearFilters} className="text-xs font-semibold text-brand-700 hover:text-brand-800">
-              Clear filters
-            </button>
-          ) : null}
+            {hasActiveFilters ? (
+              <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                {query ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-medium text-stone-600">
+                    Search: “{query.length > 24 ? `${query.slice(0, 24)}…` : query}”
+                    <button type="button" onClick={() => setQuery('')} className="text-stone-400 hover:text-stone-700" aria-label="Remove search">
+                      <X size={11} />
+                    </button>
+                  </span>
+                ) : null}
+                {jobFilter !== 'all' ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-medium text-stone-600">
+                    Mandate
+                    <button type="button" onClick={() => setJobFilter('all')} className="text-stone-400 hover:text-stone-700" aria-label="Clear mandate">
+                      <X size={11} />
+                    </button>
+                  </span>
+                ) : null}
+                {spocFilter !== 'all' ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-medium text-stone-600">
+                    Manager
+                    <button type="button" onClick={() => setSpocFilter('all')} className="text-stone-400 hover:text-stone-700" aria-label="Clear manager">
+                      <X size={11} />
+                    </button>
+                  </span>
+                ) : null}
+                {recencyFilter !== 'all' ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-medium text-stone-600">
+                    {RECENCY_OPTIONS.find((o) => o.value === recencyFilter)?.label || 'Recency'}
+                    <button type="button" onClick={() => setRecencyFilter('all')} className="text-stone-400 hover:text-stone-700" aria-label="Clear recency">
+                      <X size={11} />
+                    </button>
+                  </span>
+                ) : null}
+                {statusFilter !== 'all' ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-medium text-stone-600">
+                    Stage: {statusFilter}
+                    <button type="button" onClick={() => setStatusFilter('all')} className="text-stone-400 hover:text-stone-700" aria-label="Clear stage">
+                      <X size={11} />
+                    </button>
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -505,8 +515,8 @@ export default function FreelancerPipelinePage() {
           <EmptyState
             icon={Kanban}
             tone="violet"
-            message="No handoffs yet"
-            subMessage="Submit a candidate against an open mandate — it will appear on this pipeline board."
+            message="No submissions yet"
+            subMessage="Submit a candidate on an open mandate to start tracking progress here."
           />
         </div>
       ) : filtered.length === 0 ? (
@@ -514,11 +524,11 @@ export default function FreelancerPipelinePage() {
           <EmptyState
             icon={Search}
             tone="amber"
-            message="No matching handoffs"
-            subMessage="Try a different mandate, manager, or search term."
+            message="No matching candidates"
+            subMessage="Adjust the search or filters to broaden results."
             action={(
               <button type="button" className="btn-secondary" onClick={clearFilters}>
-                Clear filters
+                Reset filters
               </button>
             )}
           />
@@ -526,10 +536,11 @@ export default function FreelancerPipelinePage() {
       ) : (
         <div data-tour="freelancer-pipeline-boards">
           <FreelanceKanbanBoard
-            stages={STAGES}
+            stages={stages}
             rows={filtered}
             stageFilter={statusFilter}
             interactive={false}
+            companyStages
           />
         </div>
       )}

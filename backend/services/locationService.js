@@ -36,9 +36,31 @@ function enrichCandidatesBatch(candidates) {
   return candidates.map(candidate => enrichCandidateWithState(candidate));
 }
 
+function listCatalogCities() {
+  const skip = new Set(['new delhiм']);
+  const seen = new Set();
+  const names = [];
+  for (const city of Object.keys(locationToStateMap)) {
+    if (skip.has(city)) continue;
+    const name = String(city || '').trim().toUpperCase();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    names.push(name);
+  }
+  for (const extra of ['RAJAHMUNDRY', 'KARIMNAGAR', 'GORAKHPUR']) {
+    if (!seen.has(extra)) {
+      seen.add(extra);
+      names.push(extra);
+    }
+  }
+  names.sort((a, b) => a.localeCompare(b));
+  return names;
+}
+
 module.exports = {
   detectState,
   enrichCandidateWithState,
   enrichCandidatesBatch,
-  getStateFromLocation
+  getStateFromLocation,
+  listCatalogCities,
 };

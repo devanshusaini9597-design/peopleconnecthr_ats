@@ -17,6 +17,12 @@ export const SEC_TOUR_STEPS = [
     placement: 'left',
   },
   {
+    target: '[data-tour="sec-devices"]',
+    title: 'Signed-in devices',
+    body: 'See every laptop or browser using this account and sign one out remotely.',
+    placement: 'top',
+  },
+  {
     target: '[data-tour="sec-save"]',
     title: 'Save policies',
     body: 'Apply organization security settings after you change them.',
@@ -29,9 +35,9 @@ export const IDLE_OPTIONS = [
   { value: '60', label: '1 hour', description: 'Tight idle timeout' },
   { value: '120', label: '2 hours', description: 'Balanced' },
   { value: '240', label: '4 hours', description: 'Half day' },
-  { value: '480', label: '8 hours', description: 'Default workday' },
+  { value: '485', label: '8 hours', description: 'Workday lock' },
   { value: '1440', label: '24 hours', description: 'Full day' },
-  { value: '10080', label: '7 days', description: 'Long-lived' },
+  { value: '10080', label: '7 days', description: 'Stay signed in until re-login' },
 ];
 
 export const SESSION_COUNT_OPTIONS = [1, 3, 5, 10, 15, 20, 50].map((n) => ({

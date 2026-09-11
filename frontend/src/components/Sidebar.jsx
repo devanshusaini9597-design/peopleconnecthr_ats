@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, X } from 'lucide-react';
-import { handleLogout } from '../utils/authUtils';
 import { useAuth } from '../context/AuthContext';
 import { planHasFeature, planHasAnyIntegration } from '../config/planFeatures';
 import ConfirmationModal from './ConfirmationModal';
@@ -12,6 +11,11 @@ import {
 import SidebarNav from './sidebar/SidebarNav';
 import SidebarFlyout from './sidebar/SidebarFlyout';
 import SidebarUserFooter from './sidebar/SidebarUserFooter';
+import { resolveOrgLogoSrc } from '../utils/orgLogo';
+import useJobNavUpdates from '../hooks/useJobNavUpdates';
+import useAnnouncementNavUpdates from '../hooks/useAnnouncementNavUpdates';
+import useReportShareNavUpdates from '../hooks/useReportShareNavUpdates';
+import useSupportNavUpdates from '../hooks/useSupportNavUpdates';
 
 const Sidebar = ({ isOpen, setIsOpen }) => {
   const [collapsed, setCollapsed] = useState(false);
@@ -19,50 +23,59 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
   const [flyoutGroupKey, setFlyoutGroupKey] = useState(null);
   const [flyoutPos, setFlyoutPos] = useState({ top: 0, left: 0, maxH: 400 });
   const flyoutBtnRefs = useRef({});
-  const navigate = useNavigate();
   const location = useLocation();
-  const { organization, user: authUser } = useAuth();
+  const navigate = useNavigate();
+  const { organization, user: authUser, logout } = useAuth();
   const userRole = authUser?.role || 'recruiter';
+  const flushNavAwayFromAts = userRole === 'freelancer' && location.pathname === '/ats';
   const orgPlan = organization?.plan;
   const permissions = authUser?.permissions;
   const hasModuleKeys = Array.isArray(permissions) && permissions.some((p) => String(p).startsWith('modules.'));
-  const useCustomPack = Boolean(authUser?.customRoleId) && hasModuleKeys && userRole !== 'owner';
+  // Use effective permissions from API (org-edited system role OR custom pack).
+  // Fall back to fixed role lists only when permissions are missing.
+  const usePermissionPack = hasModuleKeys && userRole !== 'owner';
   const permissionSet = useMemo(
-    () => (useCustomPack ? new Set(permissions) : null),
-    [useCustomPack, permissions]
+    () => (usePermissionPack ? new Set(permissions) : null),
+    [usePermissionPack, permissions]
   );
-
-  const initials = (authUser?.name || 'U')
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
 
   const visibleSections = useMemo(() => (
     SECTIONS
       .filter((section) => {
-        if (useCustomPack) return true;
+        if (usePermissionPack) return true;
         return section.roles.includes(userRole);
       })
       .map((section) => ({
         ...section,
         items: section.items.filter(
           (item) => {
-            if (useCustomPack) {
-              if (item.module && !permissionSet.has(item.module)) return false;
+            if (item.onlyRoles && !item.onlyRoles.includes(userRole)) return false;
+            if (item.platformOnly && !authUser?.isPlatformOperator) return false;
+            if (item.hideForRoles && item.hideForRoles.includes(userRole)) return false;
+            if (usePermissionPack) {
+              const freelancerBypass = userRole === 'freelancer' && (
+                item.onlyRoles?.includes('freelancer') || item.freelancerAlways
+              );
+              if (!freelancerBypass) {
+                if (item.module && !permissionSet.has(item.module)) return false;
+              }
             } else if (!item.roles.includes(userRole)) {
               return false;
             }
             if (item.anyIntegration) return planHasAnyIntegration(orgPlan);
             if (item.anyAi) return planHasAnyAiFeature(orgPlan);
-            if (item.feature) return planHasFeature(orgPlan, item.feature);
+            if (item.feature) {
+              const freelancerBypassFeature = userRole === 'freelancer' && (
+                item.onlyRoles?.includes('freelancer') || item.freelancerAlways
+              );
+              if (!freelancerBypassFeature) return planHasFeature(orgPlan, item.feature);
+            }
             return true;
           }
         )
       }))
       .filter((section) => section.items.length > 0)
-  ), [userRole, orgPlan, useCustomPack, permissionSet]);
+  ), [userRole, orgPlan, usePermissionPack, permissionSet, authUser?.isPlatformOperator]);
 
   const pathToGroup = useMemo(() => {
     const map = {};
@@ -147,6 +160,40 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
     ? visibleSections.find((s) => s.key === flyoutGroupKey)
     : null;
 
+  const newJobsCount = useJobNavUpdates();
+  const newAnnouncementsCount = useAnnouncementNavUpdates();
+  const newReportSharesCount = useReportShareNavUpdates();
+  const newSupportCount = useSupportNavUpdates();
+  const navBadges = useMemo(() => {
+    const badges = {};
+    if (newJobsCount > 0) {
+      badges['/jobs'] = newJobsCount;
+      badges['/mandates'] = newJobsCount;
+    }
+    if (newAnnouncementsCount > 0) badges['/announcements'] = newAnnouncementsCount;
+    if (newReportSharesCount > 0) badges['/analytics'] = newReportSharesCount;
+    if (newSupportCount > 0) badges['/feedback'] = newSupportCount;
+    return badges;
+  }, [newJobsCount, newAnnouncementsCount, newReportSharesCount, newSupportCount]);
+
+  useEffect(() => {
+    const keys = visibleSections
+      .filter((section) => section.items.some((item) => (navBadges[item.path] || 0) > 0))
+      .map((section) => section.key);
+    if (!keys.length) return;
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      keys.forEach((key) => {
+        if (!next.has(key)) {
+          next.add(key);
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [navBadges, visibleSections]);
+
   return (
     <>
       {isOpen && (
@@ -173,9 +220,19 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
 
         {/* Logo */}
         <div className="relative flex items-center justify-between h-[68px] px-4 border-b border-stone-800/40 flex-shrink-0">
-          <NavLink to="/dashboard" onClick={handleCloseMobile} className={`flex items-center gap-3 min-w-0 flex-1 ${collapsed ? 'justify-center' : ''}`}>
+          <NavLink
+            to="/dashboard"
+            onClick={(e) => {
+              handleCloseMobile();
+              if (flushNavAwayFromAts) {
+                e.preventDefault();
+                navigate('/dashboard', { flushSync: true });
+              }
+            }}
+            className={`flex items-center gap-3 min-w-0 flex-1 ${collapsed ? 'justify-center' : ''}`}
+          >
             {organization?.logo ? (
-              <img src={organization.logo} alt="" className="w-9 h-9 rounded-xl object-cover flex-shrink-0 shadow-lg" />
+              <img src={resolveOrgLogoSrc(organization.logo)} alt="" className="w-9 h-9 rounded-xl object-contain bg-white flex-shrink-0 shadow-lg" />
             ) : (
               <img
                 src="/logo.png"
@@ -215,14 +272,17 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
             onToggleGroup={toggleGroup}
             onCloseMobile={handleCloseMobile}
             isGroupActive={isGroupActive}
+            navBadges={navBadges}
+            flushNavAwayFromAts={flushNavAwayFromAts}
           />
           <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-stone-950/70 to-transparent" />
         </div>
 
         <SidebarUserFooter
           collapsed={collapsed}
-          initials={initials}
+          photo={authUser?.profilePicture || ''}
           userName={authUser?.name || 'User'}
+          userEmail={authUser?.email || ''}
           userRole={userRole}
           onLogoutClick={() => setShowLogoutConfirm(true)}
         />
@@ -233,7 +293,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
         onClose={() => setShowLogoutConfirm(false)}
         onConfirm={() => {
           setShowLogoutConfirm(false);
-          handleLogout(navigate);
+          logout();
         }}
         title="Log out?"
         message="End your session on this device? You’ll need to sign in again to continue."
@@ -248,6 +308,8 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
         locationPathname={location.pathname}
         onCloseMobile={handleCloseMobile}
         onCloseFlyout={() => setFlyoutGroupKey(null)}
+        navBadges={navBadges}
+        flushNavAwayFromAts={flushNavAwayFromAts}
       />
     </>
   );

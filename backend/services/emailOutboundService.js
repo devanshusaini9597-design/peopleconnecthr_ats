@@ -9,10 +9,12 @@ const {
   sendDocumentEmail,
   sendOnboardingEmail,
   sendCustomEmail,
-  sendBulkEmails,
   checkUserEmailConfigured,
   canUserSendViaZepto,
 } = require('./emailService');
+const { buildQuickEmailContent } = require('./quickEmailContent');
+const { loadOrgEmailBrand } = require('./emailBrandLayout');
+const { signEmail } = require('../utils/subscribeSign');
 
 function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
@@ -36,6 +38,53 @@ async function getSenderStatus(userId) {
   return canUserSendViaZepto(userId);
 }
 
+async function resolveDirectSubscribeUrl(organizationId, email) {
+  const emailNorm = String(email || '').trim().toLowerCase();
+  if (!emailNorm || !emailNorm.includes('@') || !organizationId) return '';
+
+  try {
+    const Candidate = require('../models/Candidate');
+    const row = await Candidate.findOne({ organizationId, email: emailNorm })
+      .select('marketingConsent.optedIn')
+      .lean();
+    if (row?.marketingConsent?.optedIn === true) return ''; // already subscribed — no CTA
+  } catch (_) {
+    /* show subscribe if lookup fails */
+  }
+
+  let orgSlug = '';
+  try {
+    const org = await Organization.findById(organizationId).select('slug').lean();
+    orgSlug = String(org?.slug || '').trim();
+  } catch (_) {}
+
+  const backendBase = (
+    process.env.EMAIL_LINKS_BACKEND_URL ||
+    process.env.BACKEND_URL ||
+    process.env.API_URL ||
+    ''
+  )
+    .trim()
+    .replace(/\/$/, '');
+  const frontendBase = (process.env.FRONTEND_URL || '').trim().replace(/\/$/, '');
+  const orgQs = orgSlug
+    ? `&org=${encodeURIComponent(orgSlug)}`
+    : `&orgId=${encodeURIComponent(String(organizationId))}`;
+
+  if (backendBase) {
+    try {
+      const sig = signEmail(emailNorm);
+      return `${backendBase}/api/public/subscribe/confirm?email=${encodeURIComponent(emailNorm)}&sig=${sig}${orgQs}`;
+    } catch (_) {
+      /* fall through */
+    }
+  }
+  if (frontendBase) {
+    return `${frontendBase}/subscribe?email=${encodeURIComponent(emailNorm)}${orgQs}`;
+  }
+  return '';
+}
+
 async function sendTypedEmail(user, body) {
   const { email, name, position, emailType, customMessage, department, joiningDate, cc, bcc } = body;
 
@@ -45,7 +94,16 @@ async function sendTypedEmail(user, body) {
     throw httpError('Email type is required (interview, rejection, document, onboarding, custom)');
   }
 
-  const emailOptions = { userId: user.id };
+  const emailOptions = {
+    userId: user.id,
+    customMessage: customMessage || '',
+    senderName: user.name || 'HR Team',
+    brand: await loadOrgEmailBrand(user.organizationId),
+    subscribeUrl: await resolveDirectSubscribeUrl(user.organizationId, email),
+    organizationId: user.organizationId,
+    emailType,
+    channel: 'transactional',
+  };
   if (cc) emailOptions.cc = cc;
   if (bcc) emailOptions.bcc = bcc;
 
@@ -73,7 +131,15 @@ async function sendTypedEmail(user, body) {
       break;
     case 'custom':
       if (!customMessage) throw httpError('Custom message is required for custom email type');
-      result = await sendCustomEmail(email, 'Message from HR Team', customMessage, emailOptions);
+      result = await sendCustomEmail(
+        email,
+        (body.subject || '').trim() || 'Message from recruiting team',
+        customMessage,
+        {
+          ...emailOptions,
+          candidateName: name,
+        }
+      );
       break;
     default:
       throw httpError('Invalid email type. Must be: interview, rejection, document, onboarding, or custom');
@@ -85,7 +151,7 @@ async function sendTypedEmail(user, body) {
 }
 
 async function sendBulkTypedEmails(user, body) {
-  const { candidates, emailType, customMessage, cc, bcc } = body;
+  const { candidates, emailType, customMessage, subject, cc, bcc } = body;
 
   if (!candidates || !Array.isArray(candidates) || candidates.length === 0) {
     throw httpError('Candidates array is required and must not be empty');
@@ -106,22 +172,80 @@ async function sendBulkTypedEmails(user, body) {
   logger.info(`   Type: ${emailType}`);
   logger.info(`   Total Recipients: ${candidates.length}`);
 
-  const results = await sendBulkEmails(candidates, emailType, customMessage, {
-    cc,
-    bcc,
+  const emailOptions = {
     userId: user.id,
-  });
+    customMessage: customMessage || '',
+    senderName: user.name || 'HR Team',
+    brand: await loadOrgEmailBrand(user.organizationId),
+    organizationId: user.organizationId,
+    emailType,
+    channel: 'transactional',
+  };
+  if (cc) emailOptions.cc = cc;
+  if (bcc) emailOptions.bcc = bcc;
 
-  await bumpEmailUsage(user.organizationId, results.success.length);
+  const success = [];
+  const failed = [];
+
+  for (const candidate of candidates) {
+    const email = candidate?.email;
+    const name = candidate?.name || 'Candidate';
+    const position = candidate?.position || '';
+    const department = candidate?.department || 'N/A';
+    const joiningDate = candidate?.joiningDate || 'TBD';
+
+    if (!email || !String(email).includes('@')) {
+      failed.push({ email: email || '', error: 'Invalid email address' });
+      continue;
+    }
+
+    try {
+      const perRecipientOptions = {
+        ...emailOptions,
+        subscribeUrl: await resolveDirectSubscribeUrl(user.organizationId, email),
+      };
+      let result;
+      // Quick-send edited drafts arrive as custom + subject/body.
+      if (emailType === 'custom') {
+        if (!customMessage) throw httpError('Custom message is required for custom email type');
+        result = await sendCustomEmail(
+          email,
+          (subject || '').trim() || 'Message from recruiting team',
+          customMessage,
+          { ...perRecipientOptions, candidateName: name }
+        );
+      } else if (emailType === 'interview') {
+        result = await sendInterviewEmail(email, name, position, perRecipientOptions);
+      } else if (emailType === 'rejection') {
+        result = await sendRejectionEmail(email, name, position, perRecipientOptions);
+      } else if (emailType === 'document') {
+        result = await sendDocumentEmail(email, name, position, perRecipientOptions);
+      } else if (emailType === 'onboarding') {
+        result = await sendOnboardingEmail(email, name, position, department, joiningDate, perRecipientOptions);
+      } else {
+        throw httpError('Invalid email type. Must be: interview, rejection, document, onboarding, or custom');
+      }
+      success.push({ email, messageId: result?.messageId });
+    } catch (err) {
+      failed.push({
+        email,
+        error: err.message || 'Send failed',
+        displayMessage: err.displayMessage || err.message,
+      });
+    }
+  }
+
+  await bumpEmailUsage(user.organizationId, success.length);
 
   return {
     message: 'Bulk email campaign completed',
     data: {
-      total: results.total,
-      sent: results.success.length,
-      failed: results.failed.length,
-      successRate: `${((results.success.length / results.total) * 100).toFixed(2)}%`,
-      failedEmails: results.failed,
+      total: candidates.length,
+      sent: success.length,
+      failed: failed.length,
+      successRate: `${((success.length / candidates.length) * 100).toFixed(2)}%`,
+      failedEmails: failed,
+      successEmails: success,
     },
   };
 }
@@ -129,93 +253,28 @@ async function sendBulkTypedEmails(user, body) {
 function buildEmailPreview(body) {
   const {
     name = 'Candidate',
-    position = 'Position',
+    position = '',
     emailType,
     customMessage,
     department,
     joiningDate,
+    senderName,
+    brand,
   } = body;
 
-  const templates = {
-    interview: {
-      subject: `Interview Invitation - ${position}`,
-      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px; color: white; text-align: center; border-radius: 10px 10px 0 0;">
-            <h2 style="margin: 0;">📞 Interview Invitation</h2>
-          </div>
-          <div style="padding: 40px; background: white; border: 1px solid #ddd; border-radius: 0 0 10px 10px;">
-            <p style="color: #333; font-size: 16px;">Dear ${name},</p>
-            <p style="color: #666; line-height: 1.6;">Congratulations! We are pleased to invite you for an interview for the <strong>${position}</strong> position.</p>
-            <p style="color: #666; line-height: 1.6;">Our HR team will contact you shortly with interview details including date, time, and format.</p>
-            <p style="color: #666; line-height: 1.6;">If you have any questions, please feel free to reach out to us.</p>
-            <p style="color: #666; line-height: 1.6;">Best regards,<br><strong>HR Team</strong></p>
-          </div>
-        </div>`,
-    },
-    rejection: {
-      subject: 'Application Status Update',
-      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: #f5f5f5; padding: 40px; text-align: center; border-radius: 10px 10px 0 0;">
-            <h2 style="color: #333; margin: 0;">Application Status Update</h2>
-          </div>
-          <div style="padding: 40px; background: white; border: 1px solid #ddd; border-radius: 0 0 10px 10px;">
-            <p style="color: #333; font-size: 16px;">Dear ${name},</p>
-            <p style="color: #666; line-height: 1.6;">Thank you for your interest in the <strong>${position}</strong> position. After careful consideration of your application and qualifications, we regret to inform you that we have decided to move forward with other candidates whose experience more closely matches our current needs.</p>
-            <p style="color: #666; line-height: 1.6;">We appreciate the time you invested in applying and interviewing with us. We encourage you to apply for future positions that match your skills and experience.</p>
-            <p style="color: #666; line-height: 1.6;">Best regards,<br><strong>HR Team</strong></p>
-          </div>
-        </div>`,
-    },
-    document: {
-      subject: `Document Submission - ${position}`,
-      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 40px; color: white; text-align: center; border-radius: 10px 10px 0 0;">
-            <h2 style="margin: 0;">📄 Document Submission Required</h2>
-          </div>
-          <div style="padding: 40px; background: white; border: 1px solid #ddd; border-radius: 0 0 10px 10px;">
-            <p style="color: #333; font-size: 16px;">Dear ${name},</p>
-            <p style="color: #666; line-height: 1.6;">As the next step in our hiring process for the <strong>${position}</strong> position, we require you to submit the following documents:</p>
-            <ul style="color: #666; line-height: 1.8;">
-              <li>Updated Resume</li>
-              <li>Valid Government ID</li>
-              <li>Educational Certificates</li>
-              <li>Previous Employment Letters</li>
-            </ul>
-            <p style="color: #666; line-height: 1.6;">Please reply to this email with the requested documents within 3 business days.</p>
-            <p style="color: #666; line-height: 1.6;">Best regards,<br><strong>HR Team</strong></p>
-          </div>
-        </div>`,
-    },
-    onboarding: {
-      subject: `Onboarding Confirmation - ${position}`,
-      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); padding: 40px; color: white; text-align: center; border-radius: 10px 10px 0 0;">
-            <h2 style="margin: 0;">🎉 Welcome to the Team!</h2>
-          </div>
-          <div style="padding: 40px; background: white; border: 1px solid #ddd; border-radius: 0 0 10px 10px;">
-            <p style="color: #333; font-size: 16px;">Dear ${name},</p>
-            <p style="color: #666; line-height: 1.6;">Welcome aboard! We are excited to have you join our team as a <strong>${position}</strong> in the <strong>${department || 'N/A'}</strong> department.</p>
-            <p style="color: #666; line-height: 1.6;"><strong>Joining Date:</strong> ${joiningDate || 'TBD'}</p>
-            <p style="color: #666; line-height: 1.6;">Please ensure you have completed all onboarding formalities and bring the necessary documents on your first day.</p>
-            <p style="color: #666; line-height: 1.6;">If you have any questions, feel free to reach out to our HR team.</p>
-            <p style="color: #666; line-height: 1.6;">Best regards,<br><strong>HR Team</strong></p>
-          </div>
-        </div>`,
-    },
-    custom: {
-      subject: 'Message from HR Team',
-      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="padding: 40px; background: white; border: 1px solid #ddd; border-radius: 10px;">
-            <div style="color: #333; white-space: pre-wrap; line-height: 1.6;">${customMessage || 'Your custom message goes here...'}</div>
-            <p style="color: #999; font-size: 12px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">This is an automated message. Please do not reply directly to this email.</p>
-          </div>
-        </div>`,
-    },
-  };
-
-  const template = templates[emailType];
-  if (!template) throw httpError('Invalid email type');
-  return template;
+  const content = buildQuickEmailContent({
+    emailType,
+    name,
+    position,
+    customMessage,
+    department,
+    joiningDate,
+    senderName: senderName || 'HR Team',
+    subject: body.subject,
+    brand: brand || null,
+  });
+  if (!content) throw httpError('Invalid email type');
+  return content;
 }
 
 async function sendTestEmail(email) {
@@ -238,22 +297,36 @@ async function sendMarketing(user, body) {
   }
 
   const result = await sendMarketingEmail(recipients, subject, htmlBody, {
-    userId: user.id,
+    userId: user.id || user._id,
+    organizationId: user.organizationId,
+    senderName: user.name || '',
+    fromEmail: user.email || '',
+    replyToEmail: user.email || '',
     campaignName: campaignName || `ats_campaign_${Date.now()}`,
     trackOpens: trackOpens !== false,
     trackClicks: trackClicks !== false,
   });
 
   return {
-    message: `Marketing email queued to ${result.sent} recipient(s)`,
+    message: `Marketing campaign started for ${result.sent} recipient(s) via Zoho Campaigns`,
     data: result.data,
   };
 }
 
-async function getEmailChannels(userId) {
+async function getEmailChannels(userId, organizationId) {
   const { isCampaignsConfigured } = require('./campaignService');
+  const { resolveCampaignsSettings, isSettingsConfigured } = require('./marketingListService');
   const transactional = await checkUserEmailConfigured(userId);
-  const marketing = isCampaignsConfigured();
+  // Platform env OR org Integrations → Marketing (Zoho Campaigns)
+  let marketing = isCampaignsConfigured();
+  if (!marketing && organizationId) {
+    try {
+      const settings = await resolveCampaignsSettings(organizationId);
+      marketing = isSettingsConfigured(settings);
+    } catch (_) {
+      marketing = false;
+    }
+  }
   return {
     channels: {
       transactional: { available: transactional, provider: 'ZeptoMail' },

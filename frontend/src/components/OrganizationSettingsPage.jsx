@@ -13,6 +13,7 @@ import OrgGeneralTab from './organization/OrgGeneralTab';
 import OrgPipelineTab from './organization/OrgPipelineTab';
 import OrgTeamTab from './organization/OrgTeamTab';
 import OrgCareersTab from './organization/OrgCareersTab';
+import CredentialShareModal from './organization/CredentialShareModal';
 import useOrganizationSettings from './organization/useOrganizationSettings';
 
 export default function OrganizationSettingsPage() {
@@ -50,18 +51,52 @@ export default function OrganizationSettingsPage() {
     setInviteRole,
     inviteCustomRoleId,
     setInviteCustomRoleId,
+    inviteReportsTo,
+    setInviteReportsTo,
     customRoleUpdatingId,
+    reportsToUpdatingId,
+    lastInviteShare,
+    setLastInviteShare,
+    inviteLinkLoadingId,
+    copyInviteLink,
+    handleGetMemberInviteLink,
     addPipelineStage,
     removePipelineStage,
     movePipelineStage,
+    pipelineBusy,
+    renameTarget,
+    setRenameTarget,
+    renameDraft,
+    setRenameDraft,
+    mergeTarget,
+    setMergeTarget,
+    mergePartner,
+    setMergePartner,
+    mergeName,
+    setMergeName,
+    openRenameStage,
+    openMergeStage,
+    handleRenamePipelineStage,
+    handleMergePipelineStages,
     fetchOrgData,
     processLogoFile,
+    handleRemoveLogo,
     handleLogoDrop,
     handleSave,
     handleInvite,
     handleChangeMemberRole,
     handleChangeMemberCustomRole,
+    handleChangeMemberReportsTo,
     handleRemoveMember,
+    resetTarget,
+    setResetTarget,
+    resetting,
+    resetResult,
+    setResetResult,
+    inviteShare,
+    setInviteShare,
+    handleResetMemberPassword,
+    handleResendTemporaryPassword,
     applyDetectedTimezone,
   } = useOrganizationSettings();
 
@@ -161,6 +196,7 @@ export default function OrganizationSettingsPage() {
               setOrg={setOrg}
               logoInputRef={logoInputRef}
               processLogoFile={processLogoFile}
+              handleRemoveLogo={handleRemoveLogo}
               logoDragging={logoDragging}
               setLogoDragging={setLogoDragging}
               handleLogoDrop={handleLogoDrop}
@@ -180,6 +216,21 @@ export default function OrganizationSettingsPage() {
               newStage={newStage}
               setNewStage={setNewStage}
               navigate={navigate}
+              pipelineBusy={pipelineBusy}
+              renameTarget={renameTarget}
+              setRenameTarget={setRenameTarget}
+              renameDraft={renameDraft}
+              setRenameDraft={setRenameDraft}
+              mergeTarget={mergeTarget}
+              setMergeTarget={setMergeTarget}
+              mergePartner={mergePartner}
+              setMergePartner={setMergePartner}
+              mergeName={mergeName}
+              setMergeName={setMergeName}
+              openRenameStage={openRenameStage}
+              openMergeStage={openMergeStage}
+              handleRenamePipelineStage={handleRenamePipelineStage}
+              handleMergePipelineStages={handleMergePipelineStages}
             />
           )}
 
@@ -195,13 +246,23 @@ export default function OrganizationSettingsPage() {
               customRoles={customRoles}
               inviteCustomRoleId={inviteCustomRoleId}
               setInviteCustomRoleId={setInviteCustomRoleId}
+              inviteReportsTo={inviteReportsTo}
+              setInviteReportsTo={setInviteReportsTo}
               customRolesLoading={customRolesLoading}
               members={members}
               handleChangeMemberRole={handleChangeMemberRole}
               handleChangeMemberCustomRole={handleChangeMemberCustomRole}
+              handleChangeMemberReportsTo={handleChangeMemberReportsTo}
               roleUpdatingId={roleUpdatingId}
               customRoleUpdatingId={customRoleUpdatingId}
+              reportsToUpdatingId={reportsToUpdatingId}
               setRemoveTarget={setRemoveTarget}
+              lastInviteShare={lastInviteShare}
+              setLastInviteShare={setLastInviteShare}
+              copyInviteLink={copyInviteLink}
+              handleGetMemberInviteLink={handleGetMemberInviteLink}
+              inviteLinkLoadingId={inviteLinkLoadingId}
+              setResetTarget={setResetTarget}
             />
           )}
 
@@ -262,6 +323,42 @@ export default function OrganizationSettingsPage() {
         type="delete"
         isLoading={removing}
       />
+
+      <ConfirmationModal
+        isOpen={!!resetTarget}
+        onClose={() => setResetTarget(null)}
+        onConfirm={handleResetMemberPassword}
+        title="Reset password?"
+        message={`This will sign ${resetTarget?.name || resetTarget?.email || 'this person'} out of all devices and email them a temporary password. They will choose a new password when they next sign in.`}
+        confirmText="Reset & email"
+        type="warning"
+        isLoading={resetting}
+      />
+
+      {resetResult?.temporaryPassword && (
+        <CredentialShareModal
+          kind="password"
+          org={org}
+          name={resetResult.name}
+          email={resetResult.email}
+          userId={resetResult.userId}
+          secret={resetResult.temporaryPassword}
+          emailSent={resetResult.emailSent}
+          emailError={resetResult.emailError}
+          onResendEmail={handleResendTemporaryPassword}
+          onClose={() => setResetResult(null)}
+        />
+      )}
+      {inviteShare?.inviteUrl && (
+        <CredentialShareModal
+          kind="invite"
+          org={org}
+          name={inviteShare.name}
+          email={inviteShare.email}
+          secret={inviteShare.inviteUrl}
+          onClose={() => setInviteShare(null)}
+        />
+      )}
 
       <TourHelpFab onClick={() => setTourOpen(true)} label="Take a tour" title="Take a tour of Organization Settings" />
       <ProductTour

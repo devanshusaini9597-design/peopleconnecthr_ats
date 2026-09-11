@@ -37,10 +37,19 @@ const organizationSchema = new mongoose.Schema({
     currency: { type: String, default: 'INR' },
     dateFormat: { type: String, default: 'DD/MM/YYYY' }
   },
+  /**
+   * Org-level editable system role packs (enterprise).
+   * Keys: admin | hr_manager | hr_recruiter | sales | other | …
+   * When set, users with that system role (and no customRoleId) use this pack.
+   */
+  rolePermissionOverrides: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
   // Enterprise security / compliance controls (gated by planFeatures keys).
   securitySettings: {
     mfaEnforced: { type: Boolean, default: false },
-    sessionIdleMinutes: { type: Number, default: 480 },
+    sessionIdleMinutes: { type: Number, default: 10080 },
     maxConcurrentSessions: { type: Number, default: 10 },
     ipAllowlist: [{ type: String }],
     aiTone: { type: String, default: 'professional' }
@@ -81,7 +90,8 @@ const organizationSchema = new mongoose.Schema({
     // the customer must additionally CNAME this domain to the frontend's
     // hosting (Vercel/Render) and the frontend must handle the
     // hostname-based routing; that DNS/hosting step happens outside this repo.
-    careersCustomDomain: { type: String, default: '', trim: true, lowercase: true },
+    // IMPORTANT: leave unset (not "") when unused — unique index treats "" as a value.
+    careersCustomDomain: { type: String, trim: true, lowercase: true, default: undefined },
     // Careers-page brand color — always free to set, matching the reference
     // product's "colors/logo stay free, kit extras gated" stance.
     brandColor: { type: String, default: '#4F46E5' },
@@ -111,6 +121,16 @@ const organizationSchema = new mongoose.Schema({
         answer: { type: String, trim: true }
       }]
     },
+    // Freelance desk enterprise controls (SLA, capacity, quality gates)
+    // maxSubmissionsPerMandate: 0 = unlimited (no freelancer submission cap)
+    freelanceDesk: {
+      slaDays: { type: Number, default: 3, min: 1, max: 30 },
+      maxSubmissionsPerMandate: { type: Number, default: 0, min: 0, max: 500 },
+      requireResume: { type: Boolean, default: false },
+      requireNote: { type: Boolean, default: false },
+      requireNoticePeriod: { type: Boolean, default: false },
+      requireExpectedCtc: { type: Boolean, default: false },
+    },
     companyBrand: {
       tagline: { type: String, default: '' },
       benefits: [{ title: String, description: String }],
@@ -119,6 +139,8 @@ const organizationSchema = new mongoose.Schema({
         linkedin: { type: String, default: '' },
         twitter: { type: String, default: '' },
         facebook: { type: String, default: '' },
+        instagram: { type: String, default: '' },
+        youtube: { type: String, default: '' },
         github: { type: String, default: '' },
         website: { type: String, default: '' }
       },
@@ -175,7 +197,17 @@ organizationSchema.index({ ownerId: 1 });
 organizationSchema.index({ domain: 1 });
 organizationSchema.index({ plan: 1 });
 organizationSchema.index({ isActive: 1 });
-organizationSchema.index({ 'atsSettings.careersCustomDomain': 1 }, { unique: true, sparse: true });
+// Unique only when a real custom domain is set (empty string must not collide).
+organizationSchema.index(
+  { 'atsSettings.careersCustomDomain': 1 },
+  {
+    unique: true,
+    name: 'atsSettings.careersCustomDomain_partial',
+    partialFilterExpression: {
+      'atsSettings.careersCustomDomain': { $exists: true, $type: 'string', $gt: '' },
+    },
+  }
+);
 
 // Keep productPlans.ats mirrored to the legacy top-level `plan` field so the
 // two can never drift — `plan` stays the source of truth every existing
@@ -185,6 +217,10 @@ organizationSchema.pre('save', function (next) {
   if (this.isModified('plan') || (this.isNew && !this.productPlans?.ats)) {
     this.productPlans = this.productPlans || {};
     this.productPlans.ats = this.plan;
+  }
+  // Normalize blank custom domain so unique index never sees ""
+  if (this.atsSettings && !String(this.atsSettings.careersCustomDomain || '').trim()) {
+    this.atsSettings.careersCustomDomain = undefined;
   }
   next();
 });

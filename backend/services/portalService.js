@@ -7,6 +7,7 @@ const Application = require('../models/Application');
 const Organization = require('../models/Organization');
 const { JWT_SECRET } = require('../middleware/authMiddleware');
 const { sendEmailQueued } = require('./emailService');
+const { wrapBrandedEmailHtml, brandButtonHtml, loadOrgEmailBrand } = require('./emailBrandLayout');
 
 const PORTAL_TOKEN_PURPOSE = 'candidate-portal';
 
@@ -56,12 +57,21 @@ async function requestMagicLink({ email, orgSlug } = {}) {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const loginUrl = `${frontendUrl}/portal/callback?token=${token}`;
 
-    const html = `
-        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-          <h2>Your application status</h2>
-          <p>Click below to securely view the status of your application(s). This link expires in 30 minutes.</p>
-          <p><a href="${loginUrl}" style="display:inline-block;padding:10px 20px;background:#4F46E5;color:#fff;border-radius:6px;text-decoration:none;">View my applications</a></p>
-        </div>`;
+    const brand = await loadOrgEmailBrand(candidate.organizationId);
+    const html = wrapBrandedEmailHtml({
+      title: 'Your application status',
+      eyebrow: 'Secure link',
+      orgName: brand.name,
+      logoUrl: brand.logoUrl,
+      brandColor: brand.brandColor,
+      wordmark: brand.wordmark,
+      bodyHtml: `
+        <p style="margin:0 0 12px 0;color:#57534e;line-height:1.65;">Click below to securely view the status of your application(s).</p>
+        <div style="text-align:center;">
+          ${brandButtonHtml({ href: loginUrl, label: 'View my applications', brandColor: brand.brandColor })}
+        </div>
+        <p style="margin:24px 0 0 0;color:#a8a29e;font-size:12px;text-align:center;line-height:1.6;">This link expires in 30 minutes and can only be used once.</p>`,
+    });
     await sendEmailQueued(candidate.email, 'Your application status', html, `View your applications: ${loginUrl}`).catch((err) => {
       console.error('[portal] Failed to send magic link:', err.message);
     });

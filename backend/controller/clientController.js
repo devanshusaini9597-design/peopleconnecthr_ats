@@ -3,12 +3,10 @@ const Client = require('../models/Client');
 const { normalizeText, escapeRegex } = require('../utils/textNormalize');
 const { planHasFeature } = require('../config/planFeatures');
 const logger = require('../utils/logger');
+const { masterDataScope, isFreelancer, createdByFilter } = require('../utils/dataScope');
+const { findNamedCatalog, sendCatalog } = require('../utils/paginatedCatalog');
 
-// Tenant scope: prefer organizationId (multi-tenant safe); fall back to
-// createdBy only for legacy users somehow without an org.
-const scopeFilter = (req) => (
-  req.user.organizationId ? { organizationId: req.user.organizationId } : { createdBy: req.user.id }
-);
+const scopeFilter = (req) => masterDataScope(req);
 
 /**
  * Per-client sharing/permissions ('agency.clientSharing', Enterprise only).
@@ -66,14 +64,12 @@ const setClientSharing = async (req, res) => {
   }
 };
 
-// Get all clients across the organization (same as getClients now that both
-// are org-scoped; kept for backward-compatible route/response shape)
+// Get all clients across the organization.
+// Unpaged `/all` stays a plain array. `?page=&limit=` returns a page object.
 const getAllClients = async (req, res) => {
   try {
-    const clients = await Client.find({ ...scopeFilter(req), isActive: true }).sort({ name: 1 }).lean();
-    const userIdStr = req.user?.id?.toString();
-    const withOwner = clients.map(c => ({ ...c, isMine: c.createdBy?.toString() === userIdStr }));
-    res.json(withOwner);
+    const result = await findNamedCatalog(Client, { ...scopeFilter(req), isActive: true }, req);
+    return sendCatalog(res, result);
   } catch (error) {
     logger.error('Error fetching all clients:', error);
     res.status(500).json({ message: 'Server error' });
@@ -83,13 +79,14 @@ const getAllClients = async (req, res) => {
 // Create a new client
 const createClient = async (req, res) => {
   try {
-    const { name, description } = req.body;
+    const { name, description, requiresPan } = req.body;
 
     if (!name) {
       return res.status(400).json({ message: 'Client name is required' });
     }
 
     const scope = scopeFilter(req);
+    const panFlag = requiresPan === true || requiresPan === 'true' || requiresPan === 1 || requiresPan === '1';
 
     const existingActive = await Client.findOne({ ...scope, name: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') }, isActive: true });
     if (existingActive) {
@@ -98,8 +95,17 @@ const createClient = async (req, res) => {
 
     const existingInactive = await Client.findOne({ ...scope, name: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') }, isActive: false });
     if (existingInactive) {
+      if (isFreelancer(req.user)) {
+        const ownsInactive = String(existingInactive.createdBy || '') === String(req.user.id);
+        if (!ownsInactive) {
+          return res.status(403).json({
+            message: 'This client already exists in the company library and cannot be recreated from your desk.',
+          });
+        }
+      }
       existingInactive.isActive = true;
       existingInactive.description = description?.trim() ?? existingInactive.description;
+      if (requiresPan !== undefined) existingInactive.requiresPan = panFlag;
       existingInactive.updatedAt = new Date();
       await existingInactive.save();
       return res.status(201).json(existingInactive);
@@ -108,6 +114,7 @@ const createClient = async (req, res) => {
     const client = new Client({
       name: normalizeText(name),
       description: description?.trim(),
+      requiresPan: panFlag,
       createdBy: req.user.id,
       organizationId: req.user.organizationId
     });
@@ -123,17 +130,22 @@ const createClient = async (req, res) => {
   }
 };
 
-// Update a client (any authenticated user in the same organization can edit)
+// Update a client. Freelancers may only edit clients they created.
 const updateClient = async (req, res) => {
   try {
     if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
     const { id } = req.params;
-    const { name, description, isActive } = req.body;
+    const { name, description, isActive, requiresPan } = req.body;
     const scope = scopeFilter(req);
 
-    const client = await Client.findOne({ _id: id, ...scope });
+    const ownershipScope = isFreelancer(req.user) ? createdByFilter(req.user) : {};
+    const client = await Client.findOne({ _id: id, ...scope, ...ownershipScope });
     if (!client) {
-      return res.status(404).json({ message: 'Client not found' });
+      return res.status(isFreelancer(req.user) ? 403 : 404).json({
+        message: isFreelancer(req.user)
+          ? 'You can only edit clients you added. Company library values are read-only.'
+          : 'Client not found',
+      });
     }
 
     if (name) {
@@ -157,6 +169,10 @@ const updateClient = async (req, res) => {
       client.isActive = isActive;
     }
 
+    if (requiresPan !== undefined) {
+      client.requiresPan = requiresPan === true || requiresPan === 'true' || requiresPan === 1 || requiresPan === '1';
+    }
+
     client.updatedAt = new Date();
     await client.save();
 
@@ -170,15 +186,20 @@ const updateClient = async (req, res) => {
   }
 };
 
-// Delete a client (any authenticated user in the same organization can delete)
+// Delete a client. Freelancers may only delete clients they created.
 const deleteClient = async (req, res) => {
   try {
     if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
     const { id } = req.params;
 
-    const result = await Client.deleteOne({ _id: id, ...scopeFilter(req) });
+    const ownershipScope = isFreelancer(req.user) ? createdByFilter(req.user) : {};
+    const result = await Client.deleteOne({ _id: id, ...scopeFilter(req), ...ownershipScope });
     if (result.deletedCount === 0) {
-      return res.status(404).json({ message: 'Client not found' });
+      return res.status(isFreelancer(req.user) ? 403 : 404).json({
+        message: isFreelancer(req.user)
+          ? 'You can only remove clients you added. Company library values are read-only.'
+          : 'Client not found',
+      });
     }
 
     res.json({ message: 'Client deleted successfully' });

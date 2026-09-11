@@ -169,6 +169,8 @@ function mapWorkspaceUser(u, currentUser) {
     isYou: String(u._id) === String(currentUser.id) || email === currentEmail,
     isActive: !pending,
     lastLoginAt: u.lastLoginAt || null,
+    lastActiveAt: u.lastActiveAt || u.lastLoginAt || null,
+    profilePicture: u.profilePicture || '',
     customRoleName: u.customRoleId?.name || '',
     invitedByMe: false,
   };
@@ -183,7 +185,7 @@ async function listTeamMembers(user) {
   if (user.organizationId) {
     const User = mongoose.model('User');
     const orgUsers = await User.find({ organizationId: user.organizationId })
-      .select('name email role phone isActive lastLoginAt customRoleId')
+      .select('name email role phone isActive lastLoginAt lastActiveAt profilePicture customRoleId')
       .populate('customRoleId', 'name')
       .sort({ name: 1 })
       .lean();

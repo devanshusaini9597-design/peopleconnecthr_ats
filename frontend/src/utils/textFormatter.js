@@ -35,11 +35,7 @@ export const normalizeWhitespace = (text) => {
  */
 export const formatNameForInput = (value) => {
   if (value == null || typeof value !== 'string') return '';
-  const singleSpace = value.replace(/\s{2,}/g, ' ');
-  return singleSpace
-    .split(' ')
-    .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase() : ''))
-    .join(' ');
+  return value.replace(/\s{2,}/g, ' ').toUpperCase();
 };
 
 /**
@@ -64,8 +60,8 @@ export const formatByFieldName = (fieldName, value) => {
 
   const normalized = normalizeWhitespace(value);
 
-  // Fields that should be title-cased (capitalize first letter of each word, single space)
-  const titleCaseFields = [
+  // Fields that should be BLOCK LETTERS (ALL CAPS)
+  const blockLetterFields = [
     'name',
     'location',
     'companyName',
@@ -80,18 +76,31 @@ export const formatByFieldName = (fieldName, value) => {
     'templateName',
     'description',
     'remark',
-    'skills'
+    'skills',
+    'product',
+    'ctc',
+    'expectedCtc',
+    'noticePeriod',
+    'status',
+    'experience',
+    'fls',
+    'source',
+    'feedback',
   ];
 
   // Fields that are email or should remain lowercase
   const noFormatFields = ['email', 'body', 'subject', 'note'];
 
+  if (fieldName === 'pan') {
+    return normalized.replace(/\s+/g, '').toUpperCase();
+  }
+
   if (noFormatFields.includes(fieldName)) {
     return normalized.toLowerCase();
   }
 
-  if (titleCaseFields.includes(fieldName)) {
-    return capitalizeWords(normalized);
+  if (blockLetterFields.includes(fieldName)) {
+    return normalized.toUpperCase();
   }
 
   return normalized;

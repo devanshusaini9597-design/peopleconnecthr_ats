@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Mail, Plus, RefreshCw } from 'lucide-react';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
+import { useAuth } from '../context/AuthContext';
 import PageHeader from './ui/PageHeader';
 import ConfirmationModal from './ConfirmationModal';
 import ProductTour from './ui/ProductTour';
@@ -19,6 +21,7 @@ import EmailTemplatePreview from './emailTemplates/EmailTemplatePreview';
 
 const EmailTemplatesPage = () => {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(TPL_TOUR_KEY);
   const [templates, setTemplates] = useState([]);
@@ -44,17 +47,13 @@ const EmailTemplatesPage = () => {
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
     try {
+      // Ensure enterprise starter pack exists, then load catalog
+      await authenticatedFetch(`${BASE}/api/email-templates/seed-defaults`, { method: 'POST' });
       const res = await authenticatedFetch(`${BASE}/api/email-templates`);
       if (isUnauthorized(res)) { handleUnauthorized(); return; }
       const data = await res.json();
-      if (data.success) {
-        setTemplates(data.templates);
-      } else {
-        await authenticatedFetch(`${BASE}/api/email-templates/seed-defaults`, { method: 'POST' });
-        const res2 = await authenticatedFetch(`${BASE}/api/email-templates`);
-        const data2 = await res2.json();
-        if (data2.success) setTemplates(data2.templates);
-      }
+      if (data.success) setTemplates(data.templates || []);
+      else toast.error(data.message || 'Failed to load templates');
     } catch (_err) {
       console.error('Fetch templates error:', _err);
       toast.error('Failed to load templates');
@@ -65,18 +64,6 @@ const EmailTemplatesPage = () => {
   }, []);
 
   useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
-
-  useEffect(() => {
-    if (!loading && templates.length === 0) {
-      (async () => {
-        try {
-          await authenticatedFetch(`${BASE}/api/email-templates/seed-defaults`, { method: 'POST' });
-          fetchTemplates();
-        } catch { /* silent */ }
-      })();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, templates.length]);
 
   const filtered = templates.filter((t) => {
     if (filterCategory !== 'all' && t.category !== filterCategory) return false;
@@ -218,10 +205,20 @@ const EmailTemplatesPage = () => {
 
   const openPreview = (t) => {
     setPreviewTemplate(t);
+    const orgCompany =
+      localStorage.getItem('orgName') ||
+      (() => {
+        try {
+          return JSON.parse(localStorage.getItem('orgData') || '{}')?.name || '';
+        } catch {
+          return '';
+        }
+      })();
     const vars = {};
     (t.variables || []).forEach((v) => {
       const opt = VARIABLE_OPTIONS.find((o) => o.key === v);
-      vars[v] = opt?.example || '';
+      if (v === 'company' && orgCompany) vars[v] = orgCompany;
+      else vars[v] = opt?.example || '';
     });
     setPreviewVars(vars);
     setShowPreview(true);
@@ -238,6 +235,10 @@ const EmailTemplatesPage = () => {
   const detectedVars = VARIABLE_OPTIONS.filter(
     (v) => form.body.includes(`{{${v.key}}}`) || form.subject.includes(`{{${v.key}}}`)
   );
+
+  if (user?.role === 'freelancer') {
+    return <Navigate to="/settings" replace />;
+  }
 
   if (loading) {
     return (
@@ -273,7 +274,7 @@ const EmailTemplatesPage = () => {
       <PageHeader
         icon={Mail}
         title={t('pages.emailTemplates.title')}
-        subtitle="Reusable emails for hiring workflows — personalize with one click."
+        subtitle="Your organization’s private template library — starter pack plus your custom emails."
         gradientTitle
       >
         <button type="button" onClick={fetchTemplates} className="btn-secondary w-full sm:w-auto">

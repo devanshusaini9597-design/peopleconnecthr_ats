@@ -7,6 +7,93 @@ const {
     validateAndFixName,
     is100PercentCorrect,
 } = require('./candidateValidation');
+const {
+  candidateListScope,
+  isFreelancer,
+  canViewOrgAnalytics,
+  requestedAnalyticsUserId,
+} = require('../../utils/dataScope');
+const { applyBlockLettersToObject } = require('../../utils/textNormalize');
+const { healCandidateBlockLettersSafe } = require('../../services/candidateCasingHeal');
+const { buildDateFilter } = require('../../utils/analyticsTime');
+const {
+  withActivityDateRange,
+  candidateListSortSpec,
+  backfillAppliedAtForOrg,
+} = require('../../utils/candidateActivityDate');
+
+/** Columns needed by ATS grid / client filters — exclude resumeText, embeddings, histories. */
+const CANDIDATE_LIST_SELECT = [
+  'srNo', 'date', 'name', 'email', 'contact', 'phone', 'position', 'location', 'state',
+  'companyName', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'skills', 'product',
+  'pan', 'status', 'client', 'spoc', 'source', 'feedback', 'remark', 'callBackDate', 'fls',
+  'resume', 'tags', 'customFields', 'createdBy', 'sharedWith', 'organizationId',
+  'createdAt', 'updatedAt', 'appliedAt', 'hiredDate', 'legalHold', 'personId', 'talentPoolIds',
+].join(' ');
+
+/** At most one orphan organizationId heal per org / 30 minutes (keeps list hot path fast). */
+const orphanHealLastByOrg = new Map();
+const ORPHAN_HEAL_TTL_MS = 30 * 60 * 1000;
+
+function escapeRegex(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function ciRegex(value) {
+  return { $regex: escapeRegex(value), $options: 'i' };
+}
+
+function buildSearchClause(search, searchScope) {
+  const q = String(search || '').trim();
+  if (!q) return null;
+  const rx = ciRegex(q);
+  const scope = String(searchScope || 'all').trim().toLowerCase();
+  if (scope === 'name') return { name: rx };
+  if (scope === 'email') return { email: rx };
+  if (scope === 'position') return { position: rx };
+  if (scope === 'skills') return { skills: rx };
+  if (scope === 'product') return { product: rx };
+  if (scope === 'spoc') return { spoc: rx };
+  if (scope === 'company') return { companyName: rx };
+  if (scope === 'client') return { client: rx };
+  if (scope === 'location') {
+    return { $or: [{ location: rx }, { state: rx }] };
+  }
+  return {
+    $or: [
+      { name: rx }, { email: rx }, { position: rx }, { companyName: rx },
+      { contact: rx }, { location: rx }, { state: rx }, { spoc: rx },
+      { skills: rx }, { product: rx }, { client: rx }, { source: rx },
+    ],
+  };
+}
+
+function canonStatusKey(value) {
+  const key = String(value || '').trim().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').toUpperCase();
+  if (!key) return '';
+  if (key === 'PENDING REVIEW') return 'APPLIED';
+  return key;
+}
+
+function buildStatusClause(status) {
+  const key = canonStatusKey(status);
+  if (!key) return null;
+  // Match ALL-CAPS storage and legacy title-case variants
+  const title = key
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return {
+    $or: [
+      { status: key },
+      { status: title },
+      { status: ciRegex(`^${escapeRegex(key)}$`) },
+    ],
+  };
+}
+
+function candidateListQuery(filter, sortSpec = { appliedAt: -1, createdAt: -1, _id: -1 }) {
+  return Candidate.find(filter).select(CANDIDATE_LIST_SELECT).sort(sortSpec).lean();
+}
 
 async function listCandidates(req, res) {
     try {
@@ -17,9 +104,38 @@ async function listCandidates(req, res) {
         const shouldPaginate = limit > 0;
         const skip = shouldPaginate ? (page - 1) * limit : 0;
         const search = (req.query.search || '').trim();
+        const searchScope = (req.query.searchScope || 'all').trim();
+        const status = (req.query.status || '').trim();
         const position = (req.query.position || '').trim();
         const location = (req.query.location || '').trim();
         const companyName = (req.query.companyName || '').trim();
+        const skills = (req.query.skills || '').trim();
+        const product = (req.query.product || '').trim();
+        const spoc = (req.query.spoc || '').trim();
+        const client = (req.query.client || '').trim();
+        const dateNeedle = (req.query.date || '').trim();
+        const activityPeriod = (req.query.dateRange || req.query.period || '').trim();
+        const activityFrom = (req.query.customFrom || req.query.from || '').trim();
+        const activityTo = (req.query.customTo || req.query.to || '').trim();
+        const sortField = (req.query.sortField || 'date').trim();
+        const sortOrder = (req.query.sortOrder || 'desc').trim();
+        const freelanceOnly = ['1', 'true', 'yes'].includes(String(req.query.freelanceOnly || '').toLowerCase());
+        const idsOnly = ['1', 'true', 'yes'].includes(String(req.query.idsOnly || '').toLowerCase());
+        // Explicit candidate id list (e.g. freelancer mandate drill-down)
+        const rawIdsParam = String(req.query.ids || '').trim();
+        const requestedIds = rawIdsParam
+          ? [...new Set(
+              rawIdsParam
+                .split(/[,\s]+/)
+                .map((id) => String(id || '').trim())
+                .filter((id) => id.length === 24 && /^[a-fA-F0-9]+$/.test(id))
+            )].slice(0, 500)
+          : [];
+        const requestedObjectIds = requestedIds
+          .map((id) => {
+            try { return new mongoose.Types.ObjectId(id); } catch { return null; }
+          })
+          .filter(Boolean);
 
         // Get raw string values for text field searches BEFORE fetching candidates
         const ctcMinStr = (req.query.ctcMin || '').trim();
@@ -46,9 +162,6 @@ async function listCandidates(req, res) {
             hasNumericCTC || hasNumericExpectedCTC ||
             hasTextCTC || hasTextExpectedCTC;
 
-        // Detect if ANY filter is active
-        const hasAnyFilter = search || position || location || companyName || hasRangeFilter;
-
         // Build MongoDB filter - scope by the logged-in user (own + shared with me)
         const viewMode = (req.query.view || '').trim();
         const userIdRaw = req.user && req.user.id;
@@ -65,110 +178,296 @@ async function listCandidates(req, res) {
             logger.warn('⚠️ Failed to create ObjectId:', objErr.message);
         }
 
-        // Own + shared filter: match both ObjectId and string so we never miss (DB can store either)
+        // Heal Excel imports missing organizationId — throttled so large ATS loads stay fast.
+        // Freelancer desk lists are already scoped; skip the heavy heal path for them.
+        if (
+            !isFreelancer(req.user)
+            && req.user.organizationId
+            && (userIdObj || userIdStr)
+        ) {
+            const orgKey = String(req.user.organizationId);
+            const last = orphanHealLastByOrg.get(orgKey) || 0;
+            if (Date.now() - last >= ORPHAN_HEAL_TTL_MS) {
+                orphanHealLastByOrg.set(orgKey, Date.now());
+                try {
+                    const orgId = req.user.organizationId;
+                    const orphans = await Candidate.find({
+                        createdBy: userIdObj ? { $in: [userIdObj, userIdStr] } : userIdStr,
+                        $or: [
+                            { organizationId: { $exists: false } },
+                            { organizationId: null },
+                        ],
+                    }).select('_id email').limit(500).lean();
+
+                    if (orphans.length) {
+                        const emails = [...new Set(orphans.map((o) => String(o.email || '').toLowerCase()).filter(Boolean))];
+                        const twins = emails.length
+                            ? await Candidate.find({ organizationId: orgId, email: { $in: emails } }).select('email').lean()
+                            : [];
+                        const twinEmails = new Set(twins.map((t) => String(t.email || '').toLowerCase()));
+
+                        const deleteIds = orphans
+                            .filter((o) => twinEmails.has(String(o.email || '').toLowerCase()))
+                            .map((o) => o._id);
+                        const stampIds = orphans
+                            .filter((o) => !twinEmails.has(String(o.email || '').toLowerCase()))
+                            .map((o) => o._id);
+
+                        if (deleteIds.length) {
+                            await Candidate.deleteMany({ _id: { $in: deleteIds } });
+                        }
+                        if (stampIds.length) {
+                            await Candidate.updateMany(
+                                { _id: { $in: stampIds } },
+                                { $set: { organizationId: orgId } }
+                            );
+                        }
+                    }
+                } catch (healErr) {
+                    logger.warn({ err: healErr }, 'organizationId heal skipped');
+                }
+            }
+        }
+
+        // Own + shared / SPOC desk / org-wide — same rules as dashboard analytics
         let filter;
         try {
-            const createdByClause = userIdObj
-                ? { createdBy: { $in: [userIdObj, userIdStr] } }
-                : { createdBy: userIdStr };
-            const sharedClause = userIdObj
-                ? { 'sharedWith.userId': { $in: [userIdObj, userIdStr] } }
-                : { 'sharedWith.userId': userIdStr };
-
-            if (viewMode === 'all') {
-                // All users in the SAME organization can see all candidates in
-                // that org — but never across organizations. Without this
-                // scope, view=all previously returned every candidate in the
-                // entire database regardless of tenant.
-                filter = req.user.organizationId ? { organizationId: req.user.organizationId } : createdByClause;
-                Candidate.countDocuments(filter).then(n => logger.info('📊 Backend Query - view=all, org-scoped total:', n)).catch(() => {});
-            } else if (viewMode === 'shared') {
-                filter = sharedClause;
-            } else {
-                // 'mine' or default: own + shared with me
-                filter = { $or: [createdByClause, sharedClause] };
+            filter = await candidateListScope(req, viewMode);
+            if (canViewOrgAnalytics(req.user) && requestedAnalyticsUserId(req)) {
+                logger.info('📊 Backend Query - manager viewing employee SPOC desk', {
+                    userId: requestedAnalyticsUserId(req),
+                });
             }
         } catch (filterErr) {
+            const status = filterErr.statusCode || 500;
+            if (filterErr.statusCode) {
+                return res.status(status).json({ success: false, message: filterErr.message });
+            }
             logger.error('⚠️ Error building filter:', filterErr.message);
             filter = {};
         }
 
-        let usedStringFallback = false;
-        let usedOrphanFallback = false;
-        let orphanCountForTotal = 0;
+        // Push text/status/search filters into Mongo so list stays O(page), not O(desk).
+        const andParts = [filter];
+        const searchClause = buildSearchClause(search, searchScope);
+        if (searchClause) andParts.push(searchClause);
+        const statusClause = buildStatusClause(status);
+        if (statusClause) andParts.push(statusClause);
+        if (position) andParts.push({ position: ciRegex(position) });
+        if (location) {
+            andParts.push({ $or: [{ location: ciRegex(location) }, { state: ciRegex(location) }] });
+        }
+        if (companyName) andParts.push({ companyName: ciRegex(companyName) });
+        if (skills) andParts.push({ skills: ciRegex(skills) });
+        if (product) andParts.push({ product: ciRegex(product) });
+        if (spoc) andParts.push({ spoc: ciRegex(spoc) });
+        if (client) andParts.push({ client: ciRegex(client) });
+        if (dateNeedle) andParts.push({ date: ciRegex(dateNeedle) });
+        // Analytics drill-down: same activity-date window as dashboard KPIs
+        if (activityPeriod && activityPeriod !== 'all') {
+          const activityFilter = buildDateFilter(activityPeriod, activityFrom, activityTo);
+          if (activityFilter) {
+            andParts[0] = withActivityDateRange(andParts[0], activityFilter);
+          }
+        }
+        if (freelanceOnly) andParts.push({ source: ciRegex('freelance') });
+        if (requestedObjectIds.length) {
+          andParts.push({ _id: { $in: requestedObjectIds } });
+        }
+        if (hasTextCTC) andParts.push({ ctc: ciRegex(ctcMinStr) });
+        if (hasTextExpectedCTC) andParts.push({ expectedCtc: ciRegex(expectedCtcMinStr) });
 
-        // Fetch candidates with error handling
-        let candidates = [];
-        try {
-            let candidatesQuery = Candidate.find(filter).sort({ createdAt: -1 }).lean();
-            if (shouldPaginate && !hasAnyFilter) {
-                candidatesQuery = candidatesQuery.limit(limit).skip(skip);
+        const mongoFilter = andParts.length === 1 ? andParts[0] : { $and: andParts };
+        const sortSpec = candidateListSortSpec(sortField, sortOrder);
+        // Heal entry dates BEFORE sorting so DATE column order is correct on this response
+        // (not on a later refresh after a background backfill).
+        const sortingByEntryDate = !String(sortField || 'date').trim()
+          || String(sortField).toLowerCase() === 'date';
+        // Freelancer desks are small and private — skip org-wide appliedAt backfill.
+        if (sortingByEntryDate && req.user?.organizationId && !isFreelancer(req.user)) {
+          try {
+            await backfillAppliedAtForOrg(req.user.organizationId, Candidate);
+          } catch (bfErr) {
+            logger.warn('⚠️ appliedAt backfill before list sort failed:', bfErr.message);
+          }
+        }
+        const safeLimit = shouldPaginate ? Math.min(Math.max(limit, 1), 200) : 0;
+        const effectiveSkip = shouldPaginate ? (page - 1) * safeLimit : 0;
+        const RANGE_SCAN_CAP = 50000;
+        const IDS_CAP = 50000;
+
+        const parseNumber = (value) => {
+            if (!value) return null;
+            const numbers = String(value).match(/\d+(?:\.\d+)?/g);
+            if (!numbers || numbers.length === 0) return null;
+            return Math.max(...numbers.map((n) => parseFloat(n)));
+        };
+        const parseRangeMinMax = (value) => {
+            if (!value) return { min: null, max: null };
+            const numbers = String(value).toLowerCase().match(/\d+(?:\.\d+)?/g);
+            if (!numbers || numbers.length === 0) return { min: null, max: null };
+            const nums = numbers.map((n) => parseFloat(n));
+            return { min: Math.min(...nums), max: Math.max(...nums) };
+        };
+        const matchesNumericRanges = (c) => {
+            if (!hasRangeFilter) return true;
+            const expVal = parseNumber(c.experience);
+            const ctcRange = parseRangeMinMax(c.ctc);
+            const expectedCRange = parseRangeMinMax(c.expectedCtc);
+            if (!isNaN(expMin) && (expVal === null || expVal < expMin)) return false;
+            if (!isNaN(expMax) && (expVal === null || expVal > expMax)) return false;
+            if (hasNumericCTC) {
+                if (ctcRange.max === null) return false;
+                if (!isNaN(ctcMinNum) && ctcRange.max < ctcMinNum) return false;
+                if (!isNaN(ctcMaxNum) && ctcRange.min > ctcMaxNum) return false;
             }
-            candidates = await candidatesQuery;
-            logger.info(`📊 Backend Query - filter matched ${candidates.length} records`);
+            if (hasNumericExpectedCTC) {
+                if (expectedCRange.max === null) return false;
+                if (!isNaN(expectedCtcMinNum) && expectedCRange.max < expectedCtcMinNum) return false;
+                if (!isNaN(expectedCtcMaxNum) && expectedCRange.min > expectedCtcMaxNum) return false;
+            }
+            return true;
+        };
+
+        let candidates = [];
+        let totalCount = 0;
+        let usedStringFallback = false;
+
+        const runListQuery = async (queryFilter) => {
+            if (idsOnly) {
+                if (hasRangeFilter) {
+                    const scanned = await Candidate.find(queryFilter)
+                        .select('_id experience ctc expectedCtc')
+                        .sort(sortSpec)
+                        .limit(RANGE_SCAN_CAP)
+                        .lean();
+                    const matched = scanned.filter(matchesNumericRanges);
+                    const ids = matched.map((r) => String(r._id)).slice(0, IDS_CAP);
+                    return {
+                        idsOnly: true,
+                        ids,
+                        totalCount: matched.length,
+                        capped: matched.length > ids.length,
+                    };
+                }
+                const [total, rows] = await Promise.all([
+                    Candidate.countDocuments(queryFilter),
+                    Candidate.find(queryFilter).select('_id').sort(sortSpec).limit(IDS_CAP).lean(),
+                ]);
+                const ids = rows.map((r) => String(r._id));
+                return {
+                    idsOnly: true,
+                    ids,
+                    totalCount: total,
+                    capped: total > ids.length,
+                };
+            }
+
+            if (hasRangeFilter) {
+                const scanned = await candidateListQuery(queryFilter, sortSpec).limit(RANGE_SCAN_CAP);
+                const matched = scanned.filter(matchesNumericRanges);
+                const count = matched.length;
+                const pageRows = shouldPaginate ? matched.slice(effectiveSkip, effectiveSkip + safeLimit) : matched;
+                return { candidates: pageRows, totalCount: count };
+            }
+
+            const countPromise = Candidate.countDocuments(queryFilter);
+            let listPromise;
+            if (shouldPaginate) {
+                listPromise = candidateListQuery(queryFilter, sortSpec).skip(effectiveSkip).limit(safeLimit);
+            } else {
+                listPromise = candidateListQuery(queryFilter, sortSpec).limit(RANGE_SCAN_CAP);
+            }
+            const [count, rows] = await Promise.all([countPromise, listPromise]);
+            return { candidates: rows, totalCount: count };
+        };
+
+        try {
+            const result = await runListQuery(mongoFilter);
+            if (result.idsOnly) {
+                return res.status(200).json({
+                    success: true,
+                    ids: result.ids,
+                    pagination: {
+                        totalCount: result.totalCount,
+                        selectedCount: result.ids.length,
+                        capped: Boolean(result.capped),
+                    },
+                });
+            }
+            candidates = result.candidates;
+            totalCount = result.totalCount;
+            logger.info(`📊 Backend Query - mongo matched page=${candidates.length} total=${totalCount}`);
         } catch (queryErr) {
             logger.error('❌ Database query error:', queryErr.message);
-            // Fallback 1: only use user filter when NOT view=all (for view=all we must not limit to current user)
-            if (viewMode !== 'all') {
+            if (
+                isFreelancer(req.user) &&
+                viewMode !== 'all' &&
+                !requestedAnalyticsUserId(req)
+            ) {
                 try {
-                    const stringFilter = { createdBy: userIdStr };
-                    let stringQuery = Candidate.find(stringFilter).sort({ createdAt: -1 }).lean();
-                    if (shouldPaginate && !hasAnyFilter) {
-                        stringQuery = stringQuery.limit(limit).skip(skip);
+                    const hideClause = {
+                        hiddenFromFreelancerIds: { $nin: [userIdObj, userIdStr].filter(Boolean) },
+                    };
+                    const stringFilter = andParts.length <= 1
+                        ? { $and: [{ createdBy: userIdStr }, hideClause] }
+                        : { $and: [{ createdBy: userIdStr }, hideClause, ...andParts.slice(1)] };
+                    const result = await runListQuery(stringFilter);
+                    if (result.idsOnly) {
+                        return res.status(200).json({
+                            success: true,
+                            ids: result.ids,
+                            pagination: {
+                                totalCount: result.totalCount,
+                                selectedCount: result.ids.length,
+                                capped: Boolean(result.capped),
+                            },
+                        });
                     }
-                    candidates = await stringQuery;
-                    if (candidates.length > 0) usedStringFallback = true;
-                    logger.info(`📊 Backend Query - fallback matched ${candidates.length} records by string`);
+                    candidates = result.candidates;
+                    totalCount = result.totalCount;
+                    usedStringFallback = candidates.length > 0;
                 } catch (fallbackErr) {
                     logger.error('❌ Fallback query also failed:', fallbackErr.message);
                     candidates = [];
+                    totalCount = 0;
                 }
             } else {
                 candidates = [];
+                totalCount = 0;
             }
         }
 
-        // If main query returned 0 (no throw), try createdBy as string — only when NOT view=all
-        if (candidates.length === 0 && viewMode !== 'shared' && viewMode !== 'all' && !usedStringFallback) {
+        // Freelancer createdBy-string fallback when scoped query returns empty
+        if (
+            !idsOnly &&
+            candidates.length === 0 &&
+            totalCount === 0 &&
+            viewMode !== 'shared' &&
+            viewMode !== 'all' &&
+            isFreelancer(req.user) &&
+            !usedStringFallback
+        ) {
             try {
-                const stringFilter = { createdBy: userIdStr };
-                let stringQuery = Candidate.find(stringFilter).sort({ createdAt: -1 }).lean();
-                if (shouldPaginate && !hasAnyFilter) {
-                    stringQuery = stringQuery.limit(limit).skip(skip);
-                }
-                candidates = await stringQuery;
-                if (candidates.length > 0) usedStringFallback = true;
-                if (candidates.length > 0) logger.info(`📊 Backend Query - matched ${candidates.length} by createdBy string`);
+                const hideClause = {
+                    hiddenFromFreelancerIds: { $nin: [userIdObj, userIdStr].filter(Boolean) },
+                };
+                const stringFilter = andParts.length <= 1
+                    ? { $and: [{ createdBy: userIdStr }, hideClause] }
+                    : { $and: [{ createdBy: userIdStr }, hideClause, ...andParts.slice(1)] };
+                const result = await runListQuery(stringFilter);
+                candidates = result.candidates;
+                totalCount = result.totalCount;
             } catch (e) {
                 logger.warn('⚠️ String fallback failed:', e.message);
             }
         }
 
-        // Fallback 2: if still 0, include orphan/legacy records (no createdBy) — for view=all we already did find({})
-        if (candidates.length === 0 && viewMode !== 'shared' && viewMode !== 'all') {
-            try {
-                const orphanFilter = { $or: [{ createdBy: { $exists: false } }, { createdBy: null }] };
-                orphanCountForTotal = await Candidate.countDocuments(orphanFilter);
-                if (orphanCountForTotal > 0) {
-                    usedOrphanFallback = true;
-                    let orphanQuery = Candidate.find(orphanFilter).sort({ createdAt: -1 }).lean();
-                    if (shouldPaginate && !hasAnyFilter) {
-                        orphanQuery = orphanQuery.limit(limit).skip(skip);
-                    }
-                    candidates = await orphanQuery;
-                    logger.info(`📊 Backend Query - using ${candidates.length} orphan/legacy candidates`);
-                }
-            } catch (orphanErr) {
-                logger.warn('⚠️ Orphan fallback failed:', orphanErr.message);
-            }
-        }
-
         // Mark shared candidates: only those explicitly shared with current user (sharedWith contains userId).
-        // This matches import-shared behavior so "Import all to my candidates" only sends importable IDs.
         let ownerIds = new Set();
         try {
-            candidates.forEach(c => {
-                const sharedWithMe = Array.isArray(c.sharedWith) && c.sharedWith.some(sw => String(sw && sw.userId) === userIdStr);
+            candidates.forEach((c) => {
+                const sharedWithMe = Array.isArray(c.sharedWith) && c.sharedWith.some((sw) => String(sw && sw.userId) === userIdStr);
                 c._isShared = !!sharedWithMe;
                 if (sharedWithMe && c.createdBy != null && String(c.createdBy) !== '') ownerIds.add(String(c.createdBy));
             });
@@ -176,15 +475,13 @@ async function listCandidates(req, res) {
             logger.warn('⚠️ Error marking shared candidates:', markErr.message);
         }
 
-        // Populate owner names for shared candidates (non-blocking: list still returns if this fails)
         if (ownerIds.size > 0) {
             try {
                 const User = require('mongoose').model('User');
-                const ownerIdList = [...ownerIds];
-                const owners = await User.find({ _id: { $in: ownerIdList } }).select('name email').lean();
+                const owners = await User.find({ _id: { $in: [...ownerIds] } }).select('name email').lean();
                 const ownerMap = {};
-                owners.forEach(o => { ownerMap[String(o._id)] = o.name || o.email; });
-                candidates.forEach(c => {
+                owners.forEach((o) => { ownerMap[String(o._id)] = o.name || o.email; });
+                candidates.forEach((c) => {
                     if (c._isShared) c._sharedByOwner = ownerMap[String(c.createdBy)] || 'Unknown';
                 });
             } catch (ownerErr) {
@@ -192,135 +489,51 @@ async function listCandidates(req, res) {
             }
         }
 
-        logger.info(`📊 Backend Query - hasAnyFilter: ${hasAnyFilter}, returned: ${candidates.length} records`);
-
-        const parseNumber = (value) => {
-            if (!value) return null;
-            const numbers = String(value).match(/\d+(?:\.\d+)?/g);
-            if (!numbers || numbers.length === 0) return null;
-            return Math.max(...numbers.map(n => parseFloat(n)));
-        };
-
-        // Helper function to extract min and max from a range string like "3L-7L" or "0-50k"
-        const parseRangeMinMax = (value) => {
-            if (!value) return { min: null, max: null };
-
-            const str = String(value).toLowerCase();
-            // Extract all numbers
-            const numbers = str.match(/\d+(?:\.\d+)?/g);
-            if (!numbers || numbers.length === 0) return { min: null, max: null };
-
-            const nums = numbers.map(n => parseFloat(n));
-            return {
-                min: Math.min(...nums),
-                max: Math.max(...nums)
-            };
-        };
-
-        const finalCandidates = hasAnyFilter
-            ? candidates.filter((c) => {
-                // General search - check all searchable fields
-                if (search) {
-                    const searchLower = search.toLowerCase();
-                    const matchesSearch =
-                        String(c.name || '').toLowerCase().includes(searchLower) ||
-                        String(c.email || '').toLowerCase().includes(searchLower) ||
-                        String(c.position || '').toLowerCase().includes(searchLower) ||
-                        String(c.companyName || '').toLowerCase().includes(searchLower) ||
-                        String(c.contact || '').toLowerCase().includes(searchLower) ||
-                        String(c.location || '').toLowerCase().includes(searchLower) ||
-                        String(c.spoc || '').toLowerCase().includes(searchLower);
-                    if (!matchesSearch) return false;
-                }
-
-                // Case-insensitive text filters for position, location, company
-                if (position && !String(c.position || '').toLowerCase().includes(position.toLowerCase())) {
-                    return false;
-                }
-                if (location && !String(c.location || '').toLowerCase().includes(location.toLowerCase())) {
-                    return false;
-                }
-                if (companyName && !String(c.companyName || '').toLowerCase().includes(companyName.toLowerCase())) {
-                    return false;
-                }
-
-                // Range-based filters
-                const expVal = parseNumber(c.experience);
-                const ctcRange = parseRangeMinMax(c.ctc);
-                const expectedCRange = parseRangeMinMax(c.expectedCtc);
-
-                // Experience validation (numeric range)
-                if (!isNaN(expMin) && (expVal === null || expVal < expMin)) return false;
-                if (!isNaN(expMax) && (expVal === null || expVal > expMax)) return false;
-
-                // CTC validation - numeric range query
-                if (hasNumericCTC) {
-                    // If candidate has no CTC data, exclude them
-                    if (ctcRange.max === null) return false;
-
-                    // Check if ranges overlap or candidate's CTC is within search range
-                    if (!isNaN(ctcMinNum) && ctcRange.max < ctcMinNum) return false;
-                    if (!isNaN(ctcMaxNum) && ctcRange.min > ctcMaxNum) return false;
-                }
-
-                // CTC validation - text field search (like "NA", "Fehe", etc)
-                if (hasTextCTC) {
-                    const ctcStr = String(c.ctc || '').toLowerCase();
-                    const searchStr = ctcMinStr.toLowerCase();
-                    if (!ctcStr.includes(searchStr)) return false;
-                }
-
-                // Expected CTC validation - numeric range query
-                if (hasNumericExpectedCTC) {
-                    // If candidate has no Expected CTC data, exclude them
-                    if (expectedCRange.max === null) return false;
-
-                    // Check if ranges overlap or candidate's Expected CTC is within search range
-                    if (!isNaN(expectedCtcMinNum) && expectedCRange.max < expectedCtcMinNum) return false;
-                    if (!isNaN(expectedCtcMaxNum) && expectedCRange.min > expectedCtcMaxNum) return false;
-                }
-
-                // Expected CTC validation - text field search
-                if (hasTextExpectedCTC) {
-                    const expectedCtcStr = String(c.expectedCtc || '').toLowerCase();
-                    const searchStr = expectedCtcMinStr.toLowerCase();
-                    if (!expectedCtcStr.includes(searchStr)) return false;
-                }
-
-                return true;
-            })
-            : candidates;
-
-        // Get total count for pagination metadata
-        const totalCount = hasAnyFilter
-            ? finalCandidates.length
-            : usedStringFallback
-                ? await Candidate.countDocuments({ createdBy: userIdStr })
-                : usedOrphanFallback
-                    ? orphanCountForTotal
-                    : await Candidate.countDocuments(filter);
-        const totalPages = shouldPaginate ? Math.ceil(totalCount / limit) : 1;
-
-        // Apply pagination to final candidates if ANY filter was used
-        let paginatedCandidates = finalCandidates;
-        if (hasAnyFilter && shouldPaginate) {
-            paginatedCandidates = finalCandidates.slice(skip, skip + limit);
-        } else if (!hasAnyFilter && !shouldPaginate) {
-            // If limit=all and no filter, finalCandidates already has all
-            paginatedCandidates = finalCandidates;
+        try {
+            const creatorIds = [...new Set(candidates.map((c) => String(c.createdBy || '')).filter((id) => id && id.length === 24))];
+            if (creatorIds.length > 0) {
+                const User = require('mongoose').model('User');
+                const creators = await User.find({ _id: { $in: creatorIds } }).select('name role').lean();
+                const creatorMap = {};
+                creators.forEach((u) => { creatorMap[String(u._id)] = { name: u.name, role: u.role }; });
+                candidates.forEach((c) => {
+                    const meta = creatorMap[String(c.createdBy)];
+                    if (meta) {
+                        c._createdByRole = meta.role;
+                        c._createdByName = meta.name || '';
+                    }
+                });
+            }
+        } catch (creatorErr) {
+            logger.warn('⚠️ createdBy role lookup failed:', creatorErr.message);
         }
+
+        const pageSize = shouldPaginate ? safeLimit : totalCount;
+        const totalPages = shouldPaginate && pageSize > 0 ? Math.max(1, Math.ceil(totalCount / pageSize)) : 1;
 
         res.status(200).json({
             success: true,
-            data: paginatedCandidates,
+            data: candidates.map((c) => {
+                const row = typeof c.toObject === 'function' ? c.toObject() : { ...c };
+                applyBlockLettersToObject(row);
+                return row;
+            }),
             pagination: {
                 currentPage: shouldPaginate ? page : 1,
-                totalPages: totalPages,
-                totalCount: totalCount,
-                pageSize: shouldPaginate ? limit : totalCount,
-                hasMore: shouldPaginate ? page < totalPages : false
-            }
+                totalPages,
+                totalCount,
+                pageSize,
+                hasMore: shouldPaginate ? page < totalPages : false,
+            },
         });
+
+        if (req.user?.organizationId) {
+            setImmediate(() => {
+                healCandidateBlockLettersSafe(req.user.organizationId);
+                // Keep appliedAt in sync with Excel/manual `date` so DATE-column sort stays correct
+                backfillAppliedAtForOrg(req.user.organizationId, Candidate);
+            });
+        }
     } catch (err) {
         logger.error('❌ Error fetching candidates:', err.message, err.stack);
         res.status(500).json({

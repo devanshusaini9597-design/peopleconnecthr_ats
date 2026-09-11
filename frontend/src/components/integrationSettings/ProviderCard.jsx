@@ -1,18 +1,24 @@
 import React from 'react';
 import { Settings, Lock } from 'lucide-react';
 import { planHasFeature } from '../../config/planFeatures';
+import { WhatsAppIcon } from '../icons/BrandIcons';
 
 export default function ProviderCard({ provider, config, organization, onConfigure }) {
   const Icon = provider.icon;
   const connected = !!(config && config.isActive !== false && config.hasCredentials);
   const validated = !!config?.isValidated;
   const entitled = !provider.feature || planHasFeature(organization?.plan, provider.feature);
+  const isWhatsApp = provider.id === 'meta' && provider.category === 'whatsapp';
 
   return (
     <article
       className="card-ats-bordered overflow-hidden flex flex-col relative group h-full"
     >
-      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 opacity-70" />
+      <div className={`absolute inset-x-0 top-0 h-1 ${
+        isWhatsApp
+          ? 'bg-gradient-to-r from-[#128C7E] via-[#25D366] to-[#075E54]'
+          : 'bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 opacity-70'
+      }`} />
       <div className="p-5 flex flex-col flex-1">
         <div className="flex justify-between items-start gap-3 mb-3">
           <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${provider.bg || 'bg-stone-100'} ${provider.color || 'text-stone-500'} ring-1 ring-black/5`}>
@@ -41,12 +47,20 @@ export default function ProviderCard({ provider, config, organization, onConfigu
           type="button"
           onClick={() => entitled && onConfigure(provider)}
           disabled={!entitled}
-          className="mt-4 w-full btn-secondary !justify-center disabled:opacity-50"
+          className={
+            isWhatsApp && entitled && !connected
+              ? 'mt-4 w-full inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-[#128C7E] via-[#0f9f75] to-[#075E54] shadow-lg shadow-emerald-700/25 hover:brightness-110 disabled:opacity-50'
+              : 'mt-4 w-full btn-secondary !justify-center disabled:opacity-50'
+          }
         >
-          {entitled ? (
-            <><Settings className="w-4 h-4" /> {connected ? 'Manage' : 'Configure'}</>
-          ) : (
+          {!entitled ? (
             <><Lock className="w-4 h-4" /> Upgrade to unlock</>
+          ) : isWhatsApp ? (
+            connected
+              ? <><Settings className="w-4 h-4" /> Manage WhatsApp</>
+              : <><WhatsAppIcon size={16} /> Connect WhatsApp</>
+          ) : (
+            <><Settings className="w-4 h-4" /> {connected ? 'Manage' : 'Configure'}</>
           )}
         </button>
       </div>

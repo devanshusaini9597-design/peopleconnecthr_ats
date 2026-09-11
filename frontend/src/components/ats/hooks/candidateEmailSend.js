@@ -237,8 +237,8 @@ export function useCandidateEmailSend(deps) {
             const first = data.data?.failed?.[0];
             const errMsg = first?.displayMessage || first?.error || 'Send failed';
             // Show user-friendly message for campaign sender issues
-            if (emailChannel === 'marketing' && /not verified|sender/i.test(errMsg)) {
-              toast.error('Campaign email could not be sent. Your sender address is not verified for campaigns. Please contact your admin.', 10000);
+            if (emailChannel === 'marketing' && /not verified|sender|Manage Senders/i.test(errMsg)) {
+              toast.error(errMsg || 'Your login email is not added as a Zoho Campaigns sender yet. Ask admin to add it under Settings → Deliverability → Manage Senders.', 12000);
             } else {
               toast.error(`Email not sent: ${errMsg}`, 10000);
             }

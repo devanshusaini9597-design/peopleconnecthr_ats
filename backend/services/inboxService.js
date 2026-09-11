@@ -5,6 +5,7 @@ const MessageThread = require('../models/MessageThread');
 const Message = require('../models/Message');
 const Candidate = require('../models/Candidate');
 const { sendEmail } = require('./emailService');
+const { wrapBrandedEmailHtml, loadOrgEmailBrand } = require('./emailBrandLayout');
 const { getAdapter } = require('../adapters');
 
 function httpError(message, statusCode = 400, extra = {}) {
@@ -23,32 +24,54 @@ function hasChannelConsent(candidate, channel) {
   return true;
 }
 
-async function sendViaChannel({ orgId, user, channel, toAddress, subject, body, bodyHtml }) {
+async function sendViaChannel({ orgId, user, channel, toAddress, subject, body, bodyHtml, templateName, languageCode, components }) {
   if (channel === 'email') {
+    const brand = await loadOrgEmailBrand(orgId);
+    const innerHtml =
+      bodyHtml ||
+      `<div style="color:#3f3f46;white-space:pre-wrap;line-height:1.7;">${String(body || '')
+        .split('\n')
+        .map((line) => line || '&nbsp;')
+        .join('<br/>')}</div>`;
+    const html = wrapBrandedEmailHtml({
+      orgName: brand.name,
+      logoUrl: brand.logoUrl,
+      brandColor: brand.brandColor,
+      wordmark: brand.wordmark,
+      senderName: user.name || '',
+      includeSignOff: false,
+      bodyHtml: innerHtml,
+    });
     await sendEmail(
       toAddress,
       subject || 'Message from recruiting team',
-      bodyHtml || `<p>${body.replace(/\n/g, '<br/>')}</p>`,
+      html,
       body,
       { userId: user.id || user._id }
     );
-    return;
+    return {};
   }
   if (channel === 'sms') {
     const adapter = await getAdapter(orgId, 'sms');
     if (!adapter) throw new Error('SMS is not configured. Connect SMS in Integrations.');
-    await adapter.send({ to: toAddress, message: body });
-    return;
+    const result = await adapter.send({ to: toAddress, message: body });
+    return result || {};
   }
   if (channel === 'whatsapp') {
     const adapter = await getAdapter(orgId, 'whatsapp');
-    if (!adapter) throw new Error('WhatsApp is not configured. Connect WhatsApp in Integrations.');
+    if (!adapter) throw new Error('WhatsApp is not connected. Open Integrations and click Connect WhatsApp.');
     if (typeof adapter.sendWhatsApp === 'function') {
-      await adapter.sendWhatsApp({ to: toAddress, message: body });
-    } else {
-      await adapter.send({ to: toAddress, message: body });
+      return (await adapter.sendWhatsApp({
+        to: toAddress,
+        message: body,
+        templateName,
+        languageCode,
+        components,
+      })) || {};
     }
+    return (await adapter.send({ to: toAddress, message: body })) || {};
   }
+  return {};
 }
 
 async function getInboxStats(organizationId) {
@@ -119,9 +142,15 @@ async function createOutbound(organizationId, user, body) {
     body: messageBody = '',
     bodyHtml = '',
     threadId = null,
+    templateName = '',
+    languageCode = '',
+    components,
   } = body;
 
-  if (!String(messageBody || '').trim()) {
+  const previewBody = templateName
+    ? (String(messageBody || '').trim() || `Template: ${templateName}`)
+    : String(messageBody || '').trim();
+  if (!previewBody) {
     throw httpError('Message body is required');
   }
   if (!['email', 'sms', 'whatsapp'].includes(channel)) {
@@ -157,16 +186,21 @@ async function createOutbound(organizationId, user, body) {
 
   let sendStatus = 'sent';
   let errorMessage = '';
+  let providerId = '';
   try {
-    await sendViaChannel({
+    const sendResult = await sendViaChannel({
       orgId: organizationId,
       user,
       channel,
       toAddress,
       subject: subject || thread?.subject || 'Message from recruiting team',
-      body: messageBody,
+      body: previewBody,
       bodyHtml,
+      templateName,
+      languageCode: languageCode || 'en_US',
+      components,
     });
+    providerId = sendResult?.id || sendResult?.sid || sendResult?.messageId || '';
   } catch (err) {
     sendStatus = 'failed';
     errorMessage = err.message;
@@ -193,14 +227,14 @@ async function createOutbound(organizationId, user, body) {
       },
       unreadCount: 0,
       lastMessageAt: new Date(),
-      lastMessagePreview: messageBody.slice(0, 160),
+      lastMessagePreview: previewBody.slice(0, 160),
       lastDirection: 'outbound',
       createdBy: user.id || user._id,
     });
   } else {
     thread.channel = thread.channel === channel ? channel : 'mixed';
     thread.lastMessageAt = new Date();
-    thread.lastMessagePreview = messageBody.slice(0, 160);
+    thread.lastMessagePreview = previewBody.slice(0, 160);
     thread.lastDirection = 'outbound';
     if (subject) thread.subject = subject;
     await thread.save();
@@ -216,12 +250,13 @@ async function createOutbound(organizationId, user, body) {
     fromAddress: user.email || '',
     toAddress,
     subject,
-    body: messageBody,
+    body: previewBody,
     bodyHtml,
     status: sendStatus,
     isRead: true,
     sentBy: user.id || user._id,
     errorMessage,
+    externalId: providerId,
     sentAt: new Date(),
   });
 

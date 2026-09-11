@@ -11,6 +11,8 @@ describe('notificationService contracts', () => {
     expect(typeof svc.listNotifications).toBe('function');
     expect(typeof svc.getNotificationCounts).toBe('function');
     expect(typeof svc.getUpcomingCallbacks).toBe('function');
+    expect(typeof svc.completeCallback).toBe('function');
+    expect(typeof svc.snoozeCallback).toBe('function');
     expect(typeof svc.markNotificationRead).toBe('function');
     expect(typeof svc.markAllNotificationsRead).toBe('function');
     expect(typeof svc.dismissNotification).toBe('function');

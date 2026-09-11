@@ -4,6 +4,7 @@ import EmptyState from './ui/EmptyState';
 import { authenticatedFetch } from '../utils/fetchUtils';
 import { useAuth } from '../context/AuthContext';
 import { planHasFeature } from '../config/planFeatures';
+import { appendUserId } from '../utils/analyticsScope';
 
 /**
  * Diversity & Inclusion funnel — Add-on (analytics.dei, Enterprise).
@@ -86,7 +87,7 @@ const BreakdownCard = ({ title, rows }) => {
   );
 };
 
-const DEIAnalyticsSection = () => {
+const DEIAnalyticsSection = ({ userId = '' }) => {
   const { organization } = useAuth();
   const [loading, setLoading] = useState(true);
   const [entitled, setEntitled] = useState(true);
@@ -98,9 +99,10 @@ const DEIAnalyticsSection = () => {
       setLoading(false);
       return;
     }
+    setLoading(true);
     (async () => {
       try {
-        const res = await authenticatedFetch('/api/analytics/dei');
+        const res = await authenticatedFetch(appendUserId('/api/analytics/dei', userId));
         if (res.status === 403) { setEntitled(false); return; }
         const json = await res.json();
         if (json.success) setData(json.data);
@@ -110,7 +112,7 @@ const DEIAnalyticsSection = () => {
         setLoading(false);
       }
     })();
-  }, [organization]);
+  }, [organization, userId]);
 
   if (!organization) return null;
 

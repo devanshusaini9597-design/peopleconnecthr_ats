@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { Briefcase } from 'lucide-react';
+import React, { useState, useEffect, useMemo, forwardRef, useImperativeHandle, useCallback, useRef } from 'react';
+import { Briefcase, RefreshCw, Loader2 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useParsing } from '../hooks/useParsing';
 import { authenticatedFetch } from '../utils/fetchUtils';
@@ -49,6 +49,10 @@ const ATS = forwardRef((props, ref) => {
   const canExportCandidates = CANDIDATE_EXPORT_ROLES.includes(user?.role);
   const orgPlan = organization?.plan;
   const { onImportComplete } = props || {};
+  const FREELANCER_REFRESH_MS = 30_000;
+  const [freelancerRefreshing, setFreelancerRefreshing] = useState(false);
+  const [freelancerLastSynced, setFreelancerLastSynced] = useState(null);
+  const listQueryOptionsRef = useRef(null);
 
   const viewFromUrl = String(searchParams.get('view') || '').toLowerCase();
   const canSeeOrgCandidates = canViewOrgAnalytics(user?.role);
@@ -85,6 +89,7 @@ const ATS = forwardRef((props, ref) => {
   const {
     searchQuery, setSearchQuery, searchScope, setSearchScope, filterJob,
     statusFilter, setStatusFilter,
+    idFilter, setIdFilter,
     showAdvancedSearch, setShowAdvancedSearch,
     advancedSearchFilters, setAdvancedSearchFilters,
     activityPeriod, setActivityPeriod,
@@ -94,6 +99,42 @@ const ATS = forwardRef((props, ref) => {
     currentPage, setCurrentPage, clearAdvancedFilters, activeAdvFilterCount,
     listQueryOptions, filteredCandidates, visibleCandidates, totalFilteredPages, filteredCount,
   } = filters;
+  listQueryOptionsRef.current = listQueryOptions;
+  const mandateLabel = String(searchParams.get('mandate') || '').trim();
+
+  const refreshFreelancerCandidates = useCallback(async ({ silent = true } = {}) => {
+    if (!isFreelancer) return;
+    if (silent) setFreelancerRefreshing(true);
+    try {
+      await fetchData(currentPage, listQueryOptionsRef.current || {});
+      setFreelancerLastSynced(new Date());
+    } finally {
+      setFreelancerRefreshing(false);
+    }
+  }, [isFreelancer, fetchData, currentPage]);
+
+  useEffect(() => {
+    if (!isFreelancer) return undefined;
+    let alive = true;
+    setFreelancerLastSynced(new Date());
+    const tick = () => {
+      if (!alive) return;
+      refreshFreelancerCandidates({ silent: true }).catch(() => {});
+    };
+    const id = window.setInterval(tick, FREELANCER_REFRESH_MS);
+    const onFocus = () => tick();
+    const onVis = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [isFreelancer, refreshFreelancerCandidates]);
 
   const importer = useCandidateImport({
     toast, fetchData, searchQuery, filterJob, onImportComplete,
@@ -169,7 +210,8 @@ const ATS = forwardRef((props, ref) => {
 
   useEffect(() => {
     const q = searchParams.get('q');
-    if (q) setSearchQuery(q);
+    // Always sync URL search into the toolbar so header desk search works for freelancers.
+    setSearchQuery(q || '');
     setStatusFilter(searchParams.get('status') || '');
     const period = searchParams.get('period') || '';
     const from = searchParams.get('from') || '';
@@ -177,7 +219,22 @@ const ATS = forwardRef((props, ref) => {
     setActivityPeriod(period);
     setActivityFrom(from);
     setActivityTo(to);
-  }, [searchParams, setSearchQuery, setStatusFilter, setActivityPeriod, setActivityFrom, setActivityTo]);
+    // Freelancer mandate drill-down: ?ids=a,b,c shows only submitted candidates.
+    if (isFreelancer) {
+      const rawIds = String(searchParams.get('ids') || '').trim();
+      const nextIds = rawIds
+        ? [...new Set(rawIds.split(/[,\s]+/).map((id) => id.trim()).filter(Boolean))]
+        : [];
+      setIdFilter((prev) => {
+        const prevKey = (Array.isArray(prev) ? prev : []).join(',');
+        const nextKey = nextIds.join(',');
+        return prevKey === nextKey ? prev : nextIds;
+      });
+    } else {
+      setIdFilter([]);
+    }
+    if (q || searchParams.get('ids')) setCurrentPage(1);
+  }, [searchParams, isFreelancer, setSearchQuery, setStatusFilter, setIdFilter, setActivityPeriod, setActivityFrom, setActivityTo, setCurrentPage]);
 
   useEffect(() => {
     if (searchParams.get('add') !== '1') return;
@@ -299,7 +356,7 @@ const ATS = forwardRef((props, ref) => {
   );
 
   return (
-    <div className="page-shell-ats font-sans text-stone-900 animate-page-enter" role="main" aria-label="Candidates">
+    <div className="page-shell-ats font-sans text-stone-900" role="main" aria-label="Candidates">
       <CandidatesPageHeader
         filteredCandidates={filteredCandidates}
         filteredCount={filteredCount}
@@ -328,6 +385,10 @@ const ATS = forwardRef((props, ref) => {
         isFreelancer={isFreelancer}
         initialFormState={initialFormState}
         openAddCandidate={openAddCandidate}
+        onRefresh={isFreelancer ? () => refreshFreelancerCandidates({ silent: true }) : undefined}
+        refreshing={freelancerRefreshing}
+        lastSyncedAt={freelancerLastSynced}
+        autoRefreshSeconds={isFreelancer ? FREELANCER_REFRESH_MS / 1000 : undefined}
       />
 
       {!isFreelancer && employeeScope.canSelect ? (
@@ -391,6 +452,33 @@ const ATS = forwardRef((props, ref) => {
             setSearchParams(next, { replace: true });
           }}
         />
+
+        {isFreelancer && Array.isArray(idFilter) && idFilter.length > 0 ? (
+          <div className="mx-4 sm:mx-5 mt-3 mb-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border border-teal-100 bg-teal-50/70 px-3.5 py-2.5">
+            <p className="text-xs text-teal-900 min-w-0">
+              <span className="font-semibold">Submitted candidates</span>
+              {mandateLabel ? (
+                <>
+                  {' '}for <span className="font-semibold tabular-nums">{mandateLabel}</span>
+                </>
+              ) : null}
+              <span className="text-teal-700/80"> · {idFilter.length} selected</span>
+            </p>
+            <button
+              type="button"
+              className="text-xs font-semibold text-teal-800 hover:text-teal-950 flex-shrink-0 self-start sm:self-auto"
+              onClick={() => {
+                setIdFilter([]);
+                const next = new URLSearchParams(searchParams);
+                next.delete('ids');
+                next.delete('mandate');
+                setSearchParams(next, { replace: true });
+              }}
+            >
+              Show all candidates
+            </button>
+          </div>
+        ) : null}
 
         {activityPeriod && activityPeriod !== 'all' ? (
           <div className="mx-4 sm:mx-5 mt-3 mb-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border border-brand-100 bg-brand-50/60 px-3.5 py-2.5">

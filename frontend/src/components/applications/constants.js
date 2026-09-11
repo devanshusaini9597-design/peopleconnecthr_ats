@@ -3,7 +3,7 @@ import {
 } from 'lucide-react';
 
 export const APPS_TOUR_KEY = 'skillnix_tour_applications_v1';
-export const PIPELINE_TOUR_KEY = 'skillnix_tour_pipeline_board_v1';
+export const PIPELINE_TOUR_KEY = 'skillnix_tour_pipeline_board_v2';
 
 export const APPS_TOUR_STEPS = [
   {
@@ -33,18 +33,24 @@ export const APPS_TOUR_STEPS = [
 export const PIPELINE_TOUR_STEPS = [
   {
     title: 'Pipeline Board',
-    body: 'Kanban view of your hiring funnel — drag candidates across Applied → Hired.',
+    body: 'Live kanban of every active application. Drag cards to move stage — it saves immediately.',
   },
   {
     target: '[data-tour="apps-tip"]',
     title: 'Quick tip',
-    body: 'Drag a card onto another column to move stage. Press ? anytime to reopen this tour.',
+    body: 'The board loads all open jobs by default. Filter to one role when you need a focused view.',
+    placement: 'bottom',
+  },
+  {
+    target: '[data-tour="apps-stage-summary"]',
+    title: 'Stage summary',
+    body: 'Counts for every pipeline stage. Click a card to focus that column; click again to show all.',
     placement: 'bottom',
   },
   {
     target: '[data-tour="apps-filters"]',
     title: 'Filters',
-    body: 'Pick a job first, then search or filter stages. Switch to list when you need compact actions.',
+    body: 'Search, filter by stage, or switch to list view. Columns follow your organization pipeline.',
     placement: 'bottom',
   },
   {
@@ -62,6 +68,43 @@ export const STAGES = [
   { id: 'Offer', label: 'Offer', color: 'bg-emerald-50', borderColor: 'border-emerald-200', textColor: 'text-emerald-700', bar: 'bg-emerald-500', icon: Award },
   { id: 'Hired', label: 'Hired', color: 'bg-teal-50', borderColor: 'border-teal-200', textColor: 'text-teal-700', bar: 'bg-teal-500', icon: CheckCircle2 },
 ];
+
+export const STAGE_PALETTE = [
+  { color: 'bg-sky-50', borderColor: 'border-sky-200', textColor: 'text-sky-700', bar: 'bg-sky-500', icon: FileText },
+  { color: 'bg-amber-50', borderColor: 'border-amber-200', textColor: 'text-amber-700', bar: 'bg-amber-500', icon: Target },
+  { color: 'bg-violet-50', borderColor: 'border-violet-200', textColor: 'text-violet-700', bar: 'bg-violet-500', icon: Calendar },
+  { color: 'bg-emerald-50', borderColor: 'border-emerald-200', textColor: 'text-emerald-700', bar: 'bg-emerald-500', icon: Award },
+  { color: 'bg-teal-50', borderColor: 'border-teal-200', textColor: 'text-teal-700', bar: 'bg-teal-500', icon: CheckCircle2 },
+  { color: 'bg-orange-50', borderColor: 'border-orange-200', textColor: 'text-orange-700', bar: 'bg-orange-500', icon: Briefcase },
+  { color: 'bg-rose-50', borderColor: 'border-rose-200', textColor: 'text-rose-700', bar: 'bg-rose-500', icon: User },
+  { color: 'bg-indigo-50', borderColor: 'border-indigo-200', textColor: 'text-indigo-700', bar: 'bg-indigo-500', icon: Target },
+];
+
+export function stageVisual(name, index = 0) {
+  const label = String(name || 'Applied').trim() || 'Applied';
+  const known = STAGES.find((s) => s.id.toLowerCase() === label.toLowerCase());
+  if (known) return { ...known, id: label, label };
+  const pal = STAGE_PALETTE[index % STAGE_PALETTE.length];
+  return { id: label, label, ...pal };
+}
+
+export function buildBoardStages(orgStages, jobStages, applicationStages = []) {
+  const fromJob = (jobStages || []).map((s) => String(s).trim()).filter(Boolean);
+  const fromOrg = (orgStages || []).map((s) => String(s).trim()).filter(Boolean);
+  const base = fromJob.length ? fromJob : (fromOrg.length ? fromOrg : STAGES.map((s) => s.id));
+  const seen = new Set(base.map((s) => s.toLowerCase()));
+  // Keep Rejected on the board even if a job override omitted it
+  if (!seen.has('rejected')) {
+    base.push('Rejected');
+    seen.add('rejected');
+  }
+  const extras = [...new Set(
+    (applicationStages || [])
+      .map((s) => String(s || '').trim())
+      .filter((s) => s && !seen.has(s.toLowerCase()))
+  )];
+  return [...base, ...extras].map((name, i) => stageVisual(name, i));
+}
 
 export const STAGE_FILTER_OPTIONS = [
   { value: 'all', label: 'All stages' },
@@ -103,6 +146,8 @@ export const jobTitle = (job) => job?.title || job?.role || 'Untitled role';
 
 export const emptyAddForm = {
   jobId: '',
+  candidateId: '',
+  mode: 'existing',
   name: '',
   email: '',
   phone: '',

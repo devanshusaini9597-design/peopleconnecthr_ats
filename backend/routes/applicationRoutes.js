@@ -19,18 +19,22 @@ const run = (fn) => async (req, res) => {
   }
 };
 
-router.get('/', run(async (req, res) => {
-  const applications = await applicationService.listApplications(req.user.organizationId, req.query);
+router.get('/', requireRecruiterOrAbove, run(async (req, res) => {
+  const applications = await applicationService.listApplications(req.user.organizationId, req.query, req.user);
   res.json({ success: true, data: applications });
 }));
 
-router.get('/stats', run(async (req, res) => {
-  const data = await applicationService.getStats(req.user.organizationId, { jobId: req.query.jobId });
+router.get('/stats', requireRecruiterOrAbove, run(async (req, res) => {
+  const data = await applicationService.getStats(req.user.organizationId, { jobId: req.query.jobId }, req.user);
   res.json({ success: true, data });
 }));
 
-router.get('/:id', run(async (req, res) => {
-  const application = await applicationService.getApplication(req.user.organizationId, req.params.id);
+router.get('/:id', requireRecruiterOrAbove, run(async (req, res) => {
+  const application = await applicationService.getApplication(
+    req.user.organizationId,
+    req.params.id,
+    req.user
+  );
   res.json({ success: true, data: application });
 }));
 

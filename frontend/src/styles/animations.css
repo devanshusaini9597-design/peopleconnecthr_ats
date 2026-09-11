@@ -65,3 +65,55 @@
 .stagger-children > *:nth-child(6) { animation-delay: 0.22s; }
 .stagger-children > *:nth-child(7) { animation-delay: 0.26s; }
 .stagger-children > *:nth-child(8) { animation-delay: 0.3s; }
+
+/* Add Candidate wizard — step panel transitions */
+@keyframes candidateStepForward {
+  from { opacity: 0; transform: translateX(18px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes candidateStepBack {
+  from { opacity: 0; transform: translateX(-18px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.candidate-step-panel {
+  will-change: transform, opacity;
+}
+
+.candidate-step-forward {
+  animation: candidateStepForward 0.34s var(--transition-smooth) both;
+}
+
+.candidate-step-back {
+  animation: candidateStepBack 0.34s var(--transition-smooth) both;
+}
+
+.candidate-step-rail-btn {
+  transition:
+    background-color 0.28s var(--transition-smooth),
+    box-shadow 0.28s var(--transition-smooth),
+    transform 0.28s var(--transition-smooth),
+    color 0.2s ease;
+}
+
+.candidate-step-rail-btn:hover {
+  transform: translateX(2px);
+}
+
+.candidate-step-progress {
+  transition: width 0.4s var(--transition-smooth);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .candidate-step-forward,
+  .candidate-step-back {
+    animation: fadeInAts 0.2s ease both;
+  }
+  .candidate-step-rail-btn:hover {
+    transform: none;
+  }
+  .candidate-step-progress {
+    transition: none;
+  }
+}

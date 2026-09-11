@@ -18,7 +18,7 @@ export function HomeFooter() {
               <p className="text-stone-400 mb-4 sm:mb-6 max-w-sm text-sm sm:text-base">
                 The modern applicant tracking system designed for ambitious teams. Hire smarter, scale faster.
               </p>
-              <p className="text-stone-500 text-sm">Built for recruiting teams that move fast.</p>
+              <p className="text-stone-500 text-sm">Built for modern recruiting teams.</p>
             </div>
 
             <div>
@@ -42,7 +42,7 @@ export function HomeFooter() {
               <ul className="space-y-3 text-sm text-stone-400">
                 <li><Link to="/faq" className="hover:text-white transition-colors">FAQ</Link></li>
                 <li><Link to="/contact" className="hover:text-white transition-colors">Contact</Link></li>
-                <li><a href="mailto:sales@skillnix.app" className="hover:text-white transition-colors inline-flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Talk to Sales</a></li>
+                <li><a href="mailto:contact@peopleconnecthr.com" className="hover:text-white transition-colors inline-flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Talk to Sales</a></li>
                 <li><Link to="/login" className="hover:text-white transition-colors">Login</Link></li>
                 <li><Link to="/register" className="hover:text-white transition-colors">Start Free Trial</Link></li>
               </ul>
@@ -51,7 +51,7 @@ export function HomeFooter() {
 
           <div className="pt-6 sm:pt-8 border-t border-stone-800 flex flex-col sm:flex-row justify-between items-center gap-3 text-sm text-stone-500 text-center sm:text-left">
             <p className="flex flex-wrap items-center justify-center sm:justify-start gap-x-3 gap-y-1">
-              <span>&copy; {new Date().getFullYear()} SkillNix. All rights reserved.</span>
+              <span>&copy; {new Date().getFullYear()} People Connect HR. All rights reserved.</span>
               <Link to="/privacy" className="hover:text-stone-300">Privacy</Link>
               <Link to="/terms" className="hover:text-stone-300">Terms</Link>
             </p>

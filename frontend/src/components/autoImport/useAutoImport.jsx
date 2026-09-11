@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBlocker, useNavigate } from 'react-router-dom';
-import * as XLSX from 'xlsx';
 import { planHasFeature } from '../../config/planFeatures';
 import { useAuth } from '../../context/AuthContext';
 import usePageTour from '../../hooks/usePageTour';
@@ -18,9 +17,12 @@ import { useAutoImportReviewActions } from './useAutoImportReviewActions';
 export default function useAutoImport() {
   const navigate = useNavigate();
   const toast = useToast();
-  const { organization, isLoading: authLoading } = useAuth();
-  const canBulkImport = planHasFeature(organization?.plan, 'jobs.bulkImport');
+  const { organization, user, isLoading: authLoading } = useAuth();
+  const isFreelancer = user?.role === 'freelancer';
+  // Freelancers use the same Excel intake as company desks (desk-scoped on save).
+  const canBulkImport = isFreelancer || planHasFeature(organization?.plan, 'jobs.bulkImport');
   const [tourOpen, setTourOpen] = usePageTour(TOUR_KEY);
+  // Expose user for AutoImportPage chrome (e.g. hide company-only pending review).
   const fileRef = useRef(null);
   const {
     tableScrollRef,
@@ -166,10 +168,21 @@ export default function useAutoImport() {
   );
 
   const downloadTemplate = () => {
-    const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ...TEMPLATE_SAMPLE]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Candidates');
-    XLSX.writeFile(wb, 'skillnix-candidate-import-template.xlsx');
+    const rows = [TEMPLATE_HEADERS, ...TEMPLATE_SAMPLE];
+    const csv = rows
+      .map((row) => row.map((cell) => {
+        const s = String(cell ?? '');
+        if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      }).join(','))
+      .join('\r\n');
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'skillnix-candidate-import-template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
     toast.success('Template downloaded');
   };
 
@@ -216,6 +229,8 @@ export default function useAutoImport() {
   const {
     toggleRow,
     selectPageReady,
+    deselectPageReady,
+    togglePageReady,
     selectAllReady,
     skipExistingInAts,
     clearSelection,
@@ -228,6 +243,7 @@ export default function useAutoImport() {
     reviewData,
     fileName,
     pageRows,
+    selected,
     selectedList,
     selectedNew,
     selectedUpdates,
@@ -245,6 +261,14 @@ export default function useAutoImport() {
     setEditErrors,
     setBucket,
   });
+
+  const pageReadyRows = useMemo(
+    () => pageRows.filter((r) => r._category === 'ready'),
+    [pageRows]
+  );
+  const pageAllSelected = pageReadyRows.length > 0
+    && pageReadyRows.every((r) => selected.has(rowKey(r)));
+  const pageSomeSelected = pageReadyRows.some((r) => selected.has(rowKey(r)));
 
   const positionOptions = useMemo(() => [
     { value: '', label: 'Select' },
@@ -275,6 +299,8 @@ export default function useAutoImport() {
 
   return {
     navigate,
+    user,
+    isFreelancer,
     authLoading,
     canBulkImport,
     tourOpen,
@@ -333,7 +359,12 @@ export default function useAutoImport() {
     onPickFile,
     toggleRow,
     selectPageReady,
+    deselectPageReady,
+    togglePageReady,
     selectAllReady,
+    pageReadyRows,
+    pageAllSelected,
+    pageSomeSelected,
     skipExistingInAts,
     clearSelection,
     confirmImport,

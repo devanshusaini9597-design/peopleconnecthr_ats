@@ -2,31 +2,37 @@ export const FREELANCER_DASH_TOUR_KEY = 'skillnix_tour_freelancer_dashboard_v1';
 
 export const FREELANCER_DASH_TOUR_STEPS = [
   {
-    title: 'Your freelance desk',
-    body: 'This home is yours only — your candidates, open mandates, and a private pipeline the company cannot see. SPOC updates statuses; you view them.',
+    title: 'Your freelance workspace',
+    body: 'This dashboard shows only your candidates, submissions, and performance. Private profiles stay hidden until you submit.',
   },
   {
-    target: '[data-tour="dash-kpis"]',
-    title: 'Your numbers',
-    body: 'Candidates on your desk, people added this month, open mandates you can submit against, and handoffs waiting on the SPOC.',
+    target: '[data-tour="freelancer-dash-tip"]',
+    title: 'How your desk works',
+    body: 'Add candidates in ATS, submit against open mandates, then track status and reviewer notes on My Pipeline.',
     placement: 'bottom',
   },
   {
-    target: '[data-tour="dash-mandates"]',
-    title: 'Open mandates',
-    body: 'Company requisitions refresh automatically. Submit from your desk; SPOC is locked to who posted the job.',
+    target: '[data-tour="dash-kpis"]',
+    title: 'Key metrics',
+    body: 'Same card layout as the company dashboard: all desk candidates, new this month, then live submission stages (Submitted → Joined), plus shortlist rate and awaiting review.',
+    placement: 'bottom',
+  },
+  {
+    target: '[data-tour="dash-chart"]',
+    title: 'Activity',
+    body: 'Last 7 days of candidates added and submissions sent. Open Analytics for the full report.',
     placement: 'bottom',
   },
   {
     target: '[data-tour="dash-actions"]',
     title: 'Quick actions',
-    body: 'Add to your desk, open candidates, submit to a mandate, or open your private pipeline board.',
+    body: 'Add candidates, open mandates, check the pipeline board, or jump to analytics.',
     placement: 'left',
   },
   {
-    target: '[data-tour="dash-submissions"]',
-    title: 'Submissions',
-    body: 'Track what you sent the company — awaiting review, shortlisted, or sent back. Full board is under My Pipeline.',
+    target: '[data-tour="dash-pipeline"]',
+    title: 'Submission pipeline',
+    body: 'Submission status with the hiring manager: submitted, in review, shortlisted, or returned.',
     placement: 'top',
   },
 ];
@@ -35,13 +41,13 @@ export const DASH_TOUR_KEY = 'skillnix_tour_dashboard_v1';
 
 export const DASH_TOUR_STEPS = [
   {
-    title: 'Your hiring command center',
+    title: 'Your hiring overview',
     body: 'This dashboard summarizes pipeline health — KPIs, recent candidates, and shortcuts to everyday recruiting work.',
   },
   {
     target: '[data-tour="dash-kpis"]',
     title: 'Key metrics',
-    body: 'Track candidates, monthly adds, pending reviews (Applied + Screening → Applications), and hires. Click any card to jump into that list.',
+    body: 'All candidates is your full inventory. New this month is everyone added in the period (any stage). Stage cards show only who is currently in that stage.',
     placement: 'bottom',
   },
   {
@@ -65,6 +71,13 @@ export const DASH_TOUR_STEPS = [
 ];
 
 export const statusColor = (status) => {
+  const key = String(status || '')
+    .trim()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+  const title = key
+    ? key.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+    : '';
   const map = {
     Applied: 'badge-info',
     Screening: 'badge-warning',
@@ -74,8 +87,19 @@ export const statusColor = (status) => {
     Joined: 'badge-success',
     Rejected: 'badge-danger',
     Dropped: 'badge-neutral',
+    Interested: 'badge-info',
   };
-  return map[status] || 'badge-neutral';
+  return map[title] || 'badge-neutral';
+};
+
+export const displayStatus = (status) => {
+  const raw = String(status || '').trim();
+  if (!raw) return '—';
+  return raw
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 };
 
 export const pipelineColors = {
@@ -87,6 +111,7 @@ export const pipelineColors = {
   Joined: 'bg-teal-600',
   Rejected: 'bg-red-400',
   Dropped: 'bg-stone-400',
+  Interested: 'bg-sky-400',
 };
 
 export const stageRoutes = {

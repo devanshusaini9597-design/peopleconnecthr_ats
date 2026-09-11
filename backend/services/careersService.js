@@ -107,7 +107,7 @@ async function getPublicJob(orgSlug, jobId) {
   if (!org) throw httpError('Organization not found', 404);
 
   const job = await Job.findOne({ _id: jobId, organizationId: org._id, isPublished: true, status: 'Open' })
-    .select('title department location description skills employmentType salaryRange');
+    .select('title department location description skills employmentType salaryRange ctc experience clientName grade industry');
   if (!job) throw httpError('Job not found', 404);
 
   let applicationForm = null;

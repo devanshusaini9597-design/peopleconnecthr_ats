@@ -20,6 +20,7 @@ const {
   semanticSearch,
   embedCandidate,
   dedupeCandidates,
+  mergeDuplicateCandidates,
   generateResume,
   summarizeResume,
   extractSkills,
@@ -108,6 +109,15 @@ router.post('/dedupe', requireFeature('candidates.dedupe'), async (req, res) => 
     res.json({ success: true, ...result });
   } catch (error) {
     handleAiError(res, error, 'Dedupe error');
+  }
+});
+
+router.post('/dedupe/merge', requireFeature('candidates.dedupe'), async (req, res) => {
+  try {
+    const result = await mergeDuplicateCandidates(req.user.organizationId, req.body);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    handleAiError(res, error, 'Dedupe merge error');
   }
 });
 

@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
-  MessageSquare, Loader2, Send, Search, Trash2, X, AtSign, Calendar,
+  MessageSquare, Loader2, Send, Search, Trash2, X, AtSign, Calendar, Tags,
 } from 'lucide-react';
 import EmptyState from '../ui/EmptyState';
 import { formatWhen, initials } from './collaborationConstants';
@@ -19,6 +19,114 @@ export function CommentBody({ text }) {
         )
       ))}
     </p>
+  );
+}
+
+function MentionComposer({ body, setBody, mentionables, sending, post, onComposerKeyDown }) {
+  const taRef = useRef(null);
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+
+  const matches = useMemo(() => {
+    const q = String(query || '').toLowerCase();
+    return (mentionables || [])
+      .filter((u) => {
+        const hay = `${u.name || ''} ${u.email || ''} ${u.handle || ''}`.toLowerCase();
+        return !q || hay.includes(q);
+      })
+      .slice(0, 10);
+  }, [mentionables, query]);
+
+  const onChange = (e) => {
+    const value = e.target.value;
+    setBody(value);
+    const caret = e.target.selectionStart;
+    const before = value.slice(0, caret);
+    const hit = before.match(/@([^\s@]*)$/);
+    if (hit) {
+      setQuery(hit[1] || '');
+      setOpen(true);
+    } else {
+      setOpen(false);
+      setQuery('');
+    }
+  };
+
+  const pick = (person) => {
+    const el = taRef.current;
+    const caret = el?.selectionStart ?? body.length;
+    const token = person.handle || person.name;
+    const before = body.slice(0, caret).replace(/@([^\s@]*)$/, `@${token} `);
+    const next = `${before}${body.slice(caret)}`;
+    setBody(next);
+    setOpen(false);
+    setQuery('');
+    requestAnimationFrame(() => {
+      if (!el) return;
+      el.focus();
+      const pos = before.length;
+      el.setSelectionRange(pos, pos);
+    });
+  };
+
+  return (
+    <div className="flex flex-col sm:flex-row gap-2 relative">
+      <div className="relative flex-1 min-w-0">
+        <textarea
+          id="collab-comment"
+          ref={taRef}
+          className="input-ats resize-none w-full min-w-0"
+          rows={2}
+          placeholder="Share context for the team… type @ to mention"
+          value={body}
+          onChange={onChange}
+          onKeyDown={(e) => {
+            if (open && e.key === 'Escape') {
+              e.preventDefault();
+              setOpen(false);
+              return;
+            }
+            onComposerKeyDown?.(e);
+          }}
+        />
+        {open && matches.length > 0 && (
+          <div className="absolute left-0 right-0 bottom-full mb-1 z-20 rounded-xl border border-stone-200 bg-white shadow-lg overflow-hidden max-h-56 overflow-y-auto">
+            {matches.map((u) => (
+              <button
+                key={`${u.type || 'user'}-${u.id}`}
+                type="button"
+                className="w-full text-left px-3 py-2 hover:bg-brand-50 flex items-center gap-2"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pick(u);
+                }}
+              >
+                {u.type === 'tag' ? (
+                  <Tags className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />
+                ) : (
+                  <AtSign className="w-3.5 h-3.5 text-brand-600 flex-shrink-0" />
+                )}
+                <span className="text-sm font-semibold text-stone-800 truncate">
+                  {u.type === 'tag' ? `@${u.handle}` : u.name}
+                </span>
+                <span className="text-[11px] text-stone-400 truncate">
+                  {u.type === 'tag' ? `${u.memberCount || 0} people` : u.email}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        className="btn-primary w-full sm:w-auto sm:self-end"
+        disabled={sending || !body.trim()}
+        onClick={post}
+      >
+        {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+        Post
+      </button>
+    </div>
   );
 }
 
@@ -125,7 +233,7 @@ export function CollabCandidateList({
 }
 
 export function CollabThreadPanel({
-  selected, loading, comments, body, setBody, sending, post, onComposerKeyDown, setDeleteTarget,
+  selected, loading, comments, body, setBody, sending, post, onComposerKeyDown, setDeleteTarget, mentionables = [],
 }) {
   return (
     <div
@@ -237,28 +345,16 @@ export function CollabThreadPanel({
             className="relative px-4 sm:px-5 py-3 border-t border-stone-100 bg-stone-50/60 flex-shrink-0"
           >
             <label className="label-ats" htmlFor="collab-comment">Add a comment</label>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <textarea
-                id="collab-comment"
-                className="input-ats resize-none flex-1 min-w-0"
-                rows={2}
-                placeholder="Share context for the team… use @FirstName to mention"
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                onKeyDown={onComposerKeyDown}
-              />
-              <button
-                type="button"
-                className="btn-primary w-full sm:w-auto sm:self-end"
-                disabled={sending || !body.trim()}
-                onClick={post}
-              >
-                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                Post
-              </button>
-            </div>
+            <MentionComposer
+              body={body}
+              setBody={setBody}
+              mentionables={mentionables}
+              sending={sending}
+              post={post}
+              onComposerKeyDown={onComposerKeyDown}
+            />
             <p className="text-[10px] text-stone-400 mt-1.5 font-medium">
-              Tip: Ctrl/Cmd + Enter to post
+              Type @ to tag a teammate in this org. Ctrl/Cmd + Enter to post
             </p>
           </div>
         </>

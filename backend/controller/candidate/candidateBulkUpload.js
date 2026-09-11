@@ -279,20 +279,23 @@ async function bulkUploadCandidates(req, res) {
         const seenEmails = new Set();
         const seenPhones = new Set();
 
-        // DB-level duplicate check: Pre-fetch existing emails and phones for this user
+        // DB-level duplicate check: org-wide emails + phones (not just this desk)
+        const { normalizePhone } = require('../../services/dedupeService');
         const userId = req.user?.id;
+        const orgId = req.user?.organizationId;
         let existingEmails = new Set();
         let existingPhones = new Set();
 
-        if (userId) {
+        if (orgId || userId) {
             try {
                 const existingCandidates = await Candidate.find(
-                    { createdBy: userId },
-                    { email: 1, contact: 1, _id: 0 }
+                    orgId ? { organizationId: orgId } : { createdBy: userId },
+                    { email: 1, contact: 1, phone: 1, _id: 0 }
                 ).lean();
                 existingCandidates.forEach(c => {
                     if (c.email) existingEmails.add(c.email.toLowerCase().trim());
-                    if (c.contact) existingPhones.add(String(c.contact).replace(/\D/g, ''));
+                    const ph = normalizePhone(c.contact || c.phone);
+                    if (ph) existingPhones.add(ph);
                 });
                 logger.info(`[BULK-UPLOAD] Pre-loaded ${existingEmails.size} existing emails, ${existingPhones.size} existing phones for duplicate check`);
             } catch (dbErr) {
@@ -434,15 +437,16 @@ async function bulkUploadCandidates(req, res) {
                     if (fixed.phone) seenPhones.add(fixed.phone);
 
                     // DB-level duplicate check
+                    const phoneNorm = fixed.phone ? normalizePhone(fixed.phone) : '';
                     const isDbDuplicateEmail = fixed.email && existingEmails.has(fixed.email.toLowerCase());
-                    const isDbDuplicatePhone = fixed.phone && existingPhones.has(String(fixed.phone).replace(/\D/g, ''));
+                    const isDbDuplicatePhone = phoneNorm && existingPhones.has(phoneNorm);
                     const isDbDuplicate = isDbDuplicateEmail || isDbDuplicatePhone;
 
                     if (isDbDuplicate) {
                         duplicateDbCount++;
                         const dupWarning = isDbDuplicateEmail
-                            ? { field: 'email', message: `Email "${fixed.email}" already exists in your database (will update on import)`, severity: 'INFO' }
-                            : { field: 'phone', message: `Phone "${fixed.phone}" already exists in your database (will update on import)`, severity: 'INFO' };
+                            ? { field: 'email', message: `Email "${fixed.email}" already exists in your organization (will update on import)`, severity: 'INFO' }
+                            : { field: 'phone', message: `Phone "${fixed.phone}" already exists in your organization — will not create a second record`, severity: 'WARNING' };
                         validation.warnings = validation.warnings || [];
                         validation.warnings.push(dupWarning);
                     }

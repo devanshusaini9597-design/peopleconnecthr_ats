@@ -86,6 +86,7 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
   }, []);
 
   const isFreelancer = userRole === 'freelancer';
+  const searchInputRef = React.useRef(null);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -99,6 +100,20 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
     }
     navigate(`/candidate-search?q=${encodeURIComponent(q)}`);
   };
+
+  // Make the header search bar actually usable via Ctrl/Cmd+K (shown on the field).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || String(e.key || '').toLowerCase() !== 'k') return;
+      const tag = String(e.target?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+      e.preventDefault();
+      searchInputRef.current?.focus?.();
+      searchInputRef.current?.select?.();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   const go = (path) => {
     navigate(path);
@@ -129,10 +144,13 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
             <div className="relative group">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 group-focus-within:text-teal-600 transition-colors" />
               <input
-                type="text"
+                ref={searchInputRef}
+                type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('nav.header.searchPlaceholder')}
+                placeholder={isFreelancer
+                  ? 'Search your desk candidates…'
+                  : t('nav.header.searchPlaceholder')}
                 aria-label={t('common.search')}
                 className="w-full pl-11 pr-16 py-2.5 rounded-xl border border-stone-200 bg-stone-50/50 focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-500/15 outline-none text-sm transition-all placeholder:text-stone-400 text-stone-900"
               />

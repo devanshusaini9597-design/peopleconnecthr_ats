@@ -62,6 +62,7 @@ const buildSaml = (org, ssoConfig) => {
 
 async function completeSsoLogin(user, org, req, res) {
   user.lastLoginAt = new Date();
+  user.lastActiveAt = new Date();
   await user.save();
 
   const token = await issueAuthToken(user, req);
@@ -372,6 +373,7 @@ async function handleSamlAcs(orgSlug, body, req, res) {
   }
 
   user.lastLoginAt = new Date();
+  user.lastActiveAt = new Date();
   await user.save();
   await completeSsoLogin(user, org, req, res);
 }

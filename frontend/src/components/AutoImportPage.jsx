@@ -60,9 +60,11 @@ export default function AutoImportPage() {
           <button type="button" className="btn-secondary" onClick={() => a.navigate('/ats')}>
             <ArrowLeft size={16} /> Candidates
           </button>
-          <button type="button" className="btn-secondary" onClick={() => a.navigate('/pending-review')}>
-            <Inbox size={16} /> Pending Review
-          </button>
+          {a.user?.role !== 'freelancer' ? (
+            <button type="button" className="btn-secondary" onClick={() => a.navigate('/pending-review')}>
+              <Inbox size={16} /> Pending Review
+            </button>
+          ) : null}
           {(a.step === 'review' || a.step === 'done') && (
             <button type="button" className="btn-secondary" onClick={a.resetAll}>
               <Upload size={14} /> Start over
@@ -145,6 +147,10 @@ export default function AutoImportPage() {
               setPage={a.setPage}
               selectAllReady={a.selectAllReady}
               selectPageReady={a.selectPageReady}
+              togglePageReady={a.togglePageReady}
+              pageAllSelected={a.pageAllSelected}
+              pageSomeSelected={a.pageSomeSelected}
+              pageReadyRows={a.pageReadyRows}
               skipExistingInAts={a.skipExistingInAts}
               clearSelection={a.clearSelection}
               isSavingPending={a.isSavingPending}

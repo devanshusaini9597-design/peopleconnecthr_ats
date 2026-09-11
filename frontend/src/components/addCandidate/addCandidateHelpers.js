@@ -1,3 +1,5 @@
+import { clientRequiresPan } from '../../utils/panClientRules';
+
 export const validateAndFixEmail = (email) => {
   if (!email) return { isValid: false, value: '' };
   let fixed = String(email).trim().toLowerCase();
@@ -43,10 +45,8 @@ export const validateAndFixMobile = (mobile, country) => {
 export const validateAndFixName = (name) => {
   if (!name) return { isValid: false, value: '' };
   let fixed = String(name).replace(/[0-9!@#$%^&*()_+=\[\]{};:'",.<>?/\\|`~-]/g, '').trim();
-  fixed = fixed.split(/\s+/)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(' ');
-  const isValid = fixed.length >= 2 && /^[a-zA-Z\s]+$/.test(fixed);
+  fixed = fixed.replace(/\s{2,}/g, ' ').toUpperCase();
+  const isValid = fixed.length >= 2 && /^[A-Z\s]+$/.test(fixed);
   return { isValid, value: fixed };
 };
 
@@ -70,7 +70,7 @@ export const VALID_TLDS = [
   'au', 'de', 'fr', 'jp', 'cn', 'tech', 'ai', 'dev',
 ];
 
-export function validateCandidateForm(trimmed, countryCode) {
+export function validateCandidateForm(trimmed, countryCode, clients = [], { requireResume = false } = {}) {
   const errors = {};
 
   if (!trimmed.name) {
@@ -110,8 +110,23 @@ export function validateCandidateForm(trimmed, countryCode) {
     }
   }
 
-  if (!trimmed.companyName) errors.companyName = 'Company is required';
   if (!trimmed.ctc) errors.ctc = 'Current CTC is required';
+
+  if (requireResume) {
+    const hasResumeFile = trimmed.resume instanceof File;
+    const hasExistingResume = typeof trimmed.resume === 'string' && trimmed.resume.trim();
+    if (!hasResumeFile && !hasExistingResume) {
+      errors.resume = 'A resume is required before this candidate can be saved.';
+    }
+  }
+
+  const pan = String(trimmed.pan || '').replace(/\s+/g, '').toUpperCase();
+  const clientNeedsPan = clientRequiresPan(trimmed.client, clients);
+  if (!pan && clientNeedsPan) {
+    errors.pan = 'PAN number is required for this client';
+  } else if (pan && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan)) {
+    errors.pan = 'Enter a valid PAN (e.g. ABCDE1234F)';
+  }
 
   return errors;
 }

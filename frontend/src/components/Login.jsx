@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { motion, useMotionValue, useMotionTemplate, useReducedMotion } from 'motion/react';
 import {
@@ -12,37 +12,61 @@ import { PIPELINE_STAGES, PIPELINE_SEED, staggerContainer, validateEmail } from 
 import SignupPromptModal from './login/SignupPromptModal';
 import LoginBrandPanel from './login/LoginBrandPanel';
 import LoginAuthCard from './login/LoginAuthCard';
+import { RegisterSuccessCard } from './register/RegisterAuthCard';
 
 const Login = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { acceptSession } = useAuth();
+  const [searchParams] = useSearchParams();
+  const { acceptSession, isAuthenticated, isLoading: authLoading } = useAuth();
   const prefersReduced = useReducedMotion();
+  const prefillEmail = (searchParams.get('email') || '').trim();
+  const justActivated = searchParams.get('activated') === '1';
+  const trialError = searchParams.get('trial') === 'error';
+  const trialErrorMessage = (searchParams.get('message') || '').trim();
+
+  // Already signed in — soft redirect (no second hard reload of /login).
+  useEffect(() => {
+    if (authLoading || !isAuthenticated) return;
+    navigate('/dashboard', { replace: true });
+  }, [authLoading, isAuthenticated, navigate]);
 
   // ----- Sign-in state -----
-  const [formData, setFormData] = useState({ email: '', password: '' });
+  const [formData, setFormData] = useState({ email: prefillEmail, password: '' });
   const [fieldErrors, setFieldErrors] = useState({});
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const sessionEnded = searchParams.get('reason') === 'expired';
+  const [error, setError] = useState(
+    trialError
+      ? (trialErrorMessage || 'That approval link is invalid or has expired.')
+      : sessionEnded
+        ? 'Your session ended after 7 days. Sign in again to continue.'
+        : ''
+  );
+  const [success, setSuccess] = useState(justActivated ? 'Your trial is approved. Sign in to continue.' : '');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isDemoLoggingIn, setIsDemoLoggingIn] = useState(false);
   const [showSignupModal, setShowSignupModal] = useState(false);
   const [unmatchedEmail, setUnmatchedEmail] = useState('');
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
 
   // ----- Forgot-password state (same panel, swapped view) -----
   const [mode, setMode] = useState('login'); // 'login' | 'forgot'
-  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [recoveryEmail, setRecoveryEmail] = useState(prefillEmail);
   const [recoveryStatus, setRecoveryStatus] = useState('idle'); // idle | sending | sent | error
   const [recoveryMessage, setRecoveryMessage] = useState('');
 
-  // ----- MFA state -----
-  const [mfaStep, setMfaStep] = useState('login'); // login | mfa | enroll
+  // ----- MFA / email OTP state -----
+  const [mfaStep, setMfaStep] = useState('login'); // login | otp | mfa | enroll
   const [mfaToken, setMfaToken] = useState('');
+  const [otpToken, setOtpToken] = useState('');
   const [enrollmentToken, setEnrollmentToken] = useState('');
   const [mfaCode, setMfaCode] = useState('');
   const [mfaSetup, setMfaSetup] = useState(null);
   const [backupCodes, setBackupCodes] = useState(null);
+  const [otpResendLoading, setOtpResendLoading] = useState(false);
+  const [otpResendMessage, setOtpResendMessage] = useState('');
 
   // ----- Ambient "live pipeline" motion on the brand panel -----
   const [pipelineStages, setPipelineStages] = useState(PIPELINE_SEED.map((p) => p.stage));
@@ -77,6 +101,37 @@ const Login = () => {
     }
   };
 
+  const finishLogin = (data, email) => {
+    localStorage.removeItem('token');
+    localStorage.setItem('userEmail', data.user?.email || email);
+    localStorage.setItem('userName', data.user?.name || '');
+    localStorage.setItem('isLoggedIn', 'true');
+    if (data.user) {
+      localStorage.setItem('userData', JSON.stringify(data.user));
+      localStorage.setItem('userRole', data.user.role || 'recruiter');
+      if (data.user.organizationId) localStorage.setItem('orgId', data.user.organizationId);
+    }
+    if (data.organization) {
+      localStorage.setItem('orgData', JSON.stringify(data.organization));
+      localStorage.setItem('orgName', data.organization.name || '');
+      if (data.organization._id) localStorage.setItem('orgId', data.organization._id);
+    }
+    setSuccess('Signed in — taking you in.');
+    sessionStorage.setItem('showWelcomeModal', '1');
+    setTimeout(() => {
+      if (
+        data.user &&
+        !data.user.onboardingCompleted &&
+        !data.user.organizationId &&
+        !data.organization
+      ) {
+        window.location.href = '/onboarding';
+      } else {
+        window.location.href = '/dashboard';
+      }
+    }, 700);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -105,6 +160,17 @@ const Login = () => {
       const data = await res.json();
 
       if (res.ok) {
+        if (data.requiresOtp) {
+          setOtpToken(data.otpToken);
+          setMfaCode('');
+          setOtpResendMessage('');
+          setMfaStep('otp');
+          if (data.emailSent === false && data.message) {
+            setError(data.message);
+          }
+          setIsSubmitting(false);
+          return;
+        }
         if (data.requiresMfa) {
           setMfaToken(data.mfaToken);
           setMfaStep('mfa');
@@ -119,42 +185,30 @@ const Login = () => {
           return;
         }
 
-        // Auth is HttpOnly cookie — do not store JWT in localStorage
-        localStorage.removeItem('token');
-        localStorage.setItem('userEmail', email);
-        localStorage.setItem('userName', data.user?.name || '');
-        localStorage.setItem('isLoggedIn', 'true');
-
-        if (data.user) {
-          localStorage.setItem('userData', JSON.stringify(data.user));
-          localStorage.setItem('userRole', data.user.role || 'recruiter');
-          if (data.user.organizationId) {
-            localStorage.setItem('orgId', data.user.organizationId);
-          }
-        }
-        if (data.organization) {
-          localStorage.setItem('orgData', JSON.stringify(data.organization));
-          localStorage.setItem('orgName', data.organization.name || '');
-          if (data.organization._id) localStorage.setItem('orgId', data.organization._id);
-        }
-
-        setSuccess('Signed in — taking you in.');
-        sessionStorage.setItem('showWelcomeModal', '1');
-
-        setTimeout(() => {
-          if (data.user && !data.user.onboardingCompleted && !data.organization) {
-            window.location.href = '/onboarding';
-          } else {
-            window.location.href = '/dashboard';
-          }
-        }, 700);
+        finishLogin(data, email);
       } else {
-        if (data.message === 'invalid_credentials') {
-          setError(t('auth.invalidCredentials'));
+        if (data.message === 'email_unverified') {
+          setNeedsVerification(true);
+          setResendMessage(data.displayMessage || 'Please verify your email to continue.');
+          setIsSubmitting(false);
+          return;
+        }
+        if (data.message === 'signup_pending_approval') {
+          setError(data.displayMessage || 'Your trial request is being reviewed. Our team will contact you shortly.');
+        } else if (data.message === 'signup_rejected') {
+          setError(data.displayMessage || 'This trial request was not approved. Please contact sales.');
+        } else if (data.message === 'email_not_registered') {
+          setUnmatchedEmail(data.email || formData.email);
+          setShowSignupModal(true);
+          setError(data.displayMessage || t('auth.emailNotRegistered'));
+        } else if (data.message === 'invalid_credentials') {
+          setError(data.displayMessage || t('auth.invalidCredentials'));
         } else if (data.message === 'password_upgrade_required') {
-          setError(t('auth.passwordUpgradeRequired'));
+          setError(data.displayMessage || t('auth.passwordUpgradeRequired'));
+        } else if (data.message === 'account_deactivated') {
+          setError(data.displayMessage || 'Your account has been deactivated.');
         } else {
-          setError(t('auth.loginFailed'));
+          setError(data.displayMessage || data.message || t('auth.loginFailed'));
         }
         setIsSubmitting(false);
       }
@@ -163,6 +217,122 @@ const Login = () => {
       setIsSubmitting(false);
     }
   };
+
+  const handleOtpVerify = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!mfaCode || mfaCode.length < 6) {
+      setError(t('auth.otpEnterDigits'));
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`${API_URL}/api/auth/verify-login-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otpToken, code: mfaCode }),
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.displayMessage || data.message || 'Invalid verification code.');
+        setIsSubmitting(false);
+        return;
+      }
+      if (data.requiresMfa) {
+        setMfaToken(data.mfaToken);
+        setMfaCode('');
+        setMfaStep('mfa');
+        setIsSubmitting(false);
+        return;
+      }
+      finishLogin(data, formData.email);
+    } catch (_err) {
+      setError("We couldn't verify your code. Try again.");
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (!otpToken || otpResendLoading) return;
+    setOtpResendLoading(true);
+    setOtpResendMessage('');
+    setError('');
+    try {
+      const res = await fetch(`${API_URL}/api/auth/resend-login-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otpToken }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.displayMessage || data.message || 'Could not resend the code.');
+        return;
+      }
+      if (data.otpToken) setOtpToken(data.otpToken);
+      setOtpResendMessage(data.message || t('auth.otpResent'));
+    } catch {
+      setError('Could not resend the code. Try again.');
+    } finally {
+      setOtpResendLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const token = (searchParams.get('otpToken') || '').trim();
+    const shouldResend = searchParams.get('otpResend') === '1';
+    const resent = searchParams.get('resent') === '1';
+    const otpError = (searchParams.get('otpError') || '').trim();
+    const otpStep = searchParams.get('otp') === '1';
+    if (!token && !otpStep && !shouldResend && !resent && !otpError) return;
+
+    if (token) {
+      setOtpToken(token);
+      setMfaStep('otp');
+    }
+    if (otpError) setError(otpError);
+    if (resent) setOtpResendMessage('A new sign-in code is on its way.');
+
+    if (shouldResend && token) {
+      const guardKey = `otp-email-resend:${token}`;
+      if (!sessionStorage.getItem(guardKey)) {
+        sessionStorage.setItem(guardKey, '1');
+        (async () => {
+          setOtpResendLoading(true);
+          setError('');
+          try {
+            const res = await fetch(`${API_URL}/api/auth/resend-login-otp`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ otpToken: token }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              setError(data.displayMessage || data.message || 'Could not resend the code.');
+              return;
+            }
+            if (data.otpToken) setOtpToken(data.otpToken);
+            setOtpResendMessage(data.message || t('auth.otpResent'));
+          } catch {
+            setError('Could not resend the code. Try again.');
+          } finally {
+            setOtpResendLoading(false);
+          }
+        })();
+      }
+    }
+
+    if (shouldResend || resent || otpError) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('otpResend');
+      next.delete('resent');
+      next.delete('otpError');
+      const qs = next.toString();
+      navigate(qs ? `/login?${qs}` : '/login', { replace: true });
+    }
+    // Consume email deep-links once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleMfaVerify = async (e) => {
     e.preventDefault();
@@ -272,47 +442,27 @@ const Login = () => {
     }
   };
 
-  const handleDemoLogin = async () => {
-    setError('');
-    setSuccess('');
-    setIsDemoLoggingIn(true);
-
+  const handleResendVerification = async () => {
+    const email = formData.email.trim();
+    if (!email) return;
+    setResendLoading(true);
+    setResendMessage('');
     try {
-      const res = await fetch(`${API_URL}/api/demo-login`, {
+      const res = await fetch(`${API_URL}/api/onboarding/resend-verification`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        body: JSON.stringify({ email }),
       });
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || 'Demo login failed');
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setResendMessage(data.message || 'Verification email sent successfully.');
+      } else {
+        setResendMessage(data.message || 'Failed to resend. Please try again.');
       }
-
-      localStorage.removeItem('token');
-      acceptSession(data);
-
-      // Confirm the HttpOnly cookie is usable before entering the app
-      const profileRes = await fetch(`${API_URL}/api/profile`, { credentials: 'include' });
-      if (!profileRes.ok) {
-        throw new Error('Demo session could not be verified. Please try again.');
-      }
-      const profileData = await profileRes.json();
-      acceptSession({
-        user: profileData.user,
-        organization: profileData.organization,
-        entitlements: profileData.entitlements,
-      });
-
-      setSuccess('Demo account signed in — taking you in.');
-      sessionStorage.setItem('showWelcomeModal', '1');
-      setTimeout(() => navigate('/dashboard', { replace: true }), 400);
-    } catch (err) {
-      const message = err?.message && err.message !== 'Demo login failed'
-        ? err.message
-        : 'Demo service is unavailable right now. Please try again in a moment.';
-      setError(message);
-      setIsDemoLoggingIn(false);
+    } catch {
+      setResendMessage('Network error. Please try again.');
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -381,6 +531,28 @@ const Login = () => {
         </div>
 
         <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-4 sm:px-6 md:px-10 py-8 sm:py-10 w-full min-w-0">
+          {needsVerification ? (
+            <div className="w-full max-w-md min-w-0">
+              <RegisterSuccessCard
+                prefersReduced={prefersReduced}
+                email={formData.email}
+                resendLoading={resendLoading}
+                resendMessage={resendMessage}
+                onResend={handleResendVerification}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setNeedsVerification(false);
+                  setResendMessage('');
+                  setError('');
+                }}
+                className="mt-4 w-full text-sm text-stone-500 hover:text-stone-800 underline-offset-2 hover:underline"
+              >
+                Back to login
+              </button>
+            </div>
+          ) : (
           <motion.div
             initial="hidden"
             animate="show"
@@ -398,7 +570,6 @@ const Login = () => {
             showPassword={showPassword}
             setShowPassword={setShowPassword}
             isSubmitting={isSubmitting}
-            isDemoLoggingIn={isDemoLoggingIn}
             mfaCode={mfaCode}
             setMfaCode={setMfaCode}
             mfaSetup={mfaSetup}
@@ -407,24 +578,29 @@ const Login = () => {
             setRecoveryEmail={setRecoveryEmail}
             recoveryStatus={recoveryStatus}
             recoveryMessage={recoveryMessage}
+            otpResendLoading={otpResendLoading}
+            otpResendMessage={otpResendMessage}
+            autoFocusPassword={Boolean(prefillEmail)}
             onChange={handleChange}
             onSubmit={handleSubmit}
             onMfaVerify={handleMfaVerify}
+            onOtpVerify={handleOtpVerify}
+            onResendOtp={handleResendOtp}
             onStartEnrollment={startEnrollmentSetup}
             onCompleteEnrollment={completeEnrollment}
-            onDemoLogin={handleDemoLogin}
             onForgotSubmit={handleForgotSubmit}
             onBackToLogin={backToLogin}
             onForgotMode={() => setMode('forgot')}
-            onBackFromMfa={() => { setMfaStep('login'); setMfaCode(''); setError(''); }}
+            onBackFromMfa={() => { setMfaStep('login'); setMfaCode(''); setOtpToken(''); setError(''); setOtpResendMessage(''); }}
           />
 
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <span className="auth-trust-chip"><ShieldCheck className="w-3.5 h-3.5 text-brand-600" /> SOC 2 ready</span>
             <span className="auth-trust-chip"><Zap className="w-3.5 h-3.5 text-brand-600" /> Live in minutes</span>
-            <span className="auth-trust-chip"><Clock className="w-3.5 h-3.5 text-brand-600" /> 14-day free trial</span>
+            <span className="auth-trust-chip"><Clock className="w-3.5 h-3.5 text-brand-600" /> Access after approval</span>
           </div>
           </motion.div>
+          )}
         </div>
       </motion.div>
       </div>

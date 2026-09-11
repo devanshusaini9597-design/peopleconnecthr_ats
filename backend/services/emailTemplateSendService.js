@@ -22,12 +22,65 @@ function applyVariables(templateStr, vars) {
   return out;
 }
 
-function buildHtmlContent(emailBody, { isSubscribeInvite }) {
+/** Strip leftover placeholders and empty labeled fields so marketing copy stays professional. */
+function polishMergedSubject(subject) {
+  let s = String(subject || '');
+  s = s.replace(/\{\{[a-zA-Z0-9_]+\}\}/g, '');
+  s = s.replace(/\s*[–—]\s*/g, ' – ');
+  s = s.replace(/:\s*–\s*/g, ': ');
+  s = s.replace(/\s*–\s*(?=\||$)/g, '');
+  s = s.replace(/:\s*(?=\||$)/g, '');
+  s = s.replace(/\s*\|\s*$/g, '');
+  s = s.replace(/^\s*\|\s*/g, '');
+  s = s.replace(/\s*\|\s*/g, ' | ');
+  s = s.replace(/\s{2,}/g, ' ').trim();
+  s = s.replace(/^([A-Za-z][^|]{0,40}?)\s*\|\s*$/g, '$1');
+  if (!s || /^[:–—\-|]+$/i.test(s) || /^(Hiring drive|Job alert|Update)\s*:?$/i.test(s)) {
+    return 'Career update';
+  }
+  return s;
+}
+
+function polishMergedBody(body) {
+  let s = String(body || '');
+  s = s.replace(/\{\{[a-zA-Z0-9_]+\}\}/g, '');
+  // Drop labeled lines / bullets with no value (Date:, • Time:, etc.)
+  s = s.replace(/^[•●\-]\s*[A-Za-z][^:\n]{0,48}:\s*$/gim, '');
+  s = s.replace(/^[A-Z][A-Za-z0-9\s\/]{0,40}:\s*$/gim, '');
+  // Drop orphan section headers when details were cleared
+  s = s.replace(/^(Drive details|Details|Key details|Role details):\s*$/gim, '');
+  // Grammar when position/company slots were empty
+  s = s.replace(/\bfor\s+with\b/gi, 'with');
+  s = s.replace(/\bfor\s+at\b/gi, 'at');
+  s = s.replace(/\bat\s+with\b/gi, 'with');
+  s = s.replace(/\s+[–—]\s*(?=[,.;]|$)/g, '');
+  s = s.replace(/[ \t]{2,}/g, ' ');
+  s = s.replace(/[ \t]+\n/g, '\n');
+  s = s.replace(/\n{3,}/g, '\n\n');
+  return s.trim();
+}
+
+function buildHtmlContent(emailBody, { isSubscribeInvite, brandColor = '#0f766e', subscribeUrl = '' } = {}) {
+  const accent = /^#[0-9a-fA-F]{3,8}$/.test(String(brandColor || '').trim())
+    ? String(brandColor).trim()
+    : '#0f766e';
+  const subHref = String(subscribeUrl || '').trim();
   const looksLikeHtml = /<[a-z][\s\S]*>/i.test(emailBody);
   if (looksLikeHtml) {
-    return emailBody
+    let html = emailBody
       .replace(/Subscribe now:\s*/gi, '')
-      .replace(/\{\{subscribeLink\}\}/gi, '');
+      .replace(/Subscribe here:\s*/gi, '');
+    if (subHref && /^https?:\/\//i.test(subHref)) {
+      html = html.replace(/\{\{subscribeLink\}\}/gi, subHref);
+      // Turn bare "subscribe" mentions into a real link when the template forgot {{subscribeLink}}
+      html = html.replace(
+        /(^|>|[\s(])subscribe(?=[\s.,;:!?<)]|$)/gi,
+        `$1<a href="${subHref}" style="color:${accent};font-weight:600;text-decoration:underline;">subscribe</a>`
+      );
+    } else {
+      html = html.replace(/\{\{subscribeLink\}\}/gi, '');
+    }
+    return html;
   }
 
   const bodyLines = emailBody.split('\n');
@@ -38,7 +91,9 @@ function buildHtmlContent(emailBody, { isSubscribeInvite }) {
 
   const closeDetailBlock = () => {
     if (!inDetailBlock) return;
-    htmlContent += `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:12px 0 18px 0;background-color:#f8fafc;border:1px solid #eef0f3;border-left:3px solid #5b21b6;"><tr><td style="padding:12px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${detailRows}</table></td></tr></table>`;
+    if (detailRows) {
+      htmlContent += `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:12px 0 18px 0;background-color:#f8fafc;border:1px solid #eef0f3;border-left:3px solid ${accent};"><tr><td style="padding:12px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${detailRows}</table></td></tr></table>`;
+    }
     detailRows = '';
     inDetailBlock = false;
   };
@@ -52,7 +107,10 @@ function buildHtmlContent(emailBody, { isSubscribeInvite }) {
       }
       closeDetailBlock();
       htmlContent += '<div style="height:10px;"></div>';
-    } else if (isSubscribeInvite && /^Subscribe now:\s*(.+)?$/i.test(trimmed)) {
+    } else if (
+      isSubscribeInvite &&
+      /^(Subscribe now:|Subscribe here:)\s*(.+)?$/i.test(trimmed)
+    ) {
       if (inList) {
         htmlContent += '</ul>';
         inList = false;
@@ -66,26 +124,31 @@ function buildHtmlContent(emailBody, { isSubscribeInvite }) {
       closeDetailBlock();
     } else if (/^(\d+[\.\)]|[-•●])\s/.test(trimmed)) {
       closeDetailBlock();
+      const item = trimmed.replace(/^(\d+[\.\)]|[-•●])\s*/, '');
+      // Skip empty labeled bullets (e.g. "Date:" with no value)
+      if (/^[A-Za-z][^:]{0,40}:\s*$/.test(item) || !item) {
+        return;
+      }
       if (!inList) {
         htmlContent +=
-          '<ul style="margin:8px 0 14px 0;padding:0 0 0 18px;color:#334155;">';
+          `<ul style="margin:8px 0 14px 0;padding:0 0 0 18px;color:#374151;">`;
         inList = true;
       }
-      htmlContent += `<li style="margin:0 0 6px 0;font-size:14.5px;line-height:1.65;color:#334155;">${trimmed.replace(/^(\d+[\.\)]|[-•●])\s*/, '')}</li>`;
+      htmlContent += `<li style="margin:0 0 8px 0;font-size:14.5px;line-height:1.65;color:#374151;">${item}</li>`;
     } else if (trimmed.startsWith('Dear ')) {
       if (inList) {
         htmlContent += '</ul>';
         inList = false;
       }
       closeDetailBlock();
-      htmlContent += `<p style="margin:0 0 16px 0;font-size:15px;color:#0f172a;font-weight:600;">${trimmed}</p>`;
+      htmlContent += `<p style="margin:0 0 16px 0;font-size:15px;color:#111827;font-weight:600;">${trimmed}</p>`;
     } else if (/^(Best regards|Regards|Sincerely|Thank you|Warm regards)/i.test(trimmed)) {
       if (inList) {
         htmlContent += '</ul>';
         inList = false;
       }
       closeDetailBlock();
-      htmlContent += `<div style="margin-top:24px;"><p style="margin:0 0 2px 0;font-size:14px;color:#64748b;">${trimmed}</p>`;
+      htmlContent += `<div style="margin-top:24px;"><p style="margin:0 0 2px 0;font-size:14px;color:#6b7280;">${trimmed}</p>`;
     } else if (
       idx > 0 &&
       /^(Best regards|Regards|Sincerely|Thank you|Warm regards)/i.test(
@@ -96,7 +159,7 @@ function buildHtmlContent(emailBody, { isSubscribeInvite }) {
           ?.trim() || ''
       )
     ) {
-      htmlContent += `<p style="margin:0 0 1px 0;font-size:14px;color:#0f172a;font-weight:700;">${trimmed}</p>`;
+      htmlContent += `<p style="margin:0 0 1px 0;font-size:14px;color:#111827;font-weight:700;">${trimmed}</p>`;
     } else if (/^[A-Z][A-Za-z\s\/]+:\s/.test(trimmed) || /^[•●\-]\s*[A-Za-z].+:\s/.test(trimmed)) {
       if (inList) {
         htmlContent += '</ul>';
@@ -106,23 +169,39 @@ function buildHtmlContent(emailBody, { isSubscribeInvite }) {
       const colonIdx = cleaned.indexOf(':');
       const key = cleaned.substring(0, colonIdx).trim();
       const val = cleaned.substring(colonIdx + 1).trim();
+      if (!val || /^[–—\-]+$/.test(val)) {
+        return;
+      }
       inDetailBlock = true;
       detailRows += `<tr>
-        <td style="padding:6px 0;font-size:13px;color:#64748b;width:140px;vertical-align:top;">${key}</td>
-        <td style="padding:6px 0;font-size:13px;color:#0f172a;font-weight:600;vertical-align:top;">${val}</td>
+        <td style="padding:6px 0;font-size:13px;color:#6b7280;width:140px;vertical-align:top;">${key}</td>
+        <td style="padding:6px 0;font-size:13px;color:#111827;font-weight:600;vertical-align:top;">${val}</td>
       </tr>`;
+    } else if (/^(Drive details|Details|Key details|Role details):\s*$/i.test(trimmed)) {
+      // Orphan header with no following values — skip
+      if (inList) {
+        htmlContent += '</ul>';
+        inList = false;
+      }
+      closeDetailBlock();
     } else {
       if (inList) {
         htmlContent += '</ul>';
         inList = false;
       }
       closeDetailBlock();
-      htmlContent += `<p style="margin:0 0 12px 0;font-size:15px;line-height:1.7;color:#334155;">${trimmed}</p>`;
+      htmlContent += `<p style="margin:0 0 12px 0;font-size:15px;line-height:1.7;color:#374151;">${trimmed}</p>`;
     }
   });
   if (inList) htmlContent += '</ul>';
   closeDetailBlock();
   if (htmlContent.includes('margin-top:24px;')) htmlContent += '</div>';
+  if (subHref && /^https?:\/\//i.test(subHref)) {
+    htmlContent = htmlContent.replace(
+      /(^|>|[\s(])subscribe(?=[\s.,;:!?<)&]|$)/gi,
+      `$1<a href="${subHref}" style="color:${accent};font-weight:600;text-decoration:underline;">subscribe</a>`
+    );
+  }
   return htmlContent;
 }
 
@@ -150,21 +229,44 @@ function wrapEmailHtml({
   logoUrl,
   brandColor,
   category,
+  footerReason,
+  eyebrow,
+  publicLogo,
+  websiteUrl,
+  supportEmail,
+  socialLinks,
+  companyAddress,
+  wordmark,
 }) {
-  const { wrapBrandedEmailHtml, categoryEyebrow } = require('./emailBrandLayout');
+  const { wrapBrandedEmailHtml, categoryEyebrow, marketingFooterReason } = require('./emailBrandLayout');
+  const org = orgBrand || companyName || 'Skillnix Recruitment';
+  const isMarketing = String(category || '').toLowerCase() === 'marketing';
   return wrapBrandedEmailHtml({
     title: emailSubject,
     category: category || '',
-    eyebrow: categoryEyebrow(category),
+    eyebrow: eyebrow || categoryEyebrow(category),
     bodyHtml: htmlContent,
-    orgName: orgBrand || companyName || 'Skillnix Recruitment',
+    orgName: org,
     logoUrl: logoUrl || '',
-    brandColor: brandColor || '#5b21b6',
+    brandColor: brandColor || '#0f766e',
     senderName: senderName || '',
     senderEmail: senderEmail || '',
-    includeSignOff: false,
+    websiteUrl: websiteUrl || '',
+    supportEmail: supportEmail || '',
+    socialLinks: socialLinks || {},
+    companyAddress: companyAddress || '',
+    wordmark,
+    // Match transactional Direct mail: sign-off under the body when we know the sender,
+    // but skip if the template already includes Best regards / Regards (avoids double sign-off).
+    includeSignOff:
+      Boolean(senderName) &&
+      !/\b(best\s+regards|warm\s+regards|regards|sincerely)\b/i.test(String(htmlContent || '')),
     subscribeCtaHtml,
     unsubscribeFooterHtml,
+    footerReason:
+      footerReason ||
+      (isMarketing ? marketingFooterReason(org) : ''),
+    publicLogo: publicLogo !== undefined ? Boolean(publicLogo) : isMarketing,
   });
 }
 
@@ -186,11 +288,11 @@ function mapSendError(err) {
   } else if (err.code === 'CAMPAIGNS_FROM_EMAIL' || err.code === 'CAMPAIGNS_FROM_UNVERIFIED') {
     errMsg =
       err.displayMessage ||
-      'Campaign email could not be sent. Your sender address is not yet verified for campaigns. Please contact your admin to verify the sender address, or try again.';
+      'Your login email is not a Zoho Campaigns sender yet. Add it under Zoho Campaigns → Settings → Deliverability → Manage Senders, verify the confirmation email, then retry.';
   } else if (err.code === 'CAMPAIGNS_LIST_EMPTY') {
     errMsg =
       err.displayMessage ||
-      'Zoho list has no active contacts (pending opt-in). Confirm subscription email or adjust Manage Opt-in, then retry.';
+      'Zoho has not activated this contact yet (often pending opt-in). Confirm Zoho’s subscription email or allow API contacts without confirmation under Manage Opt-in, then retry.';
   } else if (zohoMsg && /failed to load|client_id|client_secret|refresh_token|list key/i.test(zohoMsg)) {
     errMsg =
       'Zoho Campaigns config error. In backend .env set: ZOHO_CAMPAIGNS_CLIENT_ID, ZOHO_CAMPAIGNS_CLIENT_SECRET, ZOHO_CAMPAIGNS_REFRESH_TOKEN, ZOHO_CAMPAIGNS_LIST_KEY. Restart the backend after changes.';
@@ -278,39 +380,83 @@ async function sendTemplateEmail(user, body) {
   let orgBrand = '';
   let orgLogoUrl = '';
   let orgBrandColor = '#0f766e';
+  let orgWebsiteUrl = '';
+  let orgSupportEmail = '';
+  let orgSocialLinks = {};
+  let orgCompanyAddress = '';
+  let orgWordmark;
+  let orgSlug = '';
   try {
     const { loadOrgEmailBrand } = require('./emailBrandLayout');
     const brand = await loadOrgEmailBrand(user.organizationId);
     orgBrand = brand.name;
     orgLogoUrl = brand.logoUrl;
-    orgBrandColor = brand.brandColor;
+    orgBrandColor = brand.brandColor || '#0f766e';
+    orgWebsiteUrl = brand.websiteUrl || '';
+    orgSupportEmail = brand.supportEmail || '';
+    orgSocialLinks = brand.socialLinks || {};
+    orgCompanyAddress = brand.companyAddress || '';
+    orgWordmark = brand.wordmark;
   } catch (_) {
     orgBrand = '';
   }
   if (!orgBrand) orgBrand = 'Talent Acquisition';
+  try {
+    const Organization = require('../models/Organization');
+    const orgRow = await Organization.findById(user.organizationId).select('slug domain').lean();
+    orgSlug = String(orgRow?.slug || '').trim();
+  } catch (_) {}
+
+  const orgQs = orgSlug
+    ? `&org=${encodeURIComponent(orgSlug)}`
+    : user.organizationId
+      ? `&orgId=${encodeURIComponent(String(user.organizationId))}`
+      : '';
+  const orgPageQs = orgSlug
+    ? `&org=${encodeURIComponent(orgSlug)}`
+    : user.organizationId
+      ? `&orgId=${encodeURIComponent(String(user.organizationId))}`
+      : '';
 
   for (const recipient of recipientList) {
     try {
       const vars = {
         ...variables,
         candidateName: recipient.name || variables?.candidateName || 'Candidate',
-        // Job / client company in body — do not overwrite with org brand if user set it
         company: (variables?.company || '').trim() || orgBrand,
       };
-      if (isMarketing) {
-        vars.unsubscribeLink =
-          (
-            process.env.ZOHO_CAMPAIGNS_UNSUBSCRIBE_URL ||
-            (process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/unsubscribe` : '') ||
-            '#unsubscribe'
-          ).trim() || '#unsubscribe';
-        const base = (process.env.FRONTEND_URL || '').trim() || '';
-        vars.subscribeLink = base ? `${base.replace(/\/$/, '')}/subscribe` : '#subscribe';
-        if (recipient.email) vars.subscribeLink += `?email=${encodeURIComponent(recipient.email)}`;
+
+      if (isMarketing && recipient.email && user.organizationId) {
+        try {
+          const Candidate = require('../models/Candidate');
+          const row = await Candidate.findOne({
+            organizationId: user.organizationId,
+            email: String(recipient.email).trim().toLowerCase(),
+          })
+            .select('marketingConsent')
+            .lean();
+          if (row?.marketingConsent?.optedIn === false && row?.marketingConsent?.optedOutAt) {
+            results.failed.push({
+              email: recipient.email,
+              error: 'Recipient unsubscribed from marketing emails',
+              displayMessage:
+                'This candidate unsubscribed from marketing. Send a Direct email — it includes a Subscribe button so they can opt back in.',
+            });
+            continue;
+          }
+        } catch (_) {
+          /* ignore consent lookup failures */
+        }
       }
 
-      const isSubscribeInviteTemplate =
-        template.name === 'Subscribe for Updates' && template.category === 'marketing';
+      const tplName = String(template.name || '');
+      const isSubscribeInvite =
+        tplName === 'Subscribe for Updates' && template.category === 'marketing';
+      const isRoleSpotlight =
+        template.category === 'marketing' &&
+        /Talent Pool Nurture|Open Role Spotlight|Job Alert/i.test(tplName);
+      const isReengage =
+        template.category === 'marketing' && /Re-engagement|Stay in Touch/i.test(tplName);
       const backendBase = (
         process.env.EMAIL_LINKS_BACKEND_URL ||
         process.env.BACKEND_URL ||
@@ -319,57 +465,203 @@ async function sendTemplateEmail(user, body) {
       )
         .trim()
         .replace(/\/$/, '');
-      if (isSubscribeInviteTemplate) {
-        if (backendBase && recipient.email) {
-          vars.subscribeLink = `${backendBase}/api/public/subscribe/confirm?email=${encodeURIComponent(recipient.email)}&sig=${signEmail(recipient.email)}`;
-        } else if (!vars.subscribeLink) {
-          const base = (process.env.FRONTEND_URL || '').trim() || '';
-          vars.subscribeLink = base ? `${base.replace(/\/$/, '')}/subscribe` : '#subscribe';
-          if (recipient.email) vars.subscribeLink += `?email=${encodeURIComponent(recipient.email)}`;
+      const frontendBase = (process.env.FRONTEND_URL || '').trim().replace(/\/$/, '');
+
+      // Subscribe links for Campaign + Direct (so unsubscribed people can opt back in via transactional mail)
+      if (recipient.email && (backendBase || frontendBase)) {
+        if (backendBase) {
+          const sig = signEmail(recipient.email);
+          vars.subscribeLink = `${backendBase}/api/public/subscribe/confirm?email=${encodeURIComponent(recipient.email)}&sig=${sig}${orgQs}`;
+          vars.unsubscribeLink = `${backendBase}/api/public/unsubscribe/confirm?email=${encodeURIComponent(recipient.email)}&sig=${sig}${orgQs}`;
+        } else {
+          vars.subscribeLink = `${frontendBase}/subscribe?email=${encodeURIComponent(recipient.email)}${orgPageQs}`;
+          vars.unsubscribeLink = `${frontendBase}/unsubscribe?email=${encodeURIComponent(recipient.email)}${orgPageQs}`;
         }
+      } else if (isMarketing) {
+        throw httpError('EMAIL_LINKS_NOT_CONFIGURED', 400, {
+          displayMessage:
+            'Marketing links need BACKEND_URL (or EMAIL_LINKS_BACKEND_URL) and FRONTEND_URL set to public HTTPS URLs so Subscribe / Unsubscribe work.',
+        });
       }
-      if (isMarketing && recipient.email && backendBase) {
-        vars.unsubscribeLink = `${backendBase}/api/public/unsubscribe/confirm?email=${encodeURIComponent(recipient.email)}&sig=${signEmail(recipient.email)}`;
-      }
 
-      let emailSubject = applyVariables(
-        typeof subjectOverride === 'string' && subjectOverride.length
-          ? subjectOverride
-          : template.subject,
-        vars
+      let emailSubject = polishMergedSubject(
+        applyVariables(
+          typeof subjectOverride === 'string' && subjectOverride.length
+            ? subjectOverride
+            : template.subject,
+          vars
+        )
       );
-      let emailBody = applyVariables(
-        typeof bodyOverride === 'string' && bodyOverride.length
-          ? bodyOverride
-          : template.body,
-        vars
+      let emailBody = polishMergedBody(
+        applyVariables(
+          typeof bodyOverride === 'string' && bodyOverride.length
+            ? bodyOverride
+            : template.body,
+          vars
+        )
       );
 
-      const isSubscribeInvite =
-        template.name === 'Subscribe for Updates' && template.category === 'marketing';
-      const htmlContent = buildHtmlContent(emailBody, { isSubscribeInvite });
+      const {
+        brandButtonHtml,
+        subscribeInviteHtml,
+        roleSpotlightHtml,
+        reengageInviteHtml,
+      } = require('./emailBrandLayout');
 
-      const unsubscribeUrl =
-        isMarketing && vars.unsubscribeLink && vars.unsubscribeLink !== '#unsubscribe'
-          ? vars.unsubscribeLink
-          : '';
-      const unsubscribeFooterHtml =
-        unsubscribeUrl && !isSubscribeInvite
-          ? `<p style="margin:0 0 12px 0;font-size:11px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;"><a href="${unsubscribeUrl}" style="color:#0f766e;text-decoration:underline;">Unsubscribe</a> or <a href="${unsubscribeUrl}" style="color:#0f766e;text-decoration:underline;">update email preferences</a></p>`
-          : '';
-      const subscribeUrl =
+      let htmlContent;
+      const subscribeUrlEarly =
         vars.subscribeLink &&
         typeof vars.subscribeLink === 'string' &&
-        vars.subscribeLink.startsWith('http')
+        /^https?:\/\//i.test(vars.subscribeLink)
           ? vars.subscribeLink
           : '';
-      const { brandButtonHtml } = require('./emailBrandLayout');
-      const subscribeCtaHtml = subscribeUrl
-        ? `<div style="margin:20px 0 4px 0;text-align:center;">${brandButtonHtml({ href: subscribeUrl, label: 'Subscribe for updates', brandColor: orgBrandColor })}</div>`
+      if (isSubscribeInvite) {
+        htmlContent = subscribeInviteHtml({
+          candidateName: vars.candidateName || recipient.name || 'there',
+          company: (vars.company || '').trim() || orgBrand,
+          brandColor: orgBrandColor,
+        });
+      } else if (isRoleSpotlight) {
+        htmlContent = roleSpotlightHtml({
+          candidateName: vars.candidateName || recipient.name || 'there',
+          company: (vars.company || '').trim() || orgBrand,
+          position: vars.position || '',
+          ctc: vars.ctc || '',
+          experience: vars.experience || '',
+          location: vars.location || '',
+          brandColor: orgBrandColor,
+        });
+      } else if (isReengage) {
+        htmlContent = reengageInviteHtml({
+          candidateName: vars.candidateName || recipient.name || 'there',
+          company: (vars.company || '').trim() || orgBrand,
+          brandColor: orgBrandColor,
+        });
+      } else {
+        htmlContent = buildHtmlContent(emailBody, {
+          isSubscribeInvite,
+          brandColor: orgBrandColor,
+          subscribeUrl: subscribeUrlEarly,
+        });
+      }
+
+      // Linkify bare "subscribe" in spotlight/invite bodies too
+      if (
+        subscribeUrlEarly &&
+        (isSubscribeInvite || isRoleSpotlight || isReengage) &&
+        /\bsubscribe\b/i.test(htmlContent) &&
+        !/href=[^>]*subscribe/i.test(htmlContent)
+      ) {
+        const accentLink = orgBrandColor || '#0f766e';
+        htmlContent = htmlContent.replace(
+          /(^|>|[\s(])subscribe(?=[\s.,;:!?<)&]|$)/gi,
+          `$1<a href="${subscribeUrlEarly}" style="color:${accentLink};font-weight:600;text-decoration:underline;">subscribe</a>`
+        );
+      }
+
+      const subscribeUrl = subscribeUrlEarly;
+      const unsubscribeUrl =
+        vars.unsubscribeLink &&
+        typeof vars.unsubscribeLink === 'string' &&
+        /^https?:\/\//i.test(vars.unsubscribeLink)
+          ? vars.unsubscribeLink
+          : '';
+
+      // Consent for CTA: only hide Subscribe when Zoho actually enrolled them.
+      // Soft-ok / Zoho contact-from-send must still show Subscribe.
+      let isSubscribed = false;
+      if (recipient.email && user.organizationId) {
+        try {
+          const Candidate = require('../models/Candidate');
+          const row = await Candidate.findOne({
+            organizationId: user.organizationId,
+            email: String(recipient.email).trim().toLowerCase(),
+          })
+            .select('marketingConsent')
+            .lean();
+          const mc = row?.marketingConsent || {};
+          const source = String(mc.source || '');
+          isSubscribed =
+            mc.optedIn === true &&
+            !mc.optedOutAt &&
+            mc.zohoEnrolled === true &&
+            source !== 'marketing_send';
+        } catch (_) {
+          isSubscribed = false;
+        }
+      }
+
+      const ctaLabel = isSubscribeInvite
+        ? 'Subscribe to job & career updates'
+        : isRoleSpotlight
+          ? 'Subscribe for role alerts'
+          : isReengage
+            ? 'Subscribe to stay connected'
+            : 'Subscribe to job & career updates';
+      const showSubscribeCta = Boolean(subscribeUrl) && !isSubscribed;
+      if (!subscribeUrl) {
+        logger.warn(
+          { email: recipient.email, isMarketing },
+          '[EmailTemplate] Subscribe CTA skipped — no subscribe URL (check BACKEND_URL / EMAIL_LINKS_BACKEND_URL)'
+        );
+      } else if (isSubscribed) {
+        logger.info(
+          { email: recipient.email, isMarketing },
+          '[EmailTemplate] Subscribe CTA hidden — Zoho-enrolled marketingConsent'
+        );
+      }
+      const subscribeCtaHtml = showSubscribeCta
+        ? `<div style="margin:22px 0 8px 0;text-align:center;">${brandButtonHtml({
+            href: subscribeUrl,
+            label: ctaLabel,
+            brandColor: orgBrandColor,
+            fullWidth: true,
+          })}</div>
+          <p style="margin:0 0 4px 0;text-align:center;font-size:12px;line-height:1.5;color:#9ca3af;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">${
+            isMarketing
+              ? 'Optional job and career updates · Change preferences anytime'
+              : 'Optional — subscribe for marketing updates on jobs and hiring drives'
+          }</p>`
         : '';
 
+      const accent = orgBrandColor || '#0f766e';
+      let unsubscribeFooterHtml = '';
+      if (isMarketing) {
+        const { zohoCampaignComplianceFooterHtml } = require('./emailBrandLayout');
+        // Professional compliance footer with Zoho merge tags — prevents Zoho's
+        // "Email Marketing by Zoho Campaigns / Not interested?" default block.
+        unsubscribeFooterHtml = zohoCampaignComplianceFooterHtml({
+          brandColor: accent,
+          subscribeUrl: isSubscribed ? '' : subscribeUrl,
+          isSubscribed,
+          orgName: orgBrand,
+        });
+      } else if (!isSubscribed && subscribeUrl) {
+        unsubscribeFooterHtml = `<p style="margin:16px 0 8px 0;font-size:12px;line-height:1.6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#6b7280;">
+            Optional:
+            <a href="${subscribeUrl}" style="color:${accent};text-decoration:underline;font-weight:600;">Subscribe to job &amp; career updates</a>
+          </p>`;
+      }
+
+      const eyebrow = isSubscribeInvite
+        ? 'Job alerts'
+        : isRoleSpotlight
+          ? 'Open role'
+          : isReengage
+            ? 'Stay connected'
+            : undefined;
+
+      // Short headline in the card (like Direct interview/rejection mail) — subject stays on the email subject line
+      const displayTitle = isSubscribeInvite
+        ? 'Subscribe for updates'
+        : isRoleSpotlight
+          ? 'Role opportunity'
+          : isReengage
+            ? 'Stay in touch'
+            : emailSubject;
+
       const htmlBody = wrapEmailHtml({
-        emailSubject,
+        emailSubject: displayTitle,
         htmlContent,
         subscribeCtaHtml,
         unsubscribeFooterHtml,
@@ -380,6 +672,13 @@ async function sendTemplateEmail(user, body) {
         logoUrl: orgLogoUrl,
         brandColor: orgBrandColor,
         category: template.category,
+        eyebrow,
+        publicLogo: isMarketing,
+        websiteUrl: orgWebsiteUrl,
+        supportEmail: orgSupportEmail,
+        socialLinks: orgSocialLinks,
+        companyAddress: orgCompanyAddress,
+        wordmark: orgWordmark,
       });
 
       const emailOptions = { senderName, senderEmail, userId: user.id };
@@ -403,9 +702,10 @@ async function sendTemplateEmail(user, body) {
       if (isMarketing) {
         const { sendMarketingEmail } = require('./campaignService');
         await sendMarketingEmail(recipient.email, emailSubject, htmlBody, {
-          userId: user.id,
+          userId: user.id || user._id,
           senderName,
           fromEmail: senderEmail,
+          replyToEmail: senderEmail,
           campaignName: template.name || 'ATS Marketing',
           organizationId: user.organizationId,
           listPurpose: require('./marketingListService').inferListPurpose({
@@ -442,5 +742,7 @@ module.exports = {
   sendTemplateEmail,
   buildHtmlContent,
   applyVariables,
+  polishMergedSubject,
+  polishMergedBody,
   wrapEmailHtml,
 };

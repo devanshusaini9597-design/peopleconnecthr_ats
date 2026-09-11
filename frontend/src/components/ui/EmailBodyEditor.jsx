@@ -65,7 +65,7 @@ function ToolbarBtn({ onClick, active, disabled, title, children }) {
 }
 
 const EmailBodyEditor = forwardRef(function EmailBodyEditor(
-  { value, onChange, onFocus, placeholder = 'Write your email…' },
+  { value, onChange, onFocus, placeholder = 'Write your email…', compact = false },
   ref
 ) {
   const editor = useEditor({
@@ -86,7 +86,9 @@ const EmailBodyEditor = forwardRef(function EmailBodyEditor(
     editorProps: {
       attributes: {
         class:
-          'email-rte-prose min-h-[14rem] max-h-[22rem] overflow-y-auto px-3 py-2.5 text-[13px] text-stone-800 leading-relaxed focus:outline-none',
+          compact
+            ? 'email-rte-prose min-h-[7.5rem] max-h-[14rem] overflow-y-auto px-3 py-2.5 text-[13px] text-stone-800 leading-relaxed focus:outline-none uppercase'
+            : 'email-rte-prose min-h-[14rem] max-h-[22rem] overflow-y-auto px-3 py-2.5 text-[13px] text-stone-800 leading-relaxed focus:outline-none',
       },
     },
     onUpdate: ({ editor: ed }) => {

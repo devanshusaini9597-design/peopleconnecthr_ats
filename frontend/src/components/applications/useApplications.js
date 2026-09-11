@@ -13,6 +13,7 @@ import {
   PIPELINE_TOUR_STEPS,
   emptyAddForm,
   jobTitle,
+  buildBoardStages,
 } from './constants';
 import { useApplicationsData } from './useApplicationsData';
 import { useApplicationsActions } from './useApplicationsActions';
@@ -38,10 +39,10 @@ export default function useApplications() {
 
   const [enterpriseActionLoading, setEnterpriseActionLoading] = useState(false);
   const [jobs, setJobs] = useState([]);
-  const [selectedJobId, setSelectedJobId] = useState('');
+  const [selectedJobId, setSelectedJobId] = useState('all');
   const [applications, setApplications] = useState([]);
   const [stats, setStats] = useState({ total: 0, byStage: {}, avgTime: 'N/A' });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
   const [viewMode, setViewMode] = useState(isApplicationsRoute ? 'table' : 'kanban');
@@ -99,13 +100,8 @@ export default function useApplications() {
   }, [fetchJobs]);
 
   useEffect(() => {
-    if (selectedJobId) {
-      fetchApplications(selectedJobId);
-      fetchStats(selectedJobId);
-    } else {
-      setApplications([]);
-      setStats({ total: 0, byStage: {}, avgTime: 'N/A' });
-    }
+    fetchApplications(selectedJobId);
+    fetchStats(selectedJobId);
   }, [selectedJobId, fetchApplications, fetchStats]);
 
   useEffect(() => {
@@ -184,7 +180,7 @@ export default function useApplications() {
   const filteredApplications = useMemo(() => {
     const term = searchQuery.trim().toLowerCase();
     return applications.filter((app) => {
-      if (stageFilter !== 'all' && app.stage !== stageFilter) return false;
+      if (stageFilter !== 'all' && String(app.stage || '').toLowerCase() !== String(stageFilter).toLowerCase()) return false;
       if (!term) return true;
       const name = app.candidate?.name?.toLowerCase() || '';
       const email = app.candidate?.email?.toLowerCase() || '';
@@ -203,21 +199,54 @@ export default function useApplications() {
     });
   }, [applications, searchQuery, stageFilter]);
 
-  const getAppsByStage = (stageId) => filteredApplications.filter((app) => app.stage === stageId);
+  const getAppsByStage = (stageId) =>
+    filteredApplications.filter((app) => String(app.stage || '').toLowerCase() === String(stageId || '').toLowerCase());
 
   const selectedJob = jobs.find((j) => j._id === selectedJobId);
 
+  const boardStages = useMemo(
+    () => buildBoardStages(
+      organization?.atsSettings?.pipelineStages,
+      selectedJob?.pipelineStages,
+      applications.map((a) => a.stage)
+    ),
+    [organization?.atsSettings?.pipelineStages, selectedJob?.pipelineStages, applications]
+  );
+
+  const stageFilterOptions = useMemo(
+    () => [
+      { value: 'all', label: 'All stages' },
+      ...boardStages.map((s) => ({ value: s.id, label: s.label, icon: s.icon })),
+    ],
+    [boardStages]
+  );
+
   const jobOptions = useMemo(
-    () =>
-      jobs.map((job) => ({
+    () => [
+      { value: 'all', label: 'All open jobs', description: 'Full hiring pipeline', icon: Briefcase },
+      ...jobs.map((job) => ({
         value: job._id,
         label: jobTitle(job),
         description: job.location || job.experience || 'Open role',
         icon: Briefcase,
         searchText: `${jobTitle(job)} ${job.location || ''} ${job.experience || ''}`,
       })),
+    ],
     [jobs]
   );
+
+  const addJobOptions = useMemo(
+    () => jobOptions.filter((o) => o.value !== 'all'),
+    [jobOptions]
+  );
+
+  useEffect(() => {
+    if (stageFilter === 'all') return;
+    const exists = boardStages.some(
+      (s) => String(s.id).toLowerCase() === String(stageFilter).toLowerCase()
+    );
+    if (!exists) setStageFilter('all');
+  }, [boardStages, stageFilter]);
 
   return {
     isApplicationsRoute,
@@ -286,6 +315,8 @@ export default function useApplications() {
     handleDrop,
     filteredApplications,
     getAppsByStage,
+    boardStages,
+    stageFilterOptions,
     onTableDragScrollStart,
     onTableDragScrollMove,
     onTableDragScrollEnd,
@@ -293,5 +324,6 @@ export default function useApplications() {
     clearFilters,
     selectedJob,
     jobOptions,
+    addJobOptions,
   };
 }

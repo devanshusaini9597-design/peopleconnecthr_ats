@@ -10,8 +10,8 @@ export default function EmailCcBccFields({
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" onClick={e => e.stopPropagation()}>
       {/* CC Field */}
       <div className="relative">
-        <label className="block text-[10px] font-semibold text-stone-500 mb-1">CC (Optional)</label>
-        <div className="min-h-[38px] flex flex-wrap items-center gap-1 px-2 py-1.5 border border-stone-200 rounded-lg focus-within:ring-2 focus-within:ring-brand-500 focus-within:border-brand-500 bg-white cursor-text"
+        <label className="label-ats mb-1.5 block">CC (optional)</label>
+        <div className="input-ats !h-auto min-h-[42px] flex flex-wrap items-center gap-1 !py-1.5 cursor-text"
           onClick={() => document.getElementById('cc-input')?.focus()}>
           {emailCC.map((email, i) => (
             <span key={i} className="inline-flex items-center gap-1 bg-brand-50 text-brand-700 pl-2 pr-1 py-0.5 rounded-md text-[11px] font-medium max-w-[180px]">
@@ -69,8 +69,8 @@ export default function EmailCcBccFields({
 
       {/* BCC Field */}
       <div className="relative">
-        <label className="block text-[10px] font-semibold text-stone-500 mb-1">BCC (Optional)</label>
-        <div className="min-h-[38px] flex flex-wrap items-center gap-1 px-2 py-1.5 border border-stone-200 rounded-lg focus-within:ring-2 focus-within:ring-brand-500 focus-within:border-brand-500 bg-white cursor-text"
+        <label className="label-ats mb-1.5 block">BCC (optional)</label>
+        <div className="input-ats !h-auto min-h-[42px] flex flex-wrap items-center gap-1 !py-1.5 cursor-text"
           onClick={() => document.getElementById('bcc-input')?.focus()}>
           {emailBCC.map((email, i) => (
             <span key={i} className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 pl-2 pr-1 py-0.5 rounded-md text-[11px] font-medium max-w-[180px]">

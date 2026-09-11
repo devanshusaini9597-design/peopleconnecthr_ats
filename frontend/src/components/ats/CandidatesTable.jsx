@@ -1,16 +1,17 @@
 import React from 'react';
-import { CheckSquare, Square, Search, Share2, Users, Plus } from 'lucide-react';
+import { CheckSquare, Square, MinusSquare, Search, Share2, Users, Plus } from 'lucide-react';
 import EmptyState from '../ui/EmptyState';
-import { INITIAL_FORM_STATE } from './atsConstants';
+import { blankCandidateForm } from './atsConstants';
 
 export default function CandidatesTable(props) {
   const {
     tableScrollRef, onTableDragScrollStart, onTableDragScrollMove, onTableDragScrollEnd,
-    selectAll, filteredCandidates, isAllSelected, orderedColumns, visibleCandidates,
+    togglePageSelection, isPageSelected, isPagePartial, orderedColumns, visibleCandidates,
     selectedIds, toggleSelection, isLoadingInitial, viewMode, searchQuery,
     advancedSearchFilters, setEditId, setFormData, setFormErrors, setCountryCode,
-    setCountryIso, setShowModal,
+    setCountryIso, setShowModal, isFreelancer, initialFormState, openAddCandidate,
   } = props;
+  const pageIds = visibleCandidates.map((c) => c._id);
   return (
         <div
           ref={tableScrollRef}
@@ -22,20 +23,28 @@ export default function CandidatesTable(props) {
           onMouseLeave={onTableDragScrollEnd}
         >
           <table
-            className="cand-table-drag w-full text-left border-collapse min-w-[1280px] select-text border border-stone-200"
+            className="cand-table-drag w-max min-w-full text-left border-collapse select-text border border-stone-200"
             role="table"
             aria-label="Candidates list"
+            style={{ tableLayout: 'auto' }}
           >
             <thead>
               <tr className="bg-stone-100">
                 <th scope="col" className="px-3.5 py-3.5 w-[52px] text-center border border-stone-200 bg-stone-100">
                   <button
                     type="button"
-                    aria-label={isAllSelected ? 'Deselect all candidates' : 'Select all candidates'}
-                    onClick={() => selectAll(filteredCandidates.map(c => c._id))}
+                    title={isPageSelected ? 'Deselect this page' : 'Select this page only'}
+                    aria-label={isPageSelected ? 'Deselect this page' : 'Select this page only'}
+                    onClick={() => togglePageSelection(pageIds)}
                     className="cursor-pointer flex justify-center mx-auto p-1 rounded hover:bg-stone-200/80"
                   >
-                    {isAllSelected ? <CheckSquare size={18} className="text-brand-600" aria-hidden="true" /> : <Square size={18} className="text-stone-400" aria-hidden="true" />}
+                    {isPageSelected ? (
+                      <CheckSquare size={18} className="text-brand-600" aria-hidden="true" />
+                    ) : isPagePartial ? (
+                      <MinusSquare size={18} className="text-brand-500" aria-hidden="true" />
+                    ) : (
+                      <Square size={18} className="text-stone-400" aria-hidden="true" />
+                    )}
                   </button>
                 </th>
                 {orderedColumns.map((column) => (
@@ -50,6 +59,18 @@ export default function CandidatesTable(props) {
               </tr>
             </thead>
             <tbody>
+              {isLoadingInitial && visibleCandidates.length === 0 && Array.from({ length: 8 }).map((_, i) => (
+                <tr key={`sk-${i}`}>
+                  <td className="px-3.5 py-3 border border-stone-200">
+                    <div className="h-4 w-4 skeleton-ats rounded mx-auto" />
+                  </td>
+                  {orderedColumns.map((column) => (
+                    <td key={column.key} className="px-3.5 py-3 border border-stone-200">
+                      <div className="h-4 skeleton-ats rounded w-24 max-w-full" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
               {visibleCandidates.map((candidate, index) => (
                 <tr
                   key={candidate._id}
@@ -70,7 +91,7 @@ export default function CandidatesTable(props) {
                   {orderedColumns.map((column) => (
                     <td
                       key={`${candidate._id}-${column.key}`}
-                      className={`px-3.5 py-3 text-sm text-stone-700 font-medium border border-stone-200 align-middle whitespace-nowrap ${column.className || ''}`}
+                      className={`px-3.5 py-3 text-sm text-stone-700 font-medium border border-stone-200 align-middle whitespace-nowrap overflow-visible ${column.className || ''}`}
                     >
                       {column.render(candidate, index)}
                     </td>
@@ -89,13 +110,21 @@ export default function CandidatesTable(props) {
                         icon={Users}
                         tone="brand"
                         message="No candidates yet"
-                        subMessage="Add candidates manually or import from Excel to get started."
+                        subMessage={
+                          isFreelancer
+                            ? 'Create a candidate record to begin submissions against open mandates.'
+                            : 'Add candidates manually or import from Excel to get started.'
+                        }
                         action={
                           <button
                             type="button"
                             onClick={() => {
+                              if (typeof openAddCandidate === 'function') {
+                                openAddCandidate();
+                                return;
+                              }
                               setEditId(null);
-                              setFormData(INITIAL_FORM_STATE);
+                              setFormData(typeof initialFormState === 'function' ? initialFormState() : blankCandidateForm(isFreelancer ? 'freelancer' : ''));
                               setFormErrors({});
                               setCountryCode('+91');
                               setCountryIso('IN');

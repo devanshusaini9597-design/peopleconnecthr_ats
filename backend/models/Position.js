@@ -10,8 +10,20 @@ const positionSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-positionSchema.index({ createdBy: 1, name: 1 }, { unique: true });
-positionSchema.index({ organizationId: 1, name: 1 });
+// Unique indexes are created in ensurePositionOrgUniqueness after duplicate catalog rows are merged.
+positionSchema.set('autoIndex', false);
+positionSchema.index(
+  { organizationId: 1, name: 1 },
+  {
+    unique: true,
+    name: 'organizationId_1_name_1',
+    partialFilterExpression: { organizationId: { $type: 'objectId' } },
+  }
+);
+positionSchema.index(
+  { createdBy: 1, name: 1 },
+  { name: 'createdBy_1_name_1' }
+);
 
 positionSchema.plugin(require('../utils/tenantPlugin'));
 

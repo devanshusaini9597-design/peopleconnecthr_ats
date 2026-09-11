@@ -26,8 +26,10 @@ const jobSchema = new mongoose.Schema({
   // ── Core job details ───────────────────────────────────────────────
   title: { type: String, required: true, trim: true },   // Renamed from 'role'
   role: { type: String, trim: true },                      // Kept for backward compat
+  jobCode: { type: String, trim: true, uppercase: true },
   department: { type: String, default: '', trim: true },
   location: { type: String, required: true, trim: true },
+  locations: [{ type: String, trim: true }],
   employmentType: { 
     type: String, 
     enum: ['full_time', 'part_time', 'contract', 'internship', 'freelance'],
@@ -52,7 +54,17 @@ const jobSchema = new mongoose.Schema({
   skills: [{ type: String, trim: true }],
   qualifications: [{ type: String, trim: true }],
   description: { type: String, default: '' },              // Full JD (HTML/markdown)
+  summary: { type: String, default: '', trim: true },
   responsibilities: [{ type: String, trim: true }],
+  requirements: [{ type: String, trim: true }],
+  preferredProfile: { type: String, default: '', trim: true },
+  grade: { type: String, default: '', trim: true },
+  clientName: { type: String, default: '', trim: true },
+  industry: { type: String, default: '', trim: true },
+  spocName: { type: String, default: '', trim: true },
+  spocContact: { type: String, default: '', trim: true },
+  spocEmail: { type: String, default: '', trim: true },
+  internalNotes: { type: String, default: '', trim: true },
 
   // ── Pipeline configuration ─────────────────────────────────────────
   pipelineStages: { 
@@ -73,6 +85,10 @@ const jobSchema = new mongoose.Schema({
   },
   closedAt: { type: Date },
   closedReason: { type: String, default: '' },
+  /** When the job first went live (Open) — used for sidebar “new job” badges. */
+  openedAt: { type: Date },
+  /** Users who opened Jobs after this requisition — sidebar badge (same idea as Announcement.seenBy). */
+  seenBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 
   // ── Publishing (Careers page) ──────────────────────────────────────
   isPublished: { type: Boolean, default: false },
@@ -121,6 +137,7 @@ jobSchema.pre('save', function(next) {
 });
 
 // ── Indexes ──────────────────────────────────────────────────────────
+jobSchema.index({ organizationId: 1, jobCode: 1 }, { unique: true, sparse: true });
 jobSchema.index({ organizationId: 1, status: 1 });
 jobSchema.index({ organizationId: 1, createdAt: -1 });
 jobSchema.index({ organizationId: 1, isPublished: 1, status: 1 }); // Careers page query

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Mail, RefreshCw } from 'lucide-react';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
+import { useAuth } from '../context/AuthContext';
 import PageHeader from './ui/PageHeader';
 import ConfirmationModal from './ConfirmationModal';
 import FeatureGate from './FeatureGate';
@@ -26,6 +28,7 @@ const BASE = API_URL;
 
 const EmailSettingsPage = () => {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(EMAIL_TOUR_KEY);
   const [loading, setLoading] = useState(true);
@@ -42,7 +45,10 @@ const EmailSettingsPage = () => {
   const [settings, setSettings] = useState(emptySmtp);
   const [draft, setDraft] = useState(emptySmtp);
 
-  useEffect(() => { fetchSettings(); }, []);
+  useEffect(() => {
+    if (user?.role === 'freelancer') return;
+    fetchSettings();
+  }, [user?.role]);
 
   const fetchSettings = async () => {
     setLoading(true);
@@ -206,6 +212,10 @@ const EmailSettingsPage = () => {
     : hasPersonalSmtp
       ? { label: savedPreset.label, detail: settings.smtpEmail, ok: true }
       : { label: 'Not connected', detail: 'Connect a mailbox so the ATS can send email.', ok: false };
+
+  if (user?.role === 'freelancer') {
+    return <Navigate to="/settings" replace />;
+  }
 
   if (loading) {
     return (

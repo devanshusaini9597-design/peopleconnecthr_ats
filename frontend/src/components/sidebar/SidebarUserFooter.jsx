@@ -1,26 +1,43 @@
 import React from 'react';
 import { LogOut } from 'lucide-react';
 import { ROLE_BADGE } from './sidebarConstants';
+import { formatRoleLabel } from '../organization/constants';
+import { usePresence } from '../../context/PresenceContext';
+import PresenceAvatar from '../ui/PresenceAvatar';
 
 export default function SidebarUserFooter({
   collapsed,
-  initials,
+  photo,
   userName,
+  userEmail,
   userRole,
   onLogoutClick,
 }) {
+  const roleLabel = formatRoleLabel(userRole);
+  const { people } = usePresence();
+  const self = people.find((p) => p.isYou);
+  const status = self?.status || 'online';
+
   return (
     <div className="relative border-t border-stone-800/40 p-3 pb-4 flex-shrink-0 z-10 bg-stone-950">
       <div className={`flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-stone-800/40 transition-colors min-w-0 ${collapsed ? 'justify-center' : ''}`}>
-        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-lg shadow-teal-500/20 select-none">
-          {initials}
-        </div>
+        <PresenceAvatar
+          name={userName}
+          email={userEmail}
+          photo={self?.profilePicture || photo}
+          status={status}
+          size={32}
+          ringClass="ring-stone-950"
+        />
         {!collapsed && (
           <>
             <div className="flex-1 min-w-0 overflow-hidden">
               <p className="text-sm font-semibold text-stone-200 truncate leading-tight">{userName || 'User'}</p>
-              <span className={`inline-flex items-center mt-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide border max-w-full truncate ${ROLE_BADGE[userRole] || ROLE_BADGE.readonly}`}>
-                {userRole}
+              <span
+                className={`inline-flex items-center mt-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-wide border max-w-full truncate ${ROLE_BADGE[userRole] || ROLE_BADGE.readonly}`}
+                title={roleLabel}
+              >
+                {roleLabel}
               </span>
             </div>
             <button

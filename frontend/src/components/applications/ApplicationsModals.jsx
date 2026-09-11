@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  Plus, User, Mail, Phone, Briefcase, Loader2, XCircle, Trash2, Calendar, Video, MapPin,
+  Plus, Briefcase, Loader2, XCircle, Trash2, Calendar, Video, Phone, MapPin, Layers,
 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import EmptyState from '../ui/EmptyState';
 import PremiumSelect from '../ui/PremiumSelect';
 import PremiumDatePicker from '../ui/PremiumDatePicker';
-import { SOURCE_OPTIONS } from './constants';
+import AddApplicationForm from './AddApplicationForm';
+import { authenticatedFetch, readApiJson } from '../../utils/fetchUtils';
 
 export default function ApplicationsModals({
   isAddModalOpen,
@@ -23,6 +24,7 @@ export default function ApplicationsModals({
   handleReject,
   rejectReason,
   setRejectReason,
+  selectedApp,
   isScheduleOpen,
   setIsScheduleOpen,
   scheduling,
@@ -34,21 +36,61 @@ export default function ApplicationsModals({
   deleting,
   handleDeleteApp,
 }) {
+  const [rejectPools, setRejectPools] = useState([]);
+  const [rejectPoolIds, setRejectPoolIds] = useState([]);
+  const [rejectPoolsLoading, setRejectPoolsLoading] = useState(false);
+  const [rejectOptedOut, setRejectOptedOut] = useState(false);
+
+  useEffect(() => {
+    if (!isRejectModalOpen || !selectedApp?._id) {
+      setRejectPools([]);
+      setRejectPoolIds([]);
+      setRejectOptedOut(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setRejectPoolsLoading(true);
+    (async () => {
+      try {
+        const res = await authenticatedFetch(`/api/talent-pools/for-reject?applicationId=${encodeURIComponent(selectedApp._id)}`);
+        const data = await readApiJson(res);
+        if (cancelled) return;
+        if (!res.ok || !data.success) {
+          setRejectPools([]);
+          return;
+        }
+        const pools = data.data?.pools || [];
+        setRejectPools(pools);
+        setRejectOptedOut(!!data.data?.optedOut);
+        setRejectPoolIds(pools.filter((p) => p.suggested).map((p) => p._id));
+      } catch {
+        if (!cancelled) setRejectPools([]);
+      } finally {
+        if (!cancelled) setRejectPoolsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isRejectModalOpen, selectedApp?._id]);
+
+  const toggleRejectPool = (id) => {
+    setRejectPoolIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
   return (
     <>
       {/* Add Application */}
       <Modal
         open={isAddModalOpen}
         onClose={() => !adding && setIsAddModalOpen(false)}
-        title="Add Application"
-        description="Create a pipeline entry for a candidate on a job."
+        title="Add to pipeline"
+        description="Pick someone from a matching talent pool, or add a new person (resume parse fills the fields)."
         size="lg"
         footer={
           <>
             <button type="button" className="btn-secondary" disabled={adding} onClick={() => setIsAddModalOpen(false)}>Cancel</button>
-            <button type="submit" form="add-app-form" className="btn-primary" disabled={adding || jobs.length === 0}>
+            <button type="submit" form="add-app-form" className="btn-primary" disabled={adding || jobs.length === 0 || (addForm.mode !== 'new' && !addForm.candidateId)}>
               {adding ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-              {adding ? 'Adding…' : 'Submit'}
+              {adding ? 'Adding…' : 'Add to pipeline'}
             </button>
           </>
         }
@@ -64,77 +106,7 @@ export default function ApplicationsModals({
             />
           ) : (
             <>
-              <div>
-                <label className="label-ats">Job *</label>
-                <PremiumSelect
-                  variant="list"
-                  value={addForm.jobId}
-                  onChange={(v) => setAddForm({ ...addForm, jobId: v })}
-                  options={jobOptions}
-                  placeholder="Select a job"
-                  icon={Briefcase}
-                  searchable
-                  searchPlaceholder="Search jobs…"
-                  emptyLabel="No jobs found"
-                />
-              </div>
-              <div>
-                <label className="label-ats">Candidate Name *</label>
-                <div className="relative">
-                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
-                  <input
-                    required
-                    type="text"
-                    className="field-premium field-premium-icon"
-                    value={addForm.name}
-                    onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
-                    placeholder="Full name"
-                    autoComplete="name"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="label-ats">Email *</label>
-                <div className="relative">
-                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
-                  <input
-                    required
-                    type="email"
-                    className="field-premium field-premium-icon"
-                    value={addForm.email}
-                    onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
-                    placeholder="name@email.com"
-                    autoComplete="email"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="label-ats">Phone</label>
-                  <div className="relative">
-                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
-                    <input
-                      type="tel"
-                      className="field-premium field-premium-icon"
-                      value={addForm.phone}
-                      onChange={(e) => setAddForm({ ...addForm, phone: e.target.value })}
-                      placeholder="Optional"
-                      autoComplete="tel"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="label-ats">Source</label>
-                  <PremiumSelect
-                    variant="list"
-                    value={addForm.source}
-                    onChange={(v) => setAddForm({ ...addForm, source: v || 'Direct' })}
-                    options={SOURCE_OPTIONS}
-                    placeholder="Select source"
-                    icon={User}
-                  />
-                </div>
-              </div>
+              <AddApplicationForm addForm={addForm} setAddForm={setAddForm} jobOptions={jobOptions} />
             </>
           )}
         </form>
@@ -145,12 +117,17 @@ export default function ApplicationsModals({
         open={isRejectModalOpen}
         onClose={() => !rejecting && setIsRejectModalOpen(false)}
         title="Reject application?"
-        description="This candidate will be removed from the active pipeline."
-        size="sm"
+        description="This candidate will be removed from the active pipeline for this job only — they stay in your database."
+        size="md"
         footer={
           <>
             <button type="button" className="btn-secondary" disabled={rejecting} onClick={() => setIsRejectModalOpen(false)}>Cancel</button>
-            <button type="button" className="btn-danger" disabled={rejecting} onClick={handleReject}>
+            <button
+              type="button"
+              className="btn-danger"
+              disabled={rejecting}
+              onClick={() => handleReject(rejectPools.length ? rejectPoolIds : undefined)}
+            >
               {rejecting ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />}
               {rejecting ? 'Rejecting…' : 'Confirm Reject'}
             </button>
@@ -164,6 +141,41 @@ export default function ApplicationsModals({
           value={rejectReason}
           onChange={(e) => setRejectReason(e.target.value)}
         />
+        {rejectPoolsLoading ? (
+          <div className="flex items-center gap-2 mt-4 text-sm text-stone-500">
+            <Loader2 size={14} className="animate-spin" /> Checking talent pools…
+          </div>
+        ) : rejectOptedOut ? (
+          <p className="mt-4 text-xs text-stone-500">This person opted out of talent-pool retention.</p>
+        ) : rejectPools.length > 0 ? (
+          <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50/80 p-3 space-y-2">
+            <p className="text-sm font-semibold text-stone-800 inline-flex items-center gap-1.5">
+              <Layers size={14} className="text-brand-600" /> Keep for other roles
+            </p>
+            <p className="text-xs text-stone-500">
+              Rejected here does not block another job. Suggested pools are ticked — e.g. Banking now, Finance later.
+            </p>
+            <div className="space-y-1.5 max-h-40 overflow-y-auto">
+              {rejectPools.map((p) => (
+                <label key={p._id} className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 rounded border-stone-300 text-brand-600 focus:ring-brand-500"
+                    checked={rejectPoolIds.includes(p._id)}
+                    onChange={() => toggleRejectPool(p._id)}
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-stone-800">{p.name}</span>
+                    <span className="block text-[11px] text-stone-500">
+                      {[p.industry, p.product].filter(Boolean).join(' · ')
+                        || (p.suggested ? 'Suggested from this profile' : 'Optional')}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </Modal>
 
       {/* Schedule */}

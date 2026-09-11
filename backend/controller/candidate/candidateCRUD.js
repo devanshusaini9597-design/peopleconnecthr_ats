@@ -41,19 +41,25 @@ async function createCandidate(req, res) {
             const { findOrgPhoneConflict, findOrgEmailConflict } = require('../../services/dedupeService');
             const emailHit = await findOrgEmailConflict(req.user.organizationId, email);
             if (emailHit) {
+                const freelancerMsg = 'The candidate is duplicate kindly check with the hiring manager';
                 return res.status(400).json({
                     success: false,
                     code: 'DUPLICATE_EMAIL',
-                    message: `Email already exists for ${emailHit.name || 'another candidate'}${emailHit.contact ? ` (${emailHit.contact})` : ''}. Open that profile or use a different email.`,
+                    message: isFreelancer(req.user)
+                      ? freelancerMsg
+                      : `Email already exists for ${emailHit.name || 'another candidate'}${emailHit.contact ? ` (${emailHit.contact})` : ''}. Open that profile or use a different email.`,
                     existingId: emailHit._id,
                 });
             }
             const phoneHit = await findOrgPhoneConflict(req.user.organizationId, contact);
             if (phoneHit) {
+                const freelancerMsg = 'The candidate is duplicate kindly check with the hiring manager';
                 return res.status(400).json({
                     success: false,
                     code: 'DUPLICATE_PHONE',
-                    message: `Phone already exists for ${phoneHit.name || 'another candidate'} (${phoneHit.email || 'no email'}). Open that profile or use a different number.`,
+                    message: isFreelancer(req.user)
+                      ? freelancerMsg
+                      : `Phone already exists for ${phoneHit.name || 'another candidate'} (${phoneHit.email || 'no email'}). Open that profile or use a different number.`,
                     existingId: phoneHit._id,
                 });
             }
@@ -118,7 +124,7 @@ async function createCandidate(req, res) {
         if (req.user && req.user.organizationId) {
             req.body.organizationId = req.user.organizationId;
         }
-        if (isFreelancer(req.user) && !(req.body.source && String(req.body.source).trim())) {
+        if (isFreelancer(req.user)) {
             req.body.source = 'Freelance';
         }
 
@@ -292,6 +298,9 @@ async function updateCandidate(req, res) {
         // Freelancer status is company-driven (submission review). Do not accept client edits.
         if (isFreelancer(req.user) && 'status' in req.body) {
             delete req.body.status;
+        }
+        if (isFreelancer(req.user)) {
+            req.body.source = 'Freelance';
         }
         if ('pan' in req.body || 'client' in req.body) {
             if (req.body.pan != null) req.body.pan = normalizePan(req.body.pan);
@@ -484,10 +493,17 @@ async function deleteCandidate(req, res) {
                 return res.status(404).json({ success: false, message: 'Candidate not found' });
             }
 
+            try {
+                const { dismissHandoffsForFreelancer } = require('../../services/freelancerService');
+                await dismissHandoffsForFreelancer(req.user, [id]);
+            } catch (dismissErr) {
+                logger.warn({ err: dismissErr }, 'Freelancer handoff dismiss skipped');
+            }
+
             return res.status(200).json({
                 success: true,
                 soft: true,
-                message: 'Removed from your desk. The company record was kept.',
+                message: 'Candidate removed.',
             });
         }
 

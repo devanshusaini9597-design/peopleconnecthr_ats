@@ -1,7 +1,7 @@
 import React from 'react';
 import { Search, LayoutGrid, List, X, Filter, Briefcase, Target } from 'lucide-react';
 import PremiumSelect from '../ui/PremiumSelect';
-import { STAGE_FILTER_OPTIONS, classNames } from './constants';
+import { STAGE_FILTER_OPTIONS } from './constants';
 
 export default function ApplicationsFilters({
   selectedJobId,
@@ -11,104 +11,117 @@ export default function ApplicationsFilters({
   setSearchQuery,
   stageFilter,
   setStageFilter,
+  stageFilterOptions,
   viewMode,
   setViewMode,
   clearFilters,
+  resultCount,
+  totalCount,
+  loading,
 }) {
+  const stageOptions = stageFilterOptions?.length ? stageFilterOptions : STAGE_FILTER_OPTIONS;
+  const hasActiveFilters = Boolean(searchQuery || (stageFilter && stageFilter !== 'all') || (selectedJobId && selectedJobId !== 'all'));
+  const jobFiltered = selectedJobId && selectedJobId !== 'all';
+
   return (
-    <div data-tour="apps-filters" className="card-ats-bordered p-3 sm:p-5 relative">
-      <div className="absolute inset-x-0 top-0 h-1 rounded-t-2xl bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 pointer-events-none" />
-      <div className="flex items-center gap-2 mb-3 pt-1">
-        <Filter size={15} className="text-brand-600 flex-shrink-0" />
-        <p className="text-sm font-bold text-stone-900 tracking-tight">Find applications</p>
+    <section data-tour="apps-filters" className="toolbar-ats flex flex-col gap-3">
+      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+        <div className="relative flex-1 min-w-0 max-w-full sm:max-w-md">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" aria-hidden="true" />
+          <input
+            type="search"
+            placeholder="Search name or email…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="input-ats !pl-10 !pr-9 w-full"
+            aria-label="Search pipeline"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100"
+              aria-label="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] text-stone-400 font-medium sm:text-right flex-shrink-0">
+          {loading
+            ? 'Loading…'
+            : `${typeof resultCount === 'number' ? resultCount : 0}${typeof totalCount === 'number' && totalCount !== resultCount ? ` of ${totalCount}` : ''} in view`}
+        </p>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-12 gap-3 sm:gap-4 items-end">
-        <div className="sm:col-span-1 xl:col-span-3 min-w-0">
-          <label className="label-ats">Job</label>
-          <PremiumSelect
-            variant="list"
-            value={selectedJobId}
-            onChange={setSelectedJobId}
-            options={jobOptions}
-            placeholder="Select a job"
-            icon={Briefcase}
-            searchable
-            searchPlaceholder="Search jobs…"
-            emptyLabel="No jobs found"
-            allowClear
-          />
-        </div>
-        <div className="sm:col-span-1 xl:col-span-3 min-w-0">
-          <label className="label-ats">Search</label>
-          <div className="relative">
-            <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="search"
-              placeholder={selectedJobId ? 'Name, email, phone…' : 'Pick a job first…'}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="input-ats input-ats-icon w-full !pr-9"
-              disabled={!selectedJobId}
+
+      <div className="flex flex-col lg:flex-row lg:items-center gap-2.5">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-1 min-w-0">
+          <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500 px-1 flex-shrink-0">
+            <Filter size={14} /> Filters
+          </div>
+          <div className="flex-1 min-w-0 sm:max-w-xs">
+            <PremiumSelect
+              variant="list"
+              compact
+              value={selectedJobId || 'all'}
+              onChange={(v) => setSelectedJobId(v || 'all')}
+              options={jobOptions}
+              placeholder="All open jobs"
+              icon={Briefcase}
+              searchable
+              searchPlaceholder="Search jobs…"
+              emptyLabel="No jobs found"
             />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100"
-                aria-label="Clear search"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
           </div>
-        </div>
-        <div className="sm:col-span-1 xl:col-span-2 min-w-0">
-          <label className="label-ats">Stage</label>
-          <PremiumSelect
-            variant="list"
-            value={stageFilter}
-            onChange={setStageFilter}
-            options={STAGE_FILTER_OPTIONS}
-            placeholder="All stages"
-            icon={Target}
-          />
-        </div>
-        <div className="sm:col-span-1 xl:col-span-4 flex flex-wrap items-end gap-2 min-w-0">
-          <div className="flex bg-stone-100 p-1 rounded-xl h-[42px] items-center flex-shrink-0">
-            <button
-              type="button"
-              onClick={() => setViewMode('kanban')}
-              className={classNames(
-                'h-8 w-8 flex items-center justify-center rounded-lg transition-all',
-                viewMode === 'kanban' ? 'bg-white shadow-sm text-brand-600' : 'text-stone-500 hover:text-stone-700'
-              )}
-              title="Board view"
-            >
-              <LayoutGrid className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('table')}
-              className={classNames(
-                'h-8 w-8 flex items-center justify-center rounded-lg transition-all',
-                viewMode === 'table' ? 'bg-white shadow-sm text-brand-600' : 'text-stone-500 hover:text-stone-700'
-              )}
-              title="List view"
-            >
-              <List className="w-4 h-4" />
-            </button>
+          <div className="w-full sm:w-44 flex-shrink-0">
+            <PremiumSelect
+              variant="list"
+              compact
+              value={stageFilter}
+              onChange={setStageFilter}
+              options={stageOptions}
+              placeholder="All stages"
+              icon={Target}
+            />
           </div>
-          {(searchQuery || stageFilter !== 'all') && (
+          {hasActiveFilters && (
             <button
               type="button"
-              className="btn-secondary !h-[42px] flex-1 sm:flex-none"
-              onClick={clearFilters}
+              className="text-xs font-semibold text-brand-700 hover:text-brand-800 self-start sm:self-center whitespace-nowrap"
+              onClick={() => {
+                clearFilters();
+                if (jobFiltered) setSelectedJobId('all');
+              }}
             >
               Clear
             </button>
           )}
         </div>
+
+        <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+          <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500 px-1">
+            View
+          </div>
+          {[
+            { id: 'kanban', label: 'Board', icon: LayoutGrid },
+            { id: 'table', label: 'List', icon: List },
+          ].map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setViewMode(id)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                viewMode === id
+                  ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-500/20'
+                  : 'bg-white text-stone-600 border-stone-200 hover:border-brand-300 hover:bg-brand-50/50'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
-    </div>
+    </section>
   );
 }

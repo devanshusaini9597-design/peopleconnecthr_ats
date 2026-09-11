@@ -10,6 +10,7 @@ import useApplications from './applications/useApplications';
 import ApplicationsFilters from './applications/ApplicationsFilters';
 import ApplicationsTable from './applications/ApplicationsTable';
 import ApplicationsKanban from './applications/ApplicationsKanban';
+import ApplicationsStageSummary from './applications/ApplicationsStageSummary';
 import ApplicationDetailPanel from './applications/ApplicationDetailPanel';
 import ApplicationsModals from './applications/ApplicationsModals';
 import { useAuth } from '../context/AuthContext';
@@ -127,11 +128,21 @@ function ApplicationsPageInner() {
         </span>
         <span>
           {isApplicationsRoute
-            ? `${stats.total || applications.length} in pipeline · avg time ${stats.avgTime || 'N/A'}. Switch views or filter by stage anytime.`
-            : `${stats.total || applications.length} in pipeline · avg time ${stats.avgTime || 'N/A'}. Drag cards across columns to change stage.`}
+            ? `${stats.total || applications.length} in pipeline · avg time ${stats.avgTime || 'N/A'}. Drag cards between stages or use Update stage.`
+            : `Company pipeline — drag candidates between stages. Declined is a terminal stage; move a card out to reopen it. Avg time ${stats.avgTime || 'N/A'}.`}
           {' '}Press <span className="font-semibold text-stone-800">?</span> for a tour.
         </span>
       </div>
+
+      {!isApplicationsRoute && viewMode === 'kanban' && !loading && applications.length > 0 && (
+        <ApplicationsStageSummary
+          stages={boardStages}
+          getAppsByStage={getAppsByStage}
+          stageFilter={stageFilter}
+          setStageFilter={setStageFilter}
+          total={filteredApplications.length || stats.total || applications.length}
+        />
+      )}
 
       <ApplicationsFilters
         selectedJobId={selectedJobId}
@@ -272,6 +283,7 @@ function ApplicationsPageInner() {
         handleReject={handleReject}
         rejectReason={rejectReason}
         setRejectReason={setRejectReason}
+        selectedApp={selectedApp}
         isScheduleOpen={isScheduleOpen}
         setIsScheduleOpen={setIsScheduleOpen}
         scheduling={scheduling}

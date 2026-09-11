@@ -3,7 +3,7 @@ export const SKILLS_TOUR_KEY = 'skillnix_tour_skills_v1';
 export const SKILLS_TOUR_STEPS = [
   {
     title: 'Skills taxonomy',
-    body: 'Maintain a structured skill catalog for candidate–job matching — system skills plus your custom org skills.',
+    body: 'This is the shared skill catalog for candidates, jobs, and this page. Add a skill anywhere and it shows up everywhere.',
   },
   {
     target: '[data-tour="skills-toolbar"]',
@@ -14,13 +14,13 @@ export const SKILLS_TOUR_STEPS = [
   {
     target: '[data-tour="skills-compose"]',
     title: 'Add custom skills',
-    body: 'Create org-specific skills with a category. System skills stay locked; custom ones can be edited or removed.',
+    body: 'Create a skill with a category. It is added to candidate and job dropdowns automatically. System skills stay locked; custom ones can be edited or removed.',
     placement: 'right',
   },
   {
     target: '[data-tour="skills-catalog"]',
     title: 'Skills catalog',
-    body: 'Browse skills by category. Use Import catalog for the starter set, then paginate through large lists.',
+    body: 'Browse skills by category. Import catalog for the starter set. Anything added from Candidates or Jobs appears here too.',
     placement: 'left',
   },
 ];

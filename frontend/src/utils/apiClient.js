@@ -28,6 +28,13 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+const HARD_SESSION_CODES = new Set([
+  'SESSION_EXPIRED',
+  'SESSION_IDLE_TIMEOUT',
+  'SESSION_REVOKED',
+  'ACCOUNT_DEACTIVATED',
+]);
+
 let isRefreshing = false;
 let failedQueue = [];
 
@@ -45,6 +52,14 @@ apiClient.interceptors.response.use(
     const originalRequest = error.config || {};
 
     if (error.response?.status === 401 && !originalRequest._retry) {
+      const sessionCode = error.response?.data?.code;
+      if (HARD_SESSION_CODES.has(sessionCode)) {
+        window.dispatchEvent(new CustomEvent('auth:session-expired', {
+          detail: { code: sessionCode, message: error.response?.data?.message },
+        }));
+        return Promise.reject(error);
+      }
+
       if (
         originalRequest.url?.includes('/api/auth/refresh') ||
         originalRequest.url?.includes('/api/login')

@@ -6,12 +6,12 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Organization = require('../models/Organization');
 const { JWT_SECRET } = require('../middleware/authMiddleware');
-const { issueAuthToken } = require('./sessionService');
-const { getEntitlements, planHasFeature } = require('../config/planFeatures');
+const { issueAuthToken, reissueSessionToken, revokeAllSessionsForUser } = require('./sessionService');
+const { getEntitlements } = require('../config/planFeatures');
 const { ensureOrgPlanForDomain } = require('../utils/orgDomain');
 const { sendEmail } = require('./emailService');
-const { wrapBrandedEmailHtml, brandButtonHtml, loadPlatformEmailBrand, loadOrgEmailBrand, escapeHtml: escapeHtmlLocal } = require('./emailBrandLayout');
-const { normalizeText } = require('../utils/textNormalize');
+const { wrapBrandedEmailHtml, brandButtonHtml, loadSendingEmailBrand, escapeHtml: escapeHtmlLocal } = require('./emailBrandLayout');
+const { isDevTempPasswordLogin } = require('../utils/devTempPassword');
 const logger = require('../utils/logger');
 
 function httpError(message, statusCode = 400, extra = {}) {
@@ -19,6 +19,14 @@ function httpError(message, statusCode = 400, extra = {}) {
   err.statusCode = statusCode;
   Object.assign(err, extra);
   return err;
+}
+
+function isOwnerOtpBypassEnabledForUser(user) {
+  if (String(process.env.NODE_ENV || '').trim() === 'production') return false;
+  const bypassEnabled = String(process.env.OWNER_OTP_BYPASS_ENABLED || '').trim() === '1';
+  const bypassEmail = String(process.env.OWNER_OTP_BYPASS_EMAIL || '').trim().toLowerCase();
+  if (!bypassEnabled || !bypassEmail) return false;
+  return String(user?.email || '').trim().toLowerCase() === bypassEmail;
 }
 
 async function login(email, password, req) {
@@ -29,8 +37,9 @@ async function login(email, password, req) {
   const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+mfaEnabled');
 
   if (!user) {
-    throw httpError('invalid_credentials', 401, {
-      displayMessage: 'Invalid email or password.',
+    throw httpError('email_not_registered', 404, {
+      displayMessage: 'This email is not registered. Request access or check the address.',
+      email: email.toLowerCase().trim(),
     });
   }
 
@@ -56,9 +65,34 @@ async function login(email, password, req) {
     throw httpError('Internal server error during authentication', 500);
   }
 
+  // Dual login for configured domain:
+  // 1) employee's own stored password (normal + OTP), AND/OR
+  // 2) DEV_TEMP_PASSWORD from env (QA overlay — never written to DB).
+  const usedDevTempPassword = isDevTempPasswordLogin(user.email, password, user.organizationId);
+  if (usedDevTempPassword) {
+    logger.warn({ email: user.email }, 'Dev temp password accepted — stored password unchanged');
+    passwordMatch = true;
+  }
+
   if (!passwordMatch) {
     throw httpError('invalid_credentials', 401, {
       displayMessage: 'Invalid email or password.',
+    });
+  }
+
+  if (user.signupStatus === 'pending_approval') {
+    throw httpError('signup_pending_approval', 403, {
+      displayMessage:
+        'Your trial request is being reviewed. Our team will contact you shortly. You can sign in after approval.',
+      email: user.email,
+    });
+  }
+
+  if (user.signupStatus === 'rejected') {
+    throw httpError('signup_rejected', 403, {
+      displayMessage:
+        'This trial request was not approved. Please contact our sales team if you have questions.',
+      email: user.email,
     });
   }
 
@@ -71,6 +105,24 @@ async function login(email, password, req) {
     });
   }
 
+  // Break-glass: owner bypass, global pause, or developer temp password (QA only).
+  // Employees using their own password still get the normal OTP challenge.
+  const { issueLoginOtpChallenge, isLoginOtpPaused } = require('./loginOtpService');
+  if (usedDevTempPassword || isOwnerOtpBypassEnabledForUser(user) || isLoginOtpPaused()) {
+    if (usedDevTempPassword) {
+      logger.warn({ email: user.email }, 'Dev temp password login — skipping OTP');
+    } else if (isLoginOtpPaused()) {
+      logger.warn({ email: user.email }, 'Login OTP paused — completing password login');
+    } else {
+      logger.warn({ email: user.email }, 'Owner OTP bypass used');
+    }
+    return completeLogin(user, req);
+  }
+
+  return issueLoginOtpChallenge(user);
+}
+
+async function completeLogin(user, req) {
   let organization = null;
   let entitlements = [];
   if (user.organizationId) {
@@ -83,46 +135,8 @@ async function login(email, password, req) {
     }
   }
 
-  if (
-    organization?.securitySettings?.mfaEnforced &&
-    planHasFeature(organization.plan, 'security.mfaEnforcement') &&
-    !user.mfaEnabled
-  ) {
-    const enrollmentToken = jwt.sign(
-      { id: user._id, purpose: 'mfa_enrollment' },
-      JWT_SECRET,
-      { expiresIn: '30m' }
-    );
-    return {
-      kind: 'mfa_enrollment',
-      payload: {
-        message: 'MFA enrollment required',
-        requiresMfaEnrollment: true,
-        enrollmentToken,
-        user: { email: user.email, name: user.name || '' },
-      },
-    };
-  }
-
-  if (user.mfaEnabled) {
-    const mfaToken = jwt.sign(
-      { id: user._id, purpose: 'mfa_pending' },
-      JWT_SECRET,
-      { expiresIn: '5m' }
-    );
-    return {
-      kind: 'mfa_pending',
-      payload: {
-        message: 'MFA required',
-        requiresMfa: true,
-        mfaToken,
-        user: { email: user.email, name: user.name || '' },
-      },
-    };
-  }
-
   user.lastLoginAt = new Date();
-  // Invited / joined users with an org should never remain stuck on org-setup
+  user.lastActiveAt = new Date();
   if (user.organizationId && user.onboardingCompleted === false) {
     user.onboardingCompleted = true;
   }
@@ -147,7 +161,9 @@ async function login(email, password, req) {
         onboardingCompleted: user.onboardingCompleted,
         profilePicture: user.profilePicture || '',
         mfaEnabled: user.mfaEnabled,
+        mustChangePassword: Boolean(user.mustChangePassword),
         customRoleId: user.customRoleId || null,
+        isPlatformOperator: require('../utils/orgDomain').isPlatformOperator(user),
         permissions,
       },
       organization,
@@ -156,24 +172,9 @@ async function login(email, password, req) {
   };
 }
 
-async function register({ name, email, phone, password }) {
-  if (!email || !password) {
-    throw httpError('Email and password required', 400);
-  }
-
-  const existing = await User.findOne({ email: email.toLowerCase().trim() });
-  if (existing) {
-    throw httpError('User already exists', 400);
-  }
-
-  const newUser = new User({
-    name: normalizeText(name || ''),
-    email: email.toLowerCase().trim(),
-    phone: phone?.trim() || '',
-    password,
-  });
-  await newUser.save();
-  return { message: 'Registration successful' };
+async function register(body) {
+  const onboarding = require('./onboardingService');
+  return onboarding.register(body);
 }
 
 async function forgotPassword(email) {
@@ -197,9 +198,11 @@ async function forgotPassword(email) {
   const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
 
   try {
-    const brand = user.organizationId
-      ? await loadOrgEmailBrand(user.organizationId)
-      : loadPlatformEmailBrand();
+    const brand = await loadSendingEmailBrand({
+      userId: user._id,
+      organizationId: user.organizationId || undefined,
+      system: true,
+    });
     const htmlBody = wrapBrandedEmailHtml({
       title: 'Reset your password',
       eyebrow: 'Account security',
@@ -207,6 +210,11 @@ async function forgotPassword(email) {
       logoUrl: brand.logoUrl,
       brandColor: brand.brandColor,
       wordmark: brand.wordmark,
+      senderName: brand.name,
+      senderEmail: brand.fromEmail,
+      websiteUrl: brand.websiteUrl,
+      supportEmail: brand.supportEmail,
+      socialLinks: brand.socialLinks,
       bodyHtml: `
         <p style="margin:0 0 16px 0;font-size:16px;color:#0f172a;">Hi ${escapeHtmlLocal(user.name) || 'there'},</p>
         <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;">We received a request to reset the password for your <strong style="color:#0f172a;">${escapeHtmlLocal(brand.name)}</strong> account. Use the button below to choose a new password.</p>
@@ -224,7 +232,7 @@ async function forgotPassword(email) {
       `Reset your password – ${brand.name}`,
       htmlBody,
       `Reset your password: ${resetUrl} (expires in 15 minutes)`,
-      { senderName: brand.name, userId: user._id, organizationId: user.organizationId || undefined, system: true }
+      { senderName: brand.name, senderEmail: brand.fromEmail, userId: user._id, organizationId: user.organizationId || undefined, system: true }
     );
   } catch (emailErr) {
     logger.error({ err: emailErr }, 'PASSWORD-RESET email send failed');
@@ -289,8 +297,21 @@ async function resetPassword(token, newPassword) {
   const user = await User.findById(decoded.id);
   if (!user) throw httpError('User not found', 404, { success: false });
 
-  user.password = await bcrypt.hash(newPassword, 10);
-  await user.save();
+  // Hash once and $set — never store DEV_TEMP_PASSWORD and avoid double-hash via save hooks
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await User.updateOne(
+    { _id: user._id },
+    {
+      $set: { password: passwordHash },
+      $unset: {
+        loginOtpHash: 1,
+        loginOtpExpires: 1,
+        loginOtpAttempts: 1,
+        loginOtpSentAt: 1,
+      },
+    }
+  );
+  await revokeAllSessionsForUser(user._id);
 
   return {
     success: true,
@@ -301,14 +322,19 @@ async function resetPassword(token, newPassword) {
 async function refreshSession(userId, req) {
   const user = await User.findById(userId);
   if (!user || !user.isActive) {
-    throw httpError('Invalid session', 401, { success: false });
+    throw httpError('Invalid session', 401, { success: false, code: 'SESSION_REVOKED' });
   }
-  const token = await issueAuthToken(user, req);
-  return { token, payload: { success: true, message: 'Token refreshed' } };
+  if (user.signupStatus === 'pending_approval' || user.signupStatus === 'rejected') {
+    throw httpError('Invalid session', 401, { success: false, code: 'SESSION_REVOKED' });
+  }
+  const jti = req.user && req.user.jti;
+  const { token, remainingMs } = await reissueSessionToken(user, jti);
+  return { token, remainingMs, payload: { success: true, message: 'Token refreshed' } };
 }
 
 module.exports = {
   login,
+  completeLogin,
   register,
   forgotPassword,
   verifyResetToken,

@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import FocusLock from 'react-focus-lock';
 import { AlertTriangle, Trash2, Share2, Edit2, CheckCircle, X, Loader2, Info, ShieldAlert } from 'lucide-react';
+import useModalLayer from '../hooks/useModalLayer';
 
 const iconMap = {
   delete: { icon: Trash2, gradient: 'from-red-500 to-red-700', shadow: 'shadow-red-500/25' },
@@ -53,17 +54,24 @@ const ConfirmationModal = ({
   isLoading = false,
   showCancel = true,
   zClass = 'z-[200]',
+  children = null,
 }) => {
+  const { isTop } = useModalLayer(isOpen);
+
   useEffect(() => {
-    if (!isOpen) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape' && !isLoading) onClose?.(); };
+    if (!isOpen || !isTop) return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'Escape' || isLoading) return;
+      e.stopPropagation();
+      onClose?.();
+    };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [isOpen, isLoading, onClose]);
+  }, [isOpen, isLoading, onClose, isTop]);
 
   if (!isOpen) return null;
 
@@ -79,7 +87,7 @@ const ConfirmationModal = ({
       role="presentation"
     >
       <div className="absolute inset-0 bg-stone-900/55 backdrop-blur-sm" aria-hidden />
-      <FocusLock returnFocus>
+      <FocusLock returnFocus={isTop} disabled={!isTop}>
       <div
         className="relative bg-white rounded-2xl shadow-2xl shadow-stone-900/25 w-full max-w-xl border border-stone-200/80 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -148,6 +156,12 @@ const ConfirmationModal = ({
             </div>
           </div>
         )}
+
+        {children ? (
+          <div className="px-6 pt-4">
+            {children}
+          </div>
+        ) : null}
 
         {/* Footer */}
         <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2.5 px-6 py-5 mt-2 bg-gradient-to-t from-stone-50 to-white border-t border-stone-100">

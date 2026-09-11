@@ -1,30 +1,69 @@
 import React from 'react';
 import { TrendingUp, TrendingDown, ArrowRight, ChevronRight } from 'lucide-react';
 
-export const StatCard = ({ icon: Icon, label, value, trend, gradient, loading, onClick }) => (
+export const StatCard = ({
+  icon: Icon,
+  label,
+  value,
+  trend,
+  trendLabel = 'vs last period',
+  caption,
+  hint,
+  hintTone,
+  gradient,
+  loading,
+  onClick,
+}) => (
   <button
     type="button"
     onClick={onClick}
-    className="relative card-ats-bordered p-5 min-h-[118px] flex flex-col justify-between overflow-hidden text-left w-full group transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-lg hover:shadow-stone-200/60 hover:border-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+    className="relative card-ats-bordered px-5 py-5 sm:px-6 sm:py-6 min-h-[120px] min-w-0 flex flex-col justify-between overflow-hidden text-left w-full group transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-lg hover:shadow-stone-200/60 hover:border-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 active:scale-[0.995]"
   >
     <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${gradient} transition-all duration-300 group-hover:h-1.5`} />
-    <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-br ${gradient} !bg-none`} style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0) 40%, rgba(0,0,0,0.02))' }} />
-    <div className="relative flex items-start justify-between gap-3">
-      <div className="flex-1 min-w-0">
-        <p className="text-stone-500 text-sm font-medium truncate">{label}</p>
-        <p className="text-2xl sm:text-3xl font-bold text-stone-900 mt-1 tabular-nums tracking-tight">
-          {loading ? '—' : value}
+    <div
+      className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+      style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0) 40%, rgba(0,0,0,0.025))' }}
+    />
+    <div className="relative flex items-start justify-between gap-3 min-w-0 flex-1">
+      <div className="flex-1 min-w-0 pr-1 flex flex-col">
+        {/* Fixed 2-line label slot so value + caption align across every card */}
+        <p className="text-stone-500 text-sm font-medium leading-5 h-10 line-clamp-2">
+          {label}
         </p>
-        {trend !== undefined && trend !== null && (
-          <div className="flex items-center gap-1 mt-2">
-            {trend >= 0
-              ? <TrendingUp size={14} className="text-emerald-600 flex-shrink-0" />
-              : <TrendingDown size={14} className="text-red-500 flex-shrink-0" />}
-            <span className={`text-xs font-semibold ${trend >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-              {trend >= 0 ? '+' : ''}{trend}% vs last month
-            </span>
-          </div>
-        )}
+        <p className="text-2xl sm:text-3xl font-bold text-stone-900 mt-1.5 tabular-nums tracking-tight">
+          {loading ? '—' : typeof value === 'number' ? value.toLocaleString() : value}
+        </p>
+
+        {/* Fixed caption slot keeps footer text at the same height on every card */}
+        <div className="mt-2 min-h-[2rem]">
+          {caption ? (
+            <p className="text-xs text-stone-400 font-medium leading-snug break-words whitespace-normal">
+              {caption}
+            </p>
+          ) : null}
+
+          {hint ? (
+            <div className="flex items-center gap-1 min-w-0">
+              {hintTone === 'down'
+                ? <TrendingDown size={14} className="text-red-500 flex-shrink-0" />
+                : hintTone === 'neutral'
+                  ? null
+                  : <TrendingUp size={14} className="text-emerald-600 flex-shrink-0" />}
+              <span className={`text-xs font-semibold line-clamp-1 ${hintTone === 'down' ? 'text-red-500' : hintTone === 'neutral' ? 'text-stone-400' : 'text-emerald-600'}`}>
+                {hint}
+              </span>
+            </div>
+          ) : trend !== undefined && trend !== null ? (
+            <div className="flex items-center gap-1 min-w-0">
+              {trend >= 0
+                ? <TrendingUp size={14} className="text-emerald-600 flex-shrink-0" />
+                : <TrendingDown size={14} className="text-red-500 flex-shrink-0" />}
+              <span className={`text-xs font-semibold tabular-nums line-clamp-1 ${trend >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                {trend >= 0 ? '+' : ''}{trend}% {trendLabel}
+              </span>
+            </div>
+          ) : null}
+        </div>
       </div>
       <div className={`p-3 rounded-xl flex-shrink-0 bg-gradient-to-br ${gradient} shadow-md transition-transform duration-300 ease-out group-hover:scale-110 group-hover:rotate-3`}>
         <Icon size={22} className="text-white" />

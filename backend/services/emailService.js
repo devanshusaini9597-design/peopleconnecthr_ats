@@ -1,7 +1,38 @@
 const nodemailer = require('nodemailer');
 const mongoose = require('mongoose');
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 const logger = require('../utils/logger');
+
+const SKILLNIX_LOGO_CID = 'skillnix-logo';
+const SKILLNIX_LOGO_FILE = path.join(__dirname, '..', 'public', 'email-brand', 'skillnix-logo-email.png');
+
+function skillnixInlineImage() {
+  try {
+    if (!fs.existsSync(SKILLNIX_LOGO_FILE)) return null;
+    return {
+      content: fs.readFileSync(SKILLNIX_LOGO_FILE).toString('base64'),
+      mime_type: 'image/png',
+      cid: SKILLNIX_LOGO_CID,
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+function platformFromName(fromEmail) {
+  try {
+    const { identityForFromEmail } = require('./emailBrandLayout');
+    return identityForFromEmail(
+      fromEmail || process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL || process.env.ZEPTOMAIL_FROM_EMAIL
+    ).name;
+  } catch {
+    return 'Skillnix Recruitment';
+  }
+}
+
+const PLATFORM_FROM_NAME = platformFromName();
 
 /**
  * EMAIL SERVICE
@@ -49,6 +80,215 @@ const initializeTransporter = () => {
 
 initializeTransporter();
 
+const emailDomain = (addr) => {
+  if (!addr || typeof addr !== 'string' || !addr.includes('@')) return '';
+  return addr.split('@')[1].trim().toLowerCase();
+};
+
+const parseDomainList = (raw) =>
+  String(raw || '')
+    .split(',')
+    .map((d) => d.trim().toLowerCase())
+    .filter(Boolean);
+
+/**
+ * Domains allowed as ZeptoMail From addresses for the default mailbox.
+ * Override with ZOHO_ZEPTOMAIL_ALLOWED_FROM_DOMAINS=devlumiq.com,other.com
+ * (every listed domain must be Verified in that mailbox's ZeptoMail agent).
+ */
+const getZeptoAllowedFromDomains = (agentFromEmail = '') => {
+  const fromEnv = parseDomainList(process.env.ZOHO_ZEPTOMAIL_ALLOWED_FROM_DOMAINS || '');
+  if (fromEnv.length) return fromEnv;
+  const d = emailDomain(agentFromEmail);
+  return d ? [d] : [];
+};
+
+/**
+ * Multi-domain ZeptoMail mailboxes.
+ * Default: ZOHO_ZEPTOMAIL_* 
+ * Extra: ZOHO_ZEPTOMAIL_MAILBOX_2_DOMAIN / _FROM / _API_KEY / _API_URL / _ALLOWED / _MATCH
+ * Named: MAIL_PROFILE_SKILLNIXRECRUITMENT_* (Skillnix recruitment domain)
+ *
+ * - matchDomains: used to pick this mailbox (org/user domain)
+ * - allowedFromDomains: domains Zepto will accept as From (must be verified on that agent)
+ */
+const getZeptoMailboxes = () => {
+  const boxes = [];
+  const envKey = (process.env.ZOHO_ZEPTOMAIL_API_KEY || process.env.ZEPTOMAIL_API_KEY || '').trim();
+  const envFrom = (process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL || process.env.ZEPTOMAIL_FROM_EMAIL || '').trim();
+  const envApiUrl = (
+    process.env.ZOHO_ZEPTOMAIL_API_URL ||
+    process.env.ZEPTOMAIL_API_URL ||
+    'https://api.zeptomail.in/'
+  ).replace(/\/?$/, '/');
+
+  if (envKey && envFrom) {
+    const allowed = getZeptoAllowedFromDomains(envFrom);
+    boxes.push({
+      id: 'default',
+      fromEmail: envFrom,
+      apiKey: envKey,
+      apiUrl: envApiUrl,
+      displayName: (process.env.ZOHO_ZEPTOMAIL_FROM_NAME || process.env.MAIL_PROFILE_DEFAULT_NAME || '').trim(),
+      allowedFromDomains: allowed,
+      matchDomains: allowed,
+    });
+  }
+
+  for (let i = 2; i <= 9; i += 1) {
+    const p = `ZOHO_ZEPTOMAIL_MAILBOX_${i}_`;
+    const domain = (process.env[`${p}DOMAIN`] || '').trim().toLowerCase();
+    const from = (process.env[`${p}FROM`] || '').trim();
+    const key = (process.env[`${p}API_KEY`] || '').trim();
+    if (!domain || !from || !key) continue;
+    const url = (process.env[`${p}API_URL`] || envApiUrl || 'https://api.zeptomail.in/').replace(/\/?$/, '/');
+    const allowed = parseDomainList(process.env[`${p}ALLOWED`] || domain);
+    const match = parseDomainList(process.env[`${p}MATCH`] || '') || [];
+    const matchDomains = [...new Set([domain, ...allowed, ...match])];
+    boxes.push({
+      id: `mailbox_${i}`,
+      fromEmail: from,
+      apiKey: key,
+      apiUrl: url,
+      displayName: (process.env[`${p}NAME`] || '').trim(),
+      allowedFromDomains: allowed.length ? allowed : [domain],
+      matchDomains,
+    });
+  }
+
+  const pushNamedMailbox = ({ id, prefix, defaultAllowed, defaultMatch }) => {
+    const from = (process.env[`${prefix}_FROM`] || '').trim();
+    const key = (process.env[`${prefix}_API_KEY`] || '').trim();
+    if (!from || !key) return;
+    const allowed = parseDomainList(process.env[`${prefix}_ALLOWED`] || defaultAllowed);
+    const match = parseDomainList(process.env[`${prefix}_MATCH`] || defaultMatch || defaultAllowed);
+    const url = (process.env[`${prefix}_API_URL`] || envApiUrl).replace(/\/?$/, '/');
+    const domain = emailDomain(from);
+    boxes.push({
+      id,
+      fromEmail: from,
+      apiKey: key,
+      apiUrl: url,
+      displayName: (process.env[`${prefix}_NAME`] || '').trim(),
+      allowedFromDomains: allowed.length ? allowed : (domain ? [domain] : []),
+      matchDomains: [...new Set([...(match.length ? match : []), ...allowed, ...(domain ? [domain] : [])])],
+    });
+  };
+
+  pushNamedMailbox({
+    id: 'peopleconnecthr',
+    prefix: 'MAIL_PROFILE_PEOPLECONNECTHR',
+    defaultAllowed: 'peopleconnecthr.com',
+    defaultMatch: 'peopleconnecthr.com',
+  });
+  pushNamedMailbox({
+    id: 'skillnix',
+    prefix: 'MAIL_PROFILE_SKILLNIX',
+    defaultAllowed: 'skillnix.com',
+    defaultMatch: 'skillnix.com',
+  });
+  pushNamedMailbox({
+    id: 'skillnixrecruitment',
+    prefix: 'MAIL_PROFILE_SKILLNIXRECRUITMENT',
+    defaultAllowed: 'skillnixrecruitment.com',
+    defaultMatch: 'skillnixrecruitment.com,skillnix.com',
+  });
+
+  return boxes;
+};
+
+const resolveZeptoMailbox = async ({ userEmail, organizationId } = {}) => {
+  const boxes = getZeptoMailboxes();
+
+  try {
+    const ZeptoMailbox = require('../models/ZeptoMailbox');
+    const rows = await ZeptoMailbox.find({ isActive: true }).lean();
+    for (const row of rows) {
+      if (!row?.fromEmail || !row?.apiKey) continue;
+      const allowed = (row.allowedFromDomains || []).map((d) => String(d).toLowerCase()).filter(Boolean);
+      const match = (row.matchDomains || []).map((d) => String(d).toLowerCase()).filter(Boolean);
+      const domain = emailDomain(row.fromEmail);
+      boxes.push({
+        id: `db:${row.key || row._id}`,
+        fromEmail: String(row.fromEmail).trim(),
+        apiKey: String(row.apiKey).trim(),
+        apiUrl: String(row.apiUrl || 'https://api.zeptomail.in/').replace(/\/?$/, '/'),
+        displayName: String(row.displayName || '').trim(),
+        allowedFromDomains: allowed.length ? allowed : (domain ? [domain] : []),
+        matchDomains: [...new Set([...(match.length ? match : []), ...allowed, ...(domain ? [domain] : [])])],
+      });
+    }
+  } catch (_) { /* ignore */ }
+
+  if (!boxes.length) return null;
+
+  const userDom = emailDomain(userEmail);
+  if (userDom) {
+    const byUser = boxes.find((b) => mailboxMatchesDomain(b, userDom));
+    if (byUser) return byUser;
+  }
+
+  if (organizationId) {
+    try {
+      const Organization = mongoose.model('Organization');
+      const org = await Organization.findById(organizationId)
+        .select('domain allowedDomains')
+        .lean();
+      const orgDomains = [
+        ...(org?.domain ? [String(org.domain).toLowerCase()] : []),
+        ...((org?.allowedDomains || []).map((d) => String(d).toLowerCase())),
+      ];
+      for (const d of orgDomains) {
+        const byOrg = boxes.find((b) => mailboxMatchesDomain(b, d));
+        if (byOrg) return byOrg;
+      }
+    } catch (_) { /* ignore */ }
+  }
+
+  return boxes[0];
+};
+
+/**
+ * Enterprise From selection for a mailbox:
+ * - If recruiter's work email domain is verified on that agent → From = login email
+ * - Else → From = mailbox agent address; Reply-To = login email
+ */
+const resolveEnterpriseFrom = ({ agentFrom, userEmail, allowedFromDomains }) => {
+  const agent = (agentFrom || '').trim().toLowerCase();
+  const user = (userEmail || '').trim().toLowerCase();
+  const allowed = Array.isArray(allowedFromDomains) && allowedFromDomains.length
+    ? allowedFromDomains
+    : getZeptoAllowedFromDomains(agent);
+  const userDom = emailDomain(user);
+  const sendAsUser = Boolean(user && userDom && allowed.includes(userDom));
+  return {
+    fromEmail: sendAsUser ? user : agent,
+    replyToEmail: user || agent,
+    sendAsUser,
+    allowedDomains: allowed,
+  };
+};
+
+/** OTP / reset / invites: company no-reply on the verified org domain. */
+const resolveSystemFromAddress = ({ mailbox, userEmail, orgDomain } = {}) => {
+  const agent = String(mailbox?.fromEmail || '').trim().toLowerCase();
+  if (!agent) return '';
+  const allowed = (mailbox?.allowedFromDomains || []).map((d) => String(d || '').toLowerCase()).filter(Boolean);
+  const domain = String(orgDomain || emailDomain(userEmail) || emailDomain(agent)).trim().toLowerCase();
+  if (domain && (allowed.includes(domain) || emailDomain(agent) === domain)) {
+    return `noreply@${domain}`;
+  }
+  return agent;
+};
+
+const mailboxMatchesDomain = (box, domain) => {
+  const d = String(domain || '').trim().toLowerCase();
+  if (!d || !box) return false;
+  return (box.matchDomains || []).includes(d)
+    || (box.allowedFromDomains || []).includes(d)
+    || emailDomain(box.fromEmail) === d;
+};
+
 // ─── Zoho Zeptomail: normalize Authorization header value ───
 // ZeptoMail sends token as "Zoho-enczapikey <key>". Accept that or raw key; never duplicate prefix.
 const getZohoAuthHeaderValue = (apiKey) => {
@@ -75,117 +315,106 @@ const getZohoAuthHeaderValue = (apiKey) => {
  * - Caller responsible for masking key before returning to frontend
  */
 const sendViaZohoZeptomail = async (to, subject, htmlBody, textBody, options = {}) => {
-  const { cc, bcc, senderName, fromEmail, zohoApiKey, zohoApiUrl, userId } = options;
-  
+  const { cc, bcc, senderName, fromEmail, replyToEmail, zohoApiKey, zohoApiUrl } = options;
+
   if (!zohoApiKey || !zohoApiUrl || !fromEmail) {
     throw new Error('ZOHO_ZEPTOMAIL_NOT_CONFIGURED');
   }
 
-  const displayName = senderName || 'SkillNix ATS';
+  const displayName = senderName || platformFromName(fromEmail);
+  const preferredReply = (replyToEmail || fromEmail).trim();
   const recipients = Array.isArray(to) ? to : [to];
 
-  // Build recipient objects
-  const toList = recipients.map(email => ({
-    email_address: { 
-      address: email,
-      name: ''
-    }
+  const toList = recipients.map((email) => ({
+    email_address: { address: email, name: '' },
   }));
+  const ccList = cc
+    ? (Array.isArray(cc) ? cc : [cc]).map((email) => ({
+        email_address: { address: email, name: '' },
+      }))
+    : [];
+  const bccList = bcc
+    ? (Array.isArray(bcc) ? bcc : [bcc]).map((email) => ({
+        email_address: { address: email, name: '' },
+      }))
+    : [];
 
-  const ccList = cc ? (Array.isArray(cc) ? cc : [cc]).map(email => ({
-    email_address: { 
-      address: email,
-      name: ''
+  const apiEndpoint = zohoApiUrl.endsWith('/')
+    ? `${zohoApiUrl}v1.1/email`
+    : `${zohoApiUrl}/v1.1/email`;
+  const authHeader = getZohoAuthHeaderValue(zohoApiKey);
+
+  const postOnce = async (replyAddress) => {
+    const clientReference =
+      options.clientReference ||
+      `ats_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const payload = {
+      from: { address: fromEmail, name: displayName },
+      to: toList,
+      subject,
+      htmlbody: htmlBody,
+      textbody: textBody || subject,
+      reply_to: { address: replyAddress, name: displayName },
+      track_opens: options.trackOpens !== false,
+      track_clicks: options.trackClicks !== false,
+      client_reference: clientReference,
+    };
+    if (ccList.length > 0) payload.cc = ccList;
+    if (bccList.length > 0) payload.bcc = bccList;
+    if (String(htmlBody || '').includes(`cid:${SKILLNIX_LOGO_CID}`)) {
+      const inline = skillnixInlineImage();
+      if (inline) payload.inline_images = [inline];
     }
-  })) : [];
 
-  const bccList = bcc ? (Array.isArray(bcc) ? bcc : [bcc]).map(email => ({
-    email_address: { 
-      address: email,
-      name: ''
-    }
-  })) : [];
-
-  const payload = {
-    from: {
-      address: fromEmail,
-      name: displayName
-    },
-    to: toList,
-    subject: subject,
-    htmlbody: htmlBody,
-    textbody: textBody || subject,
-    reply_to: {
-      address: fromEmail
-    }
-  };
-
-  // Add CC if provided
-  if (ccList.length > 0) {
-    payload.cc = ccList;
-  }
-
-  // Add BCC if provided
-  if (bccList.length > 0) {
-    payload.bcc = bccList;
-  }
-
-  try {
-    const apiEndpoint = zohoApiUrl.endsWith('/') 
-      ? `${zohoApiUrl}v1.1/email`
-      : `${zohoApiUrl}/v1.1/email`;
-    
-    const authHeader = getZohoAuthHeaderValue(zohoApiKey);
-    const keyPreview = authHeader.length > 30 
-      ? `${authHeader.substring(0, 25)}...${authHeader.substring(authHeader.length - 6)}`
-      : authHeader;
-    logger.info(`[ZeptoMail] POST ${apiEndpoint} | from=${fromEmail} | auth=${keyPreview} (${authHeader.length} chars)`);
-
-    const response = await axios.post(
-      apiEndpoint,
-      payload,
-      {
-        headers: {
-          'Authorization': authHeader,
-          'Content-Type': 'application/json'
-        },
-        timeout: 30000
-      }
+    logger.info(
+      `[ZeptoMail] POST ${apiEndpoint} | from=${fromEmail} | reply_to=${replyAddress}`
     );
 
-    const messageId = response.data?.data?.message_id || 'zoho_' + Date.now();
-    logger.info(`✅ Zoho Zeptomail accepted: to=${recipients.join(', ')} from=${fromEmail} messageId=${messageId}`);
-    if (cc) logger.info(`   CC: ${Array.isArray(cc) ? cc.join(', ') : cc}`);
-    if (bcc) logger.info(`   BCC: ${Array.isArray(bcc) ? bcc.join(', ') : bcc}`);
-
-    return { 
-      success: true, 
-      email: to, 
-      messageId
-    };
-  } catch (error) {
-    logger.error('❌ Zoho Zeptomail Error:', {
-      message: error.message,
-      status: error.response?.status,
-      data: JSON.stringify(error.response?.data, null, 2),
-      email: to,
-      from: fromEmail
+    const response = await axios.post(apiEndpoint, payload, {
+      headers: {
+        Authorization: authHeader,
+        'Content-Type': 'application/json',
+      },
+      timeout: 30000,
     });
 
-    const zohoError = error.response?.data?.error;
-    const zohoCode = zohoError?.code;
-    const details = Array.isArray(zohoError?.details) ? zohoError.details : [];
-    const sm111 = details.find(d => d && d.code === 'SM_111');
-    const status = error.response?.status;
+    const dataNode = response.data?.data;
+    const first =
+      Array.isArray(dataNode) ? dataNode[0] : dataNode && typeof dataNode === 'object' ? dataNode : {};
+    const messageId =
+      first?.message_id ||
+      response.data?.data?.message_id ||
+      response.data?.message_id ||
+      `zoho_${Date.now()}`;
+    const requestId = response.data?.request_id || first?.request_id || '';
+    logger.info(
+      `✅ Zoho Zeptomail accepted: to=${recipients.join(', ')} from=${fromEmail} reply_to=${replyAddress} messageId=${messageId}`
+    );
+    return {
+      success: true,
+      email: to,
+      messageId,
+      requestId,
+      clientReference,
+      fromEmail,
+      replyTo: replyAddress,
+      provider: 'zeptomail',
+    };
+  };
 
+  const formatZohoError = (error) => {
+    const zohoError = error.response?.data?.error;
+    const details = Array.isArray(zohoError?.details) ? zohoError.details : [];
+    const sm111 = details.find((d) => d && d.code === 'SM_111');
+    const status = error.response?.status;
     let errorMsg = error.message;
     if (sm111) {
       errorMsg = `ZeptoMail: Sender address not verified. "${sm111.target_value || 'from'}" is not verified in your ZeptoMail agent. Emails are sent from your verified address (check .env ZOHO_ZEPTOMAIL_FROM_EMAIL).`;
     } else if (status === 401) {
       errorMsg = 'ZeptoMail: Invalid API key. Check your Send Mail Token in ZeptoMail dashboard.';
     } else if (status === 403) {
-      logger.error('ZeptoMail 403 – IP may be blocked. Remove all IP restrictions in ZeptoMail > Agent > Settings > IP Restriction to allow all IPs.', { code: zohoCode, data: error.response?.data });
-      errorMsg = 'ZeptoMail 403: Request Denied. Go to ZeptoMail > your Agent > Settings > IP Restriction and remove all IPs (empty list = allow all).';
+      errorMsg =
+        'ZeptoMail 403: Request Denied. Go to ZeptoMail > your Agent > Settings > IP Restriction and remove all IPs (empty list = allow all).';
     } else if (status === 429) {
       errorMsg = 'ZeptoMail rate limit hit. Try again later or upgrade your plan.';
     } else if (error.code === 'ECONNABORTED') {
@@ -193,58 +422,151 @@ const sendViaZohoZeptomail = async (to, subject, htmlBody, textBody, options = {
     } else if (error.response?.data?.message) {
       errorMsg = `ZeptoMail: ${error.response.data.message}`;
     }
-
     const err = new Error(errorMsg);
     err.code = 'ZOHO_ZEPTOMAIL_ERROR';
-    throw err;
+    err.sm111 = Boolean(sm111);
+    err.sm111Target = sm111?.target_value || '';
+    return err;
+  };
+
+  try {
+    return await postOnce(preferredReply);
+  } catch (error) {
+    logger.error('❌ Zoho Zeptomail Error:', {
+      message: error.message,
+      status: error.response?.status,
+      data: JSON.stringify(error.response?.data, null, 2),
+      email: to,
+      from: fromEmail,
+      reply_to: preferredReply,
+    });
+
+    const formatted = formatZohoError(error);
+    const replyDiffers =
+      preferredReply &&
+      preferredReply.toLowerCase() !== String(fromEmail).toLowerCase();
+
+    // Some Zepto agents reject unverified reply_to the same as From (SM_111).
+    // Retry with verified From as reply_to so send still succeeds.
+    if (formatted.sm111 && replyDiffers) {
+      logger.warn(
+        `[ZeptoMail] SM_111 on "${formatted.sm111Target || preferredReply}" — retrying with reply_to=${fromEmail}`
+      );
+      try {
+        return await postOnce(fromEmail);
+      } catch (retryErr) {
+        logger.error('❌ Zoho Zeptomail retry failed:', {
+          message: retryErr.message,
+          data: JSON.stringify(retryErr.response?.data, null, 2),
+        });
+        throw formatZohoError(retryErr);
+      }
+    }
+
+    throw formatted;
   }
 };
 
 // ─── Get per-user transporter (supports SMTP and Zoho Zeptomail) ───
 // ✅ Zoho from .env is ALWAYS DEFAULT when set; user/company config only used when env Zoho is not set
-const getUserTransporter = async (userId) => {
+const getUserTransporter = async (userId, hints = {}) => {
   try {
-    // PRIORITY 0: .env Zoho ZeptoMail — system-level emails (no userId) always use this
-    const envKey = process.env.ZOHO_ZEPTOMAIL_API_KEY;
-    const envFrom = process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL;
-    if (envKey && envFrom && String(envKey).trim() && String(envFrom).trim()) {
-      // If no userId, this is a system email (verification, password reset, etc.)
-      if (!userId) {
+    // PRIORITY 0: ZeptoMail mailbox(es) from env/DB — pick by sender/org domain (never the recipient)
+    const boxes = getZeptoMailboxes();
+    // Always try DB mailboxes via resolve even if env empty
+    let userEmail = '';
+    let userName = hints.senderName || PLATFORM_FROM_NAME;
+    let organizationId = hints.organizationId || null;
+    let orgDomain = '';
+
+    if (userId) {
+      const User = mongoose.model('User');
+      const user = await User.findById(userId).select('emailSettings name email organizationId role');
+      userEmail = user?.email ? String(user.email).trim().toLowerCase() : '';
+      if (!hints.senderName) userName = user?.name || userEmail || 'Recruiter';
+      organizationId = organizationId || user?.organizationId || null;
+
+      // ── Freelancers do not send via company ZeptoMail / Zoho Campaigns ──
+      // Candidate mail is native-app only (mailto / Outlook). Platform Zepto
+      // access + email plan limits will be added later.
+      if (user && String(user.role) === 'freelancer' && !hints.system) {
         return {
           transporter: null,
-          fromEmail: envFrom,
-          userName: 'SkillNix ATS',
-          configured: true,
-          provider: 'zoho-zeptomail',
-          zohoApiKey: envKey,
-          zohoApiUrl: (process.env.ZOHO_ZEPTOMAIL_API_URL || 'https://api.zeptomail.in/').replace(/\/?$/, '/'),
-          userId: null,
-          configSource: 'env'
+          fromEmail: '',
+          configured: false,
+          provider: 'none',
+          configSource: 'freelancer-native-mail',
+          userId,
         };
       }
-      
-      // If userId exists, check if user is from same domain
-      const User = mongoose.model('User');
-      const user = await User.findById(userId).select('emailSettings name email');
-      
-      const verifiedDomain = envFrom.includes('@') ? String(envFrom).trim().split('@')[1].toLowerCase() : '';
-      const userEmail = user?.email ? String(user.email).trim() : '';
-      const userDomain = userEmail.includes('@') ? userEmail.split('@')[1].toLowerCase() : '';
-      const useUserAsSender = userEmail && verifiedDomain && userDomain === verifiedDomain;
+    }
+
+    if (organizationId) {
+      try {
+        const Organization = mongoose.model('Organization');
+        const org = await Organization.findById(organizationId)
+          .select('name domain atsSettings.whiteLabel.emailFromName')
+          .lean();
+        orgDomain = String(org?.domain || '').trim().toLowerCase();
+        if (!hints.senderName) {
+          const branded = String(org?.atsSettings?.whiteLabel?.emailFromName || org?.name || '').trim();
+          if (branded) userName = branded;
+        }
+      } catch (_) { /* keep fallback */ }
+    }
+
+    const mailbox = await resolveZeptoMailbox({
+      userEmail,
+      organizationId,
+    });
+
+    if (mailbox) {
+      const systemMail = Boolean(hints.system);
+      if (systemMail || !userId) {
+        const fromEmail = systemMail
+          ? resolveSystemFromAddress({ mailbox, userEmail, orgDomain })
+          : mailbox.fromEmail;
+        return {
+          transporter: null,
+          fromEmail,
+          replyToEmail: (hints.replyToEmail || fromEmail).trim(),
+          userName,
+          mailboxDisplayName: String(mailbox.displayName || '').trim(),
+          configured: true,
+          provider: 'zoho-zeptomail',
+          zohoApiKey: mailbox.apiKey,
+          zohoApiUrl: mailbox.apiUrl,
+          userId: userId || null,
+          configSource: 'env',
+          mailboxId: mailbox.id,
+          sendAsUser: false,
+        };
+      }
+
+      const resolved = resolveEnterpriseFrom({
+        agentFrom: mailbox.fromEmail,
+        userEmail,
+        allowedFromDomains: mailbox.allowedFromDomains,
+      });
+
       return {
         transporter: null,
-        fromEmail: useUserAsSender ? userEmail : envFrom,
-        userName: user?.name || 'SkillNix ATS',
+        fromEmail: resolved.fromEmail,
+        replyToEmail: resolved.replyToEmail,
+        userName,
+        mailboxDisplayName: String(mailbox.displayName || '').trim(),
         configured: true,
         provider: 'zoho-zeptomail',
-        zohoApiKey: envKey,
-        zohoApiUrl: (process.env.ZOHO_ZEPTOMAIL_API_URL || 'https://api.zeptomail.in/').replace(/\/?$/, '/'),
-        userId: userId,
-        configSource: 'env'
+        zohoApiKey: mailbox.apiKey,
+        zohoApiUrl: mailbox.apiUrl,
+        userId,
+        configSource: 'env',
+        sendAsUser: resolved.sendAsUser,
+        mailboxId: mailbox.id,
       };
     }
-    
-    // ✅ PRIORITY 1: User per-user configuration (only when env Zoho not set)
+
+    // ✅ PRIORITY 1: User per-user configuration (only when no Zepto mailbox matched)
     if (userId) {
       const User = mongoose.model('User');
       const user = await User.findById(userId).select('emailSettings name email');
@@ -254,26 +576,36 @@ const getUserTransporter = async (userId) => {
 
         // Check if using Zoho Zeptomail (per-user override)
         if (s.emailProvider === 'zoho-zeptomail' && s.zohoZeptomailApiKey && s.zohoZeptomailFromEmail) {
+          const userEmail = user?.email ? String(user.email).trim().toLowerCase() : '';
+          const resolved = resolveEnterpriseFrom({
+            agentFrom: s.zohoZeptomailFromEmail,
+            userEmail,
+            allowedFromDomains: getZeptoAllowedFromDomains(s.zohoZeptomailFromEmail),
+          });
           return {
             transporter: null,
-            fromEmail: s.zohoZeptomailFromEmail,
-            userName: user.name || '',
+            fromEmail: resolved.fromEmail,
+            replyToEmail: resolved.replyToEmail,
+            userName: user.name || userEmail || 'Recruiter',
             configured: true,
             provider: 'zoho-zeptomail',
             zohoApiKey: s.zohoZeptomailApiKey,
             zohoApiUrl: s.zohoZeptomailApiUrl || 'https://api.zeptomail.com/',
             userId: userId,
-            configSource: 'user'  // User's own personal config
+            configSource: 'user',
+            sendAsUser: resolved.sendAsUser,
           };
         }
 
         // Check if using SMTP (per-user)
         if (s.smtpEmail && s.smtpAppPassword) {
           let userTransporter = createSmtpTransporter(s);
+          const userEmail = user?.email ? String(user.email).trim().toLowerCase() : '';
           return { 
             transporter: userTransporter, 
-            fromEmail: s.smtpEmail, 
-            userName: user.name || '', 
+            fromEmail: s.smtpEmail,
+            replyToEmail: userEmail || s.smtpEmail,
+            userName: user.name || userEmail || 'Recruiter', 
             configured: true, 
             provider: 'smtp',
             configSource: 'user'
@@ -295,18 +627,36 @@ const getUserTransporter = async (userId) => {
     }
 
     if (companyConfig?.isConfigured) {
+      let companyUserName = PLATFORM_FROM_NAME;
+      let companyUserEmail = '';
+      if (userId) {
+        try {
+          const User = mongoose.model('User');
+          const u = await User.findById(userId).select('name email');
+          companyUserName = u?.name || companyUserName;
+          companyUserEmail = u?.email ? String(u.email).trim().toLowerCase() : '';
+        } catch (_) { /* ignore */ }
+      }
+
       // Use company's Zoho Zeptomail (all employees share this)
       if (companyConfig.primaryProvider === 'zoho-zeptomail' && companyConfig.zohoZeptomailApiKey && companyConfig.zohoZeptomailFromEmail) {
+        const resolved = resolveEnterpriseFrom({
+          agentFrom: companyConfig.zohoZeptomailFromEmail,
+          userEmail: companyUserEmail,
+          allowedFromDomains: getZeptoAllowedFromDomains(companyConfig.zohoZeptomailFromEmail),
+        });
         return {
           transporter: null,
-          fromEmail: companyConfig.zohoZeptomailFromEmail,
-          userName: userId ? (user?.name || '') : 'SkillNix ATS',
+          fromEmail: resolved.fromEmail,
+          replyToEmail: resolved.replyToEmail,
+          userName: companyUserName,
           configured: true,
           provider: 'zoho-zeptomail',
           zohoApiKey: companyConfig.zohoZeptomailApiKey,
           zohoApiUrl: companyConfig.zohoZeptomailApiUrl || 'https://api.zeptomail.com/',
           userId: userId,
-          configSource: 'company'  // Company-wide shared config
+          configSource: 'company',
+          sendAsUser: resolved.sendAsUser,
         };
       }
 
@@ -316,10 +666,36 @@ const getUserTransporter = async (userId) => {
         return {
           transporter: companyTransporter,
           fromEmail: companyConfig.smtpEmail,
-          userName: userId ? (user?.name || '') : 'SkillNix ATS',
+          replyToEmail: companyUserEmail || companyConfig.smtpEmail,
+          userName: companyUserName,
           configured: true,
           provider: 'smtp',
-          configSource: 'company'  // Company-wide shared config
+          configSource: 'company'
+        };
+      }
+    }
+
+    // ❌ PRIORITY 3: Platform default SMTP/Gmail from .env (OTP, support tickets, freelancers)
+    // Used when Zepto/company mailbox is unavailable so product mail still leaves.
+    if (hints.system || !userId) {
+      const envFrom = (
+        process.env.FROM_EMAIL
+        || process.env.GMAIL_EMAIL
+        || process.env.SMTP_USER
+        || process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL
+        || process.env.ZEPTOMAIL_FROM_EMAIL
+        || ''
+      ).trim();
+      if (defaultTransporter && envFrom) {
+        return {
+          transporter: defaultTransporter,
+          fromEmail: envFrom,
+          replyToEmail: (hints.replyToEmail || envFrom).trim(),
+          userName: PLATFORM_FROM_NAME,
+          configured: true,
+          provider: 'smtp',
+          configSource: 'env-default',
+          sendAsUser: false,
         };
       }
     }
@@ -328,14 +704,15 @@ const getUserTransporter = async (userId) => {
     return {
       transporter: null,
       fromEmail: null,
-      userName: 'SkillNix ATS',
+      replyToEmail: null,
+      userName: PLATFORM_FROM_NAME,
       configured: false,
       provider: null,
       configSource: 'none'
     };
   } catch (err) {
     logger.error('getUserTransporter error:', err.message);
-    return { transporter: null, fromEmail: null, userName: 'SkillNix ATS', configured: false, provider: null, configSource: 'error' };
+    return { transporter: null, fromEmail: null, replyToEmail: null, userName: PLATFORM_FROM_NAME, configured: false, provider: null, configSource: 'error' };
   }
 };
 
@@ -392,34 +769,79 @@ const createSmtpTransporter = (emailSettings) => {
 
 // Generic email sender — uses per-user transporter if userId provided
 const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
-  const { cc, bcc, senderName, senderEmail, userId } = options;
+  const { cc, bcc, senderName, senderEmail, userId, organizationId, system } = options;
+  const recipientEmail = Array.isArray(to) ? to[0] : to;
   
-  const { transporter: activeTransporter, fromEmail, userName, configured, provider, zohoApiKey, zohoApiUrl } = await getUserTransporter(userId);
+  const {
+    transporter: activeTransporter,
+    fromEmail: transporterFrom,
+    replyToEmail: transporterReplyTo,
+    userName,
+    configured,
+    provider,
+    zohoApiKey,
+    zohoApiUrl,
+  } = await getUserTransporter(userId, {
+    recipientEmail,
+    organizationId,
+    senderName,
+    system,
+    replyToEmail: senderEmail,
+  });
+
+  // Candidate mail: recruiter work address. System mail (OTP / reset / invite): noreply@org-domain.
+  let fromEmail = (transporterFrom || '').trim();
+  let replyToEmail = (transporterReplyTo || senderEmail || fromEmail || '').trim();
   
   if (!configured || !fromEmail) {
     throw new Error('EMAIL_NOT_CONFIGURED');
   }
   
-  // Only check domain restrictions if userId is provided (user-initiated emails)
-  if (provider === 'zoho-zeptomail' && userId) {
+  if (provider === 'zoho-zeptomail' && userId && !system) {
     const senderStatus = await canUserSendViaZepto(userId);
     if (!senderStatus.canSend) {
       const err = new Error(senderStatus.reason || 'USE_VERIFIED_DOMAIN');
       err.code = 'USE_VERIFIED_DOMAIN';
       throw err;
     }
+    if (senderStatus.fromEmail) fromEmail = senderStatus.fromEmail;
+    if (senderStatus.replyTo) replyToEmail = senderStatus.replyTo;
   }
   
   if (provider === 'zoho-zeptomail') {
-    return await sendViaZohoZeptomail(to, subject, htmlBody, textBody, {
+    const zeptoResult = await sendViaZohoZeptomail(to, subject, htmlBody, textBody, {
       cc,
       bcc,
       senderName: senderName || userName,
       fromEmail,
+      replyToEmail,
       zohoApiKey,
       zohoApiUrl,
-      userId
+      userId,
+      trackOpens: options.trackOpens,
+      trackClicks: options.trackClicks,
+      clientReference: options.clientReference,
     });
+    try {
+      const { recordEmailSend } = require('./emailReportService');
+      await recordEmailSend({
+        organizationId,
+        userId,
+        channel: system ? 'system' : options.channel || 'transactional',
+        provider: 'zeptomail',
+        emailType: options.emailType || '',
+        subject,
+        fromEmail: zeptoResult.fromEmail || fromEmail,
+        replyToEmail: zeptoResult.replyTo || replyToEmail,
+        to: Array.isArray(to) ? to : [to],
+        messageId: zeptoResult.messageId,
+        requestId: zeptoResult.requestId,
+        clientReference: zeptoResult.clientReference,
+        status: 'accepted',
+        providerRaw: { provider: 'zeptomail' },
+      });
+    } catch (_) { /* non-blocking */ }
+    return zeptoResult;
   }
 
   // Otherwise use SMTP
@@ -433,7 +855,7 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
   
   const mailOptions = {
     from: fromAddress,
-    replyTo: fromEmail,  // Allow recipients to reply directly
+    replyTo: replyToEmail,
     to: Array.isArray(to) ? to : [to],
     subject: subject,
     html: htmlBody,
@@ -441,8 +863,8 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
     headers: {
       'X-Mailer': 'Skillnix PCHR 1.0',
       'X-Priority': '3',
-      'List-Unsubscribe': `<mailto:${fromEmail}?subject=unsubscribe>`,
-      'Precedence': 'bulk'  // Mark as bulk mail (helps avoid spam)
+      'List-Unsubscribe': `<mailto:${replyToEmail}?subject=unsubscribe>`,
+      'Precedence': 'bulk'
     }
   };
 
@@ -461,7 +883,31 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
     logger.info(`✅ Email sent to ${Array.isArray(to) ? to.join(', ') : to} (from: ${fromEmail})`);
     if (cc) logger.info(`   CC: ${Array.isArray(cc) ? cc.join(', ') : cc}`);
     if (bcc) logger.info(`   BCC: ${Array.isArray(bcc) ? bcc.join(', ') : bcc}`);
-    return { success: true, email: to, messageId: info.messageId };
+    const smtpResult = {
+      success: true,
+      email: to,
+      messageId: info.messageId,
+      fromEmail,
+      replyTo: replyToEmail,
+      provider: 'smtp',
+    };
+    try {
+      const { recordEmailSend } = require('./emailReportService');
+      await recordEmailSend({
+        organizationId,
+        userId,
+        channel: system ? 'system' : 'transactional',
+        provider: 'smtp',
+        emailType: options.emailType || '',
+        subject,
+        fromEmail,
+        replyToEmail,
+        to: Array.isArray(to) ? to : [to],
+        messageId: info.messageId,
+        status: 'sent',
+      });
+    } catch (_) { /* non-blocking */ }
+    return smtpResult;
   } catch (error) {
     logger.error('❌ Email Error:', {
       message: error.message,
@@ -489,115 +935,78 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
   }
 };
 
+const { buildQuickEmailContent } = require('./quickEmailContent');
+
 // Interview invitation email
 const sendInterviewEmail = async (email, candidateName, position, options = {}) => {
-  const htmlBody = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px; color: white; text-align: center; border-radius: 10px 10px 0 0;">
-        <h2 style="margin: 0;">📞 Interview Invitation</h2>
-      </div>
-      <div style="padding: 40px; background: white; border: 1px solid #ddd; border-radius: 0 0 10px 10px;">
-        <p style="color: #333; font-size: 16px;">Dear ${candidateName},</p>
-        <p style="color: #666; line-height: 1.6;">Congratulations! We are pleased to invite you for an interview for the <strong>${position}</strong> position.</p>
-        <p style="color: #666; line-height: 1.6;">Our HR team will contact you shortly with interview details including date, time, and format.</p>
-        <p style="color: #666; line-height: 1.6;">If you have any questions, please feel free to reach out to us.</p>
-        <p style="color: #666; line-height: 1.6;">Best regards,<br><strong>HR Team</strong></p>
-      </div>
-    </div>
-  `;
-  
-  const textBody = `Dear ${candidateName}, Congratulations! We invite you for an interview for the ${position} position. Our HR team will contact you shortly with details. Best regards, HR Team`;
-  
-  return await sendEmail(email, `Interview Invitation - ${position}`, htmlBody, textBody, options);
+  const content = buildQuickEmailContent({
+    emailType: 'interview',
+    name: candidateName,
+    position,
+    customMessage: options.customMessage || '',
+    senderName: options.senderName || 'HR Team',
+    brand: options.brand || null,
+    subscribeUrl: options.subscribeUrl || '',
+  });
+  return await sendEmail(email, content.subject, content.html, content.text, options);
 };
 
 // Rejection email
 const sendRejectionEmail = async (email, candidateName, position, options = {}) => {
-  const htmlBody = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <div style="background: #f5f5f5; padding: 40px; text-align: center; border-radius: 10px 10px 0 0;">
-        <h2 style="color: #333; margin: 0;">Application Status Update</h2>
-      </div>
-      <div style="padding: 40px; background: white; border: 1px solid #ddd; border-radius: 0 0 10px 10px;">
-        <p style="color: #333; font-size: 16px;">Dear ${candidateName},</p>
-        <p style="color: #666; line-height: 1.6;">Thank you for your interest in the <strong>${position}</strong> position. After careful consideration of your application and qualifications, we regret to inform you that we have decided to move forward with other candidates whose experience more closely matches our current needs.</p>
-        <p style="color: #666; line-height: 1.6;">We appreciate the time you invested in applying and interviewing with us. We encourage you to apply for future positions that match your skills and experience.</p>
-        <p style="color: #666; line-height: 1.6;">Best regards,<br><strong>HR Team</strong></p>
-      </div>
-    </div>
-  `;
-  
-  const textBody = `Dear ${candidateName}, Thank you for your interest in the ${position} position. We regret to inform you that we have decided to move forward with other candidates. Best regards, HR Team`;
-  
-  return await sendEmail(email, "Application Status Update", htmlBody, textBody, options);
+  const content = buildQuickEmailContent({
+    emailType: 'rejection',
+    name: candidateName,
+    position,
+    customMessage: options.customMessage || '',
+    senderName: options.senderName || 'HR Team',
+    brand: options.brand || null,
+    subscribeUrl: options.subscribeUrl || '',
+  });
+  return await sendEmail(email, content.subject, content.html, content.text, options);
 };
 
 // Document request email
 const sendDocumentEmail = async (email, candidateName, position, options = {}) => {
-  const htmlBody = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 40px; color: white; text-align: center; border-radius: 10px 10px 0 0;">
-        <h2 style="margin: 0;">📄 Document Submission Required</h2>
-      </div>
-      <div style="padding: 40px; background: white; border: 1px solid #ddd; border-radius: 0 0 10px 10px;">
-        <p style="color: #333; font-size: 16px;">Dear ${candidateName},</p>
-        <p style="color: #666; line-height: 1.6;">As the next step in our hiring process for the <strong>${position}</strong> position, we require you to submit the following documents:</p>
-        <ul style="color: #666; line-height: 1.8;">
-          <li>Updated Resume</li>
-          <li>Valid Government ID</li>
-          <li>Educational Certificates</li>
-          <li>Previous Employment Letters</li>
-        </ul>
-        <p style="color: #666; line-height: 1.6;">Please reply to this email with the requested documents within 3 business days.</p>
-        <p style="color: #666; line-height: 1.6;">Best regards,<br><strong>HR Team</strong></p>
-      </div>
-    </div>
-  `;
-  
-  const textBody = `Dear ${candidateName}, Please submit the required documents for the ${position} position. Best regards, HR Team`;
-  
-  return await sendEmail(email, `Document Submission - ${position}`, htmlBody, textBody, options);
+  const content = buildQuickEmailContent({
+    emailType: 'document',
+    name: candidateName,
+    position,
+    customMessage: options.customMessage || '',
+    senderName: options.senderName || 'HR Team',
+    brand: options.brand || null,
+    subscribeUrl: options.subscribeUrl || '',
+  });
+  return await sendEmail(email, content.subject, content.html, content.text, options);
 };
 
 // Onboarding email
 const sendOnboardingEmail = async (email, candidateName, position, department, joiningDate, options = {}) => {
-  const htmlBody = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); padding: 40px; color: white; text-align: center; border-radius: 10px 10px 0 0;">
-        <h2 style="margin: 0;">🎉 Welcome to the Team!</h2>
-      </div>
-      <div style="padding: 40px; background: white; border: 1px solid #ddd; border-radius: 0 0 10px 10px;">
-        <p style="color: #333; font-size: 16px;">Dear ${candidateName},</p>
-        <p style="color: #666; line-height: 1.6;">Welcome aboard! We are excited to have you join our team as a <strong>${position}</strong> in the <strong>${department}</strong> department.</p>
-        <p style="color: #666; line-height: 1.6;"><strong>Joining Date:</strong> ${joiningDate}</p>
-        <p style="color: #666; line-height: 1.6;">Please ensure you have completed all onboarding formalities and bring the necessary documents on your first day.</p>
-        <p style="color: #666; line-height: 1.6;">If you have any questions, feel free to reach out to our HR team.</p>
-        <p style="color: #666; line-height: 1.6;">Best regards,<br><strong>HR Team</strong></p>
-      </div>
-    </div>
-  `;
-  
-  const textBody = `Dear ${candidateName}, Welcome to our team! Your joining date is ${joiningDate}. Best regards, HR Team`;
-  
-  return await sendEmail(email, `Onboarding Confirmation - ${position}`, htmlBody, textBody, options);
+  const content = buildQuickEmailContent({
+    emailType: 'onboarding',
+    name: candidateName,
+    position,
+    department,
+    joiningDate,
+    customMessage: options.customMessage || '',
+    senderName: options.senderName || 'HR Team',
+    brand: options.brand || null,
+    subscribeUrl: options.subscribeUrl || '',
+  });
+  return await sendEmail(email, content.subject, content.html, content.text, options);
 };
 
 // Custom email
 const sendCustomEmail = async (email, subject, customMessage, options = {}) => {
-  const htmlBody = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <div style="padding: 40px; background: white; border: 1px solid #ddd; border-radius: 10px;">
-        <div style="color: #333; white-space: pre-wrap; line-height: 1.6;">
-          ${customMessage}
-        </div>
-        <p style="color: #999; font-size: 12px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
-          This is an automated message. Please do not reply directly to this email.
-        </p>
-      </div>
-    </div>
-  `;
-  
-  return await sendEmail(email, subject, htmlBody, customMessage, options);
+  const content = buildQuickEmailContent({
+    emailType: 'custom',
+    name: options.candidateName || 'Candidate',
+    customMessage,
+    senderName: options.senderName || 'HR Team',
+    subject,
+    brand: options.brand || null,
+    subscribeUrl: options.subscribeUrl || '',
+  });
+  return await sendEmail(email, subject || content.subject, content.html, content.text, options);
 };
 
 // Bulk email sender
@@ -623,17 +1032,22 @@ const sendBulkEmails = async (recipients, subject, htmlBody, textBody, options =
 // ✅ Now checks BOTH user personal config AND company-wide config
 const checkUserEmailConfigured = async (userId) => {
   try {
-    // PRIORITY 0: .env Zoho ZeptoMail — always available, no DB query needed
-    if (process.env.ZOHO_ZEPTOMAIL_API_KEY && process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL) {
-      if (String(process.env.ZOHO_ZEPTOMAIL_API_KEY).trim() && String(process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL).trim()) {
-        return true;
-      }
-    }
-
-    if (!userId) return false;
+    const envKey = (process.env.ZOHO_ZEPTOMAIL_API_KEY || process.env.ZEPTOMAIL_API_KEY || '').trim();
+    const envFrom = (process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL || process.env.ZEPTOMAIL_FROM_EMAIL || '').trim();
+    const envConfigured = !!(envKey && envFrom);
 
     const User = mongoose.model('User');
-    const user = await User.findById(userId).select('emailSettings');
+    const user = userId ? await User.findById(userId).select('emailSettings role') : null;
+
+    // Freelancers: native mail app only — never count as in-app / Zepto configured.
+    if (user && String(user.role) === 'freelancer') {
+      return false;
+    }
+
+    // PRIORITY 0: .env Zoho ZeptoMail — always available for non-freelancers
+    if (envConfigured) return true;
+
+    if (!userId) return false;
 
     // PRIORITY 1: User personal SMTP (Hostinger etc.)
     if (user?.emailSettings?.isConfigured) {
@@ -662,50 +1076,107 @@ const checkUserEmailConfigured = async (userId) => {
 };
 
 const getVerifiedZeptoDomain = () => {
-  const from = (process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL || '').trim();
-  if (!from || !from.includes('@')) return '';
-  return from.split('@')[1].toLowerCase();
+  const from = (process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL || process.env.ZEPTOMAIL_FROM_EMAIL || '').trim();
+  return emailDomain(from);
 };
 
 /**
- * Get verified sender domain and API key: from env first, then CompanyEmailConfig (so deploy works without env vars).
+ * Get verified sender config for a user (picks the matching Zepto mailbox).
  */
-const getVerifiedZeptoConfig = async () => {
-  let fromEmail = (process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL || '').trim();
-  let apiKey = (process.env.ZOHO_ZEPTOMAIL_API_KEY || '').trim();
-  if (fromEmail && fromEmail.includes('@') && apiKey) {
-    return { fromEmail, apiKey, domain: fromEmail.split('@')[1].toLowerCase(), source: 'env' };
+const getVerifiedZeptoConfig = async (userId = null) => {
+  let userEmail = '';
+  let organizationId = null;
+  if (userId) {
+    try {
+      const User = mongoose.model('User');
+      const user = await User.findById(userId).select('email organizationId').lean();
+      userEmail = user?.email ? String(user.email).trim().toLowerCase() : '';
+      organizationId = user?.organizationId || null;
+    } catch (_) { /* ignore */ }
   }
+
+  const mailbox = await resolveZeptoMailbox({ userEmail, organizationId });
+  if (mailbox?.fromEmail && mailbox?.apiKey) {
+    return {
+      fromEmail: mailbox.fromEmail,
+      apiKey: mailbox.apiKey,
+      apiUrl: mailbox.apiUrl,
+      domain: emailDomain(mailbox.fromEmail),
+      allowedDomains: mailbox.allowedFromDomains || [],
+      source: 'env',
+      mailboxId: mailbox.id,
+    };
+  }
+
   try {
     const CompanyEmailConfig = mongoose.model('CompanyEmailConfig');
     const companyConfig = await CompanyEmailConfig.findOne({ companyId: 'default-company' });
     if (companyConfig?.isConfigured && companyConfig.primaryProvider === 'zoho-zeptomail') {
-      fromEmail = (companyConfig.zohoZeptomailFromEmail || '').trim();
-      apiKey = (companyConfig.zohoZeptomailApiKey || '').trim();
+      const fromEmail = (companyConfig.zohoZeptomailFromEmail || '').trim();
+      const apiKey = (companyConfig.zohoZeptomailApiKey || '').trim();
       if (fromEmail && fromEmail.includes('@') && apiKey) {
-        return { fromEmail, apiKey, domain: fromEmail.split('@')[1].toLowerCase(), source: 'company' };
+        return {
+          fromEmail,
+          apiKey,
+          apiUrl: companyConfig.zohoZeptomailApiUrl || 'https://api.zeptomail.in/',
+          domain: emailDomain(fromEmail),
+          allowedDomains: getZeptoAllowedFromDomains(fromEmail),
+          source: 'company',
+        };
       }
     }
   } catch (_) { /* ignore */ }
-  return { fromEmail: '', apiKey: '', domain: '', source: '' };
+  return { fromEmail: '', apiKey: '', domain: '', allowedDomains: [], source: '' };
 };
 
 const canUserSendViaZepto = async (userId) => {
   if (!userId) return { canSend: false, reason: 'Not logged in', verifiedDomain: '' };
-  const { domain: verifiedDomain, apiKey } = await getVerifiedZeptoConfig();
+  const {
+    domain: verifiedDomain,
+    apiKey,
+    fromEmail: agentFrom,
+    allowedDomains = [],
+    source,
+  } = await getVerifiedZeptoConfig(userId);
   if (!verifiedDomain) return { canSend: false, reason: 'No verified sender configured', verifiedDomain: '' };
   if (!apiKey) return { canSend: false, reason: 'ZeptoMail not configured', verifiedDomain };
+
   try {
     const User = mongoose.model('User');
-    const user = await User.findById(userId).select('email');
-    const userEmail = (user?.email || '').trim();
-    if (!userEmail || !userEmail.includes('@')) return { canSend: false, reason: 'Use your company verified email to send (e.g. name@' + verifiedDomain + ')', verifiedDomain };
-    const userDomain = userEmail.split('@')[1].toLowerCase();
-    const canSend = userDomain === verifiedDomain;
+    const user = await User.findById(userId).select('email name');
+    const userEmail = (user?.email || '').trim().toLowerCase();
+    const displayName = (user?.name || userEmail || 'Recruiter').trim();
+
+    if (!userEmail || !userEmail.includes('@')) {
+      return {
+        canSend: false,
+        reason: 'Your account needs a valid work email to send candidate mail.',
+        verifiedDomain,
+      };
+    }
+
+    const resolved = resolveEnterpriseFrom({
+      agentFrom,
+      userEmail,
+      allowedFromDomains: allowedDomains,
+    });
+    const canSend = true;
+    const domainsHint = (allowedDomains || []).join(', ') || verifiedDomain;
+
     return {
       canSend,
       verifiedDomain,
-      reason: canSend ? '' : 'You cannot send emails using a personal email address. Please log in with your company verified email (e.g. name@' + verifiedDomain + ') to send emails.'
+      source,
+      fromEmail: resolved.fromEmail,
+      replyTo: resolved.replyToEmail,
+      displayName,
+      sendAsUser: resolved.sendAsUser,
+      reason: resolved.sendAsUser
+        ? ''
+        : `Emails send from ${agentFrom} (verified sender). Replies go to ${userEmail}.`,
+      hint: resolved.sendAsUser
+        ? ''
+        : `Verified From domains for this mailbox: ${domainsHint}.`,
     };
   } catch {
     return { canSend: false, reason: 'Unable to verify sender', verifiedDomain };
@@ -740,5 +1211,6 @@ module.exports = {
   getUserTransporter,
   getZohoAuthHeaderValue,
   canUserSendViaZepto,
+  resolveSystemFromAddress,
   getVerifiedZeptoDomain
 };

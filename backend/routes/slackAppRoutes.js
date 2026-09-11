@@ -14,13 +14,19 @@ const { requireOrganization, tenantScope } = require('../middleware/tenantMiddle
 const { requireFeature } = require('../middleware/featureMiddleware');
 
 const verifySlackSignature = (req, signingSecret) => {
-  if (!signingSecret) return true; // stub mode when not configured
+  if (!signingSecret) return false;
   const timestamp = req.headers['x-slack-request-timestamp'];
   const signature = req.headers['x-slack-signature'];
   if (!timestamp || !signature) return false;
-  const base = `v0:${timestamp}:${req.rawBody || JSON.stringify(req.body)}`;
+  const ageSec = Math.abs(Date.now() / 1000 - Number(timestamp));
+  if (!Number.isFinite(ageSec) || ageSec > 60 * 5) return false;
+  const base = `v0:${timestamp}:${req.rawBody || ''}`;
   const hmac = crypto.createHmac('sha256', signingSecret).update(base).digest('hex');
-  return signature === `v0=${hmac}`;
+  const expected = `v0=${hmac}`;
+  const left = Buffer.from(String(signature));
+  const right = Buffer.from(expected);
+  if (left.length !== right.length) return false;
+  return crypto.timingSafeEqual(left, right);
 };
 
 const resolveOrgFromSlackTeam = async (teamId) => {
@@ -47,7 +53,7 @@ router.post('/commands', express.urlencoded({ extended: true }), async (req, res
       }
     }
 
-    if (signingSecret && !verifySlackSignature(req, signingSecret)) {
+    if (!orgId || !signingSecret || !verifySlackSignature(req, signingSecret)) {
       return res.status(401).json({ text: 'Invalid Slack signature' });
     }
 
@@ -97,9 +103,15 @@ router.post('/commands', express.urlencoded({ extended: true }), async (req, res
   }
 });
 
-/** POST /teams/webhook — Microsoft Teams outgoing webhook stub */
+/** POST /teams/webhook — Microsoft Teams outgoing webhook (shared-secret gated) */
 router.post('/teams/webhook', async (req, res) => {
   try {
+    const expected = String(process.env.TEAMS_WEBHOOK_SECRET || '').trim();
+    const provided = String(req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim()
+      || String(req.query.token || '').trim();
+    if (!expected || provided !== expected) {
+      return res.status(401).json({ type: 'message', text: 'Unauthorized' });
+    }
     const text = (req.body?.text || '').trim().toLowerCase();
     if (!text || text === 'help') {
       return res.json({
@@ -167,3 +179,4 @@ router.put('/config', verifyToken, requireOrganization, tenantScope, requireAdmi
 });
 
 module.exports = router;
+module.exports.verifySlackSignature = verifySlackSignature;

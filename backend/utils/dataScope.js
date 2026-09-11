@@ -488,8 +488,20 @@ async function withoutUnsharedFreelancerDesks(req, baseFilter) {
   };
 }
 
+function rejectFreelancerCompanyMail(req, res, next) {
+  if (!isFreelancer(req.user)) return next();
+  return res.status(403).json({
+    success: false,
+    code: 'FREELANCER_NATIVE_MAIL',
+    message:
+      'Freelance recruiters send email from their own mail app (Outlook, Mail, etc.). Company ZeptoMail and Zoho Campaigns are not available yet.',
+  });
+}
+
 module.exports = {
   isFreelancer,
+  userIdParts,
+  rejectFreelancerCompanyMail,
   createdByFilter,
   employeeDeskFilter,
   deskOrSharedWithMe,

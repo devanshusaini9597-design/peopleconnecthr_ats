@@ -47,7 +47,7 @@ export default function FormBuilderPage() {
   const loadJobs = useCallback(async () => {
     setJobsLoading(true);
     try {
-      const res = await authenticatedFetch('/jobs');
+      const res = await authenticatedFetch('/api/jobs');
       const data = await readApiJson(res);
       const list = data.data || data.jobs || data || [];
       const arr = Array.isArray(list) ? list : [];

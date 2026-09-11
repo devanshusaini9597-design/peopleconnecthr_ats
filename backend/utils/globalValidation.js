@@ -326,7 +326,9 @@ function detectFields(row, headers = []) {
     client: ['client', 'project', 'account', 'placed at', 'bank'],
     spoc: ['spoc', 'feedback', 'hr', 'contact_person', 'representative', 'poc'],
     status: ['status', 'candidate_status', 'stage', 'feedback', 'remark'],
-    sourceOfCV: ['source', 'cv', 'resume', 'origin', 'channel', 'referral']
+    sourceOfCV: ['source', 'cv', 'resume', 'origin', 'channel', 'referral'],
+    product: ['product', 'skill', 'product/skill', 'product skill'],
+    pan: ['pan', 'pan no', 'pan number', 'pan card'],
   };
 
   const candidates = {
@@ -343,7 +345,9 @@ function detectFields(row, headers = []) {
     client: [],
     spoc: [],
     status: [],
-    sourceOfCV: []
+    sourceOfCV: [],
+    product: [],
+    pan: [],
   };
 
   const values = Object.values(row).filter(v => v != null && String(v).trim() !== '');
@@ -784,6 +788,8 @@ const HEADER_PATTERNS = {
   sourceOfCV:     [/^(source|cv\s*source|resume\s*source|origin|channel|source\s*of\s*cv|referral)/i],
   date:           [/^(date|joining\s*date|apply\s*date|interview\s*date|doj|created)/i],
   remark:         [/^(remark|remarks|notes?|comment|feedback|observation)/i],
+  product:        [/^(product|product\s*\/?\s*skill|skill\s*line)/i],
+  pan:            [/^(pan(\s*(no\.?|number|card))?)$/i],
 };
 
 function detectHeaderMapping(headers) {
@@ -827,6 +833,8 @@ function detectHeaderMapping(headers) {
     sourceOfCV: ['source'],
     date: ['date'],
     remark: ['remark', 'note', 'feedback'],
+    product: ['product', 'skill'],
+    pan: ['pan'],
   };
 
   headers.forEach((header, idx) => {
@@ -894,7 +902,7 @@ function isHeaderRow(rowData, headers) {
 // Post-detection swap: fix obvious misplacements
 function postDetectionSwap(detected) {
   const allFields = ['name', 'phone', 'email', 'location', 'position', 'experience',
-    'ctc', 'expectedSalary', 'noticePeriod', 'company', 'client', 'spoc', 'status', 'sourceOfCV'];
+    'ctc', 'expectedSalary', 'noticePeriod', 'company', 'client', 'spoc', 'status', 'sourceOfCV', 'product', 'pan'];
   const swaps = [];
 
   // Rule 1: If any non-email field contains an email address, swap it to email
@@ -994,7 +1002,7 @@ function detectFieldsFromHeaders(rowData, headerMapping, headers) {
     name: null, phone: null, email: null, location: null, position: null,
     experience: null, ctc: null, expectedSalary: null, noticePeriod: null,
     company: null, client: null, spoc: null, status: null, sourceOfCV: null,
-    remark: null, date: null, duplicates: {}
+    remark: null, date: null, product: null, pan: null, duplicates: {}
   };
 
   // Direct assignment from header mapping
@@ -1014,6 +1022,8 @@ function detectFieldsFromHeaders(rowData, headerMapping, headers) {
   if (mapped.sourceOfCV) detected.sourceOfCV = mapped.sourceOfCV;
   if (mapped.remark) detected.remark = mapped.remark;
   if (mapped.date) detected.date = mapped.date;
+  if (mapped.product) detected.product = String(mapped.product).trim();
+  if (mapped.pan) detected.pan = String(mapped.pan).replace(/\s+/g, '').toUpperCase();
 
   // Parse numeric fields
   if (mapped.experience) {

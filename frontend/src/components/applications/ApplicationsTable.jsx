@@ -1,7 +1,7 @@
 import React from 'react';
 import { Star, Phone, Mail, Eye, Search } from 'lucide-react';
 import EmptyState from '../ui/EmptyState';
-import { STAGES, classNames, formatDate, jobTitle } from './constants';
+import { stageVisual, classNames, formatDate, jobTitle } from './constants';
 
 export default function ApplicationsTable({
   filteredApplications,
@@ -15,7 +15,7 @@ export default function ApplicationsTable({
   onTableDragScrollEnd,
 }) {
   return (
-    <div className="flex-1 overflow-auto p-3 sm:p-5 lg:p-6 min-h-0 max-md:min-h-[min(60vh,520px)] w-full">
+    <div className="p-3 sm:p-4 lg:p-5 min-w-0">
       <div
         ref={tableScrollRef}
         className="table-shell-ats cand-table-scroll overflow-x-auto"
@@ -60,7 +60,7 @@ export default function ApplicationsTable({
               </tr>
             ) : (
               filteredApplications.map((app) => {
-                const stageMeta = STAGES.find((s) => s.id === app.stage) || STAGES[0];
+                const stageMeta = stageVisual(app.stage);
                 const phone = app.candidate?.phone || app.candidate?.contact;
                 return (
                   <tr
@@ -90,7 +90,7 @@ export default function ApplicationsTable({
                     </td>
                     <td className="px-4 sm:px-5 py-3.5 whitespace-nowrap">
                       <span className={classNames('px-2.5 py-1 rounded-lg text-xs font-bold border', stageMeta.color, stageMeta.textColor, stageMeta.borderColor)}>
-                        {app.stage}
+                        {stageMeta.label}
                       </span>
                     </td>
                     <td className="px-4 sm:px-5 py-3.5 text-stone-600 whitespace-nowrap">{app.source || '—'}</td>

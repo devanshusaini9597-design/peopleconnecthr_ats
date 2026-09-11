@@ -1,8 +1,9 @@
 /**
- * Dedupe Service — fuzzy duplicate detection by normalized email / phone / name.
+ * Dedupe Service — fuzzy duplicate detection + merge (keep one).
  * Not LLM-based; deterministic normalization + grouping.
  */
 
+const mongoose = require('mongoose');
 const Candidate = require('../models/Candidate');
 
 const normalizeEmail = (email) => {
@@ -71,8 +72,59 @@ const buildCandidateKey = (c) => ({
   contact: c.contact || c.phone,
   normalizedEmail: normalizeEmail(c.email),
   normalizedPhone: normalizePhone(c.contact || c.phone),
-  normalizedName: normalizeName(c.name)
+  normalizedName: normalizeName(c.name),
 });
+
+function httpError(message, statusCode = 400) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+}
+
+/**
+ * Find an existing org candidate with the same normalized phone.
+ * @returns {Promise<object|null>} lean candidate or null
+ */
+async function findOrgPhoneConflict(organizationId, phone, { excludeId } = {}) {
+  const norm = normalizePhone(phone);
+  if (!organizationId || !norm || norm.length < 7) return null;
+
+  const filter = { organizationId };
+  if (excludeId) filter._id = { $ne: excludeId };
+
+  // Narrow candidates whose contact/phone ends with these digits, then exact-normalize.
+  const escaped = norm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  filter.$or = [
+    { contact: { $regex: `${escaped}$` } },
+    { phone: { $regex: `${escaped}$` } },
+  ];
+
+  const rows = await Candidate.find(filter)
+    .select('_id name email contact phone')
+    .limit(50)
+    .lean();
+
+  return rows.find((r) => normalizePhone(r.contact || r.phone) === norm) || null;
+}
+
+/**
+ * Find an existing org candidate with the same email (case-insensitive).
+ * @returns {Promise<object|null>} lean candidate or null
+ */
+async function findOrgEmailConflict(organizationId, email, { excludeId } = {}) {
+  const norm = normalizeEmail(email);
+  if (!organizationId || !norm) return null;
+
+  const filter = {
+    organizationId,
+    email: norm,
+  };
+  if (excludeId) filter._id = { $ne: excludeId };
+
+  return Candidate.findOne(filter)
+    .select('_id name email contact phone')
+    .lean();
+}
 
 /**
  * Find duplicate groups within an organization.
@@ -85,14 +137,13 @@ const findDuplicates = async (organizationId, options = {}) => {
     query._id = options.candidateId;
   }
 
-  const candidates = await Candidate.find(query)
-    .select('name email contact phone createdAt')
-    .lean();
+  const select = 'name email contact phone position location source date createdAt appliedAt status resume';
+  const candidates = await Candidate.find(query).select(select).lean();
 
   if (options.candidateId && candidates.length === 1) {
     const target = buildCandidateKey(candidates[0]);
     const all = await Candidate.find({ organizationId, _id: { $ne: target.id } })
-      .select('name email contact phone createdAt')
+      .select(select)
       .lean();
 
     const matches = all.filter((c) => {
@@ -110,7 +161,7 @@ const findDuplicates = async (organizationId, options = {}) => {
       groups: matches.length
         ? [{ key: 'candidate_match', reason: 'email_phone_or_name', members: [candidates[0], ...matches] }]
         : [],
-      totalGroups: matches.length ? 1 : 0
+      totalGroups: matches.length ? 1 : 0,
     };
   }
 
@@ -152,19 +203,151 @@ const findDuplicates = async (organizationId, options = {}) => {
     .map((members) => ({
       key: normalizeEmail(members[0].email) || normalizePhone(members[0].contact) || normalizeName(members[0].name),
       reason: 'email_phone_or_name',
-      members
+      members,
     }));
 
   const limit = options.limit || 50;
   return {
     groups: groups.slice(0, limit),
-    totalGroups: groups.length
+    totalGroups: groups.length,
   };
 };
+
+const MERGE_FILL_FIELDS = [
+  'contact', 'phone', 'position', 'location', 'state', 'companyName', 'experience',
+  'ctc', 'expectedCtc', 'noticePeriod', 'skills', 'product', 'pan', 'client', 'spoc',
+  'source', 'remark', 'feedback', 'fls', 'resume', 'date', 'appliedAt',
+];
+
+function isBlank(val) {
+  return val == null || (typeof val === 'string' && !String(val).trim());
+}
+
+/**
+ * Keep one candidate; merge blank fields from drops; re-point related docs; delete drops.
+ */
+async function mergeCandidates(organizationId, keepId, dropIds = []) {
+  if (!organizationId) throw httpError('Organization required', 400);
+  if (!keepId) throw httpError('keepId is required', 400);
+
+  const dropList = [...new Set((dropIds || []).map(String).filter((id) => id && id !== String(keepId)))];
+  if (!dropList.length) throw httpError('Select at least one duplicate to merge into the kept record', 400);
+
+  const keep = await Candidate.findOne({ _id: keepId, organizationId });
+  if (!keep) throw httpError('Keep candidate not found', 404);
+
+  const drops = await Candidate.find({
+    _id: { $in: dropList },
+    organizationId,
+  });
+  if (drops.length !== dropList.length) {
+    throw httpError('One or more duplicates were not found in your organization', 404);
+  }
+
+  // Fill blank fields on keep from drops (first non-blank wins)
+  let keepDirty = false;
+  for (const field of MERGE_FILL_FIELDS) {
+    if (!isBlank(keep[field])) continue;
+    for (const drop of drops) {
+      if (!isBlank(drop[field])) {
+        keep[field] = drop[field];
+        keepDirty = true;
+        break;
+      }
+    }
+  }
+  if (keepDirty) await keep.save();
+
+  const dropObjectIds = drops.map((d) => d._id);
+
+  // Applications: move to keep, drop if same job already applied
+  try {
+    const Application = mongoose.model('Application');
+    const dropApps = await Application.find({
+      organizationId,
+      candidateId: { $in: dropObjectIds },
+    }).lean();
+    for (const app of dropApps) {
+      const exists = await Application.findOne({
+        organizationId,
+        jobId: app.jobId,
+        candidateId: keep._id,
+      }).select('_id').lean();
+      if (exists) {
+        await Application.deleteOne({ _id: app._id });
+      } else {
+        await Application.updateOne({ _id: app._id }, { $set: { candidateId: keep._id } });
+      }
+    }
+  } catch (err) {
+    if (err.name !== 'MissingSchemaError') throw err;
+  }
+
+  // Comments
+  try {
+    const CandidateComment = mongoose.model('CandidateComment');
+    await CandidateComment.updateMany(
+      { organizationId, candidateId: { $in: dropObjectIds } },
+      { $set: { candidateId: keep._id } }
+    );
+  } catch (err) {
+    if (err.name !== 'MissingSchemaError') throw err;
+  }
+
+  // Notifications pointing at dropped candidates
+  try {
+    const Notification = mongoose.model('Notification');
+    await Notification.updateMany(
+      { organizationId, candidateId: { $in: dropObjectIds } },
+      { $set: { candidateId: keep._id } }
+    );
+  } catch (err) {
+    if (err.name !== 'MissingSchemaError') throw err;
+  }
+
+  // Freelancer submissions — unique on job+candidate; drop conflicts
+  try {
+    const FreelancerSubmission = mongoose.model('FreelancerSubmission');
+    const subs = await FreelancerSubmission.find({
+      organizationId,
+      candidateId: { $in: dropObjectIds },
+    }).lean();
+    for (const sub of subs) {
+      const exists = await FreelancerSubmission.findOne({
+        organizationId,
+        jobId: sub.jobId,
+        candidateId: keep._id,
+      }).select('_id').lean();
+      if (exists) {
+        await FreelancerSubmission.deleteOne({ _id: sub._id });
+      } else {
+        await FreelancerSubmission.updateOne({ _id: sub._id }, { $set: { candidateId: keep._id } });
+      }
+    }
+  } catch (err) {
+    if (err.name !== 'MissingSchemaError') throw err;
+  }
+
+  await Candidate.deleteMany({ _id: { $in: dropObjectIds }, organizationId });
+
+  return {
+    keptId: String(keep._id),
+    deletedIds: dropList,
+    kept: {
+      _id: keep._id,
+      name: keep.name,
+      email: keep.email,
+      contact: keep.contact,
+    },
+  };
+}
 
 module.exports = {
   normalizeEmail,
   normalizePhone,
   normalizeName,
-  findDuplicates
+  findDuplicates,
+  findOrgPhoneConflict,
+  findOrgEmailConflict,
+  mergeCandidates,
 };

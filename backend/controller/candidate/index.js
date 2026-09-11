@@ -4,6 +4,7 @@ const bulk = require('./candidateBulk');
 const search = require('./candidateSearch');
 const resume = require('./candidateResume');
 const pending = require('./candidatePending');
+const exportCtrl = require('./candidateExport');
 
 module.exports = {
   ...crud,
@@ -12,4 +13,5 @@ module.exports = {
   ...search,
   ...resume,
   ...pending,
+  ...exportCtrl,
 };

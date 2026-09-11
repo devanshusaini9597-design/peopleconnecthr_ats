@@ -9,6 +9,7 @@ import ProductTour from './ui/ProductTour';
 import TourHelpFab from './ui/TourHelpFab';
 import usePageTour from '../hooks/usePageTour';
 import { formatByFieldName } from '../utils/textFormatter';
+import { fetchPicklist } from '../utils/orgListFetch';
 import { useAuth } from '../context/AuthContext';
 import { planHasFeature } from '../config/planFeatures';
 import { CATALOG } from './manageMasterData/masterDataConstants';
@@ -43,7 +44,7 @@ const ManageMasterData = ({ title, apiEndpoint }) => {
   const [sortKey, setSortKey] = useState('name-asc');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ name: '', description: '' });
+  const [form, setForm] = useState({ name: '', description: '', requiresPan: false });
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -56,18 +57,15 @@ const ManageMasterData = ({ title, apiEndpoint }) => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await authenticatedFetch(`${BASE_API_URL}${apiEndpoint}/all`);
-      if (isUnauthorized(res)) { handleUnauthorized(); return; }
-      if (!res.ok) { toast.error(`Could not load ${cfg.headline.toLowerCase()}`); return; }
-      const data = await res.json();
-      setRows(Array.isArray(data) ? data : []);
+      const data = await fetchPicklist(apiEndpoint);
+      setRows(data);
     } catch {
       toast.error(`Could not load ${cfg.headline.toLowerCase()}`);
     } finally {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- toast is stable enough; avoid reload loops
-  }, [apiEndpoint, cfg.headline]);
+  }, [apiEndpoint, cfg.headline, cfg.seedable]);
 
   useEffect(() => { load(); }, [apiEndpoint]);
 
@@ -101,13 +99,17 @@ const ManageMasterData = ({ title, apiEndpoint }) => {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: '', description: '' });
+    setForm({ name: '', description: '', requiresPan: false });
     setEditorOpen(true);
   };
 
   const openEdit = (item) => {
     setEditing(item);
-    setForm({ name: item.name || '', description: item.description || '' });
+    setForm({
+      name: item.name || '',
+      description: item.description || '',
+      requiresPan: !!item.requiresPan,
+    });
     setEditorOpen(true);
   };
 
@@ -117,6 +119,7 @@ const ManageMasterData = ({ title, apiEndpoint }) => {
       name: formatByFieldName('name', form.name),
       description: formatByFieldName('description', form.description),
     };
+    if (isClients) payload.requiresPan = !!form.requiresPan;
     if (!payload.name.trim()) {
       toast.warning('Name is required');
       return;
@@ -140,7 +143,7 @@ const ManageMasterData = ({ title, apiEndpoint }) => {
       toast.success(editing ? 'Updated' : 'Added to organization list');
       setEditorOpen(false);
       setEditing(null);
-      setForm({ name: '', description: '' });
+      setForm({ name: '', description: '', requiresPan: false });
       await load();
     } catch {
       toast.error('Could not save');
@@ -288,6 +291,7 @@ const ManageMasterData = ({ title, apiEndpoint }) => {
         setForm={setForm}
         cfg={cfg}
         title={title}
+        showRequiresPan={isClients}
         onClose={() => setEditorOpen(false)}
         onSubmit={handleSave}
       />

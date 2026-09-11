@@ -24,15 +24,22 @@ const NotificationSchema = new mongoose.Schema({
       'invitation_accepted', // When someone accepts your invitation
       'invitation_declined', // When someone declines your invitation
       'mention',            // @mention on candidate collaboration
+      'team_activity',      // report (intern) did something the manager should see
       'candidate_hired',
+      'candidate_update',   // pipeline / scorecard for people assigned to the work
       'interview_reminder',
       'announcement',
+      'job_opening',
       'freelancer_submission',
+      'report_shared',      // Analytics report shared with you
     ],
     required: true 
   },
   title: { type: String, required: true },
   message: { type: String, required: true },
+
+  /** Deep link for in-app open (e.g. /analytics?tab=export&period=month) */
+  linkUrl: { type: String, default: '' },
   
   // Related candidate info
   candidateId: { type: mongoose.Schema.Types.ObjectId, ref: 'Candidate' },
@@ -40,6 +47,9 @@ const NotificationSchema = new mongoose.Schema({
   candidatePosition: { type: String },
   candidateContact: { type: String },
   callBackDate: { type: String },
+
+  /** Job opening notifications — used to dismiss when the job is deleted */
+  relatedJobId: { type: mongoose.Schema.Types.ObjectId, ref: 'Job', index: true },
   
   // Related member info (for invitations/shares)
   relatedMemberId: { type: mongoose.Schema.Types.ObjectId, ref: 'TeamMember', default: null },

@@ -14,14 +14,14 @@ export const STEPS = [
 export const TEMPLATE_HEADERS = [
   'name', 'email', 'contact', 'position', 'companyName', 'location',
   'ctc', 'expectedCtc', 'experience', 'noticePeriod', 'status',
-  'source', 'client', 'spoc', 'remark', 'date',
+  'source', 'client', 'spoc', 'product', 'pan', 'remark', 'date',
 ];
 
 export const TEMPLATE_SAMPLE = [
   ['Riya Sharma', 'riya.sharma@example.com', '9876543210', 'Software Engineer', 'Acme Corp', 'Bengaluru',
-    '8-10', '12-15', '3', '30', 'Applied', 'LinkedIn', 'Acme', 'Priya', '', '2026-08-01'],
+    '8-10', '12-15', '3', '30', 'Applied', 'LinkedIn', 'Acme', 'Priya', 'Home Loan', '', '', '2026-08-01'],
   ['Aman Verma', 'aman.verma@example.com', '9123456780', 'Product Manager', 'Nova Labs', 'Pune',
-    '15-20', '20-25', '5', '60', 'Screening', 'Referral', 'Nova', 'Dev', 'Strong hire', '2026-08-02'],
+    '15-20', '20-25', '5', '60', 'Screening', 'Referral', 'HDFC', 'Dev', 'Credit Cards', 'ABCDE1234F', 'Strong hire', '2026-08-02'],
 ];
 
 export const STATUS_OPTIONS = [

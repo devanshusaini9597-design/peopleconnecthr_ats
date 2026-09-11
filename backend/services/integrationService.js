@@ -8,11 +8,13 @@ const eventTypes = require('../events/eventTypes');
 
 const VALID_CATEGORIES = [
   'email', 'calendar', 'sms', 'ai', 'job_board', 'background_check', 'esign', 'whatsapp',
-  'video', 'storage', 'encryption', 'crm', 'hris', 'siem', 'data_warehouse', 'slack_app'
+  'video', 'storage', 'encryption', 'crm', 'hris', 'siem', 'data_warehouse', 'slack_app',
+  'marketing'
 ];
 
 const CATEGORY_FEATURE = {
   email: 'integrations.byoEmail',
+  marketing: 'integrations.marketing',
   calendar: 'integrations.calendar',
   sms: 'integrations.sms',
   job_board: 'integrations.jobBoard',
@@ -89,6 +91,14 @@ async function upsertIntegration(organizationId, userId, body) {
     if (category === 'slack_app' && credentials.teamId) {
       config.metadata = { ...(config.metadata || {}), teamId: credentials.teamId };
     }
+    if (category === 'whatsapp') {
+      config.isActive = true;
+      config.metadata = {
+        ...(config.metadata || {}),
+        ...(credentials.phoneNumberId ? { phoneNumberId: String(credentials.phoneNumberId) } : {}),
+        ...(credentials.wabaId ? { wabaId: String(credentials.wabaId) } : {}),
+      };
+    }
   }
   config.configuredBy = config.configuredBy || userId;
   config.lastModifiedBy = userId;
@@ -121,7 +131,8 @@ async function upsertIntegration(organizationId, userId, body) {
 
 const TESTABLE_CATEGORIES = new Set([
   'email', 'sms', 'calendar', 'ai', 'job_board', 'background_check', 'esign',
-  'whatsapp', 'video', 'storage', 'encryption', 'crm', 'hris', 'siem', 'data_warehouse'
+  'whatsapp', 'video', 'storage', 'encryption', 'crm', 'hris', 'siem', 'data_warehouse',
+  'marketing'
 ]);
 
 function createAdapterForConfig(config, credentials) {
@@ -129,6 +140,25 @@ function createAdapterForConfig(config, credentials) {
   switch (config.category) {
     case 'email':
       return require('../adapters/emailAdapter').createEmailAdapter(resolvedConfig);
+    case 'marketing':
+      return {
+        async testConnection() {
+          if (!credentials?.listKey) throw new Error('Mailing list key (listKey) is required');
+          const hasOAuth = !!(credentials.clientId && credentials.clientSecret && credentials.refreshToken);
+          const hasKey = !!credentials.apiKey;
+          if (!hasOAuth && !hasKey) {
+            throw new Error('Provide OAuth clientId/clientSecret/refreshToken or apiKey');
+          }
+          const { isCampaignsConfigured, getAccessToken } = require('./campaignService');
+          if (!isCampaignsConfigured(credentials)) {
+            throw new Error('Zoho Campaigns credentials incomplete');
+          }
+          if (!credentials.apiKey) {
+            await getAccessToken(credentials);
+          }
+          return true;
+        },
+      };
     case 'sms':
       return require('../adapters/smsAdapter').createSmsAdapter(resolvedConfig);
     case 'calendar':
@@ -142,7 +172,7 @@ function createAdapterForConfig(config, credentials) {
     case 'esign':
       return require('../adapters/esignAdapter').createEsignAdapter(resolvedConfig);
     case 'whatsapp':
-      return require('../adapters/smsAdapter').createSmsAdapter(resolvedConfig);
+      return require('../adapters/whatsappAdapter').createWhatsAppAdapter(resolvedConfig);
     case 'video':
       return require('../adapters/videoAdapter').createVideoAdapter(resolvedConfig);
     case 'storage':
@@ -173,11 +203,20 @@ async function testIntegration(organizationId, id, userId) {
 
     const credentials = config.getDecryptedCredentials();
     const adapter = createAdapterForConfig(config, credentials);
-    await adapter.testConnection();
+    const testResult = await adapter.testConnection();
 
     config.isValidated = true;
     config.lastValidatedAt = new Date();
     config.validationError = '';
+    if (config.category === 'whatsapp' && testResult && typeof testResult === 'object') {
+      config.isActive = true;
+      config.metadata = {
+        ...(config.metadata || {}),
+        displayPhoneNumber: testResult.displayPhoneNumber || config.metadata?.displayPhoneNumber || '',
+        verifiedName: testResult.verifiedName || config.metadata?.verifiedName || '',
+        qualityRating: testResult.qualityRating || config.metadata?.qualityRating || '',
+      };
+    }
     config.auditLog.push({ action: 'validated', performedBy: userId, details: 'Connection test succeeded' });
     await config.save();
 

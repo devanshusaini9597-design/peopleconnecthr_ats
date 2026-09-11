@@ -14,6 +14,7 @@ import { SC_TOUR_KEY, SC_TOUR_STEPS, emptyForm } from './scorecardTemplates/scor
 import { ScorecardCatalog, ScorecardFormModal } from './scorecardTemplates/ScorecardPanels';
 
 export default function ScorecardTemplatesPage() {
+  const { t } = useTranslation();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(SC_TOUR_KEY);
   const [rows, setRows] = useState([]);
@@ -49,7 +50,6 @@ export default function ScorecardTemplatesPage() {
   }, [loading, rows.length]);
 
   const openCreate = () => {
-  const { t } = useTranslation();
     setEditId(null);
     setForm(emptyForm());
     setOpen(true);

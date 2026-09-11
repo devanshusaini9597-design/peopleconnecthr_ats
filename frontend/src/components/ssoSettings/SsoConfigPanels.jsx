@@ -230,7 +230,7 @@ export function SsoIdpSection({ form, setForm, hasCert, hasOidcSecret, urls }) {
           <label className="label-ats">Default role for new SSO users</label>
           <PremiumSelect
             value={form.defaultRole}
-            onChange={(v) => setForm((f) => ({ ...f, defaultRole: v || 'recruiter' }))}
+            onChange={(v) => setForm((f) => ({ ...f, defaultRole: v || 'hr_recruiter' }))}
             options={ROLE_OPTIONS}
             placeholder="Select role"
             variant="list"

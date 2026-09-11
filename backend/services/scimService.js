@@ -155,7 +155,12 @@ async function patchUser(organizationId, id, body) {
 
   if (body.active === false) user.isActive = false;
 
+  const deactivated = user.isModified('isActive') && user.isActive === false;
   await user.save();
+  if (deactivated) {
+    const { revokeAllSessionsForUser } = require('./sessionService');
+    await revokeAllSessionsForUser(user._id);
+  }
   return scimUserResource(user);
 }
 

@@ -7,6 +7,7 @@
 const express = require('express');
 const axios = require('axios');
 const router = express.Router();
+const logger = require('../utils/logger');
 
 const TOKEN_URL = process.env.ZOHO_CAMPAIGNS_ACCOUNTS_URL || 'https://accounts.zoho.in/oauth/v2/token';
 
@@ -55,14 +56,21 @@ router.get('/callback', async (req, res) => {
 
     const data = response.data;
     const refreshToken = data.refresh_token || '';
-    const accessToken = data.access_token || '';
     const scope = data.scope || '';
 
     if (!refreshToken) {
       return res.status(500).send('Zoho did not return a refresh_token. Try again with prompt=consent in the auth URL.');
     }
 
-    // Show a simple HTML page with the refresh_token to copy into .env
+    if (process.env.NODE_ENV === 'production') {
+      logger.info({ scope: scope || null }, 'Zoho OAuth token exchanged — not returned in HTTP body');
+      return res
+        .status(200)
+        .type('html')
+        .send('<!DOCTYPE html><html><body><p>Zoho connected. Set ZOHO_CAMPAIGNS_REFRESH_TOKEN from a local OAuth run — the refresh token is not shown in the browser in production.</p></body></html>');
+    }
+
+    const safeToken = String(refreshToken).replace(/[<>&"']/g, '');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(`
 <!DOCTYPE html>
@@ -71,9 +79,8 @@ router.get('/callback', async (req, res) => {
 <body style="font-family: system-ui; max-width: 640px; margin: 40px auto; padding: 20px;">
   <h1>Zoho Campaigns OAuth</h1>
   <p>Copy the value below into <strong>backend .env</strong> as <code>ZOHO_CAMPAIGNS_REFRESH_TOKEN</code>, then restart the backend.</p>
-  <pre style="background: #f1f5f9; padding: 16px; border-radius: 8px; overflow-x: auto; word-break: break-all;">${refreshToken}</pre>
-  <p><small>Scope: ${scope || '—'}</small></p>
-  <p><small>Access token (short-lived): ${accessToken ? accessToken.substring(0, 30) + '…' : '—'}</small></p>
+  <pre style="background: #f1f5f9; padding: 16px; border-radius: 8px; overflow-x: auto; word-break: break-all;">${safeToken}</pre>
+  <p><small>Scope: ${String(scope || '—').replace(/[<>&"']/g, '')}</small></p>
 </body>
 </html>
     `);

@@ -1,12 +1,16 @@
-import React from 'react';
-import { Users, Download, BarChart3, RefreshCw, Send } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Users, Download, RefreshCw, Send, Loader2, Shield, Search } from 'lucide-react';
 import Modal from '../ui/Modal';
 import EmptyState from '../ui/EmptyState';
+import AnalyticsReportPreview from './AnalyticsReportPreview';
+import { useAuth } from '../../context/AuthContext';
+import { resolveOrgLogoSrc } from '../../utils/orgLogo';
 
 export default function AnalyticsModals({
   showPreview,
   setShowPreview,
   previewData,
+  previewLoading = false,
   exportFormat,
   handleExport,
   navigate,
@@ -25,123 +29,133 @@ export default function AnalyticsModals({
   shareMessage,
   setShareMessage,
 }) {
+  const { organization } = useAuth();
+  const footerLogo = resolveOrgLogoSrc(previewData?.orgLogo || organization?.logo);
+  const footerOrg = previewData?.orgName || organization?.name || '';
+  const [memberQuery, setMemberQuery] = useState('');
+
+  const shareableMembers = useMemo(
+    () => (teamMembers || []).filter((m) => m && !m.isYou && m.email),
+    [teamMembers],
+  );
+
+  const filteredMembers = useMemo(() => {
+    const q = memberQuery.trim().toLowerCase();
+    if (!q) return shareableMembers;
+    return shareableMembers.filter((m) => {
+      const hay = `${m.name || ''} ${m.email || ''} ${m.role || ''}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [shareableMembers, memberQuery]);
+
+  const allFilteredSelected = filteredMembers.length > 0
+    && filteredMembers.every((m) => selectedMembers.some((s) => String(s._id) === String(m._id)));
+
+  const toggleMember = (member, checked) => {
+    if (checked) {
+      if (selectedMembers.some((m) => String(m._id) === String(member._id))) return;
+      setSelectedMembers([...selectedMembers, member]);
+    } else {
+      setSelectedMembers(selectedMembers.filter((m) => String(m._id) !== String(member._id)));
+    }
+  };
+
+  const toggleSelectAllFiltered = () => {
+    if (allFilteredSelected) {
+      const drop = new Set(filteredMembers.map((m) => String(m._id)));
+      setSelectedMembers(selectedMembers.filter((m) => !drop.has(String(m._id))));
+      return;
+    }
+    const map = new Map(selectedMembers.map((m) => [String(m._id), m]));
+    filteredMembers.forEach((m) => map.set(String(m._id), m));
+    setSelectedMembers([...map.values()]);
+  };
+
   return (
     <>
       <Modal
-        open={showPreview && !!previewData}
-        onClose={() => setShowPreview(false)}
-        title={previewData?.title || 'Report Preview'}
-        description={`${previewData?.rows?.length || 0} row${(previewData?.rows?.length || 0) === 1 ? '' : 's'} in this preview`}
+        open={showPreview && (previewLoading || !!previewData)}
+        onClose={() => !previewLoading && setShowPreview(false)}
+        title={previewData?.title || 'Report preview'}
+        description={previewData
+          ? [
+              previewData.scopeLabel ? `Scope: ${previewData.scopeLabel}` : null,
+              previewData.subtitle ? `Period: ${previewData.subtitle}` : null,
+            ].filter(Boolean).join(' · ')
+          : 'Review metrics, charts, and data before download'}
         size="xl"
         footer={
-          <>
-            <p className="text-[11px] text-stone-400 mr-auto hidden sm:block">Confidential — People Connect HR</p>
-            <button type="button" onClick={() => setShowPreview(false)} className="btn-secondary">Close</button>
-            <button
-              type="button"
-              onClick={() => { setShowPreview(false); handleExport(); }}
-              className="btn-primary"
-            >
-              <Download size={16} /> Download {exportFormat === 'pdf' ? 'PDF' : 'Excel'}
-            </button>
-          </>
+          previewLoading ? null : (
+            <div className="w-full flex flex-col-reverse sm:flex-row sm:items-center gap-3 sm:gap-4">
+              <div className="flex items-center gap-2.5 min-w-0 sm:mr-auto">
+                {footerLogo ? (
+                  <img src={footerLogo} alt="" className="h-7 w-auto max-w-[88px] object-contain shrink-0" />
+                ) : (
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-stone-100 text-stone-400 shrink-0">
+                    <Shield size={14} />
+                  </span>
+                )}
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-stone-800 truncate">
+                    {footerOrg || 'Recruitment report'}
+                  </p>
+                  <p className="text-[10px] text-stone-500">
+                    Confidential — for authorized use only
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                <button type="button" onClick={() => setShowPreview(false)} className="btn-secondary flex-1 sm:flex-none">
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowPreview(false); handleExport(); }}
+                  className="btn-primary flex-1 sm:flex-none"
+                >
+                  <Download size={16} /> Download {exportFormat === 'pdf' ? 'PDF' : 'Excel'}
+                </button>
+              </div>
+            </div>
+          )
         }
       >
-        {previewData && (
-          <div className="space-y-5">
-            {previewData.summary?.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {previewData.summary.map((card, i) => {
-                  const accents = [
-                    'bg-brand-500',
-                    'bg-teal-500',
-                    'bg-amber-500',
-                    'bg-stone-400',
-                  ];
-                  return (
-                    <div
-                      key={i}
-                      className="relative rounded-xl border border-stone-200 bg-white px-3.5 py-3 min-w-0 overflow-hidden shadow-sm"
-                    >
-                      <div className={`absolute left-0 top-0 bottom-0 w-1 ${accents[i % accents.length]}`} />
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500 pl-1.5">{card.label}</p>
-                      <p className="text-xl font-bold text-stone-900 tabular-nums mt-0.5 tracking-tight pl-1.5">{card.value}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {!previewData.rows?.length ? (
-              <div className="rounded-xl border border-dashed border-stone-200 bg-stone-50/50">
-                <EmptyState
-                  icon={BarChart3}
-                  tone="brand"
-                  compact
-                  message="No data for this report"
-                  subMessage="Try a wider date range, or add candidates with positions to populate this preview."
-                  action={
-                    <button type="button" onClick={() => { setShowPreview(false); navigate('/ats?add=1'); }} className="btn-secondary !text-xs">
-                      Add Candidate
-                    </button>
-                  }
-                />
-              </div>
-            ) : (
-              <div className="table-shell-ats overflow-hidden">
-                <div className="px-4 py-2.5 border-b border-stone-100 bg-stone-50/80 flex items-center justify-between gap-2">
-                  <p className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider">Preview rows</p>
-                  <p className="text-[11px] text-stone-400 tabular-nums">{previewData.rows.length} shown</p>
-                </div>
-                <div
-                  ref={previewScrollRef}
-                  className="cand-table-scroll overflow-x-auto max-h-[40vh] select-none"
-                  onMouseDown={onTableDragScrollStart(previewScrollRef)}
-                  onMouseMove={onTableDragScrollMove}
-                  onMouseUp={onTableDragScrollEnd}
-                  onMouseLeave={onTableDragScrollEnd}
-                >
-                  <table className="cand-table-drag w-full text-sm min-w-[560px] select-text">
-                    <thead className="bg-stone-50 sticky top-0 z-10">
-                      <tr>
-                        {previewData.headers?.map((h, i) => (
-                          <th key={i} className="px-4 py-3 text-left text-[11px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-200 whitespace-nowrap">
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-stone-100">
-                      {previewData.rows.map((row, ri) => (
-                        <tr key={ri} className="hover:bg-brand-50/30 transition-colors">
-                          {row.map((cell, ci) => (
-                            <td key={ci} className="px-4 py-2.5 text-sm text-stone-700 whitespace-nowrap">{cell ?? '—'}</td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {previewData.totalRows > (previewData.rows?.length || 0) && (
-                  <div className="px-4 py-2.5 bg-amber-50 border-t border-amber-200 text-xs text-amber-700 font-medium">
-                    Showing {previewData.rows.length} of {previewData.totalRows} rows — download for the full report.
-                  </div>
-                )}
-              </div>
-            )}
+        {previewLoading ? (
+          <div className="py-16 flex flex-col items-center justify-center gap-4 text-center">
+            <Loader2 size={36} className="animate-spin text-brand-600" />
+            <div>
+              <p className="text-sm font-bold text-stone-900">Generating report…</p>
+              <p className="text-xs text-stone-500 mt-1">Compiling pipeline metrics and candidate records</p>
+            </div>
+            <div className="w-full max-w-md h-1.5 rounded-full bg-stone-100 overflow-hidden">
+              <div className="h-full w-2/5 rounded-full bg-gradient-to-r from-brand-500 via-teal-400 to-brand-500 animate-shimmer" />
+            </div>
           </div>
-        )}
+        ) : previewData ? (
+          <AnalyticsReportPreview previewData={previewData} />
+        ) : null}
       </Modal>
 
       <Modal
         open={showShareModal}
-        onClose={() => setShowShareModal(false)}
+        onClose={() => {
+          if (isSharingReport) return;
+          setShowShareModal(false);
+          setMemberQuery('');
+        }}
         title="Share Report"
-        description="Send this report to team members by email."
+        description="Email teammates and notify them in-app with a link to this report."
         size="md"
         footer={
           <>
-            <button type="button" onClick={() => setShowShareModal(false)} className="btn-secondary">Cancel</button>
+            <button
+              type="button"
+              onClick={() => { setShowShareModal(false); setMemberQuery(''); }}
+              disabled={isSharingReport}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
             <button
               type="button"
               onClick={handleShareReport}
@@ -156,43 +170,76 @@ export default function AnalyticsModals({
       >
         <div className="space-y-4">
           <div>
-            <label className="label-ats">Team members</label>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <label className="label-ats !mb-0">Team members</label>
+              {filteredMembers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={toggleSelectAllFiltered}
+                  className="text-[11px] font-semibold text-brand-700 hover:text-brand-800"
+                >
+                  {allFilteredSelected ? 'Clear selection' : 'Select all'}
+                </button>
+              )}
+            </div>
+
+            {shareableMembers.length > 4 && (
+              <div className="relative mb-2">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                <input
+                  type="search"
+                  value={memberQuery}
+                  onChange={(e) => setMemberQuery(e.target.value)}
+                  placeholder="Search by name or email…"
+                  className="input-ats !pl-9 w-full"
+                />
+              </div>
+            )}
+
             {isLoadingMembers ? (
               <div className="flex items-center justify-center py-8">
                 <RefreshCw size={20} className="animate-spin text-emerald-500" />
               </div>
-            ) : teamMembers.length === 0 ? (
+            ) : shareableMembers.length === 0 ? (
               <EmptyState
                 icon={Users}
                 tone="emerald"
                 compact
-                message="No team members"
-                subMessage="Invite teammates to share reports with them."
+                message="No teammates available"
+                subMessage="Invite colleagues to your organization to share reports."
+              />
+            ) : filteredMembers.length === 0 ? (
+              <EmptyState
+                icon={Search}
+                tone="amber"
+                compact
+                message="No matches"
+                subMessage="Try a different name or email."
               />
             ) : (
-              <div className="space-y-1 max-h-48 overflow-y-auto border border-stone-200 rounded-xl p-2 bg-stone-50/60">
-                {teamMembers.map((member) => {
-                  const checked = selectedMembers.some((m) => m._id === member._id);
+              <div className="space-y-1 max-h-56 overflow-y-auto border border-stone-200 rounded-xl p-2 bg-stone-50/60">
+                {filteredMembers.map((member) => {
+                  const checked = selectedMembers.some((m) => String(m._id) === String(member._id));
                   return (
                     <label
                       key={member._id}
-                      className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all ${
+                      className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all min-w-0 ${
                         checked ? 'bg-emerald-50 border border-emerald-200' : 'hover:bg-white border border-transparent'
                       }`}
                     >
                       <input
                         type="checkbox"
                         checked={checked}
-                        onChange={(e) => {
-                          if (e.target.checked) setSelectedMembers([...selectedMembers, member]);
-                          else setSelectedMembers(selectedMembers.filter((m) => m._id !== member._id));
-                        }}
-                        className="w-4 h-4 text-emerald-600 rounded focus:ring-2 focus:ring-emerald-500"
+                        onChange={(e) => toggleMember(member, e.target.checked)}
+                        className="w-4 h-4 text-emerald-600 rounded focus:ring-2 focus:ring-emerald-500 flex-shrink-0"
                       />
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-semibold text-stone-900 truncate">{member.name}</p>
                         <p className="text-xs text-stone-500 truncate">{member.email}</p>
                       </div>
+                      {member.kind === 'contact' ? (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-400 flex-shrink-0">Contact</span>
+                      ) : null}
                     </label>
                   );
                 })}
@@ -214,7 +261,7 @@ export default function AnalyticsModals({
           {selectedMembers.length > 0 && (
             <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
               <p className="text-xs font-semibold text-emerald-700">
-                {selectedMembers.length} member{selectedMembers.length === 1 ? '' : 's'} selected
+                {selectedMembers.length} recipient{selectedMembers.length === 1 ? '' : 's'} selected · email + in-app notice
               </p>
             </div>
           )}

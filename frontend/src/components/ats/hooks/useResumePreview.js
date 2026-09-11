@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import BASE_API_URL from '../../../config';
-import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../../../utils/fetchUtils';
+import { authenticatedFetch, handleUnauthorized } from '../../../utils/fetchUtils';
+import { sniffResumeKindFromBytes, mimeForResumeKind } from '../../../utils/resumeFileKind';
 
-export function useResumePreview({ toast } = {}) {
+export function useResumePreview({ toast, viewMode } = {}) {
   const [previewResumeUrl, setPreviewResumeUrl] = useState(null);
   const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
+  const [previewBlob, setPreviewBlob] = useState(null);
+  const [previewFileKind, setPreviewFileKind] = useState(null);
   const [previewResumeCandidate, setPreviewResumeCandidate] = useState(null);
   const [previewResumeError, setPreviewResumeError] = useState(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
@@ -12,23 +15,42 @@ export function useResumePreview({ toast } = {}) {
   const getResumeEndpointUrl = (candidateId, forDownload = false) => {
     if (!candidateId) return '';
     const base = (BASE_API_URL || '').replace(/\/$/, '');
-    const q = forDownload ? '?download=1' : '';
+    const params = new URLSearchParams();
+    if (forDownload) params.set('download', '1');
+    if (viewMode) params.set('view', viewMode);
+    const q = params.toString() ? `?${params.toString()}` : '';
     return `${base}/candidates/${candidateId}/resume${q}`;
   };
 
-  // Fallback: direct file URL (must be absolute so iframe doesn't hit Vite dev server)
-  const getResumeUrl = (resumePath) => {
-    if (!resumePath || typeof resumePath !== 'string') return '';
-    const p = resumePath.trim();
-    if (p.startsWith('http')) return p;
-    const base = (BASE_API_URL || '').replace(/\/$/, '');
-    if (!base) return ''; // avoid relative URL when BASE_API_URL is missing
-    const pathPart = p.startsWith('/') ? p : `/${p}`;
-    const url = `${base}${pathPart}`;
-    return url.startsWith('http') ? url : '';
+  const resetPreviewBlob = (blobUrl) => {
+    if (blobUrl && typeof blobUrl === 'string' && blobUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(blobUrl);
+    }
   };
 
-  // --- Resume Preview: fetch with auth so it works for all candidates (own + others) ---
+  const applyPreviewBlob = async (blob, candidate, contentType = '', previousBlobUrl) => {
+    const head = new Uint8Array(await blob.slice(0, 32).arrayBuffer());
+    const kind = sniffResumeKindFromBytes(head, candidate?.resume, contentType);
+    if (kind === 'html_error') {
+      resetPreviewBlob(previousBlobUrl);
+      setPreviewBlob(null);
+      setPreviewBlobUrl(null);
+      setPreviewFileKind(null);
+      setPreviewResumeCandidate(candidate);
+      setPreviewResumeError('load_failed');
+      return;
+    }
+    const mime = mimeForResumeKind(kind, contentType);
+    const typed = blob.type && blob.type.split(';')[0] === mime ? blob : new Blob([blob], { type: mime });
+    const blobUrl = URL.createObjectURL(typed);
+    resetPreviewBlob(previousBlobUrl);
+    setPreviewBlob(typed);
+    setPreviewBlobUrl(blobUrl);
+    setPreviewFileKind(kind);
+    setPreviewResumeCandidate(candidate);
+    setPreviewResumeError(null);
+  };
+
   const handleResumePreview = async (candidate) => {
     if (!candidate?.resume) {
       toast.error('No resume available for this candidate');
@@ -40,19 +62,19 @@ export function useResumePreview({ toast } = {}) {
       return;
     }
     const authUrl = getResumeEndpointUrl(candidateId);
-    // Allow both absolute URLs (http/https) and relative URLs (same-origin via Vercel rewrites)
     if (!authUrl) {
       console.error('[Resume] API base URL not set. Set VITE_API_URL or run backend on same origin.');
       toast.error('Cannot load resume (API URL not configured)');
       return;
     }
     setPreviewResumeUrl(authUrl);
-    setPreviewBlobUrl(null);
+    setPreviewBlob(null);
+    setPreviewFileKind(null);
     setPreviewResumeError(null);
     setIsPreviewLoading(true);
     try {
       const res = await authenticatedFetch(authUrl);
-      if (isUnauthorized(res)) {
+      if (res.status === 401) {
         handleUnauthorized();
         return;
       }
@@ -60,55 +82,42 @@ export function useResumePreview({ toast } = {}) {
         const bodyText = await res.text().catch(() => '');
         console.error('[Resume] Auth endpoint failed:', 'status=', res.status, 'statusText=', res.statusText, 'url=', authUrl, 'candidateId=', candidateId, 'resumePath=', candidate.resume, 'body=', bodyText.slice(0, 200));
         const isFileNotFound = res.status === 404 && (bodyText.includes('Resume file not found') || bodyText.includes('not found'));
-        if (isFileNotFound) {
-          setPreviewResumeCandidate(candidate);
-          setPreviewResumeError('file_not_found');
-          setPreviewResumeUrl(authUrl);
-        } else {
-          const directUrl = getResumeUrl(candidate.resume);
-          if (directUrl && directUrl.startsWith('http')) {
-            setPreviewBlobUrl(directUrl);
-            setPreviewResumeUrl(directUrl);
-            setPreviewResumeCandidate(candidate);
-          } else {
-            toast.error(`Failed to load resume (${res.status}). Check console for details.`);
-            setPreviewResumeUrl(null);
-          }
-        }
+        setPreviewResumeCandidate(candidate);
+        setPreviewResumeError(isFileNotFound ? 'file_not_found' : 'load_failed');
+        setPreviewResumeUrl(authUrl);
+        setPreviewBlobUrl((prev) => {
+          resetPreviewBlob(prev);
+          return null;
+        });
         return;
       }
+      const contentType = res.headers.get('content-type') || '';
       const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      setPreviewBlobUrl(blobUrl);
+      await applyPreviewBlob(blob, candidate, contentType, previewBlobUrl);
       setPreviewResumeUrl(authUrl);
-      setPreviewResumeCandidate(candidate);
     } catch (err) {
       console.error('[Resume] Error loading resume:', 'message=', err?.message, 'url=', authUrl, 'candidateId=', candidateId, 'resumePath=', candidate.resume, err);
-      const directUrl = getResumeUrl(candidate.resume);
-      if (directUrl && directUrl.startsWith('http')) {
-        setPreviewBlobUrl(directUrl);
-        setPreviewResumeUrl(directUrl);
-        setPreviewResumeCandidate(candidate);
-      } else {
-        toast.error('Failed to load resume. Check console for details.');
-        setPreviewResumeUrl(null);
-      }
+      setPreviewResumeCandidate(candidate);
+      setPreviewResumeError('load_failed');
+      setPreviewBlobUrl((prev) => {
+        resetPreviewBlob(prev);
+        return null;
+      });
     } finally {
       setIsPreviewLoading(false);
     }
   };
 
   const closeResumePreview = () => {
-    if (previewBlobUrl && typeof previewBlobUrl === 'string' && previewBlobUrl.startsWith('blob:')) {
-      URL.revokeObjectURL(previewBlobUrl);
-    }
+    resetPreviewBlob(previewBlobUrl);
     setPreviewBlobUrl(null);
+    setPreviewBlob(null);
+    setPreviewFileKind(null);
     setPreviewResumeUrl(null);
     setPreviewResumeCandidate(null);
     setPreviewResumeError(null);
   };
 
-  // Download resume via authenticated endpoint (works for all candidates)
   const handleResumeDownload = async (candidate) => {
     if (!candidate?.resume || !candidate?._id) {
       toast.error('No resume available for this candidate');
@@ -117,7 +126,7 @@ export function useResumePreview({ toast } = {}) {
     const url = getResumeEndpointUrl(candidate._id, true);
     try {
       const res = await authenticatedFetch(url);
-      if (isUnauthorized(res)) {
+      if (res.status === 401) {
         handleUnauthorized();
         return;
       }
@@ -141,7 +150,16 @@ export function useResumePreview({ toast } = {}) {
   };
 
   return {
-    previewResumeUrl, previewBlobUrl, previewResumeCandidate, previewResumeError, isPreviewLoading,
-    getResumeEndpointUrl, getResumeUrl, handleResumePreview, closeResumePreview, handleResumeDownload,
+    previewResumeUrl,
+    previewBlobUrl,
+    previewBlob,
+    previewFileKind,
+    previewResumeCandidate,
+    previewResumeError,
+    isPreviewLoading,
+    getResumeEndpointUrl,
+    handleResumePreview,
+    closeResumePreview,
+    handleResumeDownload,
   };
 }

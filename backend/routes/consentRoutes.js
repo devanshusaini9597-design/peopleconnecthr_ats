@@ -8,15 +8,14 @@ const Candidate = require('../models/Candidate');
 const { verifyToken } = require('../middleware/authMiddleware');
 const { requireFeature } = require('../middleware/featureMiddleware');
 const { requireRecruiterOrAbove } = require('../middleware/rbacMiddleware');
+const { consentTokenValid } = require('../utils/consentToken');
 
-/** Public self-service opt-in/out via token */
+/** Public self-service opt-in/out via HMAC token (not guessable from ObjectId). */
 router.post('/public/:candidateId', async (req, res) => {
   try {
     const { token, email, sms, whatsapp, talentPoolOptIn } = req.body;
     const c = await Candidate.findById(req.params.candidateId);
-    if (!c) return res.status(404).json({ success: false, message: 'Not found' });
-    const expected = (c.personId || String(c._id)).slice(0, 16);
-    if (!token || token !== expected) {
+    if (!c || !consentTokenValid(c._id, token)) {
       return res.status(403).json({ success: false, message: 'Invalid consent token' });
     }
     if (!c.messagingConsent) c.messagingConsent = {};

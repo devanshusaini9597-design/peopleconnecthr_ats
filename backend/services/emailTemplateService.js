@@ -1,7 +1,8 @@
 /**
- * Email template CRUD, seed, and subscribe ensure.
+ * Org-scoped email templates — CRUD + enterprise starter-pack seed.
  */
 const EmailTemplate = require('../models/EmailTemplate');
+const User = require('../models/User');
 
 function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
@@ -10,95 +11,596 @@ function httpError(message, statusCode = 400, extra = {}) {
   return err;
 }
 
+async function resolveOrgContext(userId, organizationIdHint) {
+  if (organizationIdHint) {
+    return { userId, organizationId: String(organizationIdHint) };
+  }
+  const user = await User.findById(userId).select('organizationId').lean();
+  if (!user?.organizationId) {
+    throw httpError('Create your organization first to use email templates.', 400, {
+      code: 'ORG_REQUIRED',
+    });
+  }
+  return { userId, organizationId: String(user.organizationId) };
+}
+
+const SIGN_OFF = `Best regards,
+Talent Acquisition Team
+{{company}}`;
+
 const SUBSCRIBE_BODY = `Dear {{candidateName}},
 
-Thank you for your interest in {{company}}. We would like to keep you informed with relevant opportunities and updates.
+Thank you for your interest in {{company}}. Stay connected with opportunities that fit your profile — subscribe once, and we will keep you informed.
 
-What you'll receive when you subscribe:
-
+When you subscribe, you will receive:
 • Curated job alerts matched to your skills and preferences
-• Early notice of hiring drives and new openings from our partner companies
-• Occasional industry insights and career tips from our HR team
+• Early notice of hiring drives and new openings
+• Occasional career insights from our talent team
 
-Click the button below to subscribe. You will then be added to our mailing list and will receive future updates via email.
+One click to subscribe. You can unsubscribe at any time from future emails.
 
-Subscribe now: {{subscribeLink}}
+${SIGN_OFF}`;
 
-Best regards,
-Skillnix Recruitment Services`;
-
-function subscribeTemplatePayload(userId) {
+function subscribeTemplatePayload(userId, organizationId) {
   return {
+    organizationId,
     name: 'Subscribe for Updates',
     category: 'marketing',
-    subject: 'Stay ahead with {{company}} – Job alerts and updates',
+    subject: 'Stay connected with {{company}} — job alerts & career updates',
     body: SUBSCRIBE_BODY,
     variables: ['candidateName', 'company', 'subscribeLink'],
     isDefault: true,
-    createdBy: userId
+    createdBy: userId,
   };
 }
 
-async function listTemplates(userId) {
-  const SUBSCRIBE_TEMPLATE = subscribeTemplatePayload(userId);
-  let templates = await EmailTemplate.find({
-    $or: [{ createdBy: userId }, { isDefault: true }]
-  }).sort({ isDefault: -1, updatedAt: -1 });
+/** Enterprise ATS starter pack — seeded per organization by name. */
+function buildDefaultCatalog(userId, organizationId) {
+  const base = (tpl) => ({ ...tpl, organizationId, isDefault: true, createdBy: userId });
+  return [
+    base({
+      name: 'Application Received',
+      category: 'hiring',
+      subject: 'We received your application – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
 
-  const hasSubscribe = templates.some((t) => t.name === 'Subscribe for Updates' && t.category === 'marketing');
-  if (!hasSubscribe) {
-    const created = await EmailTemplate.create(SUBSCRIBE_TEMPLATE);
-    templates = [created, ...templates];
-  } else {
-    const existingSubscribe = templates.find((t) => t.name === 'Subscribe for Updates' && t.category === 'marketing');
-    if (existingSubscribe && existingSubscribe.body && existingSubscribe.body.includes('unsubscribe')) {
-      existingSubscribe.body = SUBSCRIBE_TEMPLATE.body;
-      existingSubscribe.subject = SUBSCRIBE_TEMPLATE.subject;
-      existingSubscribe.variables = SUBSCRIBE_TEMPLATE.variables;
-      await existingSubscribe.save();
+Thank you for applying for the {{position}} role at {{company}}.
+
+Our talent team is reviewing your application. If your profile aligns with the role requirements, we will contact you with next steps.
+
+This is an automated acknowledgement — no action is needed from you at this time.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company'],
+    }),
+    base({
+      name: 'Hiring Drive Invitation',
+      category: 'hiring',
+      subject: 'Hiring Drive – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+We are conducting a hiring drive for {{position}} with {{company}}.
+
+Role details:
+• CTC: {{ctc}}
+• Experience: {{experience}}
+• Location: {{location}}
+
+Drive schedule: {{date}} | {{time}}
+
+Please reply to confirm your availability. If you are unable to attend, share alternate slots so we can assist further.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company', 'ctc', 'experience', 'location', 'date', 'time'],
+    }),
+    base({
+      name: 'Profile Shortlisted',
+      category: 'hiring',
+      subject: 'Your profile is shortlisted – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+Congratulations. Your profile has been shortlisted for {{position}} at {{company}}.
+
+Our team will share interview or assessment details shortly. Please keep your phone and email available over the next business day.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company'],
+    }),
+    base({
+      name: 'Status Update – Under Review',
+      category: 'hiring',
+      subject: 'Application update – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+Thank you for your patience. Your application for {{position}} at {{company}} is still under review with the hiring team.
+
+We will update you as soon as a decision or next step is available. We appreciate your interest in this opportunity.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company'],
+    }),
+    base({
+      name: 'Screening Call Invitation',
+      category: 'interview',
+      subject: 'Screening call – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+We would like to schedule a brief screening conversation for the {{position}} role at {{company}}.
+
+Proposed schedule:
+• Date: {{date}}
+• Time: {{time}}
+• Mode / Venue: {{venue}}
+• SPOC: {{spoc}}
+
+Please confirm if this slot works, or reply with 2–3 alternate times.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company', 'date', 'time', 'venue', 'spoc'],
+    }),
+    base({
+      name: 'Interview Schedule',
+      category: 'interview',
+      subject: 'Interview scheduled – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+Your interview for {{position}} at {{company}} has been scheduled.
+
+Interview details:
+• Date: {{date}}
+• Time: {{time}}
+• Location / Link: {{venue}}
+• SPOC: {{spoc}}
+
+Please join on time and keep the following ready:
+• Updated resume
+• Government-issued photo ID
+• Any portfolio or work samples relevant to the role
+
+Reply to this email if you need to reschedule.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company', 'date', 'time', 'venue', 'spoc'],
+    }),
+    base({
+      name: 'Technical Interview Invitation',
+      category: 'interview',
+      subject: 'Technical interview – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+You are invited to a technical interview for {{position}} at {{company}}.
+
+Schedule:
+• Date: {{date}}
+• Time: {{time}}
+• Venue / Meeting link: {{venue}}
+• SPOC: {{spoc}}
+
+Please be prepared to discuss your recent projects, problem-solving approach, and role-relevant tools. A stable internet connection is recommended for virtual rounds.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company', 'date', 'time', 'venue', 'spoc'],
+    }),
+    base({
+      name: 'Final Round Interview',
+      category: 'interview',
+      subject: 'Final interview – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+Congratulations on progressing to the final interview for {{position}} at {{company}}.
+
+Final round details:
+• Date: {{date}}
+• Time: {{time}}
+• Venue / Link: {{venue}}
+• SPOC: {{spoc}}
+
+This round typically covers role fit, expectations, and next steps. Please arrive (or join) 5–10 minutes early.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company', 'date', 'time', 'venue', 'spoc'],
+    }),
+    base({
+      name: 'Interview Reschedule',
+      category: 'interview',
+      subject: 'Interview reschedule – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+We need to reschedule your interview for {{position}} at {{company}}.
+
+Updated schedule:
+• Date: {{date}}
+• Time: {{time}}
+• Venue / Link: {{venue}}
+• SPOC: {{spoc}}
+
+Apologies for any inconvenience. Please confirm the new slot at your earliest convenience.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company', 'date', 'time', 'venue', 'spoc'],
+    }),
+    base({
+      name: 'Interview No-Show Follow-up',
+      category: 'interview',
+      subject: 'Missed interview – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+We noticed you were unable to attend the scheduled interview for {{position}} at {{company}} on {{date}} at {{time}}.
+
+If you are still interested, reply within 48 hours with preferred alternate slots. If we do not hear back, we may close this application for the current drive.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company', 'date', 'time'],
+    }),
+    base({
+      name: 'Post-Interview Thank You',
+      category: 'interview',
+      subject: 'Thank you for interviewing – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+Thank you for speaking with our team about the {{position}} opportunity at {{company}}.
+
+We are consolidating feedback and will share an update soon. If you have any additional information relevant to your application, feel free to reply to this email.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company'],
+    }),
+    base({
+      name: 'Assessment Invitation',
+      category: 'assessment',
+      subject: 'Complete your assessment – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+As part of the selection process for {{position}} at {{company}}, please complete the assessment shared with you.
+
+Recommended window:
+• Complete by: {{date}}
+• Suggested time: {{time}}
+
+Instructions will be included in the assessment invite. Please attempt the assessment in a quiet environment without external assistance unless stated otherwise.
+
+Contact {{spoc}} if you face access issues.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company', 'date', 'time', 'spoc'],
+    }),
+    base({
+      name: 'Offer Intimation',
+      category: 'offer',
+      subject: 'Offer update – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+We are pleased to inform you that {{company}} would like to extend an offer for the {{position}} role.
+
+Offer summary:
+• Position: {{position}}
+• CTC: {{ctc}}
+• Location: {{location}}
+• Tentative joining: {{date}}
+
+A formal offer document will follow shortly. Please reply to confirm your intent to proceed, or share any questions for clarification.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company', 'ctc', 'location', 'date'],
+    }),
+    base({
+      name: 'Offer Acceptance Reminder',
+      category: 'offer',
+      subject: 'Action required – offer response for {{position}}',
+      body: `Dear {{candidateName}},
+
+This is a gentle reminder regarding the offer for {{position}} at {{company}}.
+
+Please share your acceptance (or questions) by {{date}} so we can proceed with onboarding formalities on schedule.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company', 'date'],
+    }),
+    base({
+      name: 'Application Rejection',
+      category: 'rejection',
+      subject: 'Application status – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+Thank you for your interest in {{position}} at {{company}} and for the time you invested in our process.
+
+After careful review, we have decided to move forward with other candidates whose experience more closely matches the current requirements.
+
+We encourage you to stay connected for future openings that align with your skills. We wish you every success in your career search.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company'],
+    }),
+    base({
+      name: 'Document Request',
+      category: 'document',
+      subject: 'Documents required – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+To proceed with your candidature for {{position}} at {{company}}, please share the following documents:
+
+1. Updated resume / CV
+2. Government-issued photo ID
+3. Educational certificates and mark sheets
+4. Previous employment / experience letters
+5. Last 3 months’ salary slips (if applicable)
+
+Kindly reply with the documents within 3 business days. Incomplete submissions may delay the next stage.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company'],
+    }),
+    base({
+      name: 'Background Verification Notice',
+      category: 'document',
+      subject: 'Background verification – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+As part of pre-joining formalities for {{position}} at {{company}}, a background verification check will be initiated.
+
+Please ensure your submitted documents and employment details are accurate. Our verification partner or HR SPOC ({{spoc}}) may contact you if additional information is required.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company', 'spoc'],
+    }),
+    base({
+      name: 'Onboarding Welcome',
+      category: 'onboarding',
+      subject: 'Welcome aboard – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+Welcome to {{company}}. We are delighted to have you join as {{position}}.
+
+Joining details:
+• Date: {{date}}
+• Reporting time: {{time}}
+• Location: {{venue}}
+• SPOC: {{spoc}}
+
+Please carry:
+• Original ID proof
+• Educational certificates
+• Offer / joining letter (if issued)
+• Two passport-sized photographs
+
+Reach out if you need any support before day one. We look forward to working with you.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company', 'date', 'time', 'venue', 'spoc'],
+    }),
+    base({
+      name: 'Day-One Reminder',
+      category: 'onboarding',
+      subject: 'Reminder – joining tomorrow | {{company}}',
+      body: `Dear {{candidateName}},
+
+This is a quick reminder about your joining for {{position}} at {{company}}.
+
+• Date: {{date}}
+• Time: {{time}}
+• Venue: {{venue}}
+• SPOC: {{spoc}}
+
+Please arrive on time and complete any pending paperwork shared earlier. We are excited to welcome you.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company', 'date', 'time', 'venue', 'spoc'],
+    }),
+    base({
+      name: 'Talent Pool Nurture',
+      category: 'marketing',
+      subject: 'A role that may fit your profile – {{position}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+We reviewed profiles in our talent network and believe you may be a strong match for {{position}} at {{company}}.
+
+Highlights:
+• CTC: {{ctc}}
+• Experience: {{experience}}
+• Location: {{location}}
+
+If you are open to exploring this opportunity, reply to this email or share an updated resume.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company', 'ctc', 'experience', 'location', 'subscribeLink'],
+    }),
+    base({
+      name: 'Open Role Spotlight',
+      category: 'marketing',
+      subject: 'Open role: {{position}} – {{company}}',
+      body: `Dear {{candidateName}},
+
+We have an open role that may match your profile: {{position}} at {{company}}.
+
+Highlights:
+• CTC: {{ctc}}
+• Experience: {{experience}}
+• Location: {{location}}
+
+Reply to this email if you would like to be considered, or stay subscribed for future openings.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company', 'ctc', 'experience', 'location', 'subscribeLink'],
+    }),
+    base({
+      name: 'Job Alert – New Opening',
+      category: 'marketing',
+      subject: 'New opening: {{position}} | {{location}}',
+      body: `Dear {{candidateName}},
+
+A new opening is live that may interest you.
+
+Role: {{position}}
+Company: {{company}}
+CTC: {{ctc}}
+Experience: {{experience}}
+Location: {{location}}
+
+Reply to express interest, or use the link below to manage your job-alert subscription.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'position', 'company', 'ctc', 'experience', 'location', 'subscribeLink'],
+    }),
+    base({
+      name: 'Hiring Drive Broadcast',
+      category: 'marketing',
+      subject: 'Hiring drive: {{position}} – {{date}} | {{company}}',
+      body: `Dear {{candidateName}},
+
+We are running a hiring drive for {{position}} with {{company}}.
+
+Drive details:
+• Date: {{date}}
+• Time: {{time}}
+• Location: {{location}}
+• CTC: {{ctc}}
+• Experience: {{experience}}
+
+Reply to confirm interest, or subscribe for future drive invites.
+
+${SIGN_OFF}`,
+      variables: [
+        'candidateName',
+        'position',
+        'company',
+        'date',
+        'time',
+        'location',
+        'ctc',
+        'experience',
+        'subscribeLink',
+      ],
+    }),
+    base({
+      name: 'Talent Re-engagement',
+      category: 'marketing',
+      subject: 'Still exploring roles? Stay connected with {{company}}',
+      body: `Dear {{candidateName}},
+
+It has been a while since we connected. {{company}} continues to work on roles that may match your background.
+
+Stay on our talent network to receive curated openings — or unsubscribe if you prefer not to hear from us.
+
+${SIGN_OFF}`,
+      variables: ['candidateName', 'company', 'subscribeLink'],
+    }),
+    subscribeTemplatePayload(userId, organizationId),
+  ];
+}
+
+async function ensureDefaultCatalog(userId, organizationId) {
+  const catalog = buildDefaultCatalog(userId, organizationId);
+  let added = 0;
+  for (const tpl of catalog) {
+    const exists = await EmailTemplate.findOne({
+      organizationId,
+      name: tpl.name,
+    })
+      .select('_id')
+      .lean();
+    if (!exists) {
+      try {
+        await EmailTemplate.create(tpl);
+        added += 1;
+      } catch (err) {
+        // Race on unique (organizationId, name) — ignore
+        if (err?.code !== 11000) throw err;
+      }
     }
   }
-  templates.sort((a, b) => {
-    const aFirst = (a.name === 'Subscribe for Updates' && a.category === 'marketing') ? 1 : 0;
-    const bFirst = (b.name === 'Subscribe for Updates' && b.category === 'marketing') ? 1 : 0;
-    if (bFirst !== aFirst) return bFirst - aFirst;
-    return (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0) || (new Date(b.updatedAt) - new Date(a.updatedAt));
+  await EmailTemplate.findOneAndUpdate(
+    { organizationId, name: 'Subscribe for Updates', category: 'marketing' },
+    {
+      $set: {
+        subject: subscribeTemplatePayload(userId, organizationId).subject,
+        body: SUBSCRIBE_BODY,
+        variables: ['candidateName', 'company', 'subscribeLink'],
+        isDefault: true,
+      },
+    }
+  );
+
+  // Refresh key marketing templates (layout/copy) without wiping custom user edits for others
+  const marketingRefresh = [
+    'Talent Pool Nurture',
+    'Open Role Spotlight',
+    'Job Alert – New Opening',
+    'Hiring Drive Broadcast',
+    'Talent Re-engagement',
+  ];
+  for (const name of marketingRefresh) {
+    const seed = catalog.find((t) => t.name === name);
+    if (!seed) continue;
+    await EmailTemplate.findOneAndUpdate(
+      { organizationId, name, category: 'marketing' },
+      {
+        $set: {
+          subject: seed.subject,
+          body: seed.body,
+          variables: seed.variables,
+          isDefault: true,
+        },
+      },
+      { upsert: false }
+    );
+  }
+  return { added, total: catalog.length, organizationId };
+}
+
+async function listTemplates(userId, organizationIdHint) {
+  const { organizationId } = await resolveOrgContext(userId, organizationIdHint);
+  await ensureDefaultCatalog(userId, organizationId);
+  const templates = await EmailTemplate.find({ organizationId }).sort({
+    isDefault: -1,
+    category: 1,
+    name: 1,
   });
   return templates;
 }
 
-async function ensureSubscribe(userId) {
-  const existing = await EmailTemplate.findOne({ name: 'Subscribe for Updates', category: 'marketing' });
+async function ensureSubscribe(userId, organizationIdHint) {
+  const { organizationId } = await resolveOrgContext(userId, organizationIdHint);
+  const existing = await EmailTemplate.findOne({
+    organizationId,
+    name: 'Subscribe for Updates',
+    category: 'marketing',
+  });
   if (existing) return { template: existing, added: false };
-  const template = await EmailTemplate.create(subscribeTemplatePayload(userId));
+  const template = await EmailTemplate.create(subscribeTemplatePayload(userId, organizationId));
   return { template, added: true };
 }
 
-async function getTemplate(userId, id) {
-  const template = await EmailTemplate.findOne({
-    _id: id,
-    $or: [{ createdBy: userId }, { isDefault: true }]
-  });
+async function getTemplate(userId, id, organizationIdHint) {
+  const { organizationId } = await resolveOrgContext(userId, organizationIdHint);
+  const template = await EmailTemplate.findOne({ _id: id, organizationId });
   if (!template) throw httpError('Template not found', 404);
   return template;
 }
 
-async function createTemplate(userId, body) {
+async function createTemplate(userId, body, organizationIdHint) {
+  const { organizationId } = await resolveOrgContext(userId, organizationIdHint);
   const { name, category, subject, body: tplBody, variables } = body;
   if (!name || !subject || !tplBody) throw httpError('Name, subject and body are required');
-  return EmailTemplate.create({
-    name,
-    category: category || 'custom',
-    subject,
-    body: tplBody,
-    variables: variables || [],
-    createdBy: userId,
-    isDefault: false
-  });
+  try {
+    return await EmailTemplate.create({
+      organizationId,
+      name,
+      category: category || 'custom',
+      subject,
+      body: tplBody,
+      variables: variables || [],
+      createdBy: userId,
+      isDefault: false,
+    });
+  } catch (err) {
+    if (err?.code === 11000) throw httpError('A template with this name already exists in your organization', 400);
+    throw err;
+  }
 }
 
-async function updateTemplate(userId, id, body) {
-  const template = await EmailTemplate.findOne({ _id: id, createdBy: userId });
+async function updateTemplate(userId, id, body, organizationIdHint) {
+  const { organizationId } = await resolveOrgContext(userId, organizationIdHint);
+  const template = await EmailTemplate.findOne({ _id: id, organizationId });
   if (!template) throw httpError('Template not found or not editable', 404);
   const { name, category, subject, body: tplBody, variables } = body;
   if (name) template.name = name;
@@ -106,160 +608,38 @@ async function updateTemplate(userId, id, body) {
   if (subject) template.subject = subject;
   if (tplBody) template.body = tplBody;
   if (variables) template.variables = variables;
-  await template.save();
+  try {
+    await template.save();
+  } catch (err) {
+    if (err?.code === 11000) throw httpError('A template with this name already exists in your organization', 400);
+    throw err;
+  }
   return template;
 }
 
-async function deleteTemplate(userId, id) {
-  const template = await EmailTemplate.findOneAndDelete({ _id: id, createdBy: userId, isDefault: false });
+async function deleteTemplate(userId, id, organizationIdHint) {
+  const { organizationId } = await resolveOrgContext(userId, organizationIdHint);
+  const template = await EmailTemplate.findOneAndDelete({
+    _id: id,
+    organizationId,
+    isDefault: false,
+  });
   if (!template) throw httpError('Template not found or cannot be deleted', 404);
   return { message: 'Template deleted' };
 }
 
-async function seedDefaults(userId) {
-  const existing = await EmailTemplate.countDocuments({ isDefault: true });
-  const subscribeTemplate = subscribeTemplatePayload(userId);
-  if (existing > 0) {
-    await EmailTemplate.findOneAndUpdate(
-      { name: 'Subscribe for Updates', category: 'marketing' },
-      { $setOnInsert: subscribeTemplate },
-      { upsert: true }
-    );
-    return { message: 'Default templates already exist; marketing template ensured', count: existing, seeded: false };
-  }
-
-  const defaults = [
-    {
-      name: 'Hiring Drive Invitation',
-      category: 'hiring',
-      subject: 'Hiring Drive – {{position}} | {{company}}',
-      body: `Dear Candidate,
-
-Greetings!
-
-We are hiring for the profile of {{position}} with {{company}}.
-
-CTC: {{ctc}}
-Experience Required: {{experience}}
-Location: {{location}}
-
-If you are interested, we have an interview drive scheduled on {{date}} and timings {{time}}.
-
-Kindly reply to this email to confirm your availability.
-
-Best regards,
-HR Team
-Skillnix Recruitment Services`,
-      variables: ['position', 'company', 'ctc', 'experience', 'location', 'date', 'time'],
-      isDefault: true,
-      createdBy: userId
-    },
-    {
-      name: 'Interview Schedule',
-      category: 'interview',
-      subject: 'Interview Schedule – {{position}} | {{company}}',
-      body: `Dear {{candidateName}},
-
-Greetings!
-
-We have an upcoming interview drive for the profile of {{position}} with {{company}}. Your interview has been scheduled as per the details below:
-
-Date: {{date}}
-Time: {{time}}
-
-Interview Location:
-{{venue}}
-
-SPOC: {{spoc}}
-Reference: Skillnix Recruitment Services
-
-Kindly ensure your availability and carry all relevant documents for the interview.
-
-Best regards,
-HR Team
-Skillnix Recruitment Services`,
-      variables: ['candidateName', 'position', 'company', 'date', 'time', 'venue', 'spoc'],
-      isDefault: true,
-      createdBy: userId
-    },
-    {
-      name: 'Application Rejection',
-      category: 'rejection',
-      subject: 'Application Status Update – {{position}}',
-      body: `Dear {{candidateName}},
-
-Thank you for your interest in the {{position}} position at {{company}}. After careful consideration of your application and qualifications, we regret to inform you that we have decided to move forward with other candidates whose experience more closely matches our current requirements.
-
-We genuinely appreciate the time and effort you invested in your application. We encourage you to apply for future openings that align with your skills and experience.
-
-We wish you the very best in your career.
-
-Best regards,
-HR Team
-Skillnix Recruitment Services`,
-      variables: ['candidateName', 'position', 'company'],
-      isDefault: true,
-      createdBy: userId
-    },
-    {
-      name: 'Document Request',
-      category: 'document',
-      subject: 'Document Submission Required – {{position}}',
-      body: `Dear {{candidateName}},
-
-Congratulations on progressing to the next stage for the {{position}} position at {{company}}!
-
-As the next step in our hiring process, we kindly request you to submit the following documents:
-
-1. Updated Resume / CV
-2. Valid Government-issued Photo ID
-3. Educational Certificates & Mark Sheets
-4. Previous Employment / Experience Letters
-5. Last 3 months Salary Slips (if applicable)
-
-Please reply to this email with the above documents within 3 business days.
-
-Best regards,
-HR Team
-Skillnix Recruitment Services`,
-      variables: ['candidateName', 'position', 'company'],
-      isDefault: true,
-      createdBy: userId
-    },
-    {
-      name: 'Onboarding Welcome',
-      category: 'onboarding',
-      subject: 'Welcome Aboard – {{position}} | {{company}}',
-      body: `Dear {{candidateName}},
-
-Welcome aboard! We are thrilled to have you join our team as {{position}} at {{company}}.
-
-Joining Date: {{date}}
-Reporting Time: {{time}}
-Location: {{venue}}
-
-Please ensure you have completed all onboarding formalities and carry the following on your first day:
-- Original ID Proof
-- Educational Certificates
-- Joining Letter (if received)
-- 2 Passport-sized Photographs
-
-If you have any questions before your start date, feel free to reach out to us.
-
-We look forward to working with you!
-
-Best regards,
-HR Team
-Skillnix Recruitment Services`,
-      variables: ['candidateName', 'position', 'company', 'date', 'time', 'venue'],
-      isDefault: true,
-      createdBy: userId
-    },
-    subscribeTemplate
-  ];
-
-  await EmailTemplate.insertMany(defaults);
-  return { message: `${defaults.length} default templates created`, seeded: true };
+async function seedDefaults(userId, organizationIdHint) {
+  const { organizationId } = await resolveOrgContext(userId, organizationIdHint);
+  const result = await ensureDefaultCatalog(userId, organizationId);
+  return {
+    message: result.added
+      ? `Added ${result.added} templates for your organization (${result.total} in catalog)`
+      : `Organization template catalog ready (${result.total})`,
+    seeded: result.added > 0,
+    count: result.total,
+    added: result.added,
+    organizationId,
+  };
 }
 
 module.exports = {
@@ -269,5 +649,8 @@ module.exports = {
   createTemplate,
   updateTemplate,
   deleteTemplate,
-  seedDefaults
+  seedDefaults,
+  buildDefaultCatalog,
+  ensureDefaultCatalog,
+  resolveOrgContext,
 };

@@ -23,6 +23,13 @@ const queryClient = new QueryClient({
 
 registerServiceWorker()
 
+try {
+  // Allow one auto-reload on the next stale-chunk failure after a successful boot
+  sessionStorage.removeItem('skillnix_chunk_reload_v1');
+} catch {
+  /* ignore */
+}
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

@@ -6,11 +6,13 @@ import { AuthProvider } from './context/AuthContext';
 
 import Home from './components/Home'
 import Login from './components/Login'
+import TrialApprovePage from './components/TrialApprovePage'
 import Register from './components/Register'
 import VerifyEmailPage from './components/VerifyEmailPage'
 import ResetPasswordPage from './components/ResetPasswordPage'
 import SubscribePage from './components/SubscribePage'
 import SubscribeThankYouPage from './components/SubscribeThankYouPage'
+import SubscribeReactivatePage from './components/SubscribeReactivatePage'
 import UnsubscribePage from './components/UnsubscribePage'
 import UnsubscribeThankYouPage from './components/UnsubscribeThankYouPage'
 import DashboardPage from './components/DashboardPage'
@@ -24,11 +26,17 @@ import AnalyticsDashboard from './components/AnalyticsDashboard'
 import CandidateSearch from './components/CandidateSearch'
 import EmailTemplatesPage from './components/EmailTemplatesPage'
 import EmailSettingsPage from './components/EmailSettingsPage'
+import EmailReportsPage from './components/EmailReportsPage'
 import ProfileSettingsPage from './components/ProfileSettingsPage'
 import TeamPage from './components/TeamPage'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 import AppLoadingScreen from './components/ui/AppLoadingScreen'
+import RouteErrorPage, { NotFoundPage } from './components/RouteErrorPage'
+import FAQPage from './components/FAQPage'
+import ContactPage from './components/ContactPage'
+import MandatesPage from './components/MandatesPage'
+import FreelancerPipelinePage from './components/FreelancerPipelinePage'
 
 const OnboardingPage = React.lazy(() => import('./components/OnboardingPage'))
 const AcceptInvitePage = React.lazy(() => import('./components/AcceptInvitePage'))
@@ -62,6 +70,7 @@ const SelfBookPage = React.lazy(() => import('./components/SelfBookPage'))
 const SurveyTakePage = React.lazy(() => import('./components/SurveyTakePage'))
 const AiToolsPage = React.lazy(() => import('./components/AiToolsPage'))
 const SkillsPage = React.lazy(() => import('./components/SkillsPage'))
+const PositionsPage = React.lazy(() => import('./components/PositionsPage'))
 const InboxPage = React.lazy(() => import('./components/InboxPage'))
 const SequencesPage = React.lazy(() => import('./components/SequencesPage'))
 const DeiPage = React.lazy(() => import('./components/DeiPage'))
@@ -73,12 +82,16 @@ const ScorecardTemplatesPage = React.lazy(() => import('./components/ScorecardTe
 const AnnouncementsPage = React.lazy(() => import('./components/AnnouncementsPage'))
 const CompanyBrandPage = React.lazy(() => import('./components/CompanyBrandPage'))
 const CandidateCollaborationPage = React.lazy(() => import('./components/CandidateCollaborationPage'))
+const MyTeamPage = React.lazy(() => import('./components/MyTeamPage'))
 const MessagingConsentPage = React.lazy(() => import('./components/MessagingConsentPage'))
 const PushNotificationsPage = React.lazy(() => import('./components/PushNotificationsPage'))
+const NotificationSettingsPage = React.lazy(() => import('./components/NotificationSettingsPage'))
 const EmbedChatbotPage = React.lazy(() => import('./components/EmbedChatbotPage'))
 const MarketingPage = React.lazy(() => import('./components/MarketingPage'))
-const MandatesPage = React.lazy(() => import('./components/MandatesPage'))
-const FreelancerPipelinePage = React.lazy(() => import('./components/FreelancerPipelinePage'))
+const SupportFeedbackPage = React.lazy(() => import('./components/SupportFeedbackPage'))
+const CompanySupportDeskPage = React.lazy(() => import('./components/CompanySupportDeskPage'))
+const FreelanceReviewPage = React.lazy(() => import('./components/FreelanceReviewPage'))
+const TrialRequestsPage = React.lazy(() => import('./components/TrialRequestsPage'))
 
 const LoadingFallback = () => (
   <AppLoadingScreen
@@ -96,13 +109,18 @@ const AppShell = ({ requiredRoles }) => (
 );
 
 const router = createBrowserRouter([
+  {
+    errorElement: <RouteErrorPage />,
+    children: [
   { path: '/', element: <Home /> },
   { path: '/login', element: <Login /> },
+  { path: '/trial-approve', element: <TrialApprovePage /> },
   { path: '/register', element: <Register /> },
   { path: '/verify-email', element: <VerifyEmailPage /> },
   { path: '/reset-password', element: <ResetPasswordPage /> },
   { path: '/subscribe', element: <SubscribePage /> },
   { path: '/subscribe/thank-you', element: <SubscribeThankYouPage /> },
+  { path: '/subscribe/reactivate', element: <SubscribeReactivatePage /> },
   { path: '/unsubscribe', element: <UnsubscribePage /> },
   { path: '/unsubscribe/thank-you', element: <UnsubscribeThankYouPage /> },
 
@@ -123,8 +141,8 @@ const router = createBrowserRouter([
   { path: '/security', element: <Suspense fallback={<LoadingFallback />}><MarketingPage /></Suspense> },
   { path: '/integrations', element: <Suspense fallback={<LoadingFallback />}><MarketingPage /></Suspense> },
   { path: '/ai-automation', element: <Suspense fallback={<LoadingFallback />}><MarketingPage /></Suspense> },
-  { path: '/faq', element: <Suspense fallback={<LoadingFallback />}><MarketingPage /></Suspense> },
-  { path: '/contact', element: <Suspense fallback={<LoadingFallback />}><MarketingPage /></Suspense> },
+  { path: '/faq', element: <FAQPage /> },
+  { path: '/contact', element: <ContactPage /> },
   { path: '/privacy', element: <Suspense fallback={<LoadingFallback />}><MarketingPage /></Suspense> },
   { path: '/terms', element: <Suspense fallback={<LoadingFallback />}><MarketingPage /></Suspense> },
   { path: '/customers', element: <Suspense fallback={<LoadingFallback />}><MarketingPage /></Suspense> },
@@ -137,6 +155,7 @@ const router = createBrowserRouter([
   // ── Authenticated app shell (content-only navigation) ──────────────
   {
     element: <AppShell />,
+    errorElement: <RouteErrorPage />,
     children: [
       // Main
       { path: '/dashboard', element: <DashboardPage /> },
@@ -144,8 +163,12 @@ const router = createBrowserRouter([
 
       // Recruitment
       { path: '/jobs', element: <Jobs /> },
-      { path: '/mandates', element: <Suspense fallback={<LoadingFallback />}><MandatesPage /></Suspense> },
-      { path: '/my-pipeline', element: <Suspense fallback={<LoadingFallback />}><FreelancerPipelinePage /></Suspense> },
+      { path: '/mandates', element: <MandatesPage /> },
+      { path: '/my-pipeline', element: <FreelancerPipelinePage /> },
+      { path: '/feedback', element: <ProtectedRoute requiredRoles={['freelancer']}><Suspense fallback={<LoadingFallback />}><SupportFeedbackPage /></Suspense></ProtectedRoute> },
+      { path: '/support-desk', element: <Suspense fallback={<LoadingFallback />}><CompanySupportDeskPage /></Suspense> },
+      { path: '/trial-requests', element: <Suspense fallback={<LoadingFallback />}><TrialRequestsPage /></Suspense> },
+      { path: '/freelance-review', element: <Suspense fallback={<LoadingFallback />}><FreelanceReviewPage /></Suspense> },
       { path: '/applications', element: <Suspense fallback={<LoadingFallback />}><ApplicationsPage /></Suspense> },
       { path: '/recruitment', element: <Suspense fallback={<LoadingFallback />}><ApplicationsPage /></Suspense> },
       { path: '/ats', element: <ATSPage /> },
@@ -154,6 +177,7 @@ const router = createBrowserRouter([
       { path: '/candidate-search', element: <CandidateSearch /> },
       { path: '/talent-pools', element: <Suspense fallback={<LoadingFallback />}><TalentPoolsPage /></Suspense> },
       { path: '/skills', element: <Suspense fallback={<LoadingFallback />}><SkillsPage /></Suspense> },
+      { path: '/positions', element: <Suspense fallback={<LoadingFallback />}><PositionsPage /></Suspense> },
       { path: '/inbox', element: <Suspense fallback={<LoadingFallback />}><InboxPage /></Suspense> },
       { path: '/sequences', element: <Suspense fallback={<LoadingFallback />}><SequencesPage /></Suspense> },
       { path: '/dei', element: <Suspense fallback={<LoadingFallback />}><DeiPage /></Suspense> },
@@ -163,11 +187,13 @@ const router = createBrowserRouter([
       { path: '/ai-tools', element: <Suspense fallback={<LoadingFallback />}><AiToolsPage /></Suspense> },
       { path: '/search', element: <Suspense fallback={<LoadingFallback />}><GlobalSearchPage /></Suspense> },
       { path: '/collaboration', element: <Suspense fallback={<LoadingFallback />}><CandidateCollaborationPage /></Suspense> },
+      { path: '/my-team', element: <Suspense fallback={<LoadingFallback />}><MyTeamPage /></Suspense> },
       { path: '/scorecard-templates', element: <Suspense fallback={<LoadingFallback />}><ScorecardTemplatesPage /></Suspense> },
       { path: '/messaging-consent', element: <Suspense fallback={<LoadingFallback />}><MessagingConsentPage /></Suspense> },
       { path: '/announcements', element: <Suspense fallback={<LoadingFallback />}><AnnouncementsPage /></Suspense> },
       { path: '/reports-studio', element: <Suspense fallback={<LoadingFallback />}><ReportsStudioPage /></Suspense> },
       { path: '/company-brand', element: <Suspense fallback={<LoadingFallback />}><CompanyBrandPage /></Suspense> },
+      { path: '/notification-settings', element: <Suspense fallback={<LoadingFallback />}><NotificationSettingsPage /></Suspense> },
       { path: '/push-notifications', element: <Suspense fallback={<LoadingFallback />}><PushNotificationsPage /></Suspense> },
 
       // Related / shared
@@ -175,13 +201,14 @@ const router = createBrowserRouter([
       // CSV import staging (Auto Import) — not the Dashboard Pending Review KPI
       { path: '/pending-review', element: <PendingReviewWorkbench /> },
       { path: '/homeunder', element: <Navigate to="/dashboard" replace /> },
-      { path: '/manage-positions', element: <Navigate to="/ats" replace /> },
+      { path: '/manage-positions', element: <Navigate to="/positions" replace /> },
       { path: '/manage-clients', element: <Navigate to="/ats" replace /> },
       { path: '/manage-sources', element: <Navigate to="/ats" replace /> },
       { path: '/manage-ctc', element: <Navigate to="/ats" replace /> },
       { path: '/manage-notice', element: <Navigate to="/ats" replace /> },
       { path: '/email-templates', element: <EmailTemplatesPage /> },
       { path: '/email-settings', element: <EmailSettingsPage /> },
+      { path: '/email-reports', element: <EmailReportsPage /> },
       { path: '/settings', element: <ProfileSettingsPage /> },
       { path: '/team', element: <TeamPage /> },
       { path: '/interviews', element: <Suspense fallback={<LoadingFallback />}><InterviewsPage /></Suspense> },
@@ -199,6 +226,9 @@ const router = createBrowserRouter([
       { path: '/organization/webhooks-api', element: <Suspense fallback={<LoadingFallback />}><WebhooksApiPage /></Suspense> },
       { path: '/organization/scheduled-reports', element: <Suspense fallback={<LoadingFallback />}><ScheduledReportsPage /></Suspense> },
       { path: '/billing', element: <Suspense fallback={<LoadingFallback />}><BillingPage /></Suspense> },
+    ],
+  },
+  { path: '*', element: <NotFoundPage /> },
     ],
   },
 ]);

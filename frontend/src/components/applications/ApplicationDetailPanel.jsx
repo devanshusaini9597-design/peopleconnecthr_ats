@@ -9,6 +9,7 @@ import { STAGES, classNames, jobTitle } from './constants';
 export default function ApplicationDetailPanel({
   selectedApp,
   selectedJob,
+  boardStages,
   closePanel,
   handleStageChange,
   setScheduleForm,
@@ -26,6 +27,15 @@ export default function ApplicationDetailPanel({
   handleSaveNote,
   savingNote,
 }) {
+  const stageOptions = (boardStages?.length ? boardStages : STAGES).map((s) => ({
+    value: s.id,
+    label: s.label,
+    icon: s.icon,
+  }));
+  const currentStage = stageOptions.find(
+    (s) => String(s.value).toLowerCase() === String(selectedApp.stage || '').toLowerCase()
+  )?.value || selectedApp.stage;
+
   return (
     <>
       <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-40" onClick={closePanel} aria-hidden />
@@ -51,13 +61,9 @@ export default function ApplicationDetailPanel({
             <PremiumSelect
               variant="list"
               className="w-full sm:w-44"
-              value={selectedApp.stage}
+              value={currentStage}
               onChange={(v) => handleStageChange(selectedApp._id, v)}
-              options={STAGES.map((s) => ({
-                value: s.id,
-                label: s.label,
-                icon: s.icon,
-              }))}
+              options={stageOptions}
               placeholder="Stage"
               icon={Target}
             />

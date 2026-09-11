@@ -36,6 +36,8 @@ export const SOCIAL_KEYS = [
   { key: 'linkedin', label: 'LinkedIn' },
   { key: 'twitter', label: 'X / Twitter' },
   { key: 'facebook', label: 'Facebook' },
+  { key: 'instagram', label: 'Instagram' },
+  { key: 'youtube', label: 'YouTube' },
   { key: 'github', label: 'GitHub' },
 ];
 

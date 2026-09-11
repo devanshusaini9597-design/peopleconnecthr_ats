@@ -372,10 +372,17 @@ async function bulkDeleteCandidates(req, res) {
                     $set: { freelancerHiddenAt: new Date() },
                 }
             );
+            try {
+                const { dismissHandoffsForFreelancer } = require('../../services/freelancerService');
+                await dismissHandoffsForFreelancer(req.user, ids);
+            } catch (dismissErr) {
+                const logger = require('../../utils/logger');
+                logger.warn({ err: dismissErr }, 'Freelancer bulk handoff dismiss skipped');
+            }
             return res.json({
                 success: true,
                 soft: true,
-                message: `Removed ${result.modifiedCount} of ${ids.length} from your desk (company records kept)`,
+                message: `Removed ${result.modifiedCount} of ${ids.length} candidate${ids.length === 1 ? '' : 's'}.`,
                 deletedCount: result.modifiedCount,
             });
         }
@@ -439,6 +446,18 @@ async function bulkUpdateCandidates(req, res) {
                 return res.status(403).json({
                     success: false,
                     message: 'You cannot change SPOC. Ask an owner/admin/HR manager.',
+                });
+            }
+        }
+
+        // Freelancer status is company-driven (submission review). Never accept bulk status edits.
+        const { isFreelancer } = require('../../utils/dataScope');
+        if (isFreelancer(req.user) && 'status' in $set) {
+            delete $set.status;
+            if (Object.keys($set).length === 0) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Status is view-only for freelancers. The company updates it when they review your submissions.',
                 });
             }
         }

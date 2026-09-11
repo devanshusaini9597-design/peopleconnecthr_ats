@@ -6,9 +6,15 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { verifyToken, optionalAuth } = require('../middleware/authMiddleware');
 const { setAuthCookie, clearAuthCookie } = require('../utils/authCookies');
-const { revokeSession } = require('../services/sessionService');
+const {
+  revokeSession,
+  listUserSessions,
+  revokeOwnSession,
+  revokeOtherSessions,
+} = require('../services/sessionService');
 const logger = require('../utils/logger');
 const auth = require('../services/authService');
+const loginOtp = require('../services/loginOtpService');
 
 const router = express.Router();
 
@@ -33,13 +39,13 @@ function sendAuthError(res, err) {
 router.post('/login', authLimiter, async (req, res) => {
   try {
     const result = await auth.login(req.body.email, req.body.password, req);
-    if (result.kind === 'mfa_enrollment' || result.kind === 'mfa_pending') {
+    if (result.kind === 'login_otp' || result.kind === 'mfa_enrollment' || result.kind === 'mfa_pending') {
       return res.json(result.payload);
     }
     setAuthCookie(res, result.token);
     res.json(result.payload);
   } catch (err) {
-    if (err.statusCode && err.statusCode < 500) return sendAuthError(res, err);
+    if (err.statusCode && err.statusCode !== 500) return sendAuthError(res, err);
     logger.error({ err }, 'LOGIN ERROR');
     res.status(500).json({ message: 'Internal server error' });
   }
@@ -48,6 +54,7 @@ router.post('/login', authLimiter, async (req, res) => {
 router.post('/register', authLimiter, async (req, res) => {
   try {
     const result = await auth.register(req.body);
+    if (result.requiresOtp) return res.json(result);
     return res.status(201).json(result);
   } catch (err) {
     if (err.statusCode && err.statusCode < 500) return sendAuthError(res, err);
@@ -90,6 +97,32 @@ router.post('/auth/reset-password', authLimiter, async (req, res) => {
   }
 });
 
+router.post('/auth/verify-login-otp', authLimiter, async (req, res) => {
+  try {
+    const result = await loginOtp.verifyLoginOtp(req.body, req);
+    if (result.kind === 'mfa_pending') {
+      return res.json(result.payload);
+    }
+    setAuthCookie(res, result.token);
+    res.json(result.payload);
+  } catch (err) {
+    if (err.statusCode && err.statusCode !== 500) return sendAuthError(res, err);
+    logger.error({ err }, 'LOGIN OTP VERIFY ERROR');
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+router.post('/auth/resend-login-otp', authLimiter, async (req, res) => {
+  try {
+    const result = await loginOtp.resendLoginOtp(req.body);
+    res.json(result);
+  } catch (err) {
+    if (err.statusCode && err.statusCode !== 500) return sendAuthError(res, err);
+    logger.error({ err }, 'LOGIN OTP RESEND ERROR');
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 router.post('/logout', optionalAuth, async (req, res) => {
   try {
     if (req.user?.jti) {
@@ -106,14 +139,51 @@ router.post('/logout', optionalAuth, async (req, res) => {
 router.post('/auth/refresh', verifyToken, async (req, res) => {
   try {
     const result = await auth.refreshSession(req.user.id, req);
-    setAuthCookie(res, result.token);
+    setAuthCookie(res, result.token, result.remainingMs);
     res.json(result.payload);
   } catch (err) {
     if (err.statusCode === 401) {
-      return res.status(401).json({ success: false, message: err.message });
+      return res.status(401).json({ success: false, message: err.message, code: err.code });
     }
     logger.error({ err }, 'Token refresh failed');
     res.status(401).json({ success: false, message: 'Refresh failed' });
+  }
+});
+
+router.get('/auth/sessions', verifyToken, async (req, res) => {
+  try {
+    const sessions = await listUserSessions(req.user.id, req.user.jti);
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, sessions });
+  } catch (err) {
+    logger.error({ err }, 'List sessions failed');
+    res.status(500).json({ success: false, message: 'Failed to load sessions' });
+  }
+});
+
+router.delete('/auth/sessions/others', verifyToken, async (req, res) => {
+  try {
+    const result = await revokeOtherSessions(req.user.id, req.user.jti);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    logger.error({ err }, 'Revoke other sessions failed');
+    res.status(500).json({ success: false, message: 'Failed to sign out other devices' });
+  }
+});
+
+router.delete('/auth/sessions/:id', verifyToken, async (req, res) => {
+  try {
+    const result = await revokeOwnSession(req.user.id, req.params.id, req.user.jti);
+    if (result.revokedCurrent) {
+      clearAuthCookie(res);
+    }
+    res.json({ success: true, ...result });
+  } catch (err) {
+    if (err.statusCode === 404) {
+      return res.status(404).json({ success: false, message: err.message, code: err.code });
+    }
+    logger.error({ err }, 'Revoke session failed');
+    res.status(500).json({ success: false, message: 'Failed to sign out that device' });
   }
 });
 

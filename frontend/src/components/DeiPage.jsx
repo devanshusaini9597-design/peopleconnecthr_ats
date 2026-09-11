@@ -16,6 +16,7 @@ import { DEI_TOUR_KEY, DEI_TOUR_STEPS, SECTIONS } from './dei/deiConstants';
 import { DeiBody } from './dei/DeiPanels';
 
 export default function DeiPage() {
+  const { t } = useTranslation();
   const [tourOpen, setTourOpen] = usePageTour(DEI_TOUR_KEY);
   const toast = useToast();
   const shortlistTimer = useRef(null);
@@ -106,7 +107,6 @@ export default function DeiPage() {
   };
 
   const exportCsv = () => {
-  const { t } = useTranslation();
     if (!metrics?.funnel?.length) {
       toast.error('Nothing to export');
       return;

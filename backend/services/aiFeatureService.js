@@ -323,6 +323,12 @@ async function dedupeCandidates(organizationId, { candidateId, limit }) {
   return { data: result, meta: { method: 'fuzzy_normalization' } };
 }
 
+async function mergeDuplicateCandidates(organizationId, { keepId, dropIds }) {
+  const { mergeCandidates } = require('./dedupeService');
+  const result = await mergeCandidates(organizationId, keepId, dropIds);
+  return { data: result, meta: { method: 'merge_keep_one' } };
+}
+
 async function generateResume(organizationId, {
   name,
   title,
@@ -438,6 +444,7 @@ module.exports = {
   semanticSearch,
   embedCandidate,
   dedupeCandidates,
+  mergeDuplicateCandidates,
   generateResume,
   summarizeResume,
   extractSkills,

@@ -3,6 +3,7 @@
  * Authenticated config + public chat endpoint.
  */
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const { verifyToken } = require('../middleware/authMiddleware');
 const { requireOrganization, tenantScope } = require('../middleware/tenantMiddleware');
@@ -17,6 +18,14 @@ function handle(res, error) {
   if (error.feature) body.feature = error.feature;
   return res.status(status).json(body);
 }
+
+const askLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: { success: false, message: 'Too many questions. Please wait a moment.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 router.get(
   '/admin/settings',
@@ -61,7 +70,7 @@ router.get('/:orgSlug/config', async (req, res) => {
   }
 });
 
-router.post('/:orgSlug/ask', async (req, res) => {
+router.post('/:orgSlug/ask', askLimiter, async (req, res) => {
   try {
     const data = await svc.ask(req.params.orgSlug, req.body.message);
     res.json({ success: true, data });

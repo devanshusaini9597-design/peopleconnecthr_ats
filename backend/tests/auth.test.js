@@ -7,17 +7,18 @@ const bcrypt = require('bcrypt');
 
 describe('Authentication security contracts', () => {
   describe('login error messages', () => {
-    it('should use a single invalid_credentials message (no email enumeration)', () => {
+    it('should tell unknown emails they are not registered', () => {
       const missingUser = {
-        message: 'invalid_credentials',
-        displayMessage: 'Invalid email or password.',
+        message: 'email_not_registered',
+        displayMessage: 'This email is not registered. Request access or check the address.',
       };
       const wrongPassword = {
         message: 'invalid_credentials',
         displayMessage: 'Invalid email or password.',
       };
-      expect(missingUser.message).toBe(wrongPassword.message);
-      expect(missingUser.displayMessage).toBe(wrongPassword.displayMessage);
+      expect(missingUser.message).toBe('email_not_registered');
+      expect(wrongPassword.message).toBe('invalid_credentials');
+      expect(missingUser.message).not.toBe(wrongPassword.message);
     });
   });
 
@@ -111,7 +112,7 @@ describe('Authentication HTTP', () => {
     expect(JSON.stringify(res.body)).not.toMatch(/resetUrl/);
   });
 
-  it('POST /api/login returns invalid_credentials for unknown user', async () => {
+  it('POST /api/login returns email_not_registered for unknown user', async () => {
     if (!hasDb) {
       expect(true).toBe(true);
       return;
@@ -119,12 +120,14 @@ describe('Authentication HTTP', () => {
     const res = await request(app)
       .post('/api/login')
       .send({ email: 'does-not-exist@example.com', password: 'WrongPass123!' });
-    expect(res.status).toBe(401);
-    expect(res.body.message).toBe('invalid_credentials');
+    expect(res.status).toBe(404);
+    expect(res.body.message).toBe('email_not_registered');
     expect(res.body.token).toBeUndefined();
+    expect(res.body.requiresOtp).toBeFalsy();
+    expect(res.body.otpToken).toBeUndefined();
   });
 
-  it('POST /api/login sets ats_token cookie and does not echo JWT (when DB available)', async () => {
+  it('POST /api/login challenges with email OTP and does not set a session cookie', async () => {
     if (!hasDb || !User) {
       expect(true).toBe(true);
       return;
@@ -142,22 +145,18 @@ describe('Authentication HTTP', () => {
     });
 
     const res = await request(app).post('/api/login').send({ email, password });
-    if (res.status !== 200) {
-      expect(res.body.token).toBeUndefined();
-      return;
-    }
+    expect(res.status).toBe(200);
+    expect(res.body.requiresOtp).toBe(true);
+    expect(res.body.otpToken).toBeTruthy();
     expect(res.body.token).toBeUndefined();
     const setCookie = res.headers['set-cookie'] || [];
     const hasAts = setCookie.some((c) => c.startsWith('ats_token='));
-    expect(hasAts).toBe(true);
+    expect(hasAts).toBe(false);
   });
 
-  it('POST /api/demo-login does not echo JWT in body', async () => {
-    if (!hasDb) {
-      expect(true).toBe(true);
-      return;
-    }
+  it('POST /api/demo-login is removed', async () => {
     const res = await request(app).post('/api/demo-login').send({});
+    expect(res.status).toBe(404);
     expect(res.body.token).toBeUndefined();
   });
 
@@ -180,6 +179,27 @@ describe('Authentication HTTP', () => {
       .send({ email, password: 'TotallyWrong!' });
     expect(res.status).toBe(401);
     expect(res.body.message).toBe('invalid_credentials');
+    expect(res.body.token).toBeUndefined();
+  });
+
+  it('POST /api/login blocks pending trial requests after a correct password', async () => {
+    if (!hasDb || !User) {
+      expect(true).toBe(true);
+      return;
+    }
+    const email = `auth-pending-${Date.now()}@company.com`;
+    const password = 'ValidPassword123!';
+    await User.create({
+      name: 'Pending Buyer',
+      email,
+      password: await bcrypt.hash(password, 10),
+      isActive: true,
+      isEmailVerified: false,
+      signupStatus: 'pending_approval',
+    });
+    const res = await request(app).post('/api/login').send({ email, password });
+    expect(res.status).toBe(403);
+    expect(res.body.message).toBe('signup_pending_approval');
     expect(res.body.token).toBeUndefined();
   });
 

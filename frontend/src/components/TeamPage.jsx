@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Users, Plus, Mail, Clock, Filter, Info, CheckCircle, X, Loader2, Search } from 'lucide-react';
+import {
+  Users, Plus, Mail, Clock, Filter, Info, CheckCircle, X, Loader2, Search, UserPlus,
+  Copy, Link2, MessageCircle, ExternalLink, AlertTriangle, CheckCircle2,
+} from 'lucide-react';
 import API_URL from '../config';
 import { authenticatedFetch, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -18,6 +21,7 @@ import {
   getTabCount,
 } from './team/teamConstants';
 import TeamMemberModal from './team/TeamMemberModal';
+import TeamInviteModal from './team/TeamInviteModal';
 import TeamMemberList from './team/TeamMemberList';
 
 const BASE = API_URL;
@@ -32,38 +36,59 @@ const TeamPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('all');
 
-  // Company domain info
-  const [companyDomain, setCompanyDomain] = useState(null);
-  const [isCompanyEmail, setIsCompanyEmail] = useState(null);
-  const [emailError, setEmailError] = useState('');
-
-  // Form state
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState(EMPTY_MEMBER_FORM);
+  const [emailError, setEmailError] = useState('');
 
-  // Delete state
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('hr_recruiter');
+  const [inviteCustomRoleId, setInviteCustomRoleId] = useState('');
+  const [inviteReportsTo, setInviteReportsTo] = useState('');
+  const [customRoles, setCustomRoles] = useState([]);
+  const [orgSeats, setOrgSeats] = useState([]);
+  const [inviting, setInviting] = useState(false);
+  const [lastInviteShare, setLastInviteShare] = useState(null);
+  const [inviteLinkLoadingId, setInviteLinkLoadingId] = useState(null);
+
   const [deletingId, setDeletingId] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
-
-  // Invitation action state
   const [processingInvitation, setProcessingInvitation] = useState(null);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchMembers(); fetchDomainInfo(); fetchPendingInvitations(); }, []);
+  useEffect(() => { fetchMembers(); fetchPendingInvitations(); fetchCustomRoles(); fetchOrgSeats(); }, []);
 
   const fetchMembers = async () => {
     try {
       const res = await authenticatedFetch(`${BASE}/api/team`);
       if (res.status === 401) { handleUnauthorized(); return; }
       const data = await res.json();
-      if (data.success) setMembers(data.members);
+      if (data.success) setMembers(data.members || []);
     } catch {
-      toast.error('Failed to load team members');
+      toast.error('Failed to load team directory');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const fetchCustomRoles = async () => {
+    try {
+      const res = await authenticatedFetch(`${BASE}/api/custom-roles`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setCustomRoles(data.success ? (data.data || []) : []);
+    } catch { /* optional */ }
+  };
+
+  const fetchOrgSeats = async () => {
+    try {
+      const res = await authenticatedFetch(`${BASE}/api/organization/members`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setOrgSeats(data.success ? (data.data || []) : []);
+    } catch { /* optional */ }
   };
 
   const fetchPendingInvitations = async () => {
@@ -80,7 +105,7 @@ const TeamPage = () => {
       const res = await authenticatedFetch(`${BASE}/api/team/accept-invitation/${id}`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        toast.success('Invitation accepted! You are now part of the team.');
+        toast.success('Invitation accepted.');
         fetchPendingInvitations();
         fetchMembers();
       } else {
@@ -105,47 +130,101 @@ const TeamPage = () => {
     finally { setProcessingInvitation(null); }
   };
 
-  const fetchDomainInfo = async () => {
+  const copyInviteLink = async (url) => {
+    if (!url) return;
     try {
-      const res = await authenticatedFetch(`${BASE}/api/team/domain-info`);
-      const data = await res.json();
-      if (data.success) {
-        setCompanyDomain(data.domainInfo);
-      }
-    } catch (err) {
-      console.error('Failed to fetch domain info:', err);
+      await navigator.clipboard.writeText(url);
+      toast.success('Invite link copied');
+    } catch {
+      toast.error('Could not copy link');
     }
   };
 
-  const checkEmailDomain = (email) => {
-    setEmailError('');
-    if (!email || !companyDomain?.domain) {
-      setIsCompanyEmail(null);
+  const handleWorkspaceInvite = async () => {
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email) {
+      toast.error('Enter an email address');
       return;
     }
-    const emailDomain = email.toLowerCase().split('@')[1];
-    if (!emailDomain) {
-      setIsCompanyEmail(null);
-      setEmailError('Enter a valid email address.');
-      return;
+    setInviting(true);
+    try {
+      const res = await authenticatedFetch(`${BASE}/api/onboarding/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          role: inviteRole,
+          customRoleId: inviteCustomRoleId || null,
+          reportsTo: inviteReportsTo || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.message || 'Failed to send invite');
+      }
+      const share = {
+        email: data.email || email,
+        inviteUrl: data.inviteUrl || '',
+        emailSent: data.emailSent !== false,
+      };
+      setLastInviteShare(share.inviteUrl ? share : null);
+      if (data.emailSent === false) {
+        toast.warning('Invite created — email could not be sent. Share the link below.');
+      } else {
+        toast.success(`Invitation sent to ${email}`);
+      }
+      setInviteEmail('');
+      setInviteCustomRoleId('');
+      setInviteReportsTo('');
+      setShowInvite(false);
+      fetchMembers();
+    } catch (err) {
+      toast.error(err.message || 'Failed to send invite');
+    } finally {
+      setInviting(false);
     }
-    const isCompany = emailDomain === companyDomain.domain ||
-      (companyDomain.allowedDomains || []).includes(emailDomain);
-    setIsCompanyEmail(isCompany);
-    if (!isCompany) {
-      setEmailError(`Only @${companyDomain.domain} addresses are allowed. User must already have an account.`);
+  };
+
+  const handleGetMemberInviteLink = async (memberId) => {
+    if (!memberId) return;
+    setInviteLinkLoadingId(memberId);
+    try {
+      const res = await authenticatedFetch(`${BASE}/api/organization/members/${memberId}/invite-link`, {
+        method: 'POST',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.message || 'Could not get invite link');
+      }
+      const payload = data.data || {};
+      setLastInviteShare({
+        email: payload.email || '',
+        inviteUrl: payload.inviteUrl || '',
+        emailSent: false,
+      });
+      if (payload.inviteUrl) await copyInviteLink(payload.inviteUrl);
+    } catch (err) {
+      toast.error(err.message || 'Could not get invite link');
+    } finally {
+      setInviteLinkLoadingId(null);
     }
   };
 
   const resetForm = () => {
-    setFormData({ name: '', email: '', role: 'Team Member', phone: '', department: '' });
+    setFormData({ ...EMPTY_MEMBER_FORM });
     setEditingId(null);
     setShowForm(false);
     setEmailError('');
   };
 
   const handleEdit = (member) => {
-    setFormData({ name: member.name, email: member.email, role: member.role || 'Team Member', phone: member.phone || '', department: member.department || '' });
+    setFormData({
+      name: member.name,
+      email: member.email,
+      role: member.role || 'Hiring Manager',
+      phone: member.phone || '',
+      department: member.department || '',
+    });
     setEditingId(member._id);
     setShowForm(true);
   };
@@ -158,17 +237,7 @@ const TeamPage = () => {
       toast.error('Enter a valid email');
       return;
     }
-    if (companyDomain?.domain) {
-      const domain = companyDomain.domain.toLowerCase();
-      const emailDomain = formData.email.trim().toLowerCase().split('@')[1];
-      if (emailDomain !== domain) {
-        setEmailError(`Only @${domain} addresses are allowed. User must already have an account.`);
-        toast.error(`Only company email addresses (@${domain}) are allowed.`);
-        return;
-      }
-    }
     setEmailError('');
-
     setIsSaving(true);
     try {
       const url = editingId ? `${BASE}/api/team/${editingId}` : `${BASE}/api/team`;
@@ -176,21 +245,17 @@ const TeamPage = () => {
       const res = await authenticatedFetch(url, { method, body: JSON.stringify(formData) });
       const data = await res.json();
       if (data.success) {
-        toast.success(data.message);
+        toast.success(data.message || 'Saved');
         fetchMembers();
         resetForm();
       } else {
         toast.error(data.message || 'Failed to save');
       }
     } catch {
-      toast.error('Failed to save team member');
+      toast.error('Failed to save stakeholder');
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const confirmDelete = (member) => {
-    setDeleteConfirm(member);
   };
 
   const handleDelete = async () => {
@@ -201,13 +266,13 @@ const TeamPage = () => {
       const res = await authenticatedFetch(`${BASE}/api/team/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
-        toast.success('Team member removed');
-        setMembers(prev => prev.filter(m => m._id !== id));
+        toast.success('Stakeholder removed');
+        setMembers((prev) => prev.filter((m) => m._id !== id));
       } else {
         toast.error(data.message || 'Failed to remove');
       }
     } catch {
-      toast.error('Failed to remove team member');
+      toast.error('Failed to remove stakeholder');
     } finally {
       setDeletingId(null);
       setDeleteConfirm(null);
@@ -215,22 +280,33 @@ const TeamPage = () => {
   };
 
   const filtered = filterMembers(members, searchQuery, activeTab);
+  const share = lastInviteShare;
+  const shareUrl = (share?.inviteUrl || '').trim();
+  const inviteeEmail = (share?.email || '').trim().toLowerCase();
 
   return (
     <div className="page-shell-ats animate-page-enter">
       <PageHeader
         icon={Users}
         title={t('pages.team.title')}
-        subtitle="Add colleagues, managers & stakeholders — quickly CC/BCC them in emails."
+        subtitle="People with Skillnix access, plus stakeholders you CC on candidate mail."
         gradientTitle
       >
         <button
           type="button"
           onClick={() => { resetForm(); setShowForm(true); }}
-          className="btn-primary flex-1 sm:flex-none"
+          className="btn-secondary flex-1 sm:flex-none"
         >
           <Plus size={16} />
-          <span className="whitespace-nowrap">Add Member</span>
+          <span className="whitespace-nowrap">Add stakeholder</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowInvite(true)}
+          className="btn-primary flex-1 sm:flex-none"
+        >
+          <UserPlus size={16} />
+          <span className="whitespace-nowrap">Invite teammate</span>
         </button>
       </PageHeader>
 
@@ -239,15 +315,98 @@ const TeamPage = () => {
         className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed flex flex-wrap items-center gap-x-3 gap-y-1.5"
       >
         <span className="inline-flex items-center gap-1.5 text-brand-700 font-semibold">
-          <Info size={14} /> Tip
+          <Info size={14} /> Workflow
         </span>
         <span>
-          Add contacts once — they appear as CC/BCC suggestions when you email candidates.
+          <span className="font-semibold text-stone-800">Invite teammate</span> grants a login and role.
+          <span className="font-semibold text-stone-800"> Add stakeholder</span> is directory-only (CC/BCC, no seat).
           Press <span className="font-semibold text-stone-800">?</span> for a tour.
         </span>
       </div>
 
-      {/* Pending invitations */}
+      {shareUrl && (
+        <div
+          className={`card-ats-bordered overflow-hidden p-4 sm:p-5 ${
+            share.emailSent
+              ? 'border-emerald-200 bg-gradient-to-br from-emerald-50/80 via-white to-teal-50/30'
+              : 'border-amber-200 bg-gradient-to-br from-amber-50/90 via-white to-orange-50/20'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0">
+              <span className={`mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ${
+                share.emailSent ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+              }`}>
+                {share.emailSent ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-stone-900 tracking-tight">
+                  {share.emailSent ? 'Invitation sent' : 'Invite created — share the link'}
+                </p>
+                <p className="text-xs text-stone-600 mt-0.5 leading-relaxed">
+                  {inviteeEmail ? `Sent to ${inviteeEmail}. ` : ''}
+                  They must join with that email — not a new signup.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setLastInviteShare(null)}
+              className="p-1.5 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-white/80"
+              aria-label="Dismiss"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="mt-3 flex flex-col sm:flex-row gap-2">
+            <div className="flex-1 min-w-0 flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2.5">
+              <Link2 size={14} className="text-brand-600 flex-shrink-0" />
+              <input
+                readOnly
+                value={shareUrl}
+                className="flex-1 min-w-0 bg-transparent text-[12px] font-medium text-stone-700 outline-none truncate"
+                onFocus={(e) => e.target.select()}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => copyInviteLink(shareUrl)}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-600 to-teal-600"
+            >
+              <Copy size={15} />
+              Copy link
+            </button>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {inviteeEmail && (
+              <a
+                href={`mailto:${inviteeEmail}?subject=${encodeURIComponent('Your team invitation')}&body=${encodeURIComponent(`Accept your invitation:\n${shareUrl}`)}`}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 hover:border-brand-300"
+              >
+                <Mail size={13} />
+                Email
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`You're invited.\n${shareUrl}`)}`, '_blank', 'noopener,noreferrer')}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 hover:border-emerald-300"
+            >
+              <MessageCircle size={13} />
+              WhatsApp
+            </button>
+            <button
+              type="button"
+              onClick={() => window.open(shareUrl, '_blank', 'noopener,noreferrer')}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700"
+            >
+              <ExternalLink size={13} />
+              Open invite page
+            </button>
+          </div>
+        </div>
+      )}
+
       {pendingInvitations.length > 0 && (
         <div className="card-ats-bordered overflow-hidden border-amber-200/80 bg-gradient-to-br from-amber-50/90 via-white to-orange-50/40">
           <div className="px-5 sm:px-6 py-4 border-b border-amber-100/80 flex items-center gap-3">
@@ -273,16 +432,12 @@ const TeamPage = () => {
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-stone-900 truncate">
-                      Invitation from{' '}
-                      <span className="text-brand-600">{inv.invitedBy ? 'a team member' : 'Unknown'}</span>
+                      Directory invitation
                     </p>
                     <p className="text-xs text-stone-500 mt-0.5">
                       Role: {inv.role || 'Team Member'}
                       {inv.department ? ` · ${inv.department}` : ''}
                     </p>
-                    {inv.invitationMessage && (
-                      <p className="text-xs text-stone-400 italic mt-1 line-clamp-2">&ldquo;{inv.invitationMessage}&rdquo;</p>
-                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0 sm:pl-2">
@@ -311,7 +466,6 @@ const TeamPage = () => {
         </div>
       )}
 
-      {/* Toolbar: search + filter chips */}
       {(members.length > 0 || isLoading) && (
         <section
           data-tour="team-filters"
@@ -325,7 +479,7 @@ const TeamPage = () => {
                 type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search name, email, role, department…"
+                placeholder="Search name, email, role…"
                 className="input-ats input-ats-icon"
                 disabled={isLoading || members.length === 0}
               />
@@ -361,6 +515,32 @@ const TeamPage = () => {
         </section>
       )}
 
+      <TeamInviteModal
+        open={showInvite}
+        onClose={() => setShowInvite(false)}
+        inviteEmail={inviteEmail}
+        setInviteEmail={setInviteEmail}
+        inviteRole={inviteRole}
+        setInviteRole={setInviteRole}
+        customRoles={customRoles}
+        inviteCustomRoleId={inviteCustomRoleId}
+        setInviteCustomRoleId={setInviteCustomRoleId}
+        inviteReportsTo={inviteReportsTo}
+        setInviteReportsTo={setInviteReportsTo}
+        managerOptions={[
+          { value: '', label: 'No manager', description: 'Does not report to anyone' },
+          ...orgSeats
+            .filter((m) => m.isActive !== false)
+            .map((m) => ({
+              value: m._id,
+              label: m.name || m.email,
+              description: m.email,
+            })),
+        ]}
+        onSubmit={handleWorkspaceInvite}
+        inviting={inviting}
+      />
+
       <TeamMemberModal
         open={showForm}
         onClose={resetForm}
@@ -369,8 +549,6 @@ const TeamPage = () => {
         setFormData={setFormData}
         emailError={emailError}
         setEmailError={setEmailError}
-        companyDomain={companyDomain}
-        checkEmailDomain={checkEmailDomain}
         onSave={handleSave}
         isSaving={isSaving}
       />
@@ -383,22 +561,25 @@ const TeamPage = () => {
         setSearchQuery={setSearchQuery}
         setActiveTab={setActiveTab}
         onAddFirst={() => { resetForm(); setShowForm(true); }}
+        onInvite={() => setShowInvite(true)}
         onEdit={handleEdit}
-        onDelete={confirmDelete}
+        onDelete={setDeleteConfirm}
         deletingId={deletingId}
+        onCopyInviteLink={handleGetMemberInviteLink}
+        inviteLinkLoadingId={inviteLinkLoadingId}
       />
 
       <ConfirmationModal
         isOpen={!!deleteConfirm}
         onClose={() => setDeleteConfirm(null)}
         onConfirm={handleDelete}
-        title="Remove Team Member"
-        message={`Are you sure you want to remove "${deleteConfirm?.name}" from your team? This action cannot be undone.`}
+        title="Remove stakeholder"
+        message={`Remove "${deleteConfirm?.name}" from the directory? They will no longer appear in CC/BCC suggestions.`}
         details={deleteConfirm && (
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-brand-500 to-teal-700 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
               <span className="text-white font-bold text-xs">
-                {deleteConfirm.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
+                {String(deleteConfirm.name || '?').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
               </span>
             </div>
             <div>
@@ -407,7 +588,7 @@ const TeamPage = () => {
             </div>
           </div>
         )}
-        confirmText="Remove Member"
+        confirmText="Remove"
         type="delete"
         isLoading={!!deletingId}
       />

@@ -10,6 +10,12 @@ describe('talentPoolService contracts', () => {
     expect(typeof svc.listPoolCandidates).toBe('function');
     expect(typeof svc.addCandidates).toBe('function');
     expect(typeof svc.removeCandidate).toBe('function');
+    expect(typeof svc.resolveRejectPools).toBe('function');
+    expect(typeof svc.enrollByTrigger).toBe('function');
+    expect(typeof svc.poolsForReject).toBe('function');
+    expect(typeof svc.listReusableForJob).toBe('function');
+    expect(typeof svc.suggestMembersForPool).toBe('function');
+    expect(typeof svc.seedStarterPools).toBe('function');
   });
 });
 

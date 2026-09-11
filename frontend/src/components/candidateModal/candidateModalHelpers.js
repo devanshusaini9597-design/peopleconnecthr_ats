@@ -84,4 +84,6 @@ export const INITIAL_CANDIDATE_FORM = () => ({
   resume: null,
   callBackDate: '',
   countryCode: '+91',
+  product: '',
+  pan: '',
 });

@@ -20,9 +20,11 @@ const crmAdapter = require('./crmAdapter');
 const hrisAdapter = require('./hrisAdapter');
 const siemAdapter = require('./siemAdapter');
 const dataWarehouseAdapter = require('./dataWarehouseAdapter');
+const whatsappAdapter = require('./whatsappAdapter');
 
 const CATEGORY_FEATURE = {
   email: 'integrations.byoEmail',
+  marketing: 'integrations.marketing',
   calendar: 'integrations.calendar',
   sms: 'integrations.sms',
   job_board: 'integrations.jobBoard',
@@ -64,6 +66,19 @@ const getAdapter = async (organizationId, category) => {
     });
 
     if (!config) {
+      if (category === 'whatsapp') {
+        const {
+          getCompanyCloudCredentials,
+          isCompanyCloudOrg,
+        } = require('../services/whatsappCloudService');
+        const company = getCompanyCloudCredentials();
+        if (company.ready && isCompanyCloudOrg(organizationId)) {
+          return whatsappAdapter.createWhatsAppAdapter({
+            provider: 'meta',
+            credentials: company,
+          });
+        }
+      }
       return null;
     }
 
@@ -86,7 +101,7 @@ const getAdapter = async (organizationId, category) => {
       case 'esign':
         return esignAdapter.createEsignAdapter(resolvedConfig);
       case 'whatsapp':
-        return smsAdapter.createSmsAdapter(resolvedConfig);
+        return whatsappAdapter.createWhatsAppAdapter(resolvedConfig);
       case 'video':
         return videoAdapter.createVideoAdapter(resolvedConfig);
       case 'storage':

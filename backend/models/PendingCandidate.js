@@ -30,6 +30,9 @@ const PendingCandidateSchema = new mongoose.Schema({
   remark: { type: String, default: '' },
   fls: { type: String, default: '' },
   date: { type: String, default: '' },
+  skills: { type: String, default: '' },
+  product: { type: String, default: '' },
+  pan: { type: String, default: '' },
 
   // Original Excel data for reference
   originalData: { type: mongoose.Schema.Types.Mixed, default: {} },

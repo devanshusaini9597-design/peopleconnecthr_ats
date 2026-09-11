@@ -37,6 +37,37 @@ router.post('/', requireRecruiterOrAbove, async (req, res) => {
   }
 });
 
+router.get('/reusable', async (req, res) => {
+  try {
+    const data = await svc.listReusableForJob(req.user.organizationId, req.query);
+    res.json({ success: true, data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
+router.get('/for-reject', async (req, res) => {
+  try {
+    const applicationId = req.query.applicationId;
+    if (!applicationId) {
+      return res.status(400).json({ success: false, message: 'applicationId is required' });
+    }
+    const data = await svc.poolsForReject(req.user.organizationId, applicationId);
+    res.json({ success: true, data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
+router.post('/seed-starters', requireRecruiterOrAbove, async (req, res) => {
+  try {
+    const data = await svc.seedStarterPools(req.user.organizationId, req.user.id || req.user._id);
+    res.json({ success: true, data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
 router.patch('/:id', requireRecruiterOrAbove, async (req, res) => {
   try {
     const data = await svc.updatePool(req.user.organizationId, req.params.id, req.body);
@@ -76,6 +107,15 @@ router.delete('/:id', requireRecruiterOrAbove, async (req, res) => {
 router.get('/:id/candidates', async (req, res) => {
   try {
     const data = await svc.listPoolCandidates(req.user.organizationId, req.params.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
+router.get('/:id/suggested-candidates', async (req, res) => {
+  try {
+    const data = await svc.suggestMembersForPool(req.user.organizationId, req.params.id, req.query);
     res.json({ success: true, data });
   } catch (error) {
     handle(res, error);

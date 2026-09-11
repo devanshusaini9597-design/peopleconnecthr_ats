@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import BASE_API_URL from '../../../config';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../../../utils/fetchUtils';
+import { importReviewedInChunks } from '../../../utils/bulkImportApi';
 
 export function useCandidateImport({ toast, fetchData, searchQuery, filterJob, onImportComplete } = {}) {
   const fileInputRef = useRef(null);
@@ -411,65 +412,40 @@ const handleUploadWithMapping = async (mapping) => {
 
   const handleImportReviewed = async () => {
     if (!reviewData) return;
-    
-    const readyRecords = reviewData.ready; 
+
+    const readyRecords = reviewData.ready || [];
     const reviewRecords = reviewData.review || [];
-    
+
     try {
-      console.log(`📤 [IMPORT] Sending ${readyRecords.length} ready + ${reviewRecords.length} review records`);
-      
       // Mark review records with pending_review status
-      const reviewRecordsWithStatus = reviewRecords.map(r => ({
-        ...r.fixed || r.original,
-        status: 'Pending Review',
-        needsReview: true
+      const reviewRecordsWithStatus = reviewRecords.map((r) => ({
+        fixed: {
+          ...(r.fixed || r.original || {}),
+          status: 'Pending Review',
+          needsReview: true,
+        },
       }));
-      
-      const response = await authenticatedFetch(`${BASE_API_URL}/candidates/import-reviewed`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          readyRecords,
-          reviewRecords: reviewRecordsWithStatus
-        })
+
+      // Chunked POSTs — 10k+ rows exceed the server 10mb JSON body limit in one request
+      const result = await importReviewedInChunks({
+        readyRecords,
+        reviewRecords: reviewRecordsWithStatus,
       });
-      
-      console.log(`📥 [IMPORT] Response status: ${response.status}, ok: ${response.ok}`);
-      
-      let result;
-      const responseText = await response.text();
-      console.log(`📥 [IMPORT] Response text (first 500 chars): ${responseText.substring(0, 500)}`);
-      
-      try {
-        result = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error(`❌ [IMPORT] Failed to parse response as JSON:`, parseError);
-        throw new Error(`Server returned invalid response: ${responseText.substring(0, 200)}`);
-      }
-      
-      if (!response.ok) {
-        throw new Error(result.message || `Server error: ${response.status}`);
-      }
-      
-      console.log(`✅ [IMPORT] Response:`, result);
+
       toast.success(`${result.imported} candidates imported successfully! ${reviewRecords.length} added for review`);
-      
-      // Get the review count from reviewData before closing modal
+
       const reviewCount = reviewRecords.length;
-      
-      // Refresh data and close modal
+
       setShowReviewModal(false);
       setReviewData(null);
       setEditingRow(null);
       fetchData(1, { search: '', position: '' });
-      
-      // Call completion callback if provided
+
       if (onImportComplete) {
-        console.log('📢 Calling onImportComplete callback');
         onImportComplete({
           imported: result.imported,
           review: reviewCount,
-          timestamp: new Date()
+          timestamp: new Date(),
         });
       }
     } catch (error) {

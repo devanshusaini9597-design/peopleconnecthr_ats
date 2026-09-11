@@ -32,11 +32,13 @@ export const TPL_TOUR_STEPS = [
 ];
 
 export const CATEGORY_META = {
-  hiring:     { label: 'Hiring Drive', icon: Briefcase, bg: 'bg-brand-50',  text: 'text-brand-700',  badge: 'bg-brand-100 text-brand-700 border-brand-200' },
+  hiring:     { label: 'Hiring',       icon: Briefcase, bg: 'bg-brand-50',  text: 'text-brand-700',  badge: 'bg-brand-100 text-brand-700 border-brand-200' },
   interview:  { label: 'Interview',    icon: Phone,     bg: 'bg-cyan-50',    text: 'text-cyan-700',   badge: 'bg-cyan-100 text-cyan-700 border-cyan-200' },
+  offer:      { label: 'Offer',        icon: FileCheck, bg: 'bg-teal-50',    text: 'text-teal-700',   badge: 'bg-teal-100 text-teal-700 border-teal-200' },
+  assessment: { label: 'Assessment',   icon: Sparkles,  bg: 'bg-indigo-50',  text: 'text-indigo-700', badge: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
   rejection:  { label: 'Rejection',    icon: XCircle,   bg: 'bg-red-50',     text: 'text-red-700',    badge: 'bg-red-100 text-red-700 border-red-200' },
   onboarding: { label: 'Onboarding',   icon: UserCheck, bg: 'bg-emerald-50', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-  document:   { label: 'Document',     icon: FileCheck, bg: 'bg-amber-50',   text: 'text-amber-700',  badge: 'bg-amber-100 text-amber-700 border-amber-200' },
+  document:   { label: 'Documents',    icon: FileCheck, bg: 'bg-amber-50',   text: 'text-amber-700',  badge: 'bg-amber-100 text-amber-700 border-amber-200' },
   marketing:  { label: 'Marketing',    icon: Megaphone, bg: 'bg-fuchsia-50', text: 'text-fuchsia-700', badge: 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200' },
   custom:     { label: 'Custom',       icon: Sparkles,  bg: 'bg-violet-50',  text: 'text-violet-700', badge: 'bg-violet-100 text-violet-700 border-violet-200' },
 };
@@ -55,7 +57,7 @@ export const FILTER_OPTIONS = [
 export const VARIABLE_OPTIONS = [
   { key: 'candidateName', label: 'Candidate name', example: 'Priya Sharma' },
   { key: 'position', label: 'Position', example: 'Full Stack Developer' },
-  { key: 'company', label: 'Company', example: 'Skillnix Recruitment Services' },
+  { key: 'company', label: 'Company', example: 'Acme Technologies' },
   { key: 'ctc', label: 'CTC / Salary', example: 'Up to 4 LPA' },
   { key: 'experience', label: 'Experience', example: 'Minimum 1 year' },
   { key: 'location', label: 'Location', example: 'Delhi, Gurgaon' },

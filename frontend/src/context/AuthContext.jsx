@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { BASE_API_URL } from '../config';
 import { getEntitlements } from '../config/planFeatures';
+import { handleLogout as hardLogout, isPublicAuthPath } from '../utils/authUtils';
 
 const AuthContext = createContext(null);
 
@@ -34,12 +35,32 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await fetch(`${BASE_API_URL}/api/profile`, {
         credentials: 'include',
+        cache: 'no-store',
       });
 
       // A newer login/acceptSession invalidated this in-flight check
       if (requestId !== profileRequestId.current) return;
 
       if (!response.ok) {
+        let code = '';
+        try {
+          const body = await response.json();
+          code = body?.code || '';
+        } catch {
+          /* ignore non-JSON */
+        }
+        if (
+          code === 'SESSION_EXPIRED' ||
+          code === 'SESSION_IDLE_TIMEOUT' ||
+          code === 'SESSION_REVOKED' ||
+          code === 'ACCOUNT_DEACTIVATED'
+        ) {
+          clearLocalAuth();
+          if (!isPublicAuthPath()) {
+            window.location.replace('/login?reason=expired');
+          }
+          return;
+        }
         throw new Error('Failed to fetch profile');
       }
 
@@ -74,13 +95,37 @@ export const AuthProvider = ({ children }) => {
     const handleUnauth = () => {
       profileRequestId.current += 1;
       clearLocalAuth();
-      window.location.href = '/login';
+      if (!isPublicAuthPath()) {
+        window.location.replace('/login?reason=expired');
+      }
+    };
+    const onPageShow = (event) => {
+      if (!event.persisted) return;
+      fetch(`${BASE_API_URL}/api/profile`, { credentials: 'include', cache: 'no-store' })
+        .then((res) => {
+          if (!res.ok) {
+            profileRequestId.current += 1;
+            clearLocalAuth();
+            if (!isPublicAuthPath()) {
+              window.location.replace('/login');
+            }
+          }
+        })
+        .catch(() => {
+          profileRequestId.current += 1;
+          clearLocalAuth();
+          if (!isPublicAuthPath()) {
+            window.location.replace('/login');
+          }
+        });
     };
     window.addEventListener('auth:unauthorized', handleUnauth);
     window.addEventListener('auth:session-expired', handleUnauth);
+    window.addEventListener('pageshow', onPageShow);
     return () => {
       window.removeEventListener('auth:unauthorized', handleUnauth);
       window.removeEventListener('auth:session-expired', handleUnauth);
+      window.removeEventListener('pageshow', onPageShow);
     };
   }, [clearLocalAuth]);
 
@@ -94,7 +139,11 @@ export const AuthProvider = ({ children }) => {
 
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.message || 'Login failed');
+      throw new Error(data.displayMessage || data.message || 'Login failed');
+    }
+
+    if (data.requiresOtp || data.requiresMfa || data.requiresMfaEnrollment) {
+      return data;
     }
 
     profileRequestId.current += 1;
@@ -128,20 +177,17 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    try {
-      await fetch(`${BASE_API_URL}/api/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-    } catch (e) {
-      /* ignore network errors on logout */
-    }
     profileRequestId.current += 1;
-    clearLocalAuth();
-    window.location.href = '/login';
+    // Hard logout navigates once — clearing React auth first would soft-route
+    // to /login via ProtectedRoute, then hard-reload again (double flash).
+    await hardLogout();
+    setUser(null);
+    setOrganization(null);
+    setEntitlements([]);
+    setIsAuthenticated(false);
   };
 
-  /** Apply an already-authenticated API payload (login / demo-login / MFA). */
+  /** Apply an already-authenticated API payload (login / MFA). */
   const acceptSession = useCallback((data) => {
     // Invalidate any in-flight anonymous profile check so it can't wipe this session
     profileRequestId.current += 1;
@@ -167,16 +213,34 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const updateUser = (data) => setUser((prev) => ({ ...prev, ...data }));
-  const updateOrganization = (data) => {
+  const updateOrganization = useCallback((data) => {
     setOrganization((prev) => {
-      const next = { ...prev, ...data };
-      if (data.plan) setEntitlements(getEntitlements(next.plan));
+      const next = { ...(prev || {}), ...data };
+      try {
+        const existing = JSON.parse(localStorage.getItem('orgData') || '{}');
+        localStorage.setItem('orgData', JSON.stringify({ ...existing, ...next }));
+        if (next.name) localStorage.setItem('orgName', next.name);
+      } catch { /* ignore */ }
+      if (data?.plan) setEntitlements(getEntitlements(next.plan));
       return next;
     });
-  };
+  }, []);
   const refreshProfile = () => fetchProfile();
 
-  const value = {
+  useEffect(() => {
+    const onOrgUpdated = (event) => {
+      const payload = event?.detail;
+      if (payload && typeof payload === 'object') {
+        updateOrganization(payload);
+        return;
+      }
+      fetchProfile();
+    };
+    window.addEventListener('orgDataUpdated', onOrgUpdated);
+    return () => window.removeEventListener('orgDataUpdated', onOrgUpdated);
+  }, [updateOrganization, fetchProfile]);
+
+  const value = useMemo(() => ({
     user,
     organization,
     entitlements,
@@ -190,7 +254,20 @@ export const AuthProvider = ({ children }) => {
     updateUser,
     updateOrganization,
     refreshProfile,
-  };
+  }), [
+    user,
+    organization,
+    entitlements,
+    isAuthenticated,
+    isLoading,
+    login,
+    register,
+    logout,
+    acceptSession,
+    updateUser,
+    updateOrganization,
+    refreshProfile,
+  ]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

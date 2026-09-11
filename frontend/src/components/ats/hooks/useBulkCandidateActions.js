@@ -87,13 +87,13 @@ export function useBulkCandidateActions({
       isOpen: true,
       type: 'delete',
       title: isFreelancer
-        ? `Remove ${selectedIds.length} from your desk`
+        ? `Remove ${selectedIds.length} candidate${selectedIds.length > 1 ? 's' : ''}`
         : `Delete ${selectedIds.length} Candidate${selectedIds.length > 1 ? 's' : ''}`,
       message: isFreelancer
-        ? `Remove ${selectedIds.length} selected candidate(s) from your desk? Company records stay in the organization database.`
+        ? `Remove ${selectedIds.length} selected candidate${selectedIds.length > 1 ? 's' : ''} from your candidate list?`
         : `Are you sure you want to delete ${selectedIds.length} selected candidate(s)? This action cannot be undone.`,
       confirmText: isFreelancer
-        ? `Remove ${selectedIds.length}`
+        ? 'Remove'
         : `Delete ${selectedIds.length} Candidate${selectedIds.length > 1 ? 's' : ''}`,
       isLoading: false,
       onConfirm: async () => {
@@ -108,7 +108,7 @@ export function useBulkCandidateActions({
             toast.success(
               dataRes.message
                 || (dataRes.soft
-                  ? `Removed ${dataRes.deletedCount} of ${selectedIds.length} from your desk.`
+                  ? `${dataRes.deletedCount} candidate${dataRes.deletedCount === 1 ? '' : 's'} removed.`
                   : `Deleted ${dataRes.deletedCount} of ${selectedIds.length} candidates.`)
             );
           } else toast.error(dataRes.message || 'Failed to delete candidates.');
@@ -238,11 +238,11 @@ export function useBulkCandidateActions({
       setConfirmModal({
         isOpen: true,
         type: 'delete',
-        title: isFreelancer ? 'Remove from your desk' : 'Delete Candidate',
+        title: isFreelancer ? 'Remove candidate' : 'Delete Candidate',
         message: isFreelancer
-          ? `Remove "${candidate?.name || 'this candidate'}" from your desk? The company record stays in the organization database.`
+          ? `Remove “${candidate?.name || 'this candidate'}” from your candidate list?`
           : `Are you sure you want to delete "${candidate?.name || 'this candidate'}"? This action cannot be undone.`,
-        confirmText: isFreelancer ? 'Remove from desk' : 'Delete Candidate',
+        confirmText: isFreelancer ? 'Remove' : 'Delete Candidate',
         isLoading: false,
         onConfirm: async () => {
           setConfirmModal((prev) => ({ ...prev, isLoading: true }));
@@ -256,8 +256,9 @@ export function useBulkCandidateActions({
               const body = await response.json().catch(() => ({}));
               toast.success(
                 body.message
-                  || (body.soft ? 'Removed from your desk.' : 'Deleted successfully!')
+                  || (body.soft ? 'Candidate removed.' : 'Deleted successfully!')
               );
+              window.dispatchEvent(new CustomEvent('candidates:changed'));
               const pageToRestore = currentPage;
               await fetchData(1, { search: searchQuery, position: filterJob });
               setCurrentPage(pageToRestore);

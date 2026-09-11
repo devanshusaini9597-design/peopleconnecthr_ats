@@ -10,6 +10,7 @@ export default function MasterDataEditorModal({
   setForm,
   cfg,
   title,
+  showRequiresPan = false,
   onClose,
   onSubmit,
 }) {
@@ -51,6 +52,22 @@ export default function MasterDataEditorModal({
             className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-sm font-medium outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 resize-none"
           />
         </div>
+        {showRequiresPan && (
+          <label className="flex items-start gap-2.5 cursor-pointer select-none rounded-xl border border-stone-200 bg-stone-50/60 px-3.5 py-3">
+            <input
+              type="checkbox"
+              checked={!!form.requiresPan}
+              onChange={(e) => setForm((f) => ({ ...f, requiresPan: e.target.checked }))}
+              className="mt-0.5 h-4 w-4 rounded border-stone-300 text-brand-600 focus:ring-brand-500/30"
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-stone-800">PAN required for candidates</span>
+              <span className="block text-xs text-stone-500 leading-snug mt-0.5">
+                Candidates for this client must enter a valid PAN before save.
+              </span>
+            </span>
+          </label>
+        )}
       </form>
     </Modal>
   );

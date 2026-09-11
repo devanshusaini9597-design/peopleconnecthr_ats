@@ -15,7 +15,7 @@ export default function PrepareStep({ downloadTemplate, setStep }) {
           </div>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={downloadTemplate} className="btn-primary">
-              <Download size={16} /> Download Excel template
+              <Download size={16} /> Download CSV template
             </button>
             <button type="button" onClick={() => setStep('upload')} className="btn-secondary">
               I already have a file <ArrowRight size={16} />

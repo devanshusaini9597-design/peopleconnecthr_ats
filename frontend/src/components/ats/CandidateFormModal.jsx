@@ -462,15 +462,13 @@ export default function CandidateFormModal(props) {
                         <PremiumSelect variant="list" value={formData.fls || ''} onChange={(v) => setFormField('fls', v)} options={formFlsOptions} placeholder="Select" allowClear />
                       </div>
                       {isFreelancer ? (
-                        editId ? (
                           <div className="min-w-0">
                             <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Status</label>
                             <div className="h-11 px-3 rounded-xl border border-stone-200 bg-stone-50 text-sm font-semibold text-stone-700 flex items-center">
                               {String(formData.status || 'APPLIED').replace(/[_-]+/g, ' ')}
                             </div>
-                            <p className="text-[11px] text-stone-400 mt-1">Updated by the company when they review your submissions.</p>
+                            <p className="text-[11px] text-stone-400 mt-1">Not editable — auto-updated by the company when they review your submissions.</p>
                           </div>
-                        ) : null
                       ) : (
                         <div className="min-w-0">
                           <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Status</label>
@@ -565,6 +563,15 @@ export default function CandidateFormModal(props) {
                           />
                         </div>
                       </ListField>
+                      {isFreelancer ? (
+                        <div className="min-w-0">
+                          <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Source</label>
+                          <div className="h-11 px-3 rounded-xl border border-stone-200 bg-stone-50 text-sm font-semibold text-stone-700 flex items-center">
+                            Freelance
+                          </div>
+                          <p className="text-[11px] text-stone-400 mt-1">Locked — freelancer submissions are always sourced as Freelance.</p>
+                        </div>
+                      ) : (
                       <ListField onManage={setQuickList} label="Source" count={masterSources.length} noun="sources" listCfg={LIST.sources} manageHint={manageHint}>
                         <PremiumSelect
                           variant="list"
@@ -580,6 +587,7 @@ export default function CandidateFormModal(props) {
                           onSearch={(q) => searchPicklistOptions('/api/sources', q)}
                         />
                       </ListField>
+                      )}
                       <div className="min-w-0">
                         <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Date</label>
                         <PremiumDatePicker

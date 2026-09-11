@@ -1,6 +1,10 @@
 import React from 'react';
-import { X, Check, Calendar, Phone, ChevronRight, User, Loader2 } from 'lucide-react';
-import { NotifTypeIcon, PriorityBadge, timeAgo } from './notificationBellHelpers';
+import { Check, X, Loader2, Phone, Download } from 'lucide-react';
+import {
+  NotifTypeIcon, notifKindLabel, notifHeadline, notifSnippet, timeAgo, dueLabel, dueTone, notifIconTone,
+  isCallbackNotif, liveDaysRemaining,
+} from './notificationBellHelpers';
+import { reportShareMeta } from './reportShareUtils';
 
 export default function NotificationListItem({
   notif,
@@ -8,121 +12,116 @@ export default function NotificationListItem({
   onClick,
   onAccept,
   onDecline,
-  onDismiss,
+  onDownloadReport,
 }) {
+  const busy = processingAction === notif._id + '_accept' || processingAction === notif._id + '_decline';
+  const due = dueLabel(notif);
+  const headline = notifHeadline(notif);
+  const kind = notifKindLabel(notif);
+  const snippet = notifSnippet(notif);
+  const pendingInvite = notif.type === 'invitation' && notif.actionRequired && notif.status === 'pending';
+  const unread = !notif.isRead;
+  const callback = isCallbackNotif(notif);
+  const reportShare = notif.type === 'report_shared';
+  const days = liveDaysRemaining(notif);
+  const reportMeta = reportShare ? reportShareMeta(notif) : null;
+
   return (
-                  <div
-                    className={`px-4 py-3.5 hover:bg-brand-50/40 transition-colors cursor-pointer group relative ${
-                      !notif.isRead ? 'bg-brand-50/30' : ''
-                    }`}
-                    onClick={onClick}
-                  >
-                    {!notif.isRead && (
-                      <span className="absolute left-0 top-3 bottom-3 w-0.5 rounded-r-full bg-brand-500" />
-                    )}
-                    <div className="flex gap-3">
-                      {/* Icon */}
-                      <div className="mt-0.5">
-                        <NotifTypeIcon type={notif.type} priority={notif.priority} />
-                      </div>
-                      
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className={`text-sm leading-snug ${!notif.isRead ? 'font-semibold text-stone-900' : 'font-medium text-stone-700'}`}>
-                            {notif.title}
-                          </p>
-                          {notif.type === 'invitation' && notif.status === 'pending' ? (
-                            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border bg-blue-100 text-blue-700 border-blue-200">
-                              Action Required
-                            </span>
-                          ) : notif.type === 'invitation' && notif.status === 'accepted' ? (
-                            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border bg-green-100 text-green-700 border-green-200">
-                              Accepted
-                            </span>
-                          ) : notif.type === 'invitation' && notif.status === 'declined' ? (
-                            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border bg-red-100 text-red-700 border-red-200">
-                              Declined
-                            </span>
-                          ) : (
-                            <PriorityBadge priority={notif.priority} />
-                          )}
-                        </div>
-                        
-                        <p className="text-xs text-stone-500 mt-1 line-clamp-2 leading-relaxed">{notif.message}</p>
-                        
-                        {/* Action buttons for invitations */}
-                        {notif.type === 'invitation' && notif.actionRequired && notif.status === 'pending' && (
-                          <div className="flex items-center gap-2 mt-2.5" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={() => onAccept(notif)}
-                              disabled={processingAction === notif._id + '_accept' || processingAction === notif._id + '_decline'}
-                              className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-md text-xs font-medium transition-colors disabled:opacity-50"
-                            >
-                              {processingAction === notif._id + '_accept' ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                              Accept
-                            </button>
-                            <button
-                              onClick={() => onDecline(notif)}
-                              disabled={processingAction === notif._id + '_accept' || processingAction === notif._id + '_decline'}
-                              className="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-md text-xs font-medium transition-colors disabled:opacity-50"
-                            >
-                              {processingAction === notif._id + '_decline' ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
-                              Decline
-                            </button>
-                          </div>
-                        )}
-                        
-                        {/* Meta row */}
-                        <div className="flex items-center gap-3 mt-2">
-                          {notif.senderName && (notif.type === 'invitation' || notif.type === 'share_request') && (
-                            <span className="flex items-center gap-1 text-[11px] text-gray-400">
-                              <User size={11} />
-                              {notif.senderName}
-                            </span>
-                          )}
-                          {notif.callBackDate && (
-                            <span className="flex items-center gap-1 text-[11px] text-gray-400">
-                              <Calendar size={11} />
-                              {notif.callBackDate}
-                            </span>
-                          )}
-                          {notif.candidateContact && (
-                            <span className="flex items-center gap-1 text-[11px] text-gray-400">
-                              <Phone size={11} />
-                              {notif.candidateContact}
-                            </span>
-                          )}
-                          <span className="text-[11px] text-gray-400">{timeAgo(notif.createdAt)}</span>
-                          
-                          {/* Days badge */}
-                          {notif.daysRemaining !== undefined && (
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                              notif.daysRemaining <= 0 ? 'bg-red-100 text-red-700' :
-                              notif.daysRemaining <= 2 ? 'bg-orange-100 text-orange-700' :
-                              'bg-gray-100 text-gray-600'
-                            }`}>
-                              {notif.daysRemaining < 0 ? `${Math.abs(notif.daysRemaining)}d overdue` :
-                               notif.daysRemaining === 0 ? 'TODAY' :
-                               `${notif.daysRemaining}d left`}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      
-                      {/* Dismiss button */}
-                      <div className="flex flex-col items-center gap-1 self-start">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); onDismiss(notif._id); }}
-                          className="p-1.5 opacity-0 group-hover:opacity-100 hover:bg-stone-200/80 rounded-lg transition-all text-stone-400 hover:text-stone-700"
-                          title="Dismiss"
-                        >
-                          <X size={14} />
-                        </button>
-                        <ChevronRight size={14} className="text-stone-300 group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all" />
-                      </div>
-                    </div>
-                  </div>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
+      className={`w-full text-left px-3.5 sm:px-4 py-3 transition-colors group cursor-pointer ${
+        unread
+          ? reportShare
+            ? 'bg-emerald-50/50 hover:bg-emerald-50/80 ring-1 ring-inset ring-emerald-100/80'
+            : 'bg-brand-50/35 hover:bg-brand-50/55'
+          : 'bg-white hover:bg-stone-50'
+      }`}
+    >
+      <div className="flex gap-3 min-w-0">
+        <div className="relative mt-0.5 flex-shrink-0">
+          <span className={`flex h-9 w-9 items-center justify-center rounded-xl border ${notifIconTone(notif.type, notif.priority, days)}`}>
+            <NotifTypeIcon type={notif.type} priority={notif.priority} daysRemaining={days} />
+          </span>
+          {unread ? (
+            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-brand-600 ring-2 ring-white" />
+          ) : null}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <p className={`text-[10px] font-bold uppercase tracking-[0.08em] truncate ${
+              reportShare ? 'text-emerald-700/80' : 'text-stone-400'
+            }`}>
+              {kind}
+            </p>
+            <span className="text-[11px] text-stone-400 tabular-nums whitespace-nowrap font-medium">
+              {timeAgo(notif.createdAt)}
+            </span>
+          </div>
+          <div className="mt-0.5 flex items-start justify-between gap-2">
+            <p className={`text-[13px] leading-5 line-clamp-2 min-w-0 ${unread ? 'font-semibold text-stone-900' : 'font-medium text-stone-700'}`}>
+              {headline}
+            </p>
+            {due ? (
+              <span className={`flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-md ring-1 whitespace-nowrap ${dueTone(notif)}`}>
+                {due}
+              </span>
+            ) : null}
+          </div>
+          {snippet && snippet !== headline ? (
+            <p className="mt-1 text-[12px] text-stone-500 leading-relaxed line-clamp-1">{snippet}</p>
+          ) : null}
+          {callback && notif.candidateContact ? (
+            <a
+              href={`tel:${notif.candidateContact}`}
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 mt-2 text-[11px] font-semibold text-brand-700 hover:text-brand-800"
+            >
+              <Phone size={11} />
+              Call
+            </a>
+          ) : null}
+
+          {reportShare ? (
+            <div className="flex items-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                onClick={() => onDownloadReport?.(notif)}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-700 hover:text-brand-800"
+              >
+                <Download size={11} />
+                Download {reportMeta?.formatLabel || 'PDF'}
+              </button>
+            </div>
+          ) : null}
+
+          {pendingInvite && (
+            <div className="flex items-center gap-2 mt-2.5" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                onClick={() => onAccept(notif)}
+                disabled={busy}
+                className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-brand-600 text-white text-[11px] font-semibold hover:bg-brand-700 disabled:opacity-50"
+              >
+                {processingAction === notif._id + '_accept' ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+                Accept
+              </button>
+              <button
+                type="button"
+                onClick={() => onDecline(notif)}
+                disabled={busy}
+                className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg border border-stone-200 bg-white text-stone-700 text-[11px] font-semibold hover:bg-stone-50 disabled:opacity-50"
+              >
+                {processingAction === notif._id + '_decline' ? <Loader2 size={11} className="animate-spin" /> : <X size={11} />}
+                Decline
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

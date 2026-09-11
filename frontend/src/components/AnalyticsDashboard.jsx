@@ -1,11 +1,12 @@
 // frontend/src/components/AnalyticsDashboard.jsx
 import React from 'react';
 import {
-  AlertCircle, Download, BarChart3, RefreshCw
+  AlertCircle, BarChart3, RefreshCw
 } from 'lucide-react';
 import PageHeader from './ui/PageHeader';
 import ProductTour from './ui/ProductTour';
 import TourHelpFab from './ui/TourHelpFab';
+import { useAuth } from '../context/AuthContext';
 
 import {
   ANALYTICS_TOUR_KEY,
@@ -13,18 +14,24 @@ import {
 } from './analytics/constants';
 import AnalyticsLivePanel from './analytics/AnalyticsLivePanel';
 import AnalyticsExportPanel from './analytics/AnalyticsExportPanel';
+import AnalyticsControlPanel from './analytics/AnalyticsControlPanel';
 import AnalyticsModals from './analytics/AnalyticsModals';
+import { AnalyticsInlineLoader, AnalyticsPanelOverlay, AnalyticsPanelSkeleton } from './analytics/AnalyticsPanelLoader';
 import useAnalytics from './analytics/useAnalytics';
 
 const AnalyticsDashboard = () => {
+  const { user } = useAuth();
+  const isFreelancer = user?.role === 'freelancer';
   const {
     navigate,
     tourOpen,
     setTourOpen,
     stats,
     loading,
+    statsLoading,
     error,
-    setSearchParams,
+    setActiveTab,
+    employeeScope,
     isExporting,
     refreshing,
     activeTab,
@@ -38,6 +45,9 @@ const AnalyticsDashboard = () => {
     setCustomFrom,
     customTo,
     setCustomTo,
+    periodLabel,
+    periodReady,
+    customRangeInvalid,
     exportSuccess,
     previewData,
     previewLoading,
@@ -60,7 +70,6 @@ const AnalyticsDashboard = () => {
     onTableDragScrollEnd,
     fetchStats,
     activePipeline,
-    totalActive,
     handleExport,
     handlePreview,
     handleShareReport,
@@ -68,18 +77,26 @@ const AnalyticsDashboard = () => {
     retryFetchStats,
   } = useAnalytics();
 
+  const scopeLabel = employeeScope.canSelect
+    ? (employeeScope.selectedEmployee?.name || (employeeScope.employeeParam === 'all' ? 'All employees' : 'Employee desk'))
+    : 'My desk';
+
   if (loading) {
     return (
       <div className="page-shell-ats animate-page-enter">
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-2xl skeleton-ats flex-shrink-0" />
-          <div className="space-y-2 flex-1 pt-1">
-            <div className="h-7 w-52 skeleton-ats rounded-lg" />
-            <div className="h-4 w-72 max-w-full skeleton-ats rounded-lg" />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
-          {[1, 2, 3, 4].map((i) => <div key={i} className="h-[118px] skeleton-ats rounded-2xl" />)}
+        <PageHeader
+          icon={BarChart3}
+          title="Reports & Analytics"
+          subtitle={isFreelancer
+            ? 'Hiring metrics for candidates on your desk.'
+            : employeeScope.canSelect
+              ? 'Hiring performance across your organization or a selected employee.'
+              : 'Hiring performance and data exports for your desk.'}
+        />
+        <div className="rounded-lg border border-stone-200 bg-white h-[120px] skeleton-ats" />
+        <AnalyticsInlineLoader label="Loading analytics…" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-2">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => <div key={i} className="h-[118px] skeleton-ats rounded-2xl" />)}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-2">
           <div className="lg:col-span-2 h-64 skeleton-ats rounded-2xl" />
@@ -112,8 +129,11 @@ const AnalyticsDashboard = () => {
         <PageHeader
           icon={BarChart3}
           title="Reports & Analytics"
-          subtitle="Recruitment performance overview and data exports."
-          gradientTitle
+          subtitle={isFreelancer
+            ? 'Hiring metrics for candidates on your desk.'
+            : employeeScope.canSelect
+              ? 'Hiring performance across your organization or a selected employee.'
+              : 'Hiring performance and data exports for your desk.'}
         >
           <button type="button" onClick={() => fetchStats(true)} disabled={refreshing} className="btn-secondary">
             <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
@@ -121,69 +141,91 @@ const AnalyticsDashboard = () => {
           </button>
         </PageHeader>
 
-        <div data-tour="analytics-tip" className="rounded-xl border border-brand-200/60 bg-gradient-to-r from-brand-50/70 via-white to-teal-50/40 px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed">
-          Review KPIs and pipeline trends, then export branded PDFs from Export Data. Drag across table cells to scroll columns — use the scrollbar only to scrub.
-          Press <span className="font-semibold text-stone-800">?</span> for a tour.
-        </div>
-
-        <div data-tour="analytics-tabs" className="flex items-center gap-1 p-1 bg-stone-100/80 rounded-xl w-full sm:w-auto overflow-x-auto">
-          {[
-            { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-            { id: 'export', label: 'Export Data', icon: Download },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setSearchParams({ tab: tab.id })}
-                className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
-                  active ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'
-                }`}
-              >
-                <Icon className={`w-4 h-4 ${active ? 'text-brand-600' : ''}`} />
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* ═══════════════ ANALYTICS TAB ═══════════════ */}
-        {activeTab === 'analytics' && stats && (
-          <AnalyticsLivePanel
-            stats={stats}
-            totalActive={totalActive}
-            navigate={navigate}
-            activePipeline={activePipeline}
-            tableScrollRef={tableScrollRef}
-            onTableDragScrollStart={onTableDragScrollStart}
-            onTableDragScrollMove={onTableDragScrollMove}
-            onTableDragScrollEnd={onTableDragScrollEnd}
-          />
-        )}
-
-        {activeTab === 'export' && (
-          <AnalyticsExportPanel
-            exportSuccess={exportSuccess}
-            reportType={reportType}
-            setReportType={setReportType}
+        <div className="space-y-2">
+          <AnalyticsControlPanel
+            employeeScope={employeeScope}
+            isFreelancer={isFreelancer}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            statsLoading={statsLoading}
             dateRange={dateRange}
             setDateRange={setDateRange}
             customFrom={customFrom}
             setCustomFrom={setCustomFrom}
             customTo={customTo}
             setCustomTo={setCustomTo}
+            periodLabel={stats?.periodLabel || periodLabel}
+          />
+          {statsLoading && (
+            <AnalyticsInlineLoader label={`Updating metrics for ${stats?.periodLabel || periodLabel}…`} />
+          )}
+        </div>
+
+        {dateRange === 'custom' && customRangeInvalid && (
+          <div className="rounded-xl border border-red-200 bg-red-50/80 px-4 py-2.5 text-[13px] text-red-800">
+            End date must be on or after the start date.
+          </div>
+        )}
+
+        {dateRange === 'custom' && !periodReady && !customRangeInvalid && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-2.5 text-[13px] text-amber-800">
+            Select a start and end date to load analytics for this range.
+          </div>
+        )}
+
+        {/* ═══════════════ ANALYTICS TAB ═══════════════ */}
+        {(isFreelancer || activeTab === 'analytics') && periodReady && (
+          <div className="relative min-h-[320px]">
+            {statsLoading && !stats && <AnalyticsPanelSkeleton />}
+            {statsLoading && stats && <AnalyticsPanelOverlay label={`Updating ${stats.periodLabel || periodLabel}…`} />}
+            {!stats && !statsLoading && <AnalyticsPanelSkeleton />}
+            {stats && (
+              <div className={statsLoading ? 'opacity-40 pointer-events-none select-none' : ''}>
+                <AnalyticsLivePanel
+                  stats={stats}
+                  navigate={navigate}
+                  activePipeline={activePipeline}
+                  isFreelancer={isFreelancer}
+                  userId={employeeScope.userId}
+                  periodLabel={stats.periodLabel || periodLabel}
+                  dateRange={dateRange}
+                  customFrom={customFrom}
+                  customTo={customTo}
+                  tableScrollRef={tableScrollRef}
+                  onTableDragScrollStart={onTableDragScrollStart}
+                  onTableDragScrollMove={onTableDragScrollMove}
+                  onTableDragScrollEnd={onTableDragScrollEnd}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {!isFreelancer && activeTab === 'export' && (
+          <div className="relative">
+            {statsLoading && <AnalyticsInlineLoader label="Updating export summary…" />}
+            <AnalyticsExportPanel
+            exportSuccess={exportSuccess}
+            reportType={reportType}
+            setReportType={setReportType}
+            dateRange={dateRange}
+            customFrom={customFrom}
+            customTo={customTo}
             exportFormat={exportFormat}
             setExportFormat={setExportFormat}
             filteredCandidateCount={filteredCandidateCount}
             stats={stats}
+            scopeLabel={scopeLabel}
+            periodLabel={stats?.periodLabel || periodLabel}
+            periodReady={periodReady}
+            customRangeInvalid={customRangeInvalid}
             handlePreview={handlePreview}
             previewLoading={previewLoading}
             handleExport={handleExport}
             isExporting={isExporting}
-            openShareModal={openShareModal}
+            openShareModal={isFreelancer ? undefined : openShareModal}
           />
+          </div>
         )}
       </div>
 
@@ -199,6 +241,7 @@ const AnalyticsDashboard = () => {
         showPreview={showPreview}
         setShowPreview={setShowPreview}
         previewData={previewData}
+        previewLoading={previewLoading}
         exportFormat={exportFormat}
         handleExport={handleExport}
         navigate={navigate}

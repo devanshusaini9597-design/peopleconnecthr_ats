@@ -12,8 +12,6 @@ export default function TeamMemberModal({
   setFormData,
   emailError,
   setEmailError,
-  companyDomain,
-  checkEmailDomain,
   onSave,
   isSaving,
 }) {
@@ -21,15 +19,15 @@ export default function TeamMemberModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={editingId ? 'Edit Team Member' : 'Add Team Member'}
-      description="They’ll appear as CC/BCC suggestions when you send emails."
+      title={editingId ? 'Edit stakeholder' : 'Add stakeholder'}
+      description="No Skillnix login. They show up as CC/BCC suggestions when you email candidates."
       size="lg"
       footer={
         <>
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
           <button type="button" onClick={onSave} disabled={isSaving} className="btn-primary">
             {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-            {isSaving ? 'Saving…' : editingId ? 'Update' : 'Add Member'}
+            {isSaving ? 'Saving…' : editingId ? 'Update' : 'Add stakeholder'}
           </button>
         </>
       }
@@ -37,7 +35,7 @@ export default function TeamMemberModal({
       <div className="space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="label-ats">Full Name *</label>
+            <label className="label-ats">Full name *</label>
             <div className="relative">
               <Users size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
               <input
@@ -46,12 +44,12 @@ export default function TeamMemberModal({
                 onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value.replace(/^\s+/, '').replace(/\s{2,}/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }))}
                 onBlur={() => setFormData((p) => ({ ...p, name: p.name.trim() }))}
                 className="input-ats input-ats-icon"
-                placeholder="John Doe"
+                placeholder="Priya Sharma"
               />
             </div>
           </div>
           <div>
-            <label className="label-ats">Email Address *</label>
+            <label className="label-ats">Email *</label>
             <div className="relative">
               <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
               <input
@@ -61,9 +59,9 @@ export default function TeamMemberModal({
                   setFormData((p) => ({ ...p, email: e.target.value.trim().toLowerCase() }));
                   if (emailError) setEmailError('');
                 }}
-                onBlur={() => formData.email && checkEmailDomain(formData.email)}
                 className={`input-ats input-ats-icon ${emailError ? 'input-ats-error' : ''}`}
-                placeholder={companyDomain?.domain ? `xyz@${companyDomain.domain}` : 'xyz@skillnixrecruitment.com'}
+                placeholder="hiring.manager@client.com"
+                disabled={Boolean(editingId)}
               />
             </div>
             {emailError && <p className="field-error">{emailError}</p>}
@@ -71,10 +69,10 @@ export default function TeamMemberModal({
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="label-ats">Role</label>
+            <label className="label-ats">Directory role</label>
             <PremiumSelect
               value={formData.role}
-              onChange={(v) => setFormData((p) => ({ ...p, role: v || 'Team Member' }))}
+              onChange={(v) => setFormData((p) => ({ ...p, role: v || 'Hiring Manager' }))}
               options={ROLE_OPTIONS}
               placeholder="Select role"
               icon={Briefcase}
@@ -98,7 +96,7 @@ export default function TeamMemberModal({
           </div>
         </div>
         <div>
-          <label className="label-ats">Phone (Optional)</label>
+          <label className="label-ats">Phone (optional)</label>
           <div className="relative">
             <Phone size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
             <input

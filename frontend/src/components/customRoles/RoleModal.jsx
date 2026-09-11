@@ -10,7 +10,7 @@ import {
 } from '../../config/permissionsCatalog';
 import { emptyForm } from './customRolesConstants';
 
-const RoleModal = ({ open, initial, onClose, onSave, saving, catalog }) => {
+const RoleModal = ({ open, initial, onClose, onSave, saving, catalog, systemMode = false }) => {
   const [form, setForm] = useState(initial || emptyForm);
   const [permFilter, setPermFilter] = useState('');
   const permissionCatalog = catalog?.length ? catalog : FALLBACK_CATALOG;
@@ -18,7 +18,12 @@ const RoleModal = ({ open, initial, onClose, onSave, saving, catalog }) => {
   useEffect(() => {
     if (open) {
       setForm(initial
-        ? { name: initial.name || '', description: initial.description || '', permissions: [...(initial.permissions || [])] }
+        ? {
+          name: initial.name || initial.label || '',
+          description: initial.description || '',
+          permissions: [...(initial.permissions || [])],
+          systemKey: initial.key || initial.systemKey || null,
+        }
         : emptyForm);
       setPermFilter('');
     }
@@ -74,8 +79,14 @@ const RoleModal = ({ open, initial, onClose, onSave, saving, catalog }) => {
     <Modal
       open={open}
       onClose={onClose}
-      title={initial ? 'Edit Role' : 'New Custom Role'}
-      description="Choose sidebar modules and in-app actions this role can use."
+      title={systemMode ? `Edit ${form.name || 'system role'}` : (initial ? 'Edit Role' : 'New Custom Role')}
+      description={
+        systemMode
+          ? (form.systemKey === 'freelancer'
+            ? 'Edits apply to every Freelance Recruiter. Own-desk isolation still applies even if extra modules are enabled.'
+            : 'Changes apply to every teammate with this system role (unless they have a custom pack).')
+          : 'Choose sidebar modules and in-app actions this role can use.'
+      }
       size="xl"
       footer={
         <>
@@ -89,7 +100,7 @@ const RoleModal = ({ open, initial, onClose, onSave, saving, catalog }) => {
             disabled={saving || !form.name.trim()}
             className="btn-primary"
           >
-            {saving ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : 'Save Role'}
+            {saving ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : (systemMode ? 'Save permissions' : 'Save Role')}
           </button>
         </>
       }
@@ -108,7 +119,9 @@ const RoleModal = ({ open, initial, onClose, onSave, saving, catalog }) => {
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 className="input-ats"
                 placeholder="e.g. Senior Recruiter"
-                autoFocus
+                autoFocus={!systemMode}
+                readOnly={systemMode}
+                disabled={systemMode}
               />
             </div>
             <div>
@@ -118,6 +131,8 @@ const RoleModal = ({ open, initial, onClose, onSave, saving, catalog }) => {
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                 className="input-ats"
                 placeholder="Optional — who this role is for"
+                readOnly={systemMode}
+                disabled={systemMode}
               />
             </div>
           </div>

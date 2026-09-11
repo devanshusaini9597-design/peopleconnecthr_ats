@@ -4,6 +4,11 @@ import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
 const toIso = (d) => {
   if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
   const y = d.getFullYear();
@@ -41,14 +46,26 @@ export default function PremiumDatePicker({
   allowClear = true,
   className = '',
   error = false,
+  minDate = '',
+  maxDate = '',
 }) {
   const [open, setOpen] = useState(false);
   const selected = useMemo(() => parseIso(value), [value]);
+  const minBound = useMemo(() => parseIso(minDate), [minDate]);
+  const maxBound = useMemo(() => parseIso(maxDate), [maxDate]);
   const [view, setView] = useState(() => selected || new Date());
   const [menuStyle, setMenuStyle] = useState({});
   const rootRef = useRef(null);
   const menuRef = useRef(null);
   const listId = useId();
+
+  const isDisabledDay = (d) => {
+    if (!(d instanceof Date) || Number.isNaN(d.getTime())) return true;
+    const key = toIso(d);
+    if (minBound && key < toIso(minBound)) return true;
+    if (maxBound && key > toIso(maxBound)) return true;
+    return false;
+  };
 
   useEffect(() => {
     if (open) setView(selected || new Date());
@@ -66,7 +83,7 @@ export default function PremiumDatePicker({
     const gap = 8;
 
     // Fit width to viewport (full-bleed on small phones with side padding)
-    const width = Math.min(Math.max(280, rect.width), vw - pad * 2);
+    const width = Math.min(Math.max(300, rect.width), vw - pad * 2);
     let left = rect.left + (rect.width - width) / 2; // center under trigger when narrower
     if (left + width > vw - pad) left = vw - pad - width;
     if (left < pad) left = pad;
@@ -83,7 +100,7 @@ export default function PremiumDatePicker({
       position: 'fixed',
       left,
       width,
-      zIndex: 230,
+      zIndex: 320,
       maxHeight,
       overflow: 'hidden',
       display: 'flex',
@@ -151,7 +168,22 @@ export default function PremiumDatePicker({
   const monthLabel = view.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const today = new Date();
 
+  const yearOptions = useMemo(() => {
+    const anchor = selected?.getFullYear() ?? view.getFullYear();
+    const start = anchor - 15;
+    return Array.from({ length: 31 }, (_, i) => start + i);
+  }, [selected, view]);
+
+  const setMonth = (monthIndex) => {
+    setView((v) => new Date(v.getFullYear(), Number(monthIndex), 1));
+  };
+
+  const setYear = (year) => {
+    setView((v) => new Date(Number(year), v.getMonth(), 1));
+  };
+
   const pick = (d) => {
+    if (isDisabledDay(d)) return;
     onChange?.(toIso(d));
     setOpen(false);
   };
@@ -171,25 +203,49 @@ export default function PremiumDatePicker({
           style={menuStyle}
           className="rounded-xl border border-stone-200 bg-white shadow-xl shadow-stone-900/10 animate-fade-in flex flex-col overflow-hidden"
         >
-          <div className="px-3.5 py-3 border-b border-stone-100 bg-gradient-to-r from-stone-50 to-white flex items-center justify-between gap-2 flex-shrink-0">
-            <p className="text-sm font-bold text-stone-900 tracking-tight truncate">{monthLabel}</p>
-            <div className="inline-flex items-center gap-1 flex-shrink-0">
-              <button
-                type="button"
-                onClick={() => setView((v) => new Date(v.getFullYear(), v.getMonth() - 1, 1))}
-                className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-brand-300 hover:text-brand-700 transition-colors"
-                aria-label="Previous month"
+          <div className="px-3.5 py-3 border-b border-stone-100 bg-gradient-to-r from-stone-50 to-white flex-shrink-0 space-y-2.5">
+            <div className="flex items-center gap-2">
+              <select
+                aria-label="Select month"
+                value={view.getMonth()}
+                onChange={(e) => setMonth(e.target.value)}
+                className="flex-1 min-w-0 h-9 rounded-lg border border-stone-200 bg-white px-2.5 text-sm font-semibold text-stone-800 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15"
               >
-                <ChevronLeft size={15} strokeWidth={2} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setView((v) => new Date(v.getFullYear(), v.getMonth() + 1, 1))}
-                className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-brand-300 hover:text-brand-700 transition-colors"
-                aria-label="Next month"
+                {MONTH_NAMES.map((name, idx) => (
+                  <option key={name} value={idx}>{name}</option>
+                ))}
+              </select>
+              <select
+                aria-label="Select year"
+                value={view.getFullYear()}
+                onChange={(e) => setYear(e.target.value)}
+                className="w-[5.5rem] flex-shrink-0 h-9 rounded-lg border border-stone-200 bg-white px-2 text-sm font-semibold text-stone-800 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15"
               >
-                <ChevronRight size={15} strokeWidth={2} />
-              </button>
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-stone-500 truncate">{monthLabel}</p>
+              <div className="inline-flex items-center gap-1 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setView((v) => new Date(v.getFullYear(), v.getMonth() - 1, 1))}
+                  className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-brand-300 hover:text-brand-700 transition-colors"
+                  aria-label="Previous month"
+                >
+                  <ChevronLeft size={15} strokeWidth={2} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setView((v) => new Date(v.getFullYear(), v.getMonth() + 1, 1))}
+                  className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-brand-300 hover:text-brand-700 transition-colors"
+                  aria-label="Next month"
+                >
+                  <ChevronRight size={15} strokeWidth={2} />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -205,19 +261,27 @@ export default function PremiumDatePicker({
               {days.map(({ date, outside }) => {
                 const isSelected = sameDay(date, selected);
                 const isToday = sameDay(date, today);
+                const blocked = isDisabledDay(date);
                 return (
                   <button
                     key={`${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`}
                     type="button"
+                    disabled={blocked}
                     onClick={() => pick(date)}
                     className={[
                       'h-9 rounded-lg text-[13px] font-semibold transition-colors',
-                      outside ? 'text-stone-300' : 'text-stone-700',
-                      isSelected
+                      blocked
+                        ? 'text-stone-300 cursor-not-allowed opacity-40'
+                        : outside
+                          ? 'text-stone-300'
+                          : 'text-stone-700',
+                      !blocked && isSelected
                         ? 'bg-gradient-to-br from-brand-600 to-teal-600 text-white shadow-sm shadow-brand-500/25'
-                        : isToday
+                        : !blocked && isToday
                           ? 'bg-brand-50 text-brand-800 ring-1 ring-brand-200'
-                          : 'hover:bg-stone-100',
+                          : !blocked
+                            ? 'hover:bg-stone-100'
+                            : '',
                     ].join(' ')}
                   >
                     {date.getDate()}
@@ -240,7 +304,8 @@ export default function PremiumDatePicker({
             <button
               type="button"
               onClick={() => pick(new Date())}
-              className="h-8 px-3 rounded-md text-xs font-semibold text-brand-700 bg-white border border-brand-200 hover:bg-brand-50 transition-colors"
+              disabled={isDisabledDay(new Date())}
+              className="h-8 px-3 rounded-md text-xs font-semibold text-brand-700 bg-white border border-brand-200 hover:bg-brand-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Today
             </button>
@@ -260,7 +325,7 @@ export default function PremiumDatePicker({
         aria-controls={open ? listId : undefined}
         onClick={() => { if (!disabled) setOpen((v) => !v); }}
         className={[
-          'relative field-premium field-premium-icon w-full flex items-center gap-2 text-left',
+          'relative field-premium field-premium-icon w-full min-h-[42px] flex items-center gap-2 text-left',
           allowClear && value ? 'pr-10' : 'pr-9',
           error ? 'border-red-400 ring-2 ring-red-200' : open ? '!border-brand-500 !ring-2 !ring-brand-500/15 !bg-white' : '',
           disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',

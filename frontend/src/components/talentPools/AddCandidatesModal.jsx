@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Loader2, CheckSquare, Square, UserPlus, Users } from 'lucide-react';
+import { Search, Loader2, CheckSquare, Square, Users } from 'lucide-react';
 import { authenticatedFetch, readApiJson } from '../../utils/fetchUtils';
 import { useToast } from '../Toast';
 import Modal from '../ui/Modal';
@@ -12,32 +12,41 @@ export const AddCandidatesModal = ({ pool, open, onClose, onAdded }) => {
   const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [adding, setAdding] = useState(false);
+  const [suggestedHint, setSuggestedHint] = useState(false);
 
   useEffect(() => {
     if (!open) {
       setQuery('');
       setResults([]);
       setSelected(new Set());
+      setSuggestedHint(false);
     }
   }, [open]);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open || !pool?._id) return undefined;
     const handle = setTimeout(async () => {
-      if (!query.trim()) { setResults([]); return; }
       setSearching(true);
       try {
-        const res = await authenticatedFetch(`/candidates?search=${encodeURIComponent(query.trim())}&limit=15`);
+        const q = query.trim();
+        const res = await authenticatedFetch(
+          `/api/talent-pools/${pool._id}/suggested-candidates?limit=20${q ? `&q=${encodeURIComponent(q)}` : ''}`
+        );
         const data = await readApiJson(res);
-        if (data.success) setResults(data.data || []);
+        if (data.success) {
+          setResults(data.data?.candidates || []);
+          setSuggestedHint(!q && !!data.data?.matchedByIndustry);
+        } else {
+          setResults([]);
+        }
       } catch {
         toast?.error?.('Could not search candidates');
       } finally {
         setSearching(false);
       }
-    }, 350);
+    }, query.trim() ? 350 : 0);
     return () => clearTimeout(handle);
-  }, [query, open, toast]);
+  }, [query, open, pool?._id, toast]);
 
   const toggle = (id) => {
     setSelected((prev) => {
@@ -75,7 +84,7 @@ export const AddCandidatesModal = ({ pool, open, onClose, onAdded }) => {
       open={open}
       onClose={onClose}
       title={`Add candidates to “${pool.name}”`}
-      description="Search and select candidates to keep warm in this pool."
+      description="Suggested people appear first. Search only if you need someone else."
       size="lg"
       footer={(
         <>
@@ -88,16 +97,21 @@ export const AddCandidatesModal = ({ pool, open, onClose, onAdded }) => {
         </>
       )}
     >
-      <div className="relative mb-4">
+      <div className="relative mb-3">
         <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by name, email, or skills…"
+          placeholder="Optional: search by name, email, or skills…"
           className="input-ats input-ats-icon"
           autoFocus
         />
       </div>
+      {!query && suggestedHint && (
+        <p className="text-xs text-stone-500 mb-2">
+          Showing people whose profile looks like {pool.industry || pool.product || pool.name}. Tick names — no extra search needed.
+        </p>
+      )}
       <div className="max-h-72 overflow-y-auto -mx-1 px-1">
         {searching ? (
           <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 text-brand-600 animate-spin" /></div>
@@ -106,8 +120,8 @@ export const AddCandidatesModal = ({ pool, open, onClose, onAdded }) => {
             icon={query ? Search : Users}
             tone={query ? 'amber' : 'brand'}
             compact
-            message={query ? 'No candidates found' : 'Search candidates'}
-            subMessage={query ? 'Try a different name or email.' : 'Start typing to search your candidates.'}
+            message={query ? 'No candidates found' : 'No suggested candidates'}
+            subMessage={query ? 'Try a different name or email.' : 'Type a name to search your full candidate list.'}
           />
         ) : (
           <div className="space-y-0.5 stagger-children">

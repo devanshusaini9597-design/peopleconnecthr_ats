@@ -7,12 +7,14 @@ import {
   currencyForCountry,
 } from '../../data/locales';
 import { dateFormatSelectOptions, buildTimezoneOptions } from './constants';
+import { resolveOrgLogoSrc } from '../../utils/orgLogo';
 
 export default function OrgGeneralTab({
   org,
   setOrg,
   logoInputRef,
   processLogoFile,
+  handleRemoveLogo,
   logoDragging,
   setLogoDragging,
   handleLogoDrop,
@@ -84,7 +86,7 @@ export default function OrgGeneralTab({
               {org.logo ? (
                 <div className="flex flex-col items-center gap-3 w-full">
                   <img
-                    src={org.logo}
+                    src={resolveOrgLogoSrc(org.logo)}
                     alt="Company logo"
                     className="max-h-20 max-w-full object-contain rounded-xl border border-stone-200 bg-white p-2 shadow-sm"
                   />
@@ -94,7 +96,8 @@ export default function OrgGeneralTab({
                     className="text-xs font-semibold text-red-600 hover:text-red-700"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setOrg((prev) => ({ ...prev, logo: '' }));
+                      if (handleRemoveLogo) handleRemoveLogo();
+                      else setOrg((prev) => ({ ...prev, logo: '' }));
                     }}
                   >
                     Remove logo

@@ -1,5 +1,5 @@
 import {
-  Building2, Settings, Users, Briefcase, Shield, Eye, UserCog, ListChecks, Calendar, Globe,
+  Settings, Users, Briefcase, Shield, Eye, UserCog, ListChecks, Calendar, Globe, Handshake, UserPlus,
 } from 'lucide-react';
 import { DATE_FORMAT_OPTIONS, TIMEZONE_OPTIONS } from '../../data/locales';
 
@@ -25,9 +25,11 @@ export const ORG_TOUR_STEPS = [
 
 export const INVITE_ROLE_OPTIONS = [
   { value: 'admin', label: 'Admin', description: 'Full org access', icon: Shield },
-  { value: 'recruiter', label: 'Recruiter', description: 'Hiring workflows', icon: Briefcase },
-  { value: 'interviewer', label: 'Interviewer', description: 'Interview schedule', icon: UserCog },
-  { value: 'readonly', label: 'Read Only', description: 'View-only access', icon: Eye },
+  { value: 'hr_recruiter', label: 'HR Recruiter', description: 'Hiring workflows', icon: Briefcase },
+  { value: 'hr_manager', label: 'HR Manager', description: 'Team & settings', icon: UserCog },
+  { value: 'sales', label: 'Sales', description: 'Candidates & pipeline', icon: Handshake },
+  { value: 'freelancer', label: 'Freelance Recruiter', description: 'Own desk & open mandates (personal email OK)', icon: UserPlus },
+  { value: 'other', label: 'Other', description: 'Limited view access', icon: Eye },
 ];
 
 export const MEMBER_ROLE_OPTIONS = INVITE_ROLE_OPTIONS;
@@ -53,11 +55,51 @@ export const TABS = [
 
 export const ROLE_BADGE = {
   admin: 'badge-danger',
+  hr_recruiter: 'badge-warning',
+  hr_manager: 'badge-info',
+  sales: 'badge-brand',
+  freelancer: 'badge-info',
+  other: 'badge-neutral',
   recruiter: 'badge-warning',
   interviewer: 'badge-info',
   readonly: 'badge-neutral',
   owner: 'badge-brand',
 };
+
+export const ROLE_LABELS = {
+  owner: 'Owner',
+  admin: 'Admin',
+  hr_recruiter: 'HR Recruiter',
+  hr_manager: 'HR Manager',
+  sales: 'Sales',
+  freelancer: 'Freelance Recruiter',
+  other: 'Other',
+  recruiter: 'Recruiter',
+  interviewer: 'Interviewer',
+  readonly: 'Read Only',
+};
+
+const ROLE_ACRONYMS = new Set(['hr', 'sso', 'api', 'spoc', 'ats', 'ceo', 'cto', 'cfo', 'coo']);
+
+/** Display label for system/custom role keys (e.g. hr_manager → HR Manager). */
+export function formatRoleLabel(role) {
+  if (role == null || role === '') return 'Team member';
+  const key = String(role).trim();
+  const mapped = ROLE_LABELS[key.toLowerCase()];
+  if (mapped) return mapped;
+
+  return key
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      const lower = word.toLowerCase();
+      if (ROLE_ACRONYMS.has(lower)) return lower.toUpperCase();
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(' ');
+}
 
 export const dateFormatSelectOptions = DATE_FORMAT_OPTIONS.map((d) => ({ ...d, icon: Calendar }));
 

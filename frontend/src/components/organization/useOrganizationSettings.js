@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import API_URL from '../../config';
 import usePageTour from '../../hooks/usePageTour';
 import { useToast } from '../Toast';
+import { useAuth } from '../../context/AuthContext';
 import {
   detectBrowserTimezone,
   countryForCurrency,
@@ -12,6 +13,7 @@ import { ORG_TOUR_KEY } from './constants';
 export default function useOrganizationSettings() {
   const toast = useToast();
   const navigate = useNavigate();
+  const { updateOrganization } = useAuth();
   const logoInputRef = useRef(null);
   const [tourOpen, setTourOpen] = usePageTour(ORG_TOUR_KEY);
   const [activeTab, setActiveTab] = useState('general');
@@ -21,6 +23,12 @@ export default function useOrganizationSettings() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [newStage, setNewStage] = useState('');
   const [dragIndex, setDragIndex] = useState(null);
+  const [pipelineBusy, setPipelineBusy] = useState(false);
+  const [renameTarget, setRenameTarget] = useState(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [mergeTarget, setMergeTarget] = useState(null);
+  const [mergePartner, setMergePartner] = useState('');
+  const [mergeName, setMergeName] = useState('');
   const [inviting, setInviting] = useState(false);
   const [removeTarget, setRemoveTarget] = useState(null);
   const [removing, setRemoving] = useState(false);
@@ -48,9 +56,18 @@ export default function useOrganizationSettings() {
 
   const [members, setMembers] = useState([]);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState('recruiter');
+  const [inviteRole, setInviteRole] = useState('hr_recruiter');
   const [inviteCustomRoleId, setInviteCustomRoleId] = useState('');
+  const [inviteReportsTo, setInviteReportsTo] = useState('');
   const [customRoleUpdatingId, setCustomRoleUpdatingId] = useState(null);
+  const [reportsToUpdatingId, setReportsToUpdatingId] = useState(null);
+  /** Last invite share panel: { email, inviteUrl, emailSent, emailError, userId } */
+  const [lastInviteShare, setLastInviteShare] = useState(null);
+  const [resetTarget, setResetTarget] = useState(null);
+  const [resetting, setResetting] = useState(false);
+  const [resetResult, setResetResult] = useState(null);
+  const [inviteShare, setInviteShare] = useState(null);
+  const [inviteLinkLoadingId, setInviteLinkLoadingId] = useState(null);
 
   const patchAts = (patch) => {
     setOrg((prev) => ({
@@ -77,6 +94,11 @@ export default function useOrganizationSettings() {
       toast.error('Keep at least one pipeline stage');
       return;
     }
+    const target = stages[index];
+    if (String(target || '').trim().toLowerCase() === 'rejected') {
+      toast.error('Rejected stays on the pipeline so reports keep that stage');
+      return;
+    }
     patchAts({ pipelineStages: stages.filter((_, i) => i !== index) });
   };
 
@@ -87,6 +109,97 @@ export default function useOrganizationSettings() {
     const [item] = stages.splice(from, 1);
     stages.splice(to, 0, item);
     patchAts({ pipelineStages: stages });
+  };
+
+  const applyPipelineStages = (stages) => {
+    patchAts({ pipelineStages: stages });
+  };
+
+  const handleRenamePipelineStage = async () => {
+    const oldName = renameTarget;
+    const newName = renameDraft.trim();
+    if (!oldName || !newName) {
+      toast.error('Enter a stage name');
+      return;
+    }
+    if (oldName.toLowerCase() === newName.toLowerCase()) {
+      setRenameTarget(null);
+      return;
+    }
+    setPipelineBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/organization/pipeline/rename`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ oldName, newName }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.message || 'Failed to rename stage');
+      }
+      applyPipelineStages(data.data?.stages || []);
+      const n = data.data?.candidatesUpdated || 0;
+      toast.success(n > 0 ? `Stage renamed — ${n} candidate${n === 1 ? '' : 's'} updated` : 'Stage renamed');
+      setRenameTarget(null);
+      setRenameDraft('');
+    } catch (err) {
+      toast.error(err.message || 'Failed to rename stage');
+    } finally {
+      setPipelineBusy(false);
+    }
+  };
+
+  const handleMergePipelineStages = async () => {
+    const first = mergeTarget;
+    const second = mergePartner;
+    const newName = mergeName.trim();
+    if (!first || !second) {
+      toast.error('Select two stages to merge');
+      return;
+    }
+    if (!newName) {
+      toast.error('Enter a name for the merged stage');
+      return;
+    }
+    if (first.toLowerCase() === second.toLowerCase()) {
+      toast.error('Select two different stages');
+      return;
+    }
+    setPipelineBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/organization/pipeline/merge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ sourceNames: [first, second], newName }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.message || 'Failed to merge stages');
+      }
+      applyPipelineStages(data.data?.stages || []);
+      const n = data.data?.candidatesUpdated || 0;
+      toast.success(n > 0 ? `Stages merged — ${n} candidate${n === 1 ? '' : 's'} combined` : 'Stages merged');
+      setMergeTarget(null);
+      setMergePartner('');
+      setMergeName('');
+    } catch (err) {
+      toast.error(err.message || 'Failed to merge stages');
+    } finally {
+      setPipelineBusy(false);
+    }
+  };
+
+  const openRenameStage = (stage) => {
+    setRenameTarget(stage);
+    setRenameDraft(stage);
+  };
+
+  const openMergeStage = (stage) => {
+    setMergeTarget(stage);
+    setMergePartner('');
+    setMergeName(stage);
   };
 
   useEffect(() => {
@@ -109,6 +222,13 @@ export default function useOrganizationSettings() {
     const ats = payload?.atsSettings || {};
     const currency = settings.currency || payload?.currency || 'USD';
     const timezone = settings.timezone || payload?.timezone || detectBrowserTimezone();
+    const pipelineStages = Array.isArray(ats.pipelineStages) && ats.pipelineStages.length
+      ? [...ats.pipelineStages]
+      : ['Sourced', 'Applied', 'Phone Screen', 'Interview', 'Offer', 'Hired'];
+    // Keep Rejected visible in org pipeline + dashboard (do not invent other stages)
+    if (!pipelineStages.some((s) => String(s || '').trim().toLowerCase() === 'rejected')) {
+      pipelineStages.push('Rejected');
+    }
     return {
       name: payload?.name || '',
       domain: payload?.domain || '',
@@ -118,7 +238,7 @@ export default function useOrganizationSettings() {
       country: countryForCurrency(currency) || 'US',
       dateFormat: settings.dateFormat || payload?.dateFormat || 'MM/DD/YYYY',
       atsSettings: {
-        pipelineStages: ats.pipelineStages || ['Sourced', 'Applied', 'Phone Screen', 'Interview', 'Offer', 'Hired'],
+        pipelineStages,
         defaultSources: ats.defaultSources || ['LinkedIn', 'Indeed', 'Company Website', 'Referral'],
         careersPageEnabled: ats.careersPageEnabled ?? ats.enableCareersPage ?? false,
         careersPageTitle: ats.careersPageTitle || 'Join Our Team',
@@ -186,6 +306,11 @@ export default function useOrganizationSettings() {
     }
   };
 
+  const applyOrgIdentity = (patch) => {
+    updateOrganization(patch);
+    window.dispatchEvent(new CustomEvent('orgDataUpdated', { detail: patch }));
+  };
+
   const processLogoFile = (file) => {
     if (!file) return;
     const okType = /image\/(svg\+xml|png|jpe?g|gif|webp)/i.test(file.type)
@@ -199,12 +324,43 @@ export default function useOrganizationSettings() {
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => {
-      setOrg((prev) => ({ ...prev, logo: String(reader.result || '') }));
-      toast.success('Logo ready — click Save Changes to apply');
+    reader.onload = async () => {
+      const preview = String(reader.result || '');
+      if (preview) {
+        setOrg((prev) => ({ ...prev, logo: preview }));
+        applyOrgIdentity({ logo: preview });
+      }
+      try {
+        const form = new FormData();
+        form.append('logo', file);
+        const res = await fetch(`${API_URL}/api/organization/logo`, {
+          method: 'PUT',
+          credentials: 'include',
+          body: form,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || 'Failed to upload logo');
+        const logo = data.logo || data.data?.logo || preview;
+        setOrg((prev) => ({ ...prev, logo }));
+        applyOrgIdentity({ logo });
+        toast.success('Logo updated');
+      } catch (err) {
+        toast.success('Logo ready — click Save Changes to apply');
+      }
     };
     reader.onerror = () => toast.error('Failed to read logo file');
     reader.readAsDataURL(file);
+  };
+
+  const handleRemoveLogo = async () => {
+    setOrg((prev) => ({ ...prev, logo: '' }));
+    applyOrgIdentity({ logo: '' });
+    try {
+      await fetch(`${API_URL}/api/organization/logo`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+    } catch { /* local preview already cleared */ }
   };
 
   const handleLogoDrop = (e) => {
@@ -251,20 +407,32 @@ export default function useOrganizationSettings() {
         body: JSON.stringify(body)
       });
       if (!res.ok) throw new Error('Failed to save settings');
-      try {
-        const existing = JSON.parse(localStorage.getItem('orgData') || '{}');
-        localStorage.setItem('orgData', JSON.stringify({
-          ...existing,
-          name: org.name || existing.name,
-          logo: org.logo || existing.logo || null,
-        }));
-        window.dispatchEvent(new Event('orgDataUpdated'));
-      } catch { /* ignore */ }
+      const saved = await res.json().catch(() => ({}));
+      const savedOrg = saved?.data || {};
+      const identity = {
+        name: savedOrg.name || org.name,
+        logo: savedOrg.logo !== undefined ? savedOrg.logo : org.logo,
+        domain: savedOrg.domain !== undefined ? savedOrg.domain : org.domain,
+      };
+      setOrg((prev) => ({ ...prev, name: identity.name, logo: identity.logo, domain: identity.domain }));
+      applyOrgIdentity(identity);
       toast.success('Settings saved successfully');
     } catch (err) {
       toast.error(err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const copyInviteLink = async (url) => {
+    if (!url) return false;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Invite link copied');
+      return true;
+    } catch {
+      toast.error('Could not copy — select the link and copy manually');
+      return false;
     }
   };
 
@@ -287,20 +455,86 @@ export default function useOrganizationSettings() {
           email,
           role: inviteRole,
           customRoleId: inviteCustomRoleId || null,
+          reportsTo: inviteReportsTo || null,
         })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.success === false) {
         throw new Error(data.message || 'Failed to send invite');
       }
-      toast.success(`Invitation sent to ${email}`);
+
+      const share = {
+        email: data.email || email,
+        inviteUrl: data.inviteUrl || '',
+        emailSent: data.emailSent !== false,
+        emailError: data.emailError || null,
+        userId: data.userId || null,
+      };
+      setLastInviteShare(share.inviteUrl ? share : null);
+
+      if (data.emailSent === false) {
+        toast.warning('Invite created — email could not be sent. Share the link below.');
+      } else {
+        toast.success(`Invitation sent to ${email}`);
+      }
       setInviteEmail('');
       setInviteCustomRoleId('');
+      setInviteReportsTo('');
       fetchMembers();
     } catch (err) {
       toast.error(err.message || 'Failed to send invite');
     } finally {
       setInviting(false);
+    }
+  };
+
+  const handleGetMemberInviteLink = async (memberId) => {
+    if (!memberId) return;
+    setInviteLinkLoadingId(memberId);
+    try {
+      const res = await fetch(`${API_URL}/api/organization/members/${memberId}/invite-link`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.message || 'Could not get invite link');
+      }
+      const payload = data.data || {};
+      setInviteShare({
+        email: payload.email || '',
+        name: payload.name || '',
+        inviteUrl: payload.inviteUrl || '',
+      });
+      if (!payload.inviteUrl) {
+        toast.error('No invitation link is available for this person.');
+      }
+    } catch (err) {
+      toast.error(err.message || 'Could not get invite link');
+    } finally {
+      setInviteLinkLoadingId(null);
+    }
+  };
+
+  const handleChangeMemberReportsTo = async (memberId, reportsTo) => {
+    setReportsToUpdatingId(memberId);
+    try {
+      const res = await fetch(`${API_URL}/api/organization/members/${memberId}/reports-to`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ reportsTo: reportsTo || null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.message || 'Failed to update reporting line');
+      }
+      toast.success(reportsTo ? 'Reporting line updated' : 'Reporting line cleared');
+      fetchMembers();
+    } catch (err) {
+      toast.error(err.message || 'Failed to update reporting line');
+    } finally {
+      setReportsToUpdatingId(null);
     }
   };
 
@@ -351,6 +585,47 @@ export default function useOrganizationSettings() {
     } finally {
       setCustomRoleUpdatingId(null);
     }
+  };
+
+  const handleResetMemberPassword = async () => {
+    if (!resetTarget?._id) return;
+    setResetting(true);
+    try {
+      const res = await fetch(`${API_URL}/api/organization/members/${resetTarget._id}/reset-password`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.message || 'Failed to reset password');
+      }
+      const payload = data.data || null;
+      setResetTarget(null);
+      setResetResult(payload);
+      if (payload?.emailSent) {
+        toast.success(`Temporary password emailed to ${payload.email}`);
+      } else {
+        toast.success('Temporary password created. Email could not be sent — share it privately.');
+      }
+    } catch (err) {
+      toast.error(err.message || 'Failed to reset password');
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const handleResendTemporaryPassword = async ({ userId, temporaryPassword }) => {
+    const res = await fetch(`${API_URL}/api/organization/members/${userId}/resend-temporary-password`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ temporaryPassword }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) {
+      throw new Error(data.message || 'Failed to send email');
+    }
+    return data.data;
   };
 
   const handleRemoveMember = async () => {
@@ -414,18 +689,52 @@ export default function useOrganizationSettings() {
     setInviteRole,
     inviteCustomRoleId,
     setInviteCustomRoleId,
+    inviteReportsTo,
+    setInviteReportsTo,
     customRoleUpdatingId,
+    reportsToUpdatingId,
+    lastInviteShare,
+    setLastInviteShare,
+    inviteLinkLoadingId,
+    copyInviteLink,
+    handleGetMemberInviteLink,
     addPipelineStage,
     removePipelineStage,
     movePipelineStage,
+    pipelineBusy,
+    renameTarget,
+    setRenameTarget,
+    renameDraft,
+    setRenameDraft,
+    mergeTarget,
+    setMergeTarget,
+    mergePartner,
+    setMergePartner,
+    mergeName,
+    setMergeName,
+    openRenameStage,
+    openMergeStage,
+    handleRenamePipelineStage,
+    handleMergePipelineStages,
     fetchOrgData,
     processLogoFile,
+    handleRemoveLogo,
     handleLogoDrop,
     handleSave,
     handleInvite,
     handleChangeMemberRole,
     handleChangeMemberCustomRole,
+    handleChangeMemberReportsTo,
     handleRemoveMember,
+    resetTarget,
+    setResetTarget,
+    resetting,
+    resetResult,
+    setResetResult,
+    inviteShare,
+    setInviteShare,
+    handleResetMemberPassword,
+    handleResendTemporaryPassword,
     applyDetectedTimezone,
   };
 }

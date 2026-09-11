@@ -7,5 +7,11 @@ export const STEPS = [
   { id: 4, name: 'All Set', icon: Check }
 ];
 
-export const ROLES = ['Admin', 'Recruiter', 'Interviewer', 'Read-only'];
+export const ROLES = [
+  { value: 'admin', label: 'Admin' },
+  { value: 'hr_recruiter', label: 'HR Recruiter' },
+  { value: 'hr_manager', label: 'HR Manager' },
+  { value: 'sales', label: 'Sales' },
+  { value: 'other', label: 'Other' },
+];
 export const EMP_TYPES = ['Full-time', 'Part-time', 'Contract', 'Internship'];

@@ -86,28 +86,195 @@ class NodeCanvasFactory {
   }
 }
 
-async function renderPdfPageToImage(pdfDoc, pageNum) {
-  if (!napiCanvas) return null;
+/** Resolve a pdf.js page image object by name. */
+function getPageImageObject(page, name) {
+  return new Promise((resolve) => {
+    try {
+      page.objs.get(name, (img) => resolve(img || null));
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/** Convert pdf.js image data (RGB/RGBA/Gray) into a PNG buffer via napi canvas. */
+function pdfImageToPngBuffer(img) {
+  if (!napiCanvas || !img?.data || !img.width || !img.height) return null;
+  const w = img.width;
+  const h = img.height;
+  const src = img.data;
+  const canvas = napiCanvas.createCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  const imageData = ctx.createImageData(w, h);
+  const rgba = imageData.data;
+  const expectRGB = w * h * 3;
+  const expectRGBA = w * h * 4;
+  const expectGray = w * h;
+
+  if (src.length === expectRGBA || img.kind === 3) {
+    rgba.set(src.length === expectRGBA ? src : src.subarray(0, expectRGBA));
+  } else if (src.length === expectRGB || img.kind === 2) {
+    for (let i = 0, j = 0; i < expectRGB; i += 3, j += 4) {
+      rgba[j] = src[i];
+      rgba[j + 1] = src[i + 1];
+      rgba[j + 2] = src[i + 2];
+      rgba[j + 3] = 255;
+    }
+  } else if (src.length === expectGray || img.kind === 1) {
+    for (let i = 0, j = 0; i < expectGray; i += 1, j += 4) {
+      const v = src[i];
+      rgba[j] = v;
+      rgba[j + 1] = v;
+      rgba[j + 2] = v;
+      rgba[j + 3] = 255;
+    }
+  } else {
+    logger.warn(`⚠️ Unsupported PDF image layout: kind=${img.kind} len=${src.length} ${w}x${h}`);
+    return null;
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  return canvas.toBuffer('image/png');
+}
+
+/**
+ * Upscale + optional binarize — enterprise OCR accuracy depends on this more
+ * than on Tesseract settings. Scanned resumes often need 2x+ and thresholding
+ * so emails/names aren't mangled into garbage like "@Emateany".
+ */
+async function preprocessPngForOcr(pngBuffer, opts = {}) {
+  if (!napiCanvas || !pngBuffer) return pngBuffer;
+  const scale = opts.scale ?? 2;
+  const threshold = opts.threshold; // undefined = no binarize
+  try {
+    const img = await napiCanvas.loadImage(pngBuffer);
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = napiCanvas.createCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    if (Number.isFinite(threshold)) {
+      const out = ctx.getImageData(0, 0, w, h);
+      for (let i = 0; i < out.data.length; i += 4) {
+        const g = 0.299 * out.data[i] + 0.587 * out.data[i + 1] + 0.114 * out.data[i + 2];
+        const v = g < threshold ? 0 : 255;
+        out.data[i] = out.data[i + 1] = out.data[i + 2] = v;
+        out.data[i + 3] = 255;
+      }
+      ctx.putImageData(out, 0, 0);
+    }
+    return canvas.toBuffer('image/png');
+  } catch (err) {
+    logger.warn('⚠️ OCR preprocess failed:', err.message);
+    return pngBuffer;
+  }
+}
+
+/** Crop a relative region of a PNG (x/y/w/h as 0–1 fractions), then preprocess. */
+async function cropPngRegionForOcr(pngBuffer, crop, opts = {}) {
+  if (!napiCanvas || !pngBuffer) return null;
+  try {
+    const img = await napiCanvas.loadImage(pngBuffer);
+    const sx = Math.max(0, Math.floor(crop.x * img.width));
+    const sy = Math.max(0, Math.floor(crop.y * img.height));
+    const sw = Math.max(1, Math.min(img.width - sx, Math.floor(crop.w * img.width)));
+    const sh = Math.max(1, Math.min(img.height - sy, Math.floor(crop.h * img.height)));
+    const scale = opts.scale ?? 2.5;
+    const cw = Math.round(sw * scale);
+    const ch = Math.round(sh * scale);
+    const canvas = napiCanvas.createCanvas(cw, ch);
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, cw, ch);
+    const threshold = opts.threshold ?? 150;
+    if (Number.isFinite(threshold)) {
+      const out = ctx.getImageData(0, 0, cw, ch);
+      for (let i = 0; i < out.data.length; i += 4) {
+        const g = 0.299 * out.data[i] + 0.587 * out.data[i + 1] + 0.114 * out.data[i + 2];
+        const v = g < threshold ? 0 : 255;
+        out.data[i] = out.data[i + 1] = out.data[i + 2] = v;
+        out.data[i + 3] = 255;
+      }
+      ctx.putImageData(out, 0, 0);
+    }
+    return canvas.toBuffer('image/png');
+  } catch (err) {
+    logger.warn('⚠️ OCR crop failed:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Best path for scanned resumes: extract embedded page images (JPEG/DCT)
+ * because pdf.js page.render often paints a blank canvas under @napi-rs/canvas.
+ */
+async function extractPdfPageImages(pdfDoc, pageNum) {
+  if (!pdfjsLib || !napiCanvas) return [];
   try {
     const page = await pdfDoc.getPage(pageNum);
-    const viewport = page.getViewport({ scale: 2.0 }); // 2x for quality OCR
+    const ops = await page.getOperatorList();
+    const OPS = pdfjsLib.OPS || {};
+    const paintOps = new Set([
+      OPS.paintImageXObject,
+      OPS.paintInlineImageXObject,
+      OPS.paintImageMaskXObject,
+      OPS.paintJpegXObject,
+    ].filter(Boolean));
+
+    const pngs = [];
+    const seen = new Set();
+    for (let i = 0; i < ops.fnArray.length; i += 1) {
+      if (!paintOps.has(ops.fnArray[i])) continue;
+      const args = ops.argsArray[i] || [];
+      const name = args[0];
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      const img = await getPageImageObject(page, name);
+      const png = pdfImageToPngBuffer(img);
+      if (png && png.length > 2000) {
+        pngs.push(png);
+        logger.info(`   📸 Page ${pageNum} embedded image “${name}”: ${png.length} bytes PNG (${img.width}x${img.height})`);
+      }
+    }
+    return pngs;
+  } catch (err) {
+    logger.warn(`⚠️ Failed extracting images from PDF page ${pageNum}:`, err.message);
+    return [];
+  }
+}
+
+async function renderPdfPageToImage(pdfDoc, pageNum, scale = 2.0) {
+  if (!napiCanvas) return null;
+  try {
+    // Prefer embedded scan images — reliable OCR source for image-only PDFs
+    const embedded = await extractPdfPageImages(pdfDoc, pageNum);
+    if (embedded.length) {
+      // Largest image is usually the full-page scan
+      return embedded.sort((a, b) => b.length - a.length)[0];
+    }
+
+    const page = await pdfDoc.getPage(pageNum);
+    const viewport = page.getViewport({ scale });
     const canvas = napiCanvas.createCanvas(viewport.width, viewport.height);
     const ctx = canvas.getContext('2d');
 
-    // Fill white background (scanned PDFs may have transparent bg)
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, viewport.width, viewport.height);
 
-    // pdfjs-dist render needs a canvas-compatible context + canvasFactory
     await page.render({
       canvasContext: ctx,
-      viewport: viewport,
-      canvasFactory: napiCanvas ? new NodeCanvasFactory() : undefined
+      viewport,
+      canvasFactory: new NodeCanvasFactory(),
+      intent: 'display',
     }).promise;
 
-    // Export as PNG buffer
     const pngBuffer = canvas.toBuffer('image/png');
-    logger.info(`   📸 Page ${pageNum} rendered: ${pngBuffer.length} bytes PNG (${Math.round(viewport.width)}x${Math.round(viewport.height)})`);
+    logger.info(`   📸 Page ${pageNum} canvas render: ${pngBuffer.length} bytes PNG (${Math.round(viewport.width)}x${Math.round(viewport.height)})`);
     return pngBuffer;
   } catch (err) {
     logger.warn(`⚠️ Failed to render PDF page ${pageNum}:`, err.message);
@@ -115,10 +282,39 @@ async function renderPdfPageToImage(pdfDoc, pageNum) {
   }
 }
 
+function ocrEnabled() {
+  // Default ON — enterprise parsing must handle scanned resumes in production too.
+  // Set RESUME_OCR_ENABLED=false to disable (e.g. very constrained hosts).
+  const flag = String(process.env.RESUME_OCR_ENABLED || 'true').toLowerCase();
+  return flag !== '0' && flag !== 'false' && flag !== 'off' && flag !== 'no';
+}
+
+function ocrMaxPages() {
+  const n = parseInt(process.env.RESUME_OCR_MAX_PAGES || '2', 10);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 5) : 2;
+}
+
+function ocrTimeoutMs() {
+  const n = parseInt(process.env.RESUME_OCR_TIMEOUT_MS || '90000', 10);
+  return Number.isFinite(n) && n >= 15000 ? n : 90000;
+}
+
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 // ─── Enterprise OCR Pipeline via tesseract.js ───
 async function ocrPdfBuffer(buffer) {
   if (!Tesseract) {
     logger.warn('⚠️ OCR not available (tesseract.js not installed)');
+    return '';
+  }
+  if (!ocrEnabled()) {
+    logger.warn('⚠️ OCR disabled via RESUME_OCR_ENABLED');
     return '';
   }
   try {
@@ -137,48 +333,95 @@ async function ocrPdfBuffer(buffer) {
         data: uint8,
         canvasFactory: napiCanvas ? new NodeCanvasFactory() : undefined
       }).promise;
-      const numPages = Math.min(pdfDoc.numPages, 5); // Limit to first 5 pages
+      const numPages = Math.min(pdfDoc.numPages, ocrMaxPages());
       let allText = '';
 
       const worker = await Tesseract.createWorker('eng', 1, {
         errorHandler: (err) => {
-          logger.warn('⚠️ Tesseract worker error (handled):', err.message);
+          logger.warn('⚠️ Tesseract worker error (handled):', err?.message || err);
         }
       });
 
-      for (let i = 1; i <= numPages; i++) {
-        logger.info(`📄 Processing page ${i}/${numPages}...`);
-        const imgBuffer = await renderPdfPageToImage(pdfDoc, i);
-        if (imgBuffer) {
-          const { data } = await worker.recognize(imgBuffer);
-          allText += (data.text || '') + '\n';
-          logger.info(`   → Page ${i}: ${data.text.length} chars`);
+      try {
+        // Sparse-text / column layouts (Indian resume sidebars) OCR better with PSM 4/6
+        await worker.setParameters({ tessedit_pageseg_mode: '6' }).catch(() => {});
+
+        for (let i = 1; i <= numPages; i++) {
+          logger.info(`📄 OCR page ${i}/${numPages}...`);
+          const imgBuffer = await renderPdfPageToImage(pdfDoc, i, 1.5);
+          if (!imgBuffer) continue;
+
+          // Full-page pass: upscale + binarize (raw scans often lose email/@ otherwise)
+          const fullPre = await preprocessPngForOcr(imgBuffer, { scale: 2, threshold: 155 });
+          const { data: fullData } = await worker.recognize(fullPre);
+          let pageText = fullData.text || '';
+
+          // Page 1 contact/name regions — enterprise pattern: zoom the sidebar + header
+          if (i === 1) {
+            const regions = [
+              { label: 'header', crop: { x: 0, y: 0, w: 1, h: 0.14 }, scale: 2.5, threshold: 160, psm: '6' },
+              // Left personal-details column (phone / email)
+              { label: 'left-contact', crop: { x: 0, y: 0.18, w: 0.45, h: 0.42 }, scale: 2.5, threshold: 150, psm: '4' },
+              // Right top (alternate layout)
+              { label: 'right-contact', crop: { x: 0.55, y: 0.05, w: 0.45, h: 0.35 }, scale: 2.5, threshold: 150, psm: '6' },
+            ];
+            let regionText = '';
+            for (const region of regions) {
+              const cropped = await cropPngRegionForOcr(imgBuffer, region.crop, {
+                scale: region.scale,
+                threshold: region.threshold,
+              });
+              if (!cropped) continue;
+              try {
+                await worker.setParameters({ tessedit_pageseg_mode: region.psm }).catch(() => {});
+                const { data: rData } = await worker.recognize(cropped);
+                const t = (rData.text || '').trim();
+                if (t.length >= 3) {
+                  regionText += `\n${t}\n`;
+                  logger.info(`   → Region ${region.label}: ${t.length} chars`);
+                }
+              } catch (regErr) {
+                logger.warn(`   ⚠️ Region ${region.label} OCR failed:`, regErr.message);
+              }
+            }
+            await worker.setParameters({ tessedit_pageseg_mode: '6' }).catch(() => {});
+            // Put high-zoom contact text FIRST so email/name regex hit the clean copy
+            pageText = `${regionText}\n${pageText}`;
+          }
+
+          allText += `${pageText}\n`;
+          logger.info(`   → Page ${i}: ${pageText.length} chars (incl. regions)`);
+
+          const hasRealEmail = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/.test(pageText);
+          const hasPhone = /(?<!\d)[6-9]\d{9}(?!\d)/.test(pageText) || /\+91/.test(pageText);
+          if (i === 1 && hasRealEmail && hasPhone && numPages > 1) {
+            logger.info('   → Page 1 has email + phone; skipping remaining pages for speed');
+            break;
+          }
         }
+      } finally {
+        await worker.terminate().catch(() => {});
       }
 
-      await worker.terminate();
-      logger.info(`✅ OCR complete: extracted ${allText.length} characters from ${numPages} pages`);
+      logger.info(`✅ OCR complete: extracted ${allText.length} characters from up to ${numPages} pages`);
       return allText.trim();
     }
 
     // For image buffers, run OCR directly
     logger.info('🔍 Starting OCR on image buffer...');
     const worker = await Tesseract.createWorker('eng', 1, {
-      logger: m => {
-        if (m.status === 'recognizing text') {
-          process.stdout.write(`\r🔍 OCR Progress: ${Math.round(m.progress * 100)}%`);
-        }
-      },
       errorHandler: (err) => {
-        logger.warn('⚠️ Tesseract worker error (handled):', err.message);
+        logger.warn('⚠️ Tesseract worker error (handled):', err?.message || err);
       }
     });
-
-    const { data } = await worker.recognize(buffer);
-    await worker.terminate();
-
-    logger.info(`\n✅ OCR complete: extracted ${data.text.length} characters`);
-    return data.text || '';
+    try {
+      const pre = await preprocessPngForOcr(buffer, { scale: 2, threshold: 155 });
+      const { data } = await worker.recognize(pre);
+      logger.info(`✅ OCR complete: extracted ${(data.text || '').length} characters`);
+      return data.text || '';
+    } finally {
+      await worker.terminate().catch(() => {});
+    }
   } catch (err) {
     logger.warn('⚠️ OCR failed:', err.message);
     return '';
@@ -187,14 +430,17 @@ async function ocrPdfBuffer(buffer) {
 
 // ─── Enterprise OCR for image files ───
 async function ocrImageBuffer(buffer) {
-  if (!Tesseract) return '';
+  if (!Tesseract || !ocrEnabled()) return '';
   try {
     logger.info('🔍 Running OCR on image...');
     const worker = await Tesseract.createWorker('eng');
-    const { data } = await worker.recognize(buffer);
-    await worker.terminate();
-    logger.info(`✅ Image OCR complete: ${data.text.length} characters`);
-    return data.text || '';
+    try {
+      const { data } = await worker.recognize(buffer);
+      logger.info(`✅ Image OCR complete: ${(data.text || '').length} characters`);
+      return data.text || '';
+    } finally {
+      await worker.terminate().catch(() => {});
+    }
   } catch (err) {
     logger.warn('⚠️ Image OCR failed:', err.message);
     return '';
@@ -270,7 +516,7 @@ const LOCATION_KEYWORDS = {
     'bhatpara', 'panihati', 'latur', 'dhule', 'rohtak', 'korba', 'bhilwara', 'berhampur',
     'muzaffarnagar', 'ahmednagar', 'mathura', 'kollam', 'avadi', 'kadapa', 'kamarhati',
     'sambalpur', 'bilaspur', 'shahjahanpur', 'satara', 'bijapur', 'rampur', 'shoranur',
-    'aligarh', 'nadiad', 'secunderabad', 'puri', 'hosur', 'pondicherry'
+    'aligarh', 'nadiad', 'secunderabad', 'puri', 'hosur', 'pondicherry', 'karur', 'erode', 'vellore'
   ],
   states: [
     'andhra pradesh', 'arunachal pradesh', 'assam', 'bihar', 'chhattisgarh', 'goa',
@@ -399,7 +645,8 @@ function cleanOcrText(text) {
   const KNOWN_WORDS = ['UNIVERSITY', 'COLLEGE', 'INSTITUTE', 'SCHOOL', 'EDUCATION', 'EXPERIENCE',
     'SKILLS', 'CONTACT', 'SUMMARY', 'OBJECTIVE', 'CERTIFICATION', 'ACHIEVEMENT',
     'DEPARTMENT', 'MANAGEMENT', 'DEVELOPMENT', 'ENGINEERING', 'TECHNOLOGY',
-    'BACHELOR', 'MASTER', 'DIPLOMA', 'DEGREE', 'COMMERCE', 'SCIENCE', 'ARTS'];
+    'BACHELOR', 'MASTER', 'DIPLOMA', 'DEGREE', 'COMMERCE', 'SCIENCE', 'ARTS',
+    'PERSONAL', 'DETAILS', 'ADDRESS', 'PHONE', 'EMAIL', 'GENDER', 'CAREER'];
   for (const word of KNOWN_WORDS) {
     // Add space before known word if preceded by other letters without space
     const regex = new RegExp(`([A-Za-z])${word}`, 'g');
@@ -408,9 +655,95 @@ function cleanOcrText(text) {
     const regex2 = new RegExp(`${word}([A-Za-z])`, 'g');
     cleaned = cleaned.replace(regex2, `${word} $1`);
   }
+  // Repair spaced OCR emails: "name @ gmail . com" → "name@gmail.com"
+  cleaned = cleaned.replace(
+    /([a-zA-Z0-9._%+-]+)\s*@\s*([a-zA-Z0-9.-]+)\s*\.\s*([a-zA-Z]{2,})/g,
+    '$1@$2.$3'
+  );
   // Fix common OCR artifacts: multiple spaces, stray punctuation
   cleaned = cleaned.replace(/\s{3,}/g, '  ');
   return cleaned;
+}
+
+/** Title-case a name token; keep single-letter initials as "P". */
+function titleCaseNamePart(w) {
+  if (!w) return '';
+  if (w.length === 1) return w.toUpperCase();
+  return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+}
+
+/**
+ * OCR often glues an initial onto the surname: "KARTHIKP" → "Karthik P".
+ * Also strips short garbage prefixes ("Ca", "f", "Po") from header OCR noise.
+ */
+function normalizeOcrNameCandidate(raw, emailLocal = '') {
+  if (!raw) return '';
+  let s = String(raw).replace(/[^A-Za-z.\s'-]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+
+  // Drop tiny OCR junk tokens at the start
+  let parts = s.split(/\s+/).filter(Boolean);
+  while (parts.length && (parts[0].length <= 2 && !/^[A-Z]\.?$/i.test(parts[0]))) {
+    parts.shift();
+  }
+  if (!parts.length) return '';
+
+  // Split glued ALLCAPS + trailing initial: KARTHIKP / RAJKUMARS
+  parts = parts.flatMap((p) => {
+    if (/^[A-Z]{5,}[A-Z]$/.test(p)) {
+      return [p.slice(0, -1), p.slice(-1)];
+    }
+    // Also: KarthikP
+    if (/^[A-Z][a-z]{3,}[A-Z]$/.test(p)) {
+      return [p.slice(0, -1), p.slice(-1)];
+    }
+    return [p];
+  });
+
+  // If still one long ALLCAPS token and email has a matching first name, split using email
+  if (parts.length === 1 && emailLocal) {
+    const word = parts[0];
+    const emailBits = emailLocal.replace(/[0-9_]+/g, '').toLowerCase().split(/[.\-_]+/).filter((b) => b.length >= 3);
+    const lower = word.toLowerCase();
+    for (const bit of emailBits) {
+      const idx = lower.indexOf(bit);
+      if (idx === 0 && bit.length >= 4 && word.length > bit.length + 0) {
+        const rest = word.slice(bit.length);
+        if (rest.length === 1 || (rest.length >= 2 && rest.length <= 12)) {
+          parts = rest.length === 1 ? [bit, rest] : [bit, rest];
+          break;
+        }
+      }
+      // bit appears as whole word match inside: karthik in KARTHIKP
+      if (lower.startsWith(bit) && word.length === bit.length + 1) {
+        parts = [bit, word.slice(-1)];
+        break;
+      }
+    }
+  }
+
+  let cleaned = parts
+    .filter((p) => /^[A-Za-z][A-Za-z.'-]*$/.test(p) && (p.length >= 2 || /^[A-Za-z]\.?$/.test(p)))
+    .slice(0, 4)
+    .map(titleCaseNamePart);
+
+  // Drop leading OCR junk initial when the next token is the real given name
+  // e.g. "A Karthik P" (from "A KARTHIKP") → "Karthik P"
+  if (cleaned.length >= 2 && cleaned[0].length === 1 && cleaned[1].length >= 4) {
+    const emailBits = String(emailLocal || '')
+      .replace(/[0-9_]+/g, '')
+      .toLowerCase()
+      .split(/[.\-_]+/)
+      .filter((b) => b.length >= 3);
+    const second = cleaned[1].toLowerCase();
+    const secondMatchesEmail = emailBits.some((b) => b.includes(second) || second.includes(b));
+    if (secondMatchesEmail || cleaned.length >= 3) {
+      cleaned = cleaned.slice(1);
+    }
+  }
+
+  if (cleaned.length === 0) return '';
+  return cleaned.join(' ');
 }
 
 // ─── Enterprise-Grade Field Extraction ───
@@ -447,8 +780,22 @@ function extractFields(text) {
   // 1. EMAIL EXTRACTION (highest accuracy)
   // ════════════════════════════════════════
   const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-  const emailMatches = flatText.match(emailRegex);
-  if (emailMatches && emailMatches.length > 0) {
+  let emailMatches = flatText.match(emailRegex) || [];
+
+  // Label-aware: "Email" / "E-mail" line often has the address on the next line (OCR layouts)
+  if (!emailMatches.length) {
+    for (let i = 0; i < rawLines.length; i++) {
+      if (/^e-?mails?\b/i.test(rawLines[i]) || /\be-?mail\s*[:\-]/i.test(rawLines[i])) {
+        const same = rawLines[i].match(emailRegex);
+        const next = rawLines[i + 1] ? rawLines[i + 1].match(emailRegex) : null;
+        if (same?.length) emailMatches = same;
+        else if (next?.length) emailMatches = next;
+        if (emailMatches.length) break;
+      }
+    }
+  }
+
+  if (emailMatches.length > 0) {
     // Pick the most likely personal email (not info@, hr@, etc.)
     const personalEmail = emailMatches.find(e => !/^(info|hr|admin|support|contact|careers|jobs|noreply)@/i.test(e)) || emailMatches[0];
     result.email = { value: personalEmail.toLowerCase(), confidence: 100 };
@@ -529,18 +876,48 @@ function extractFields(text) {
 
   // Helper: Check if a word could be part of a person's name
   function isNameWord(w) {
-    const lower = w.toLowerCase();
+    const lower = w.toLowerCase().replace(/\.$/, '');
     if (TITLE_STOP_WORDS.has(lower)) return false;
     if (NON_NAME_WORDS.has(lower)) return false;
     if (/\d/.test(w)) return false; // Names don't contain digits
-    if (w.length < 2) return false; // Too short
-    if (w.length > 15) return false; // Too long for a name part
+    // Allow single-letter initials ("P", "K.")
+    if (/^[A-Za-z]\.?$/.test(w)) return true;
+    if (w.length < 2) return false;
+    if (w.length > 15) return false;
     return true;
+  }
+
+  // Strategy A0: OCR-noisy header lines — normalize "Ca KARTHIKP" → "Karthik P"
+  if (result.name.confidence < 90) {
+    for (let i = 0; i < Math.min(12, rawLines.length); i++) {
+      const normalized = normalizeOcrNameCandidate(rawLines[i], emailLocal);
+      if (!normalized) continue;
+      const words = normalized.split(/\s+/);
+      const valid = words.every(isNameWord);
+      if (!valid) continue;
+      if (words.length >= 2 && words.length <= 4 && normalized.length <= 45) {
+        // Prefer candidates that overlap email local-part when available
+        let conf = 88;
+        if (emailLocal) {
+          const emailBits = emailLocal.replace(/[0-9_]+/g, '').toLowerCase();
+          const nameFlat = normalized.replace(/\s+/g, '').toLowerCase();
+          if (emailBits.includes(nameFlat.slice(0, Math.min(6, nameFlat.length))) ||
+              nameFlat.includes(emailBits.split(/[.\-_]/)[0] || '') ||
+              emailBits.split(/[.\-_]/).some((b) => b.length >= 4 && nameFlat.includes(b))) {
+            conf = 96;
+          }
+        }
+        if (conf >= result.name.confidence) {
+          result.name = { value: normalized, confidence: conf };
+          if (conf >= 96) break;
+        }
+      }
+    }
   }
 
   // Strategy A1: Grab consecutive capitalized words from start, stop at title/section/non-name words
   const startWords = flatText.match(/^([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+)*)/);
-  if (startWords) {
+  if (startWords && result.name.confidence < 95) {
     const allWords = startWords[1].split(/\s+/);
     const nameWords = [];
     for (const w of allWords) {
@@ -550,9 +927,11 @@ function extractFields(text) {
     if (nameWords.length >= 2 && nameWords.length <= 4) {
       const candidate = nameWords.join(' ');
       if (candidate.length >= 3 && candidate.length <= 45) {
-        const titleCased = /^[A-Z\s.'-]+$/.test(candidate)
-          ? candidate.split(/\s+/).map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ')
-          : candidate;
+        const titleCased = normalizeOcrNameCandidate(candidate, emailLocal) || (
+          /^[A-Z\s.'-]+$/.test(candidate)
+            ? candidate.split(/\s+/).map(titleCaseNamePart).join(' ')
+            : candidate
+        );
         result.name = { value: titleCased, confidence: 95 };
       }
     }
@@ -562,15 +941,16 @@ function extractFields(text) {
   if (result.name.confidence < 90) {
     const allCaps = flatText.match(/^([A-Z]{2,}(?:\s+[A-Z]{2,})*)/);
     if (allCaps) {
-      const allWords = allCaps[1].split(/\s+/);
-      const nameWords = [];
-      for (const w of allWords) {
-        if (!isNameWord(w)) break;
-        nameWords.push(w);
-      }
+      const normalized = normalizeOcrNameCandidate(allCaps[1], emailLocal);
+      const nameWords = (normalized || allCaps[1]).split(/\s+/).filter(isNameWord);
       if (nameWords.length >= 2 && nameWords.length <= 4) {
-        const titleCased = nameWords.map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
-        result.name = { value: titleCased, confidence: 95 };
+        result.name = { value: nameWords.map(titleCaseNamePart).join(' '), confidence: 95 };
+      } else if (nameWords.length === 1 && nameWords[0].length >= 4) {
+        // Single token after OCR split attempt still only one word — keep if email confirms
+        const one = normalizeOcrNameCandidate(nameWords[0], emailLocal);
+        if (one && one.includes(' ')) {
+          result.name = { value: one, confidence: 92 };
+        }
       }
     }
   }
@@ -581,23 +961,26 @@ function extractFields(text) {
     if (allCaps) {
       const word = allCaps[1];
       if (isNameWord(word) && word.length >= 3) {
-        // Try to split concatenated name using email hint: "SUBODHJHA" + email "subodh36garh@"
-        const emailName = emailLocal.replace(/[0-9_]+/g, '').toLowerCase();
-        // Check if the start of the caps matches the email prefix
-        const lowerWord = word.toLowerCase();
-        // Try finding a split point where the start matches the email name prefix
-        let bestSplit = null;
-        for (let splitPos = 2; splitPos < lowerWord.length - 1; splitPos++) {
-          const firstPart = lowerWord.substring(0, splitPos);
-          if (emailName.startsWith(firstPart) && firstPart.length >= 3) {
-            bestSplit = splitPos;
+        const normalized = normalizeOcrNameCandidate(word, emailLocal);
+        if (normalized && normalized.includes(' ')) {
+          result.name = { value: normalized, confidence: 90 };
+        } else {
+          // Try to split concatenated name using email hint: "SUBODHJHA" + email "subodh36garh@"
+          const emailName = emailLocal.replace(/[0-9_]+/g, '').toLowerCase();
+          const lowerWord = word.toLowerCase();
+          let bestSplit = null;
+          for (let splitPos = 2; splitPos < lowerWord.length - 1; splitPos++) {
+            const firstPart = lowerWord.substring(0, splitPos);
+            if (emailName.startsWith(firstPart) && firstPart.length >= 3) {
+              bestSplit = splitPos;
+            }
           }
-        }
-        if (bestSplit) {
-          const first = word.substring(0, bestSplit);
-          const last = word.substring(bestSplit);
-          const titleCased = [first, last].map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-          result.name = { value: titleCased, confidence: 85 };
+          if (bestSplit) {
+            const first = word.substring(0, bestSplit);
+            const last = word.substring(bestSplit);
+            const titleCased = [first, last].map(titleCaseNamePart).join(' ');
+            result.name = { value: titleCased, confidence: 85 };
+          }
         }
       }
     }
@@ -605,8 +988,13 @@ function extractFields(text) {
 
   // Strategy A3: Look in first 5 raw lines for a name-like pattern
   if (result.name.confidence < 80) {
-    for (let i = 0; i < Math.min(5, rawLines.length); i++) {
+    for (let i = 0; i < Math.min(8, rawLines.length); i++) {
       const line = rawLines[i].trim();
+      const normalized = normalizeOcrNameCandidate(line, emailLocal);
+      if (normalized && normalized.split(/\s+/).length >= 2) {
+        result.name = { value: normalized, confidence: 90 };
+        break;
+      }
       // Name: 2-4 words, each starting with uppercase, no numbers, no special chars except hyphen
       if (/^[A-Z][a-zA-Z'-]+(\s+[A-Z][a-zA-Z'-]+){1,3}$/.test(line) && line.length <= 40) {
         const words = line.split(/\s+/);
@@ -628,7 +1016,7 @@ function extractFields(text) {
   if (result.name.confidence < 70 && emailLocal) {
     const cleanLocal = emailLocal.replace(/[0-9_]+/g, '').replace(/[.]/g, ' ').trim();
     if (cleanLocal.length >= 3) {
-      const nameParts = cleanLocal.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+      const nameParts = cleanLocal.split(/\s+/).map(titleCaseNamePart);
       if (nameParts.length >= 1 && nameParts.join(' ').length >= 3) {
         result.name = { value: nameParts.join(' '), confidence: 60 };
       }
@@ -640,14 +1028,31 @@ function extractFields(text) {
     const emailName = emailLocal.replace(/[0-9_@.]+/g, '').toLowerCase();
     const extractedNameLower = result.name.value.replace(/\s+/g, '').toLowerCase();
     // If extracted name doesn't overlap with email at all, email-based name might be better
-    const emailInName = emailName.length >= 3 && (extractedNameLower.includes(emailName.substring(0, 3)) || emailName.includes(extractedNameLower.substring(0, 3)));
+    const emailBits = emailLocal.replace(/[0-9_]+/g, '').toLowerCase().split(/[.\-_]+/).filter((b) => b.length >= 3);
+    const emailInName = emailBits.some((b) => extractedNameLower.includes(b)) ||
+      (emailName.length >= 3 && (extractedNameLower.includes(emailName.substring(0, 3)) || emailName.includes(extractedNameLower.substring(0, 3))));
     if (!emailInName && result.name.confidence <= 85) {
-      // Try email-based name instead
-      const cleanLocal = emailLocal.replace(/[0-9_]+/g, '').replace(/[.]/g, ' ').trim();
-      if (cleanLocal.length >= 3) {
-        const nameParts = cleanLocal.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-        if (nameParts.length >= 1) {
-          result.name = { value: nameParts.join(' '), confidence: 70 };
+      // Prefer better OCR name if we can recover from raw lines with email hint
+      let recovered = '';
+      for (let i = 0; i < Math.min(12, rawLines.length); i++) {
+        const n = normalizeOcrNameCandidate(rawLines[i], emailLocal);
+        if (n && n.split(/\s+/).length >= 2) {
+          const flat = n.replace(/\s+/g, '').toLowerCase();
+          if (emailBits.some((b) => flat.includes(b))) {
+            recovered = n;
+            break;
+          }
+        }
+      }
+      if (recovered) {
+        result.name = { value: recovered, confidence: 90 };
+      } else {
+        const cleanLocal = emailLocal.replace(/[0-9_]+/g, '').replace(/[.]/g, ' ').trim();
+        if (cleanLocal.length >= 3) {
+          const nameParts = cleanLocal.split(/\s+/).map(titleCaseNamePart);
+          if (nameParts.length >= 1) {
+            result.name = { value: nameParts.join(' '), confidence: 70 };
+          }
         }
       }
     }
@@ -658,23 +1063,49 @@ function extractFields(text) {
   // ════════════════════════════════════════
   // Strategy: Find job title keywords and extract ONLY the title, not the surrounding text
 
-  // Build search area: text immediately after the name (where title usually lives)
+  // Build search area: prefer text after the name; OCR names may be spaced differently
+  // ("Karthik P" vs "KARTHIKP"), so also fall back to a wide head/body window.
   let positionSearchArea = '';
   if (result.name.value) {
-    // Find where the name ends in the flat text
-    const nameIdx = flatText.toLowerCase().indexOf(result.name.value.toLowerCase());
+    const nameLower = result.name.value.toLowerCase();
+    const nameCompact = nameLower.replace(/\s+/g, '');
+    let nameIdx = flatText.toLowerCase().indexOf(nameLower);
+    if (nameIdx === -1 && nameCompact.length >= 4) {
+      nameIdx = flatText.toLowerCase().replace(/\s+/g, '').indexOf(nameCompact);
+      // Can't map compact index back easily — use full-text title scan instead
+      if (nameIdx !== -1) nameIdx = -1;
+    }
     if (nameIdx !== -1) {
-      positionSearchArea = flatText.substring(nameIdx + result.name.value.length, nameIdx + result.name.value.length + 200).trim();
+      positionSearchArea = flatText.substring(nameIdx + result.name.value.length, nameIdx + result.name.value.length + 500).trim();
     }
   }
+  // Always include a large body window — region OCR is prepended (contact-first),
+  // so titles often sit past the first 300 chars on scanned resumes.
+  const bodyWindow = flatText.length > 400
+    ? flatText.substring(0, Math.min(flatText.length, 1800))
+    : flatText;
   if (!positionSearchArea) {
-    positionSearchArea = flatText.substring(0, 300);
+    positionSearchArea = bodyWindow;
+  } else {
+    positionSearchArea = `${positionSearchArea} ${bodyWindow}`;
+  }
+
+  // Prefer explicit "Title | Company" lines from work experience (common on Indian resumes)
+  const pipeTitle = flatText.match(
+    /\b((?:Relationship|Branch Sales|Sales|Area|Regional|Cluster|Portfolio|Wealth|Operations|Project|Product|Program|Engineering|Account|Business Development)\s+Manager|[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,3}\s+(?:Manager|Executive|Specialist|Officer|Analyst|Engineer|Developer))\s*[|–—-]\s*[A-Z][A-Za-z0-9&.\s]{2,40}/
+  );
+  if (pipeTitle) {
+    const titleOnly = pipeTitle[1].replace(/\s+/g, ' ').trim();
+    if (titleOnly.length >= 5 && titleOnly.length <= 60) {
+      result.position = { value: titleOnly, confidence: 96 };
+    }
   }
 
   // Build a sorted list (longest first to match "senior software engineer" before "software engineer")
   const sortedTitles = [...JOB_TITLES].sort((a, b) => b.length - a.length);
   const lowerSearchArea = positionSearchArea.toLowerCase();
 
+  if (result.position.confidence < 90) {
   for (const title of sortedTitles) {
     const idx = lowerSearchArea.indexOf(title);
     if (idx !== -1) {
@@ -705,6 +1136,7 @@ function extractFields(text) {
         break;
       }
     }
+  }
   }
 
   // Fallback: Look for explicit "FULL STACK DEVELOPER | DIGITAL MARKETER" pattern after name
@@ -915,6 +1347,18 @@ function extractFields(text) {
   const experienceSection = sections['EXPERIENCE'] || sections['WORK EXPERIENCE'] || sections['PROFESSIONAL EXPERIENCE'] || sections['EMPLOYMENT'] || '';
   const companySearchText = experienceSection || flatText;
 
+  // "Relationship Manager | DBS BANK" / "Branch Sales Manager | AXIS BANK"
+  const titleCompanyPipe = flatText.match(
+    /\b(?:Manager|Executive|Specialist|Officer|Analyst|Engineer|Developer|Lead)\s*[|–—]\s*([A-Z][A-Za-z0-9&.]*(?:\s+[A-Z][A-Za-z0-9&.]*){0,4})/
+  );
+  if (titleCompanyPipe) {
+    let co = titleCompanyPipe[1].replace(/\s+/g, ' ').trim();
+    co = co.replace(/\s*\(.*$/, '').trim(); // drop "(Coimbatore, Chennai)"
+    if (co.length >= 2 && co.length <= 50 && !/^(PRESENT|ADDRESS|PHONE|EMAIL|GENDER)$/i.test(co)) {
+      result.company = { value: co, confidence: 92 };
+    }
+  }
+
   // Strategy: Look for company name patterns with stricter validation
   // Words that indicate the match is part of a sentence, not a standalone company name
   const SENTENCE_CONTEXT_WORDS = ['with', 'using', 'like', 'such', 'including', 'experience', 'hands-on',
@@ -931,6 +1375,7 @@ function extractFields(text) {
     /([A-Z][A-Za-z\s&.]{5,40})\s*[-|]\s*(?:software|developer|engineer|manager|analyst|designer|lead|senior|junior|branch|assistant|vice)/gi
   ];
 
+  if (result.company.confidence < 85) {
   for (const pattern of companyPatterns) {
     const matches = companySearchText.match(pattern);
     if (matches) {
@@ -961,6 +1406,7 @@ function extractFields(text) {
       if (result.company.confidence > 0) break;
     }
   }
+  }
 
   // ════════════════════════════════════════
   // 9. LOCATION EXTRACTION
@@ -975,26 +1421,22 @@ function extractFields(text) {
     if (city.length < 3) continue; // Skip very short city names that could match random text
     const cityRegex = new RegExp('\\b' + city.replace(/[-]/g, '[-\\s]?') + '\\b', 'i');
     if (cityRegex.test(lowerLocText)) {
-      // Try to get city + state together
+      // Prefer clean city (+ state) over OCR address fragments like "ai malai, Karur"
+      const properCity = city.split(/[-\s]+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      let location = properCity;
       const cityIdx = lowerLocText.search(cityRegex);
-      const surrounding = locationSearchText.substring(Math.max(0, cityIdx - 10), cityIdx + city.length + 50).trim();
-      // Extract clean location: "City, State" or "City State PIN"
-      const locMatch = surrounding.match(/([A-Za-z][A-Za-z\s-]{2,}(?:,\s*[A-Za-z][A-Za-z\s]+)?)/);
-      let location = locMatch ? locMatch[1].trim() : city.charAt(0).toUpperCase() + city.slice(1);
-      
-      // Final validation: location should not contain company keywords
-      const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
-        'january', 'february', 'march', 'april', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
-      const COMPANY_LOC_WORDS = ['bank', 'ltd', 'limited', 'pvt', 'private', 'inc', 'corp', 'llc', 'llp',
-        'technologies', 'solutions', 'software', 'services', 'group', 'enterprises'];
-      
-      // Remove company words from the location
-      const locWords = location.split(/\s+/);
-      const cleanLocWords = locWords.filter(w => !COMPANY_LOC_WORDS.includes(w.toLowerCase()));
-      location = cleanLocWords.join(' ').trim();
-      
-      if (location.length >= 3 && !MONTHS.includes(location.toLowerCase()) && cleanLocWords.length > 0) {
-        result.location = { value: location.length <= 50 ? location : city.charAt(0).toUpperCase() + city.slice(1), confidence: 90 };
+      const surrounding = locationSearchText.substring(Math.max(0, cityIdx - 5), cityIdx + city.length + 40).trim();
+      const withState = surrounding.match(new RegExp(city.replace(/[-]/g, '[-\\s]?') + '\\s*[,\\-]?\\s*([A-Za-z][A-Za-z\\s]{3,20})', 'i'));
+      if (withState) {
+        const maybeState = withState[1].trim().toLowerCase();
+        const matchedState = LOCATION_KEYWORDS.states.find((s) => maybeState.startsWith(s) || s.startsWith(maybeState.split(/\s+/)[0]));
+        if (matchedState) {
+          location = `${properCity}, ${matchedState.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}`;
+        }
+      }
+
+      if (location.length >= 3 && location.length <= 50) {
+        result.location = { value: location, confidence: 90 };
         break;
       }
     }
@@ -1004,8 +1446,24 @@ function extractFields(text) {
   if (result.location.confidence < 70) {
     for (const state of LOCATION_KEYWORDS.states) {
       const stateRegex = new RegExp('\\b' + state.replace(/\s+/g, '\\s+') + '\\b', 'i');
-      if (stateRegex.test(lowerLocText)) {
+      if (stateRegex.test(lowerLocText) || stateRegex.test(flatText.toLowerCase())) {
         result.location = { value: state.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '), confidence: 80 };
+        break;
+      }
+    }
+  }
+
+  // Full-text city fallback (scanned resumes often put city only in body OCR)
+  if (result.location.confidence < 70) {
+    const lowerFlat = flatText.toLowerCase();
+    for (const city of LOCATION_KEYWORDS.cities) {
+      if (city.length < 4) continue;
+      const cityRegex = new RegExp('\\b' + city.replace(/[-]/g, '[-\\s]?') + '\\b', 'i');
+      if (cityRegex.test(lowerFlat)) {
+        result.location = {
+          value: city.split(/[-\s]+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+          confidence: 75,
+        };
         break;
       }
     }
@@ -1079,17 +1537,20 @@ async function parseResume(buffer, mimetype, filename = '') {
       }
 
       // ── Strategy 3: OCR via tesseract.js (for scanned/image-based PDFs) ──
-      // Skip OCR in production (Render has 30s timeout, OCR takes 30-60s)
-      if (text.length < 20 && Tesseract && process.env.NODE_ENV !== 'production') {
-        logger.info('📄 [Strategy 3/3] PDF appears image-based, running OCR...');
-        const ocrText = await ocrPdfBuffer(buffer);
-        logger.info(`   → OCR extracted ${ocrText.length} chars`);
-        if (ocrText.length > text.length) {
-          text = ocrText;
-          extractionMethod = 'tesseract-ocr';
+      if (text.length < 20 && Tesseract && ocrEnabled()) {
+        logger.info('📄 [Strategy 3/3] PDF appears image-based — running OCR (enterprise scanned-resume path)...');
+        try {
+          const ocrText = await withTimeout(ocrPdfBuffer(buffer), ocrTimeoutMs(), 'Resume OCR');
+          logger.info(`   → OCR extracted ${ocrText.length} chars`);
+          if (ocrText.length > text.length) {
+            text = ocrText;
+            extractionMethod = 'tesseract-ocr';
+          }
+        } catch (e) {
+          logger.warn(`   → OCR skipped/failed: ${e.message}`);
         }
-      } else if (text.length < 20 && process.env.NODE_ENV === 'production') {
-        logger.info('📄 [Strategy 3/3] Skipping OCR in production (timeout risk). PDF appears to be scanned/image-based.');
+      } else if (text.length < 20 && Tesseract && !ocrEnabled()) {
+        logger.info('📄 [Strategy 3/3] OCR disabled (RESUME_OCR_ENABLED=false). Scanned PDF will not be parsed.');
       }
 
       // ── textract as final fallback ──
@@ -1130,12 +1591,21 @@ async function parseResume(buffer, mimetype, filename = '') {
       }
 
     } else if (mimetype.startsWith('image/')) {
-      // Direct image → OCR (skip in production due to timeout)
-      if (Tesseract && process.env.NODE_ENV !== 'production') {
-        text = await ocrImageBuffer(buffer);
-        extractionMethod = 'tesseract-image-ocr';
+      // Direct image → OCR (JPG/PNG photo or scan of a resume)
+      if (Tesseract && ocrEnabled()) {
+        try {
+          text = await withTimeout(ocrImageBuffer(buffer), ocrTimeoutMs(), 'Image OCR');
+          extractionMethod = 'tesseract-image-ocr';
+        } catch (e) {
+          throw new Error(
+            `Could not read this image resume (${e.message}). ` +
+            'Try a clearer scan, or upload a PDF/DOCX instead.'
+          );
+        }
       } else {
-        throw new Error('This is an image file. Please upload a text-based PDF, DOCX, or TXT resume instead. Image/scanned resumes are not supported on cloud hosting.');
+        throw new Error(
+          'Image resume OCR is disabled on this server. Upload a PDF or DOCX, or ask an admin to enable RESUME_OCR_ENABLED.'
+        );
       }
 
     } else {
@@ -1155,17 +1625,15 @@ async function parseResume(buffer, mimetype, filename = '') {
     if (cleanText.length === 0) {
       const strategies = ['pdf-parse'];
       if (pdfjsLib) strategies.push('pdfjs-dist');
-      if (Tesseract && process.env.NODE_ENV !== 'production') strategies.push('tesseract-ocr');
+      if (Tesseract && ocrEnabled()) strategies.push('tesseract-ocr');
       if (extractText) strategies.push('textract');
 
-      // Check if OCR was attempted
-      const ocrAttempted = Tesseract && process.env.NODE_ENV !== 'production';
+      const ocrAttempted = Tesseract && ocrEnabled();
       const errorMsg = ocrAttempted
-        ? 'Could not extract text from this PDF even with OCR. The image quality may be too low or the PDF may be corrupted. ' +
-          'Try uploading a clearer scan or a text-based PDF/DOCX file.'
-        : 'This resume appears to be a scanned/image-based PDF. ' +
-          'Please upload a text-based PDF or DOCX file instead. ' +
-          'Tip: Open the PDF, try selecting text — if you can\'t select text, it\'s a scanned image.';
+        ? 'Could not extract text from this resume even with OCR. The scan quality may be too low, or the file may be corrupted. ' +
+          'Try a clearer scan, or a text-based PDF/DOCX.'
+        : 'This resume appears to be a scanned/image-based PDF and OCR is not available on this server. ' +
+          'Please upload a text-based PDF or DOCX, or enable RESUME_OCR_ENABLED.';
 
       throw new Error(errorMsg);
     }

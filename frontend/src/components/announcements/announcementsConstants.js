@@ -1,5 +1,5 @@
 import {
-  Info, CheckCircle2, AlertTriangle, Siren, Users, Megaphone, Globe2, Shield,
+  Info, CheckCircle2, AlertTriangle, Siren, Users, Megaphone, Globe2, Shield, UserRound,
 } from 'lucide-react';
 
 export const ANN_TOUR_KEY = 'skillnix_tour_announcements_v1';
@@ -7,7 +7,7 @@ export const ANN_TOUR_KEY = 'skillnix_tour_announcements_v1';
 export const ANN_TOUR_STEPS = [
   {
     title: 'Announcements',
-    body: 'Publish banners for your hiring team (in-app) or careers site visitors — one clear notice at a time.',
+    body: 'Publish banners for your hiring team (in-app), freelancers (in-app only), or careers site visitors. Notices stay live until deactivated.',
   },
   {
     target: '[data-tour="ann-toolbar"]',
@@ -18,7 +18,7 @@ export const ANN_TOUR_STEPS = [
   {
     target: '[data-tour="ann-compose"]',
     title: 'Compose a notice',
-    body: 'Set title, message, audience (hiring team vs careers site), and severity, then Publish.',
+    body: 'Set title, message, audience (hiring team, freelancers, or careers site), and severity, then Publish. Freelancer notices are in-app only (no email).',
     placement: 'right',
   },
   {
@@ -43,13 +43,14 @@ export const FILTERS = [
 ];
 
 export const AUDIENCES = [
-  { value: 'all', label: 'Hiring team', hint: 'In-app banner for everyone', icon: Users },
+  { value: 'all', label: 'Hiring team', hint: 'In-app + email for company staff', icon: Users },
   { value: 'admins', label: 'Admins only', hint: 'Owners & admins in-app', icon: Shield },
   { value: 'recruiters', label: 'Recruiters+', hint: 'Recruiters & admins in-app', icon: Megaphone },
+  { value: 'freelancers', label: 'Freelancers only', hint: 'In-app only — no email', icon: UserRound },
   { value: 'public', label: 'Careers site', hint: 'Public careers / job pages', icon: Globe2 }
 ];
 
-export const EMPTY_FORM = { title: '', body: '', severity: 'info', audience: 'all' };
+export const EMPTY_FORM = { title: '', body: '', severity: 'info', audience: 'all', notifyEmail: true };
 
 export function severityMeta(value) {
   return SEVERITIES.find((s) => s.value === value) || SEVERITIES[0];

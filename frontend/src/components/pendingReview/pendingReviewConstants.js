@@ -9,12 +9,24 @@ export const STATUS_OPTIONS = [
 export const TOUR_STEPS = [
   {
     title: 'Pending Review',
-    body: 'Rows parked from Bulk Import that need a human fix before they enter Candidates.',
+    body: 'Enterprise staging queue: flagged Bulk Import rows stay here until a human approves them into Candidates.',
+  },
+  {
+    target: '[data-tour="pr-workflow"]',
+    title: 'Controlled release',
+    body: 'Review → Fix → Approve. Nothing enters the ATS until you import selected, ready rows.',
+    placement: 'bottom',
   },
   {
     target: '[data-tour="pr-kpis"]',
     title: 'Queue health',
     body: 'Needs review vs Blocked counts. Fix issues, select rows, then import only what you approve.',
+    placement: 'bottom',
+  },
+  {
+    target: '[data-tour="pr-toolbar"]',
+    title: 'Filter & act',
+    body: 'Bucket by status, search the queue, select ready rows, then import or delete in batch.',
     placement: 'bottom',
   },
   {

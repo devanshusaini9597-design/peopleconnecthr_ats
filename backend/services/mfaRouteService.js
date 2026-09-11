@@ -213,6 +213,7 @@ async function verifyMfaLogin({ mfaToken, code }, req) {
   }
 
   user.lastLoginAt = new Date();
+  user.lastActiveAt = new Date();
   await user.save();
 
   const token = await issueAuthToken(user, req);

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mail, Shield, ShieldPlus, Loader2, UserPlus } from 'lucide-react';
+import { Mail, Shield, ShieldPlus, Loader2, UserPlus, Users } from 'lucide-react';
 import Modal from '../ui/Modal';
 import PremiumSelect from '../ui/PremiumSelect';
 import { INVITE_ROLE_OPTIONS } from '../organization/constants';
@@ -14,6 +14,9 @@ export default function TeamInviteModal({
   customRoles,
   inviteCustomRoleId,
   setInviteCustomRoleId,
+  inviteReportsTo,
+  setInviteReportsTo,
+  managerOptions = [],
   onSubmit,
   inviting,
 }) {
@@ -62,6 +65,18 @@ export default function TeamInviteModal({
             icon={Shield}
           />
         </div>
+        {inviteRole !== 'freelancer' && managerOptions.length > 0 && (
+          <div>
+            <label className="label-ats">Reports to (optional)</label>
+            <PremiumSelect
+              value={inviteReportsTo}
+              onChange={(v) => setInviteReportsTo(v || '')}
+              options={managerOptions}
+              placeholder="Who this person reports to"
+              icon={Users}
+            />
+          </div>
+        )}
         {customRoles.length > 0 && (
           <div>
             <label className="label-ats">Permission pack (optional)</label>

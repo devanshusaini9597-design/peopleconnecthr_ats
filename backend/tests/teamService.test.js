@@ -77,4 +77,12 @@ describe('teamService', () => {
       ).rejects.toMatchObject({ message: 'Invalid email address', statusCode: 400 });
     });
   });
+
+  describe('listTeamMembers', () => {
+    it('returns an empty directory for freelance recruiters', async () => {
+      await expect(
+        listTeamMembers({ id: 'f1', role: 'freelancer', organizationId: 'o1', email: 'f@x.com' })
+      ).resolves.toEqual([]);
+    });
+  });
 });

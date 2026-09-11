@@ -1,30 +1,40 @@
 // src/hooks/useParsing.js
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import BASE_API_URL from '../config';
 export const useParsing = (fetchCandidates) => {
     const [selectedIds, setSelectedIds] = useState([]);
     const [isParsing, setIsParsing] = useState(false);
 
-    // Selection toggle karne ka function
-    const toggleSelection = (id) => {
-        setSelectedIds(prev => 
-            prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    const toggleSelection = useCallback((id) => {
+        setSelectedIds((prev) =>
+            prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
         );
-    };
+    }, []);
 
-    // Sabko select/unselect karne ka function
-    const selectAll = (allIds) => {
-        if (selectedIds.length === allIds.length) {
-            setSelectedIds([]);
-        } else {
-            setSelectedIds(allIds);
-        }
-    };
+    /** Replace selection with exactly these ids, or clear if already exactly these. */
+    const selectAll = useCallback((allIds) => {
+        const ids = Array.isArray(allIds) ? allIds : [];
+        setSelectedIds((prev) => {
+            const same =
+                prev.length === ids.length && ids.every((id) => prev.includes(id));
+            return same ? [] : [...ids];
+        });
+    }, []);
 
-    // Backend ko call karne ka function
+    /** Toggle only the current page: select missing page rows, or deselect page rows. */
+    const togglePageSelection = useCallback((pageIds) => {
+        const ids = Array.isArray(pageIds) ? pageIds.filter(Boolean) : [];
+        if (!ids.length) return;
+        setSelectedIds((prev) => {
+            const allOnPage = ids.every((id) => prev.includes(id));
+            if (allOnPage) return prev.filter((id) => !ids.includes(id));
+            return [...new Set([...prev, ...ids])];
+        });
+    }, []);
+
     const handleBulkParse = async () => {
-        if (selectedIds.length === 0) return alert("Pehle candidates select karein!");
-        
+        if (selectedIds.length === 0) return alert('Pehle candidates select karein!');
+
         setIsParsing(true);
         try {
             const res = await fetch(`${BASE_API_URL}/candidates/bulk-parse`, {
@@ -34,12 +44,12 @@ export const useParsing = (fetchCandidates) => {
             });
             const data = await res.json();
             alert(data.message);
-            
-            setSelectedIds([]); // Selection clear karein
-            if (fetchCandidates) fetchCandidates(); // List refresh karein
+
+            setSelectedIds([]);
+            if (fetchCandidates) fetchCandidates();
         } catch (err) {
-            console.error("Parsing failed:", err);
-            alert("Server connection failed!");
+            console.error('Parsing failed:', err);
+            alert('Server connection failed!');
         } finally {
             setIsParsing(false);
         }
@@ -51,6 +61,7 @@ export const useParsing = (fetchCandidates) => {
         isParsing,
         toggleSelection,
         selectAll,
-        handleBulkParse
+        togglePageSelection,
+        handleBulkParse,
     };
 };

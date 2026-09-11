@@ -1,3 +1,5 @@
+import { useRef } from 'react';
+
 export function useApplicationsDrag({
   applications,
   handleStageChange,
@@ -8,13 +10,17 @@ export function useApplicationsDrag({
   tableScrollRef,
   dragScrollRef,
 }) {
+  const draggedIdRef = useRef(null);
+
   const handleDragStart = (e, appId) => {
+    draggedIdRef.current = appId;
     setDraggedAppId(appId);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', appId);
   };
 
   const handleDragEnd = () => {
+    draggedIdRef.current = null;
     setDraggedAppId(null);
     setDragOverStage(null);
   };
@@ -28,9 +34,13 @@ export function useApplicationsDrag({
   const handleDrop = (e, stageId) => {
     e.preventDefault();
     setDragOverStage(null);
-    if (draggedAppId) {
-      const app = applications.find((a) => a._id === draggedAppId);
-      if (app && app.stage !== stageId) handleStageChange(draggedAppId, stageId);
+    const droppedId = e.dataTransfer.getData('text/plain') || draggedIdRef.current || draggedAppId;
+    draggedIdRef.current = null;
+    setDraggedAppId(null);
+    if (!droppedId) return;
+    const app = applications.find((a) => String(a._id) === String(droppedId));
+    if (app && String(app.stage || '').toLowerCase() !== String(stageId || '').toLowerCase()) {
+      handleStageChange(droppedId, stageId);
     }
   };
 

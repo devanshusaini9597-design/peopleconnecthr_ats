@@ -4,8 +4,12 @@ import Sidebar from './Sidebar';
 import Header from './Header';
 import RouteLoadingBar from './RouteLoadingBar';
 import AnnouncementBanner from './AnnouncementBanner';
+import SetPasswordModal from './auth/SetPasswordModal';
+import usePresenceHeartbeat from '../hooks/usePresenceHeartbeat';
+import { PresenceProvider } from '../context/PresenceContext';
 
 const Layout = ({ children }) => {
+  usePresenceHeartbeat();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const mainRef = useRef(null);
@@ -17,10 +21,10 @@ const Layout = ({ children }) => {
     return () => window.removeEventListener('sidebarCollapsed', onCollapse);
   }, []);
 
-  // AJAX-style: keep shell mounted, scroll content to top on route change
+  // Keep shell mounted; jump to top instantly (smooth scroll + remount looks like a sidebar glitch)
   useEffect(() => {
     if (mainRef.current) {
-      mainRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+      mainRef.current.scrollTo(0, 0);
     }
   }, [location.pathname]);
 
@@ -30,6 +34,7 @@ const Layout = ({ children }) => {
   }, [location.pathname]);
 
   return (
+    <PresenceProvider>
     <div className="flex h-dvh bg-stone-50 overflow-hidden">
       <RouteLoadingBar />
       <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
@@ -45,18 +50,19 @@ const Layout = ({ children }) => {
         <main
           ref={mainRef}
           id="main-content"
-          className="flex-1 min-h-0 overflow-auto overflow-x-hidden bg-stone-50/80"
+          className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-stone-50/80 [scrollbar-gutter:stable]"
           role="main"
         >
-          <div
-            key={location.pathname}
-            className="w-full min-w-0 h-full animate-page-enter"
-          >
+          {/* Remount on path change so SPA swaps never stick on Candidates (URL changed, UI stale).
+              No animate-page-enter here — page shells animate themselves. */}
+          <div key={location.pathname} className="w-full min-w-0 min-h-0">
             {children ?? <Outlet />}
           </div>
         </main>
       </div>
+      <SetPasswordModal />
     </div>
+    </PresenceProvider>
   );
 };
 

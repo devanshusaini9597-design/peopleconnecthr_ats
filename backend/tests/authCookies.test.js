@@ -19,7 +19,20 @@ describe('authCookies helpers', () => {
     expect(cookies[COOKIE_NAME].value).toBe('jwt.payload.sig');
     expect(cookies[COOKIE_NAME].opts.httpOnly).toBe(true);
     expect(cookies[COOKIE_NAME].opts.path).toBe('/');
+    expect(cookies[COOKIE_NAME].opts.maxAge).toBe(7 * 24 * 60 * 60 * 1000);
     expect(cookies[COOKIE_NAME].opts.sameSite).toBeDefined();
+  });
+
+  it('setAuthCookie can use remaining session lifetime', () => {
+    const cookies = {};
+    const res = {
+      cookie: (name, value, opts) => {
+        cookies[name] = { value, opts };
+      },
+    };
+    const { setAuthCookie, COOKIE_NAME } = require('../utils/authCookies');
+    setAuthCookie(res, 'jwt.payload.sig', 3600 * 1000);
+    expect(cookies[COOKIE_NAME].opts.maxAge).toBe(3600 * 1000);
   });
 
   it('clearAuthCookie clears ats_token', () => {

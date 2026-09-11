@@ -6,6 +6,7 @@ const AssessmentInvite = require('../models/AssessmentInvite');
 const Candidate = require('../models/Candidate');
 const Organization = require('../models/Organization');
 const { sendEmailQueued } = require('./emailService');
+const { wrapBrandedEmailHtml, brandButtonHtml, loadOrgEmailBrand, escapeHtml } = require('./emailBrandLayout');
 const { planHasFeature } = require('../config/planFeatures');
 const { computeRiskScore, summarizeEvents } = require('../utils/proctoring');
 
@@ -257,17 +258,32 @@ async function inviteCandidate(organizationId, userId, assessmentId, body) {
 
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
   const takeUrl = `${frontendUrl}/assessment/${token}`;
-  const html = `
-      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-        <h2>You've been invited to complete an assessment</h2>
-        <p><strong>${assessment.title}</strong></p>
-        ${assessment.description ? `<p>${assessment.description}</p>` : ''}
-        <p>Estimated time: ${assessment.durationMinutes} minutes. This link expires in ${expiresInHours} hours.</p>
-        <p><a href="${takeUrl}" style="display:inline-block;padding:10px 20px;background:#4F46E5;color:#fff;border-radius:6px;text-decoration:none;">Start Assessment</a></p>
-      </div>`;
+  const brand = await loadOrgEmailBrand(organizationId);
+  const safeTitle = escapeHtml(assessment.title);
+  const safeCandidateName = escapeHtml(candidate.name || 'Candidate');
+  const html = wrapBrandedEmailHtml({
+    title: `Complete your assessment — ${assessment.title}`,
+    category: 'assessment',
+    orgName: brand.name,
+    logoUrl: brand.logoUrl,
+    brandColor: brand.brandColor,
+    wordmark: brand.wordmark,
+    bodyHtml: `
+      <p style="margin:0 0 16px 0;font-size:15px;color:#0f172a;font-weight:600;">Dear ${safeCandidateName},</p>
+      <p style="margin:0 0 12px 0;color:#334155;line-height:1.7;">As part of the selection process, you have been invited to complete the following assessment:</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border:1px solid #eef0f3;border-left:3px solid ${brand.brandColor};margin:4px 0 20px 0;">
+        <tr><td style="padding:16px 18px;">
+          <p style="margin:0 0 4px 0;font-size:15px;font-weight:700;color:#0f172a;">${safeTitle}</p>
+          ${assessment.description ? `<p style="margin:0 0 10px 0;font-size:13px;color:#64748b;line-height:1.55;">${escapeHtml(assessment.description)}</p>` : ''}
+          <p style="margin:0;font-size:12px;color:#94a3b8;">${assessment.durationMinutes} minutes &nbsp;&middot;&nbsp; Link expires in ${expiresInHours} hours</p>
+        </td></tr>
+      </table>
+      ${brandButtonHtml({ href: takeUrl, label: 'Start assessment', brandColor: brand.brandColor })}
+      <p style="margin:20px 0 0 0;color:#64748b;font-size:13px;line-height:1.6;">Please attempt the assessment in a quiet environment without external assistance, unless stated otherwise. Contact us if you face any access issues.</p>`,
+  });
   await sendEmailQueued(
     candidate.email,
-    `Assessment invite: ${assessment.title}`,
+    `Complete your assessment — ${assessment.title}`,
     html,
     `Start your assessment: ${takeUrl}`
   ).catch((err) => {

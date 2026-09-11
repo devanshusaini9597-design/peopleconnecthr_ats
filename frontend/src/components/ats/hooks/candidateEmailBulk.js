@@ -12,6 +12,9 @@ export function useCandidateEmailBulk(deps) {
     setBulkEmailRecipients,
     setEmailRecipient,
     setEmailMode,
+    setEmailChannel,
+    setChannelsAvailable,
+    setEmailSenderInfo,
     setEmailType,
     setCustomMessage,
     setEmailCC,
@@ -133,7 +136,7 @@ export function useCandidateEmailBulk(deps) {
     }
   };
 
-  const startBulkEmailFlow = () => {
+  const startBulkEmailFlow = async () => {
     if (selectedIds.length === 0) {
       toast.warning('Please select at least one candidate!');
       return;
@@ -147,9 +150,43 @@ export function useCandidateEmailBulk(deps) {
       return;
     }
 
+    // Same channel/sender refresh as single-candidate send — otherwise Campaign
+    // stays "Unavailable" until the user has opened a one-off email first.
+    try {
+      const statusRes = await authenticatedFetch(`${BASE_API_URL}/api/email/sender-status`);
+      const statusData = await statusRes.json();
+      if (statusData.success) {
+        setEmailSenderInfo?.({
+          fromEmail: statusData.fromEmail || statusData.agentFrom || '',
+          replyTo: statusData.replyTo || '',
+          displayName: statusData.displayName || '',
+          verifiedDomain: statusData.verifiedDomain || '',
+          sendAsUser: Boolean(statusData.sendAsUser),
+          agentFrom: statusData.agentFrom || '',
+          hint: statusData.hint || '',
+        });
+      }
+    } catch (_) {
+      setEmailSenderInfo?.(null);
+    }
+
+    try {
+      const chRes = await authenticatedFetch(`${BASE_API_URL}/api/email/channels`);
+      const chData = await chRes.json();
+      if (chData.success && chData.channels) {
+        setChannelsAvailable?.({
+          transactional: chData.channels.transactional?.available ?? true,
+          marketing: chData.channels.marketing?.available ?? false,
+        });
+      }
+    } catch (_) {
+      /* keep previous / defaults */
+    }
+
     setBulkEmailRecipients(validCandidates);
     setEmailRecipient(validCandidates[0]);
-    setEmailMode('quick');
+    setEmailChannel?.('transactional');
+    setEmailMode('template');
     setEmailType('interview');
     setCustomMessage('');
     setEmailCC([]);
@@ -158,17 +195,15 @@ export function useCandidateEmailBulk(deps) {
     setShowEmailModal(true);
 
     if (emailTemplates.length === 0) {
-      (async () => {
-        try {
-          const res = await authenticatedFetch(`${BASE_API_URL}/api/email-templates`);
-          const data = await res.json();
-          if (data.success && data.templates.length > 0) {
-            setEmailTemplates(data.templates);
-          }
-        } catch (err) {
-          console.error('Failed to load templates:', err);
+      try {
+        const res = await authenticatedFetch(`${BASE_API_URL}/api/email-templates`);
+        const data = await res.json();
+        if (data.success && data.templates.length > 0) {
+          setEmailTemplates(data.templates);
         }
-      })();
+      } catch (err) {
+        console.error('Failed to load templates:', err);
+      }
     }
   };
 

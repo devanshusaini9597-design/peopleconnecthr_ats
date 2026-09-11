@@ -8,10 +8,11 @@ import EmptyState from './ui/EmptyState';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import { useAuth } from '../context/AuthContext';
+import { markSupportSeen } from '../hooks/useSupportNavUpdates';
 
 const TYPES = [
-  { value: 'query', label: 'Guidance', hint: 'How can I…', icon: HelpCircle },
-  { value: 'issue', label: 'Technical issue', hint: 'Something is not working', icon: Bug },
+  { value: 'query', label: 'Guidance', hint: 'How do I…', icon: HelpCircle },
+  { value: 'issue', label: 'Technical issue', hint: 'Something is broken', icon: Bug },
   { value: 'feedback', label: 'Product feedback', hint: 'Share an improvement', icon: MessageSquare },
   { value: 'feature', label: 'Feature request', hint: 'Request a capability', icon: Sparkles },
 ];
@@ -40,7 +41,7 @@ const emptyForm = { category: 'query', subject: '', message: '' };
 
 export default function SupportFeedbackPage() {
   const toast = useToast();
-  const { user, organization } = useAuth();
+  const { user } = useAuth();
   const [form, setForm] = useState(emptyForm);
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -69,7 +70,12 @@ export default function SupportFeedbackPage() {
     }
   }, [ticketPage, ticketTab, toast]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    markSupportSeen();
+    load();
+    const id = setInterval(() => load(), 45000);
+    return () => clearInterval(id);
+  }, [load]);
 
   const changeTicketTab = (tab) => {
     setTicketTab(tab);
@@ -98,7 +104,14 @@ export default function SupportFeedbackPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Could not send');
-      toast.success(`Sent to the product team · ${data.data?.ticketRef || 'ticket opened'}`);
+      const ref = data.data?.ticketRef || 'ticket opened';
+      if (data.data?.teamEmailSent === false) {
+        toast.error(`Ticket ${ref} saved, but team email failed — email support@skillnixrecruitment.com with this ID`);
+      } else if (data.data?.confirmationEmailSent === false) {
+        toast.success(`Ticket ${ref} submitted. Confirmation email failed — check spam or email support directly.`);
+      } else {
+        toast.success(`Ticket ${ref} submitted. Confirmation sent to your login email; your hiring team can respond in the Support desk.`);
+      }
       setForm(emptyForm);
       setComposeOpen(false);
       load();
@@ -140,7 +153,7 @@ export default function SupportFeedbackPage() {
       setSelectedTicket(data.data);
       setReplyText('');
       await load();
-      toast.success('Reply added to the ticket');
+      toast.success('Follow-up sent to your hiring support desk');
     } catch (err) {
       toast.error(err.message || 'Could not send reply');
     } finally {
@@ -153,7 +166,7 @@ export default function SupportFeedbackPage() {
       <PageHeader
         icon={LifeBuoy}
         title="Support & feedback"
-        subtitle="Queries, issues, and product ideas go to the Skillnix software team. We typically reply within one business day."
+        subtitle="Submit guidance requests, technical issues, and product ideas. Your hiring team reviews tickets in the Support desk; status and replies update here in real time and by email."
       >
         <button type="button" className="btn-primary w-full sm:w-auto" onClick={() => setComposeOpen(true)}>
           <Send size={14} />
@@ -166,96 +179,98 @@ export default function SupportFeedbackPage() {
           open={composeOpen}
           onClose={() => !sending && setComposeOpen(false)}
           title="New support ticket"
-          description="Your message will be sent to the Skillnix product team."
+          description="Logged to your account, emailed for confirmation, and visible to your hiring organization’s support desk."
           icon={LifeBuoy}
           size="lg"
           closeOnBackdrop={false}
           footer={(
             <>
               <button type="button" className="btn-secondary" onClick={() => setComposeOpen(false)} disabled={sending}>Cancel</button>
-              <button type="submit" form="support-ticket-form" className="btn-primary" disabled={sending || form.subject.trim().length < 4 || form.message.trim().length < 10}>
+              <button type="submit" form="support-ticket-form" className="btn-primary" disabled={sending || !form.subject.trim() || !form.message.trim()}>
                 {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                {sending ? 'Sending…' : 'Create ticket'}
+                {sending ? 'Submitting…' : 'Submit ticket'}
               </button>
             </>
           )}
         >
-        <form id="support-ticket-form" onSubmit={submit} className="space-y-5 min-w-0">
-          <div className="rounded-xl border border-brand-100 bg-brand-50/60 px-3.5 py-3">
-            <p className="text-xs font-semibold text-stone-800">Replies go to {user?.email || 'your signed-in email'}</p>
-            <p className="text-[11px] text-stone-500 mt-0.5">{organization?.name || 'Skillnix workspace'} · Typical response within one business day</p>
-          </div>
+          <form id="support-ticket-form" onSubmit={submit} className="space-y-5 min-w-0">
+            <div className="rounded-xl border border-brand-100 bg-brand-50/60 px-3.5 py-3">
+              <p className="text-xs font-semibold text-stone-800">Updates go to {user?.email || 'your signed-in email'}</p>
+              <p className="text-[11px] text-stone-500 mt-0.5">
+                In-app replies and status changes from your hiring team appear in this workspace and are emailed to you.
+              </p>
+            </div>
 
-          <div className="space-y-4 min-w-0">
-            <div className="min-w-0">
-              <p className="label-ats">Type</p>
-              <div className="grid grid-cols-2 gap-2 min-w-0">
-                {TYPES.map((t) => {
-                  const Icon = t.icon;
-                  const active = form.category === t.value;
-                  return (
-                    <button
-                      key={t.value}
-                      type="button"
-                      onClick={() => setForm((prev) => ({ ...prev, category: t.value }))}
-                      className={`min-w-0 rounded-xl border px-3 py-2.5 text-left transition-colors ${
-                        active
-                          ? 'border-brand-200 bg-brand-50 text-brand-800'
-                          : 'border-stone-200 bg-white text-stone-700 hover:border-brand-200 hover:bg-brand-50/40'
-                      }`}
-                    >
-                      <span className="flex items-center gap-1.5 min-w-0">
-                        <Icon size={14} className={`shrink-0 ${active ? 'text-brand-600' : 'text-stone-400'}`} />
-                        <span className="text-[13px] font-semibold truncate">{t.label}</span>
-                      </span>
-                      <span className={`block text-[11px] mt-0.5 truncate ${active ? 'text-brand-700/70' : 'text-stone-400'}`}>
-                        {t.hint}
-                      </span>
-                    </button>
-                  );
-                })}
+            <div className="space-y-4 min-w-0">
+              <div className="min-w-0">
+                <p className="label-ats">Type</p>
+                <div className="grid grid-cols-2 gap-2 min-w-0">
+                  {TYPES.map((t) => {
+                    const Icon = t.icon;
+                    const active = form.category === t.value;
+                    return (
+                      <button
+                        key={t.value}
+                        type="button"
+                        onClick={() => setForm((prev) => ({ ...prev, category: t.value }))}
+                        className={`min-w-0 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                          active
+                            ? 'border-brand-200 bg-brand-50 text-brand-800'
+                            : 'border-stone-200 bg-white text-stone-700 hover:border-brand-200 hover:bg-brand-50/40'
+                        }`}
+                      >
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <Icon size={14} className={`shrink-0 ${active ? 'text-brand-600' : 'text-stone-400'}`} />
+                          <span className="text-[13px] font-semibold truncate">{t.label}</span>
+                        </span>
+                        <span className={`block text-[11px] mt-0.5 truncate ${active ? 'text-brand-700/70' : 'text-stone-400'}`}>
+                          {t.hint}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="min-w-0">
+                <label className="label-ats" htmlFor="support-subject">Subject</label>
+                <input
+                  id="support-subject"
+                  value={form.subject}
+                  onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))}
+                  maxLength={160}
+                  className="input-ats w-full"
+                  placeholder="Concise summary of the request or issue"
+                />
+              </div>
+
+              <div className="min-w-0">
+                <label className="label-ats" htmlFor="support-message">Details</label>
+                <textarea
+                  id="support-message"
+                  value={form.message}
+                  onChange={(e) => setForm((prev) => ({ ...prev, message: e.target.value }))}
+                  rows={7}
+                  maxLength={4000}
+                  className="input-ats w-full min-h-[96px] max-h-[220px] resize-none overflow-y-auto"
+                  onInput={(e) => { e.currentTarget.style.height = 'auto'; e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 220)}px`; }}
+                  placeholder="Describe the context, expected outcome, and any job ID or page reference."
+                />
+                <p className="mt-1 text-[11px] text-stone-400 tabular-nums text-right">{form.message.length}/4000</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-stone-100 pt-4">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-400">Case context</p>
+                  <p className="text-xs text-stone-600 mt-1 truncate" title={window.location.pathname}>{window.location.pathname}</p>
+                </div>
+                <div className="sm:text-right">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-400">Routing</p>
+                  <p className="text-xs text-stone-600 mt-1">Hiring support desk + email</p>
+                </div>
               </div>
             </div>
-
-            <div className="min-w-0">
-              <label className="label-ats" htmlFor="support-subject">Subject</label>
-              <input
-                id="support-subject"
-                value={form.subject}
-                onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))}
-                maxLength={160}
-                className="input-ats w-full"
-                placeholder="Short summary of the query, issue, or idea"
-              />
-            </div>
-
-            <div className="min-w-0">
-              <label className="label-ats" htmlFor="support-message">Details</label>
-              <textarea
-                id="support-message"
-                value={form.message}
-                onChange={(e) => setForm((prev) => ({ ...prev, message: e.target.value }))}
-                rows={7}
-                maxLength={4000}
-                className="input-ats w-full min-h-[96px] max-h-[220px] resize-none overflow-y-auto"
-                onInput={(e) => { e.currentTarget.style.height = 'auto'; e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 220)}px`; }}
-                placeholder="Describe the issue, expected outcome, and relevant job or page reference."
-              />
-              <p className="mt-1 text-[11px] text-stone-400 tabular-nums text-right">{form.message.length}/4000</p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-stone-100 pt-4">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-400">Case context</p>
-                <p className="text-xs text-stone-600 mt-1 truncate" title={window.location.pathname}>{window.location.pathname}</p>
-              </div>
-              <div className="sm:text-right">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-400">Delivery</p>
-                <p className="text-xs text-stone-600 mt-1">Secure product inbox</p>
-              </div>
-            </div>
-          </div>
-        </form>
+          </form>
         </Modal>
 
         <Modal
@@ -276,10 +291,12 @@ export default function SupportFeedbackPage() {
             <div className="space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-stone-200 bg-stone-50/70 px-3.5 py-3">
                 <div>
-                  <p className="text-[11px] uppercase tracking-[0.1em] font-bold text-stone-400">Ticket status</p>
+                  <p className="text-[11px] uppercase tracking-[0.1em] font-bold text-stone-400">Live status</p>
                   <p className="text-sm font-semibold text-stone-800 mt-1">{typeLabel(selectedTicket.category)}</p>
                 </div>
-                <span className={STATUS[selectedTicket.status]?.className || STATUS.open.className}>{STATUS[selectedTicket.status]?.label || STATUS.open.label}</span>
+                <span className={STATUS[selectedTicket.status]?.className || STATUS.open.className}>
+                  {STATUS[selectedTicket.status]?.label || STATUS.open.label}
+                </span>
               </div>
 
               <div className="space-y-3 max-h-[min(38vh,24rem)] overflow-y-auto pr-1">
@@ -291,9 +308,16 @@ export default function SupportFeedbackPage() {
                   <p className="text-sm text-stone-700 leading-relaxed whitespace-pre-wrap mt-2">{selectedTicket.message}</p>
                 </div>
                 {(selectedTicket.replies || []).map((reply, index) => (
-                  <div key={`${reply.createdAt || 'reply'}-${index}`} className={`rounded-2xl border p-3.5 ${reply.authorType === 'support' ? 'border-stone-200 bg-white' : 'border-brand-100 bg-brand-50/60'}`}>
+                  <div
+                    key={`${reply.createdAt || 'reply'}-${index}`}
+                    className={`rounded-2xl border p-3.5 ${reply.authorType === 'support' ? 'border-stone-200 bg-white' : 'border-brand-100 bg-brand-50/60'}`}
+                  >
                     <div className="flex items-center justify-between gap-3 text-[11px] text-stone-500">
-                      <span className="font-semibold text-stone-700">{reply.authorType === 'support' ? 'Skillnix support' : 'You'}</span>
+                      <span className="font-semibold text-stone-700">
+                        {reply.authorType === 'support'
+                          ? (reply.authorName || 'Hiring support')
+                          : 'You'}
+                      </span>
                       <span>{relativeTime(reply.createdAt)}</span>
                     </div>
                     <p className="text-sm text-stone-700 leading-relaxed whitespace-pre-wrap mt-2">{reply.body}</p>
@@ -301,25 +325,32 @@ export default function SupportFeedbackPage() {
                 ))}
               </div>
 
-              <form onSubmit={submitReply} className="border-t border-stone-100 pt-4">
-                <label className="label-ats" htmlFor="support-reply">Reply to this ticket</label>
-                <textarea
-                  id="support-reply"
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  rows={4}
-                  maxLength={4000}
-                  className="input-ats w-full resize-y mt-1"
-                  placeholder="Add context or reply to the product team…"
-                />
-                <div className="flex items-center justify-between gap-3 mt-2">
-                  <span className="text-[11px] text-stone-400">{replyText.length}/4000</span>
-                  <button type="submit" className="btn-primary" disabled={replySending || replyText.trim().length < 2}>
-                    {replySending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                    {replySending ? 'Sending…' : 'Send reply'}
-                  </button>
-                </div>
-              </form>
+              {selectedTicket.status !== 'resolved' ? (
+                <form onSubmit={submitReply} className="border-t border-stone-100 pt-4">
+                  <label className="label-ats" htmlFor="support-reply">Add a follow-up</label>
+                  <p className="text-[11px] text-stone-500 mb-1">Sends an update to your hiring support desk and keeps this thread current.</p>
+                  <textarea
+                    id="support-reply"
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    rows={4}
+                    maxLength={4000}
+                    className="input-ats w-full resize-y mt-1"
+                    placeholder="Add clarification or additional context…"
+                  />
+                  <div className="flex items-center justify-between gap-3 mt-2">
+                    <span className="text-[11px] text-stone-400">{replyText.length}/4000</span>
+                    <button type="submit" className="btn-primary" disabled={replySending || replyText.trim().length < 2}>
+                      {replySending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                      {replySending ? 'Sending…' : 'Send follow-up'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <p className="text-[12px] text-stone-500 border-t border-stone-100 pt-4">
+                  This ticket is resolved. Submit a new ticket if you need further assistance.
+                </p>
+              )}
             </div>
           ) : null}
         </Modal>
@@ -327,17 +358,36 @@ export default function SupportFeedbackPage() {
         <section className="lg:col-span-5 card-ats-bordered relative overflow-hidden flex flex-col min-w-0 min-h-[20rem]">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
           <div className="relative p-5 sm:p-6 flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brand-700">Freelancer support desk</p>
-            <h2 className="text-xl font-bold text-stone-900 tracking-tight mt-2">Help when your desk needs it.</h2>
-            <p className="text-sm text-stone-500 leading-relaxed mt-2">Share enough context for the product team to act quickly. Every request gets a ticket reference and stays available in your history.</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brand-700">How support works</p>
+            <h2 className="text-xl font-bold text-stone-900 tracking-tight mt-2">Enterprise response workflow.</h2>
+            <p className="text-sm text-stone-500 leading-relaxed mt-2">
+              Tickets are stored on your account, confirmed to your login email, and routed to your hiring organization’s Freelancer Support desk. When they reply or change status, you see it here immediately and receive an email update.
+            </p>
             <div className="mt-6 space-y-3">
               <div className="flex items-start gap-3 rounded-xl border border-stone-200 bg-stone-50/70 p-3">
                 <Clock size={16} className="text-brand-600 mt-0.5 shrink-0" />
-                <div><p className="text-xs font-semibold text-stone-800">One-business-day response</p><p className="text-[11px] text-stone-500 mt-0.5">Urgent account issues should include the affected page or job ID.</p></div>
+                <div>
+                  <p className="text-xs font-semibold text-stone-800">Typical response within one business day</p>
+                  <p className="text-[11px] text-stone-500 mt-0.5">Include the affected page, job ID, or error detail for faster resolution.</p>
+                </div>
               </div>
               <div className="flex items-start gap-3 rounded-xl border border-stone-200 bg-stone-50/70 p-3">
                 <Mail size={16} className="text-brand-600 mt-0.5 shrink-0" />
-                <div><p className="text-xs font-semibold text-stone-800">Replies stay with your account</p><p className="text-[11px] text-stone-500 mt-0.5 break-words">{user?.email || 'Your signed-in email'}</p></div>
+                <div>
+                  <p className="text-xs font-semibold text-stone-800">Email + in-app updates</p>
+                  <p className="text-[11px] text-stone-500 mt-0.5 break-words">
+                    Confirmation and support replies go to {user?.email || 'your signed-in email'}. Status badges refresh automatically on this page.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 rounded-xl border border-stone-200 bg-stone-50/70 p-3">
+                <MessageCircle size={16} className="text-brand-600 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold text-stone-800">Hiring team visibility</p>
+                  <p className="text-[11px] text-stone-500 mt-0.5">
+                    Authorized company users can open, reply, and update ticket status from Freelancer Support desk.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -347,15 +397,24 @@ export default function SupportFeedbackPage() {
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
           <div className="relative px-4 sm:px-5 pt-4 pb-0 border-b border-stone-100">
             <div className="flex items-center justify-between gap-2 pb-3">
-            <div className="min-w-0">
-              <h2 className="text-[15px] font-bold text-stone-900 tracking-tight">Your tickets</h2>
-              <p className="text-[11px] text-stone-400 mt-0.5">Logged here and emailed to the product team</p>
-            </div>
-            <span className="badge-neutral shrink-0 tabular-nums">{tickets.length}</span>
+              <div className="min-w-0">
+                <h2 className="text-[15px] font-bold text-stone-900 tracking-tight">Your tickets</h2>
+                <p className="text-[11px] text-stone-400 mt-0.5">Live status · refreshed automatically</p>
+              </div>
+              <span className="badge-neutral shrink-0 tabular-nums">{tickets.length}</span>
             </div>
             <div className="flex items-center gap-5" role="tablist" aria-label="Ticket status">
               {[['active', 'Active'], ['resolved', 'Resolved'], ['all', 'All tickets']].map(([value, label]) => (
-                <button key={value} type="button" role="tab" aria-selected={ticketTab === value} onClick={() => changeTicketTab(value)} className={`border-b-2 pb-2.5 text-xs font-semibold transition-colors ${ticketTab === value ? 'border-brand-600 text-brand-700' : 'border-transparent text-stone-500 hover:text-stone-800'}`}>{label}</button>
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={ticketTab === value}
+                  onClick={() => changeTicketTab(value)}
+                  className={`border-b-2 pb-2.5 text-xs font-semibold transition-colors ${ticketTab === value ? 'border-brand-600 text-brand-700' : 'border-transparent text-stone-500 hover:text-stone-800'}`}
+                >
+                  {label}
+                </button>
               ))}
             </div>
           </div>
@@ -371,7 +430,7 @@ export default function SupportFeedbackPage() {
                 icon={LifeBuoy}
                 tone="brand"
                 message="No tickets yet"
-                subMessage="Create a ticket to contact the support team."
+                subMessage="Submit a ticket to start a tracked conversation with your hiring support desk."
               />
             ) : (
               <ul className="divide-y divide-stone-100">
@@ -380,23 +439,23 @@ export default function SupportFeedbackPage() {
                   return (
                     <li key={row._id} className="px-4 sm:px-5 py-3.5">
                       <button type="button" onClick={() => openTicket(row)} className="w-full text-left rounded-xl hover:bg-stone-50 -m-2 p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
-                      <div className="flex items-start justify-between gap-3 min-w-0">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[11px] font-semibold text-brand-700 tabular-nums">{row.ticketRef}</p>
-                          <p className="text-sm font-semibold text-stone-900 break-words mt-0.5">{row.subject}</p>
+                        <div className="flex items-start justify-between gap-3 min-w-0">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[11px] font-semibold text-brand-700 tabular-nums">{row.ticketRef}</p>
+                            <p className="text-sm font-semibold text-stone-900 break-words mt-0.5">{row.subject}</p>
+                          </div>
+                          <span className={`${st.className} shrink-0`}>{st.label}</span>
                         </div>
-                        <span className={`${st.className} shrink-0`}>{st.label}</span>
-                      </div>
-                      <p className="text-[11px] text-stone-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                        <span>{typeLabel(row.category)}</span>
-                        <span className="inline-flex items-center gap-1 text-stone-400">
-                          <Clock size={10} /> {relativeTime(row.createdAt)}
-                        </span>
-                      </p>
-                      <p className="text-[12px] text-stone-600 mt-1.5 leading-relaxed break-words line-clamp-3">
-                        {row.message}
-                      </p>
-                      <p className="text-[11px] font-semibold text-brand-700 mt-2">View conversation</p>
+                        <p className="text-[11px] text-stone-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span>{typeLabel(row.category)}</span>
+                          <span className="inline-flex items-center gap-1 text-stone-400">
+                            <Clock size={10} /> {relativeTime(row.updatedAt || row.createdAt)}
+                          </span>
+                        </p>
+                        <p className="text-[12px] text-stone-600 mt-1.5 leading-relaxed break-words line-clamp-3">
+                          {row.message}
+                        </p>
+                        <p className="text-[11px] font-semibold text-brand-700 mt-2">View conversation</p>
                       </button>
                     </li>
                   );
@@ -422,6 +481,7 @@ export default function SupportFeedbackPage() {
         <a href="mailto:support@skillnixrecruitment.com" className="text-brand-700 font-semibold inline-flex items-center gap-1 hover:underline break-all">
           <Mail size={12} className="shrink-0" /> support@skillnixrecruitment.com
         </a>
+        {' '}· include your ticket ID for fastest routing.
       </p>
     </div>
   );

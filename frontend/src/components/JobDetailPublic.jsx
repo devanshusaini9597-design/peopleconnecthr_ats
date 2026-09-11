@@ -2,7 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, MapPin, Briefcase, Clock, UploadCloud, CheckCircle, AlertCircle, Building, FileText, ChevronRight } from 'lucide-react';
 import API_URL from '../config';
+import { employmentLabel } from './jobs/jobsConstants';
 import PublicAnnouncementBanner from './PublicAnnouncementBanner';
+import { resolveOrgLogoSrc } from '../utils/orgLogo';
+import { sanitizeHtml } from '../utils/sanitizeHtml';
 
 const JobDetailPublic = () => {
   const { orgSlug, jobId } = useParams();
@@ -159,7 +162,7 @@ const JobDetailPublic = () => {
           </Link>
           <div className="flex items-center space-x-3">
             {org?.logo ? (
-              <img src={org.logo} alt={org.name} className="h-8 w-auto object-contain" />
+              <img src={resolveOrgLogoSrc(org.logo)} alt={org.name} className="h-8 w-auto object-contain" />
             ) : (
               <span className="font-bold text-xl text-gray-800">{org?.name}</span>
             )}
@@ -176,6 +179,9 @@ const JobDetailPublic = () => {
               <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight mb-4">{job.title}</h1>
               
               <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-8 pb-8 border-b border-gray-100">
+                {job.clientName && (
+                  <span className="flex items-center bg-gray-100 px-3 py-1 rounded-full"><Building className="h-4 w-4 mr-2" />{job.clientName}</span>
+                )}
                 {job.department && (
                   <span className="flex items-center bg-gray-100 px-3 py-1 rounded-full"><Briefcase className="h-4 w-4 mr-2" />{job.department}</span>
                 )}
@@ -183,12 +189,12 @@ const JobDetailPublic = () => {
                   <span className="flex items-center bg-gray-100 px-3 py-1 rounded-full"><MapPin className="h-4 w-4 mr-2" />{job.location}</span>
                 )}
                 {job.employmentType && (
-                  <span className="flex items-center bg-gray-100 px-3 py-1 rounded-full"><Clock className="h-4 w-4 mr-2" />{job.employmentType}</span>
+                  <span className="flex items-center bg-gray-100 px-3 py-1 rounded-full"><Clock className="h-4 w-4 mr-2" />{employmentLabel(job.employmentType)}</span>
                 )}
               </div>
 
               <div className="prose prose-indigo max-w-none text-gray-700">
-                <div dangerouslySetInnerHTML={{ __html: job.description }} />
+                <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(job.description) }} />
               </div>
             </div>
 

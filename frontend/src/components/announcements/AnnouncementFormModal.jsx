@@ -58,7 +58,7 @@ function SeverityPicker({ value, onChange }) {
   );
 }
 
-export function AnnouncementFields({ form, setForm, idPrefix = 'ann' }) {
+export function AnnouncementFields({ form, setForm, idPrefix = 'ann', showEmailOption = false }) {
   return (
     <div className="space-y-4">
       <div>
@@ -92,6 +92,27 @@ export function AnnouncementFields({ form, setForm, idPrefix = 'ann' }) {
         <label className="label-ats">Severity</label>
         <SeverityPicker value={form.severity} onChange={(severity) => setForm((f) => ({ ...f, severity }))} />
       </div>
+      {showEmailOption && form.audience !== 'public' && form.audience !== 'freelancers' ? (
+        <label className="flex items-start gap-3 rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-3 cursor-pointer hover:border-brand-300 transition-colors">
+          <input
+            type="checkbox"
+            className="mt-0.5 rounded border-stone-300 text-brand-600 focus:ring-brand-500"
+            checked={form.notifyEmail !== false}
+            onChange={(e) => setForm((f) => ({ ...f, notifyEmail: e.target.checked }))}
+          />
+          <span className="min-w-0">
+            <span className="block text-xs font-bold text-stone-800">Email employees</span>
+            <span className="block text-[11px] text-stone-500 mt-0.5 leading-relaxed">
+              Also send this notice to teammates’ work email (in addition to the in-app banner and noticeboard). Freelancer-only notices never email.
+            </span>
+          </span>
+        </label>
+      ) : null}
+      {form.audience === 'freelancers' ? (
+        <p className="rounded-xl border border-indigo-200 bg-indigo-50/70 px-3 py-2.5 text-[11px] text-indigo-800 leading-relaxed">
+          Freelancers see this in the ATS app only (bell + Announcements). No email is sent.
+        </p>
+      ) : null}
     </div>
   );
 }

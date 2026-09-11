@@ -10,6 +10,7 @@ export function useCandidateEmail({
   const [bulkEmailRecipients, setBulkEmailRecipients] = useState([]);
   const [emailType, setEmailType] = useState('interview');
   const [customMessage, setCustomMessage] = useState('');
+  const [quickSubject, setQuickSubject] = useState('');
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [emailCC, setEmailCC] = useState([]);
   const [emailBCC, setEmailBCC] = useState([]);
@@ -28,9 +29,13 @@ export function useCandidateEmail({
   const [emailTemplates, setEmailTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [templateVars, setTemplateVars] = useState({});
+  const [templateDraftSubject, setTemplateDraftSubject] = useState('');
+  const [templateDraftBody, setTemplateDraftBody] = useState('');
+  const [templateDraftDirty, setTemplateDraftDirty] = useState(false);
   const [emailMode, setEmailMode] = useState('template');
   const [emailChannel, setEmailChannel] = useState('transactional');
   const [channelsAvailable, setChannelsAvailable] = useState({ transactional: true, marketing: false });
+  const [emailSenderInfo, setEmailSenderInfo] = useState(null);
   const [showVerifiedEmailRequiredModal, setShowVerifiedEmailRequiredModal] = useState(false);
   const [verifiedEmailRequiredMessage, setVerifiedEmailRequiredMessage] = useState('');
   const [bulkEmailStep, setBulkEmailStep] = useState(null);
@@ -55,6 +60,9 @@ export function useCandidateEmail({
     setBulkEmailRecipients,
     setEmailRecipient,
     setEmailMode,
+    setEmailChannel,
+    setChannelsAvailable,
+    setEmailSenderInfo,
     setEmailType,
     setCustomMessage,
     setEmailCC,
@@ -82,10 +90,12 @@ export function useCandidateEmail({
     setVerifiedEmailRequiredMessage,
     setShowVerifiedEmailRequiredModal,
     setChannelsAvailable,
+    setEmailSenderInfo,
     setEmailRecipient,
     setEmailChannel,
     setEmailType,
     setCustomMessage,
+    setQuickSubject,
     setEmailCC,
     setEmailBCC,
     setCcInput,
@@ -99,6 +109,9 @@ export function useCandidateEmail({
     setQuickPreviewSubject,
     setSelectedTemplate,
     setTemplateVars,
+    setTemplateDraftSubject,
+    setTemplateDraftBody,
+    setTemplateDraftDirty,
     setEmailMode,
     setShowEmailModal,
     setEmailTemplates,
@@ -107,6 +120,8 @@ export function useCandidateEmail({
     setIsSendingEmail,
     bulkEmailRecipients,
     templateVars,
+    templateDraftSubject,
+    templateDraftBody,
     emailChannel,
     emailCC,
     emailBCC,
@@ -114,6 +129,7 @@ export function useCandidateEmail({
     setSelectedIds,
     emailType,
     customMessage,
+    quickSubject,
     quickName,
     quickPosition,
     quickDepartment,
@@ -123,14 +139,18 @@ export function useCandidateEmail({
   return {
     showEmailModal, setShowEmailModal, emailRecipient, setEmailRecipient,
     bulkEmailRecipients, setBulkEmailRecipients, emailType, setEmailType,
-    customMessage, setCustomMessage, isSendingEmail, emailCC, setEmailCC, emailBCC, setEmailBCC,
+    customMessage, setCustomMessage, quickSubject, setQuickSubject, isSendingEmail, emailCC, setEmailCC, emailBCC, setEmailBCC,
     ccInput, setCcInput, bccInput, setBccInput, showCCPicker, setShowCCPicker, showBCCPicker, setShowBCCPicker,
     quickName, setQuickName, quickPosition, setQuickPosition, quickDepartment, setQuickDepartment,
     quickJoiningDate, setQuickJoiningDate, showQuickPreview, setShowQuickPreview,
     quickPreviewHtml, setQuickPreviewHtml, quickPreviewSubject, setQuickPreviewSubject,
     loadingPreview, setLoadingPreview,
-    emailTemplates, selectedTemplate, setSelectedTemplate, templateVars, setTemplateVars, emailMode, setEmailMode,
+    emailTemplates, selectedTemplate, setSelectedTemplate, templateVars, setTemplateVars,
+    templateDraftSubject, setTemplateDraftSubject, templateDraftBody, setTemplateDraftBody,
+    templateDraftDirty, setTemplateDraftDirty,
+    emailMode, setEmailMode,
     emailChannel, setEmailChannel, channelsAvailable, setChannelsAvailable,
+    emailSenderInfo, setEmailSenderInfo,
     showVerifiedEmailRequiredModal, setShowVerifiedEmailRequiredModal,
     verifiedEmailRequiredMessage, setVerifiedEmailRequiredMessage,
     bulkEmailStep, setBulkEmailStep, selectedEmails, setSelectedEmails, campaignStatus, emailStatuses,

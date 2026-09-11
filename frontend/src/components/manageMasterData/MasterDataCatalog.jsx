@@ -91,7 +91,16 @@ export default function MasterDataCatalog({
             <tbody>
               {visible.map((item) => (
                 <tr key={item._id} className="border-t border-stone-100 hover:bg-stone-50/70 transition-colors">
-                  <td className="px-4 sm:px-5 py-3.5 text-sm font-semibold text-stone-900">{item.name}</td>
+                  <td className="px-4 sm:px-5 py-3.5 text-sm font-semibold text-stone-900">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span>{item.name}</span>
+                      {item.requiresPan && (
+                        <span className="inline-flex items-center rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 ring-1 ring-amber-100">
+                          PAN required
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 sm:px-5 py-3.5 text-sm text-stone-600 max-w-md truncate">{item.description || '—'}</td>
                   <td className="px-4 sm:px-5 py-3.5">
                     <span className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-semibold ${

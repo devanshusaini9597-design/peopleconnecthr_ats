@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Search, Loader2, Inbox, Save, FileSpreadsheet, CheckSquare, Square,
+  Search, Loader2, Inbox, Save, FileSpreadsheet, CheckSquare, Square, MinusSquare,
   Sparkles, Edit2, ChevronLeft, ChevronRight, Info,
 } from 'lucide-react';
 import EmptyState from '../ui/EmptyState';
@@ -23,6 +23,10 @@ export default function ReviewStep({
   setPage,
   selectAllReady,
   selectPageReady,
+  togglePageReady,
+  pageAllSelected,
+  pageSomeSelected,
+  pageReadyRows,
   skipExistingInAts,
   clearSelection,
   isSavingPending,
@@ -41,6 +45,12 @@ export default function ReviewStep({
   page,
   totalPages,
 }) {
+  const HeaderCheckIcon = pageAllSelected
+    ? CheckSquare
+    : pageSomeSelected
+      ? MinusSquare
+      : Square;
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
@@ -57,6 +67,51 @@ export default function ReviewStep({
             <p className="text-[11px] text-stone-400">{k.sub}</p>
           </div>
         ))}
+      </div>
+
+      {/* Selection controls — always visible when data is loaded */}
+      <div className="rounded-xl border border-brand-200 bg-brand-50/50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-stone-900">Choose what to import</p>
+          <p className="text-xs text-stone-500 mt-0.5">
+            Tick rows one by one, or select all Ready in one click.
+            {readyCount > 0 ? ` ${readyCount.toLocaleString()} Ready · ${selected.size.toLocaleString()} selected.` : ''}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="btn-primary !h-9 !text-xs"
+            onClick={selectAllReady}
+            disabled={readyCount === 0}
+            title="Select every Ready row in this file"
+          >
+            <CheckSquare size={14} />
+            Select all Ready ({readyCount})
+          </button>
+          <button
+            type="button"
+            className="btn-secondary !h-9 !text-xs"
+            onClick={selectPageReady}
+            disabled={!pageReadyRows?.length}
+            title="Select Ready rows on this page only"
+          >
+            Select this page
+          </button>
+          <button
+            type="button"
+            className="btn-secondary !h-9 !text-xs"
+            onClick={clearSelection}
+            disabled={selected.size === 0}
+          >
+            Clear selection
+          </button>
+          {dbDupCount > 0 && (
+            <button type="button" className="btn-secondary !h-9 !text-xs" onClick={skipExistingInAts}>
+              Skip already in ATS
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="rounded-xl border border-stone-200 bg-white px-4 py-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-20 shadow-sm">
@@ -88,14 +143,6 @@ export default function ReviewStep({
               onChange={(e) => { setQuery(e.target.value); setPage(1); }}
             />
           </div>
-          <button type="button" className="btn-secondary !h-9 !text-xs" onClick={selectAllReady}>Select all Ready</button>
-          <button type="button" className="btn-secondary !h-9 !text-xs" onClick={selectPageReady}>Select page Ready</button>
-          {dbDupCount > 0 && (
-            <button type="button" className="btn-secondary !h-9 !text-xs" onClick={skipExistingInAts}>
-              Skip already in ATS
-            </button>
-          )}
-          <button type="button" className="btn-secondary !h-9 !text-xs" onClick={clearSelection}>Clear</button>
           {(reviewCount + blockedCount) > 0 && (
             <button type="button" className="btn-secondary !h-9 !text-xs" disabled={isSavingPending} onClick={sendRestToPending}>
               {isSavingPending ? <Loader2 size={14} className="animate-spin" /> : <Inbox size={14} />}
@@ -124,7 +171,18 @@ export default function ReviewStep({
             <table className="cand-table-drag w-full text-left border-collapse min-w-[1280px] select-text border border-stone-200">
               <thead>
                 <tr className="bg-stone-100">
-                  <th className="px-3.5 py-3.5 w-[52px] text-center border border-stone-200 bg-stone-100" />
+                  <th className="px-3.5 py-3.5 w-[52px] text-center border border-stone-200 bg-stone-100">
+                    <button
+                      type="button"
+                      onClick={togglePageReady}
+                      disabled={!pageReadyRows?.length}
+                      className={`inline-flex justify-center w-full ${pageReadyRows?.length ? 'text-brand-700' : 'text-stone-300 cursor-not-allowed'}`}
+                      aria-label={pageAllSelected ? 'Deselect page' : 'Select all Ready on this page'}
+                      title={pageAllSelected ? 'Deselect this page' : 'Select all Ready on this page'}
+                    >
+                      <HeaderCheckIcon size={17} className={pageAllSelected || pageSomeSelected ? 'text-brand-600' : 'text-stone-400'} />
+                    </button>
+                  </th>
                   {['Status', 'Name', 'Email', 'Contact', 'Company', 'Score', 'Fixes', 'Edit'].map((h) => (
                     <th
                       key={h}
@@ -141,6 +199,7 @@ export default function ReviewStep({
                   const k = rowKey(row);
                   const on = selected.has(k);
                   const fixes = (row.autoFixChanges || []).length;
+                  const canSelect = row._category === 'ready';
                   return (
                     <tr
                       key={k}
@@ -152,9 +211,9 @@ export default function ReviewStep({
                         <button
                           type="button"
                           onClick={() => toggleRow(row)}
-                          className={`inline-flex justify-center w-full ${row._category === 'ready' ? 'text-brand-700' : 'text-stone-300 cursor-not-allowed'}`}
-                          aria-label={row._category === 'ready' ? 'Select row' : 'Fix with Edit first'}
-                          title={row._category === 'ready' ? 'Select for import' : 'Edit to move to Ready'}
+                          className={`inline-flex justify-center w-full ${canSelect ? 'text-brand-700' : 'text-stone-300 cursor-not-allowed'}`}
+                          aria-label={canSelect ? (on ? 'Deselect row' : 'Select row') : 'Fix with Edit first'}
+                          title={canSelect ? (on ? 'Deselect' : 'Select for import') : 'Edit to move to Ready'}
                         >
                           {on ? <CheckSquare size={17} className="text-brand-600" /> : <Square size={17} className="text-stone-300" />}
                         </button>
@@ -208,8 +267,8 @@ export default function ReviewStep({
         <div className="space-y-1 leading-relaxed">
           <p className="font-semibold text-stone-900">Before you import</p>
           <p>
-            Review Ready rows, then import only what you select. Matching emails update the existing candidate — no duplicate profiles.
-            Unchecked or incomplete rows stay out of Candidates until you fix them or send them to Pending Review.
+            Use the checkboxes for one-by-one selection, or <strong>Select all Ready</strong> for the full file.
+            Matching emails update the existing candidate — no duplicate profiles.
           </p>
         </div>
       </div>

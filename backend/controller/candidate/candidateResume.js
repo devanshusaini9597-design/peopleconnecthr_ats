@@ -2,13 +2,16 @@ const path = require('path');
 const fs = require('fs');
 const Candidate = require('../../models/Candidate');
 const logger = require('../../utils/logger');
-const { orgOrOwnerScope } = require('./candidateValidation');
+const { orgOrOwnerScope, candidateResumeScope } = require('./candidateValidation');
 const { parseResume } = require('../../services/resumeParser');
 const { parseResumeViaQueueOrInline, queuesEnabled } = require('../../jobs/queue');
 
 async function checkEmail(req, res) {
     try {
-        const existing = await Candidate.findOne({ email: req.params.email, createdBy: req.user.id });
+        const existing = await Candidate.findOne({
+          email: String(req.params.email || '').toLowerCase().trim(),
+          ...orgOrOwnerScope(req),
+        });
         res.status(200).json({ exists: !!existing });
     } catch (err) {
         res.status(500).json({ message: "Server error" });
@@ -18,7 +21,7 @@ async function checkEmail(req, res) {
 async function getResume(req, res) {
     try {
         if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
-        const candidate = await Candidate.findOne({ _id: req.params.id, ...orgOrOwnerScope(req) }).select('resume').lean();
+        const candidate = await Candidate.findOne({ _id: req.params.id, ...candidateResumeScope(req) }).select('resume').lean();
         if (!candidate || !candidate.resume) {
             return res.status(404).json({ message: 'Resume not found' });
         }
@@ -33,7 +36,25 @@ async function getResume(req, res) {
                 resumeValue
             });
             if (result?.redirectUrl) {
-                return res.redirect(result.redirectUrl);
+                const upstream = await fetch(result.redirectUrl);
+                if (!upstream.ok) {
+                    return res.status(404).json({ message: 'Resume file not found in storage. Try re-uploading.' });
+                }
+                const isDownload = req.query.download === '1';
+                const filename = path.basename(resumeValue.replace(/^\/+/, ''));
+                const disposition = isDownload ? `attachment; filename="${filename}"` : 'inline';
+                res.setHeader('Content-Disposition', disposition);
+                res.setHeader(
+                    'Content-Type',
+                    result.contentType || upstream.headers.get('content-type') || 'application/octet-stream'
+                );
+                const { Readable } = require('stream');
+                if (typeof Readable.fromWeb === 'function' && upstream.body) {
+                    Readable.fromWeb(upstream.body).pipe(res);
+                    return;
+                }
+                res.send(Buffer.from(await upstream.arrayBuffer()));
+                return;
             }
             if (result?.stream) {
                 const isDownload = req.query.download === '1';
@@ -172,8 +193,8 @@ async function parseLogic(req, res) {
             details: err.message,
             filename: req.file?.originalname,
             suggestion: isUserFriendly
-              ? 'Upload a text-based PDF or DOCX resume for best results'
-              : 'Try uploading a PDF, DOC, DOCX, TXT, or RTF file with clear text content'
+              ? 'Try a clearer scan, or a text-based PDF/DOCX'
+              : 'Try uploading a PDF, DOC, DOCX, TXT, RTF, or a clear scan/image of the resume'
         });
     } finally {
         if (req.file?.path) {

@@ -10,9 +10,9 @@
  *   `rbacMiddleware.requireRole()` actually checks on every protected route.
  *   It is changed exclusively via `PUT /api/organization/members/:userId/role`
  *   (owner-only, in organizationRoutes.js).
- * - `TeamMember` is a roster/directory row layered on top of an *existing*
- *   User (invites require `User.findOne({ email })` to already exist — see
- *   teamRoutes.js — this never creates a login account). Its `role` field is
+ * - `TeamMember` is a stakeholder/directory row for CC/BCC (no Skillnix seat).
+ *   Workspace login identities live on `User` and are invited via
+ *   `/api/onboarding/invite`. Its `role` field is
  *   a free-text job title/category ("Team Lead", "HR Manager", "SPOC", ...)
  *   used purely for grouping/display in the Team page UI, plus invitation
  *   workflow state (`invitationStatus`, tokens, timestamps) that has no

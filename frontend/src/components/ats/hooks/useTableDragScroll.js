@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 
 export function useTableDragScroll() {
   const tableScrollRef = useRef(null);
@@ -44,6 +44,18 @@ export function useTableDragScroll() {
     const el = tableScrollRef.current;
     if (el) delete el.dataset.dragging;
   };
+
+  // Clear sticky drag state when leaving Candidates so navigation stays responsive.
+  useEffect(() => {
+    const end = () => onTableDragScrollEnd();
+    window.addEventListener('mouseup', end);
+    window.addEventListener('blur', end);
+    return () => {
+      window.removeEventListener('mouseup', end);
+      window.removeEventListener('blur', end);
+      onTableDragScrollEnd();
+    };
+  }, []);
 
   return {
     tableScrollRef,

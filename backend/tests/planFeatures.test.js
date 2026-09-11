@@ -22,8 +22,8 @@ describe('planFeatures.planHasFeature', () => {
   test('free_trial is aliased to professional (full-featured trial, PLG pattern)', () => {
     expect(planHasFeature('free_trial', 'analytics.advanced')).toBe(true);
     expect(planHasFeature('free_trial', 'integrations.byoEmail')).toBe(true);
-    // ...but NOT enterprise-only features, matching the alias target (professional), not the top tier.
     expect(planHasFeature('free_trial', 'sso')).toBe(false);
+    expect(planHasFeature('free_trial', 'team.customRoles')).toBe(false);
   });
 
   test('unknown feature key fails closed (not entitled), never throws', () => {
@@ -46,7 +46,6 @@ describe('planFeatures.getEntitlements', () => {
     for (const key of pro) {
       expect(ent.has(key)).toBe(true);
     }
-    // And enterprise has strictly more (e.g. sso, team.customRoles).
     expect(ent.size).toBeGreaterThan(pro.size);
   });
 

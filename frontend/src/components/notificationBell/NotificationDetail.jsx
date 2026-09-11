@@ -1,6 +1,24 @@
-import React from 'react';
-import { X, Check, Clock, Calendar, Phone, ChevronRight, Mail, Eye, Users, Share2, UserPlus, UserX } from 'lucide-react';
-import { NotifTypeIcon, timeAgo } from './notificationBellHelpers';
+import React, { useState } from 'react';
+import {
+  ArrowLeft, Check, Clock, Calendar, Phone, Mail, Eye, Users, Share2, UserPlus, UserX, Briefcase, Download, Loader2, FileText,
+} from 'lucide-react';
+import {
+  notifKindLabel, notifHeadline, timeAgo, dueLabel, dueTone, formatNotifDate,
+  isFreelanceReview, reviewStageFromNotif, reviewBodyFromNotif, notifSnippet,
+} from './notificationBellHelpers';
+import { reportShareMeta } from './reportShareUtils';
+import { ReviewMemo } from '../ui/ReviewMemo';
+import PresenceAvatar from '../ui/PresenceAvatar';
+
+function MetaRow({ label, children }) {
+  if (!children) return null;
+  return (
+    <div className="grid grid-cols-[96px_1fr] gap-3 py-2.5 border-b border-stone-100 last:border-0 text-[13px]">
+      <dt className="text-stone-500 font-medium">{label}</dt>
+      <dd className="text-stone-900 min-w-0 break-words text-right sm:text-left">{children}</dd>
+    </div>
+  );
+}
 
 export default function NotificationDetail({
   selectedNotif,
@@ -11,250 +29,315 @@ export default function NotificationDetail({
   onViewTeam,
   onViewCandidate,
   onDismiss,
+  onDownloadReport,
   copyPhone,
+  isFreelancer = false,
 }) {
+  const kind = notifKindLabel(selectedNotif);
+  const headline = notifHeadline(selectedNotif);
+  const due = dueLabel(selectedNotif);
+  const isInviteFamily = ['invitation', 'invitation_accepted', 'invitation_declined'].includes(selectedNotif.type);
+  const isCallback = ['callback_reminder', 'callback_today', 'callback_overdue'].includes(selectedNotif.type);
+  const isJob = selectedNotif.type === 'job_opening';
+  const isFreelanceSub = selectedNotif.type === 'freelancer_submission';
+  const isReportShared = selectedNotif.type === 'report_shared';
+  const pendingInvite = selectedNotif.type === 'invitation' && selectedNotif.status === 'pending' && selectedNotif.actionRequired;
+  const snippet = notifSnippet(selectedNotif);
+  const reportMeta = isReportShared ? reportShareMeta(selectedNotif) : null;
+  const [downloading, setDownloading] = useState(false);
+
+  const subtitle = isJob
+    ? null
+    : selectedNotif.candidatePosition
+      || (isInviteFamily ? (selectedNotif.senderName ? `From ${selectedNotif.senderName}` : null) : null)
+      || (isReportShared ? null : null)
+      || (isFreelanceSub ? (selectedNotif.senderName ? `Submitted by ${selectedNotif.senderName}` : 'Freelance recruiter') : null);
+
+  const jobParts = isJob
+    ? String(selectedNotif.message || '').split(' · ').map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  const handleDownload = async () => {
+    if (!onDownloadReport || downloading) return;
+    setDownloading(true);
+    try {
+      await onDownloadReport(selectedNotif);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
-              <div className="p-4" style={{ animation: 'fadeInDown 0.15s ease-out' }}>
-                {/* Back button */}
+    <div className="flex flex-col min-h-full">
+      <div className="px-4 pt-3 pb-0">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-brand-700 hover:text-brand-800"
+        >
+          <ArrowLeft size={13} />
+          Inbox
+        </button>
+      </div>
+
+      <div className="px-4 pt-4 pb-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-700/80">{kind}</p>
+        <div className="mt-1 flex items-start justify-between gap-3">
+          <h4 className="text-[15px] font-semibold text-stone-900 leading-snug tracking-tight break-words">
+            {headline}
+          </h4>
+          {due && (
+            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ring-1 whitespace-nowrap mt-0.5 ${dueTone(selectedNotif)}`}>
+              {due}
+            </span>
+          )}
+        </div>
+        {subtitle ? <p className="text-[12px] text-stone-500 mt-1">{subtitle}</p> : null}
+      </div>
+
+      {isReportShared ? (
+        <div className="mx-4 rounded-xl border border-stone-200 bg-gradient-to-b from-stone-50/80 to-white overflow-hidden">
+          <div className="px-3.5 py-3 flex items-center gap-3 border-b border-stone-100">
+            <PresenceAvatar
+              name={selectedNotif.senderName}
+              email={selectedNotif.relatedEmail}
+              size={40}
+              ringClass="ring-white"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-semibold text-stone-900 truncate">
+                {selectedNotif.senderName || 'Teammate'}
+              </p>
+              <p className="text-[11px] text-stone-500 truncate">
+                Shared a {reportMeta.formatLabel} report with you
+              </p>
+            </div>
+            <span className="inline-flex items-center gap-1 h-7 px-2 rounded-lg bg-emerald-50 text-emerald-800 text-[10px] font-bold uppercase tracking-wide ring-1 ring-emerald-100">
+              <FileText size={11} />
+              {reportMeta.formatLabel}
+            </span>
+          </div>
+          <dl className="px-3.5">
+            <MetaRow label="Report">{reportMeta.reportLabel}</MetaRow>
+            {reportMeta.periodLabel ? <MetaRow label="Period">{reportMeta.periodLabel}</MetaRow> : null}
+            <MetaRow label="Received">
+              <span className="inline-flex items-center gap-1.5 text-stone-500">
+                <Clock size={12} className="text-stone-400" />
+                {timeAgo(selectedNotif.createdAt)}
+              </span>
+            </MetaRow>
+            {selectedNotif.relatedEmail ? (
+              <MetaRow label="From">
+                <span className="inline-flex items-center gap-1.5">
+                  <Mail size={12} className="text-stone-400" />
+                  {selectedNotif.relatedEmail}
+                </span>
+              </MetaRow>
+            ) : null}
+          </dl>
+          {reportMeta.note ? (
+            <div className="mx-3.5 mb-3.5 mt-1 rounded-lg bg-amber-50/80 border border-amber-100 px-3 py-2.5">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800/80 mb-1">Note</p>
+              <p className="text-[13px] text-stone-800 leading-relaxed whitespace-pre-wrap">{reportMeta.note}</p>
+            </div>
+          ) : (
+            <div className="h-2" />
+          )}
+        </div>
+      ) : (
+        <dl className="mx-4 rounded-lg border border-stone-200 bg-white px-3.5">
+          {isJob && jobParts[0] ? <MetaRow label="Role">{jobParts[0]}</MetaRow> : null}
+          {isJob && jobParts[1] ? <MetaRow label="Location">{jobParts[1]}</MetaRow> : null}
+          {isJob && jobParts[2] ? <MetaRow label="Client">{jobParts[2]}</MetaRow> : null}
+          {selectedNotif.relatedEmail && (
+            <MetaRow label="From">
+              <span className="inline-flex items-center gap-1.5 justify-end sm:justify-start">
+                <Mail size={12} className="text-stone-400" />
+                {selectedNotif.relatedEmail}
+              </span>
+            </MetaRow>
+          )}
+          {isFreelanceSub && selectedNotif.senderName && (
+            <MetaRow label="Recruiter">{selectedNotif.senderName}</MetaRow>
+          )}
+          {selectedNotif.candidateContact && (
+            <MetaRow label="Phone">
+              <span className="inline-flex items-center gap-2 justify-end sm:justify-start">
+                <Phone size={12} className="text-stone-400" />
+                <span className="font-medium tabular-nums">{selectedNotif.candidateContact}</span>
                 <button
                   type="button"
-                  onClick={onBack}
-                  className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-700 font-semibold mb-3"
+                  onClick={() => copyPhone(selectedNotif.candidateContact)}
+                  className="text-[11px] font-semibold text-brand-700 hover:text-brand-800"
                 >
-                  <ChevronRight size={12} className="rotate-180" />
-                  Back to all notifications
+                  Copy
                 </button>
+              </span>
+            </MetaRow>
+          )}
+          {selectedNotif.callBackDate && (
+            <MetaRow label="Callback">
+              <span className="inline-flex items-center gap-1.5 justify-end sm:justify-start">
+                <Calendar size={12} className="text-stone-400" />
+                {formatNotifDate(selectedNotif.callBackDate)}
+              </span>
+            </MetaRow>
+          )}
+          {selectedNotif.senderName && (isJob || isCallback) ? (
+            <MetaRow label="From">{selectedNotif.senderName}</MetaRow>
+          ) : null}
+          <MetaRow label="Received">
+            <span className="inline-flex items-center gap-1.5 justify-end sm:justify-start text-stone-500">
+              <Clock size={12} className="text-stone-400" />
+              {timeAgo(selectedNotif.createdAt)}
+            </span>
+          </MetaRow>
+        </dl>
+      )}
 
-                {/* Type Header Bar */}
-                <div className={`rounded-lg p-3 mb-4 ${
-                  selectedNotif.type === 'invitation' ? 'bg-blue-50 border border-blue-200' :
-                  selectedNotif.type === 'share_request' ? 'bg-emerald-50 border border-emerald-200' :
-                  selectedNotif.type === 'invitation_accepted' ? 'bg-green-50 border border-green-200' :
-                  selectedNotif.type === 'invitation_declined' ? 'bg-red-50 border border-red-200' :
-                  selectedNotif.priority === 'urgent' ? 'bg-red-50 border border-red-200' :
-                  selectedNotif.priority === 'high' ? 'bg-orange-50 border border-orange-200' :
-                  selectedNotif.priority === 'medium' ? 'bg-yellow-50 border border-yellow-200' :
-                  'bg-blue-50 border border-blue-200'
-                }`}>
-                  <div className="flex items-center gap-2">
-                    <NotifTypeIcon type={selectedNotif.type} priority={selectedNotif.priority} />
-                    <span className={`text-xs font-bold uppercase ${
-                      selectedNotif.type === 'invitation' ? 'text-blue-700' :
-                      selectedNotif.type === 'share_request' ? 'text-emerald-700' :
-                      selectedNotif.type === 'invitation_accepted' ? 'text-green-700' :
-                      selectedNotif.type === 'invitation_declined' ? 'text-red-700' :
-                      selectedNotif.priority === 'urgent' ? 'text-red-700' :
-                      selectedNotif.priority === 'high' ? 'text-orange-700' :
-                      'text-blue-700'
-                    }`}>
-                      {selectedNotif.type === 'invitation' ? (selectedNotif.status === 'accepted' ? 'Accepted' : selectedNotif.status === 'declined' ? 'Declined' : 'Team Invitation') :
-                       selectedNotif.type === 'share_request' ? 'Shared Candidates' :
-                       selectedNotif.type === 'invitation_accepted' ? 'Invitation Accepted' :
-                       selectedNotif.type === 'invitation_declined' ? 'Invitation Declined' :
-                       `${selectedNotif.priority} priority`}
-                    </span>
-                    {selectedNotif.daysRemaining !== undefined && (
-                      <span className={`ml-auto text-xs font-bold px-2 py-0.5 rounded-full ${
-                        selectedNotif.daysRemaining <= 0 ? 'bg-red-200 text-red-800' :
-                        selectedNotif.daysRemaining <= 2 ? 'bg-orange-200 text-orange-800' :
-                        'bg-gray-200 text-gray-700'
-                      }`}>
-                        {selectedNotif.daysRemaining < 0 ? `${Math.abs(selectedNotif.daysRemaining)} day(s) overdue` :
-                         selectedNotif.daysRemaining === 0 ? 'DUE TODAY' :
-                         `${selectedNotif.daysRemaining} day(s) remaining`}
-                      </span>
-                    )}
-                  </div>
-                </div>
+      {isFreelanceSub && isFreelanceReview(selectedNotif) ? (
+        <div className="px-4 pt-4 space-y-2.5">
+          {reviewStageFromNotif(selectedNotif) ? (
+            <p className="text-[12px] text-stone-500">
+              Moved to{' '}
+              <span className="font-semibold text-stone-800">{reviewStageFromNotif(selectedNotif)}</span>
+            </p>
+          ) : null}
+          <ReviewMemo
+            text={reviewBodyFromNotif(selectedNotif)}
+            at={selectedNotif.createdAt}
+            emptyLabel="Stage updated. Open the pipeline board for the full handoff."
+          />
+        </div>
+      ) : isCallback || isJob || isReportShared ? null : selectedNotif.message ? (
+        <p className="px-4 pt-4 text-[13px] text-stone-600 leading-relaxed">
+          {selectedNotif.message}
+        </p>
+      ) : null}
 
-                {/* Info Card - Contextual based on type */}
-                <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
-                  {/* Invitation / Team notifications */}
-                  {(selectedNotif.type === 'invitation' || selectedNotif.type === 'invitation_accepted' || selectedNotif.type === 'invitation_declined') && (
-                    <>
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
-                          <Users size={18} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-gray-900">{selectedNotif.title}</p>
-                          <p className="text-xs text-gray-500">From: {selectedNotif.senderName || 'Unknown'}</p>
-                        </div>
-                      </div>
-                      <div className="space-y-2 text-sm">
-                        {selectedNotif.relatedEmail && (
-                          <div className="flex items-center justify-between py-1.5 border-b border-gray-50">
-                            <span className="flex items-center gap-2 text-gray-500"><Mail size={13} /> Inviter</span>
-                            <span className="font-medium text-gray-900">{selectedNotif.relatedEmail}</span>
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between py-1.5">
-                          <span className="flex items-center gap-2 text-gray-500"><Clock size={13} /> Received</span>
-                          <span className="font-medium text-gray-500 text-xs">{timeAgo(selectedNotif.createdAt)}</span>
-                        </div>
-                      </div>
-                    </>
-                  )}
+      {!isJob && !isCallback && !isReportShared && snippet && snippet !== headline && !selectedNotif.message ? (
+        <p className="px-4 pt-3 text-[12px] text-stone-500">{snippet}</p>
+      ) : null}
 
-                  {/* Share request notification */}
-                  {selectedNotif.type === 'share_request' && (
-                    <>
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
-                          <Share2 size={18} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-gray-900">{selectedNotif.title}</p>
-                          <p className="text-xs text-gray-500">From: {selectedNotif.senderName || 'Unknown'}</p>
-                        </div>
-                      </div>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center justify-between py-1.5">
-                          <span className="flex items-center gap-2 text-gray-500"><Clock size={13} /> Shared</span>
-                          <span className="font-medium text-gray-500 text-xs">{timeAgo(selectedNotif.createdAt)}</span>
-                        </div>
-                      </div>
-                    </>
-                  )}
+      <div className="mt-auto px-4 py-4 flex flex-col gap-2">
+        {pendingInvite && (
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => onAccept(selectedNotif)}
+              disabled={!!processingAction}
+              className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-brand-600 text-white text-[12px] font-semibold hover:bg-brand-700 disabled:opacity-50"
+            >
+              <UserPlus size={13} />
+              Accept
+            </button>
+            <button
+              type="button"
+              onClick={() => onDecline(selectedNotif)}
+              disabled={!!processingAction}
+              className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg border border-brand-200 bg-white text-brand-800 text-[12px] font-semibold hover:bg-brand-50 disabled:opacity-50"
+            >
+              <UserX size={13} />
+              Decline
+            </button>
+          </div>
+        )}
 
-                  {/* Callback-type notifications (original) */}
-                  {(selectedNotif.type === 'callback_reminder' || selectedNotif.type === 'callback_today' || selectedNotif.type === 'callback_overdue') && (
-                    <>
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
-                          {(selectedNotif.candidateName || 'N')[0].toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-gray-900">{selectedNotif.candidateName}</p>
-                          <p className="text-xs text-gray-500">{selectedNotif.candidatePosition || 'No position'}</p>
-                        </div>
-                      </div>
-                      <div className="space-y-2 text-sm">
-                        {selectedNotif.candidateContact && (
-                          <div className="flex items-center justify-between py-1.5 border-b border-gray-50">
-                            <span className="flex items-center gap-2 text-gray-500"><Phone size={13} /> Contact</span>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-gray-900">{selectedNotif.candidateContact}</span>
-                              <button onClick={() => copyPhone(selectedNotif.candidateContact)} className="text-[10px] text-blue-600 hover:text-blue-700 font-medium px-1.5 py-0.5 hover:bg-blue-50 rounded">Copy</button>
-                            </div>
-                          </div>
-                        )}
-                        {selectedNotif.callBackDate && (
-                          <div className="flex items-center justify-between py-1.5 border-b border-gray-50">
-                            <span className="flex items-center gap-2 text-gray-500"><Calendar size={13} /> Callback Date</span>
-                            <span className="font-medium text-gray-900">{selectedNotif.callBackDate}</span>
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between py-1.5">
-                          <span className="flex items-center gap-2 text-gray-500"><Clock size={13} /> Notified</span>
-                          <span className="font-medium text-gray-500 text-xs">{timeAgo(selectedNotif.createdAt)}</span>
-                        </div>
-                      </div>
-                    </>
-                  )}
+        {isInviteFamily && (
+          <button
+            type="button"
+            onClick={onViewTeam}
+            className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-brand-600 text-white text-[12px] font-semibold hover:bg-brand-700"
+          >
+            <Users size={13} />
+            Open team
+          </button>
+        )}
 
-                  {/* Generic / System notifications */}
-                  {!['invitation', 'invitation_accepted', 'invitation_declined', 'share_request', 'callback_reminder', 'callback_today', 'callback_overdue'].includes(selectedNotif.type) && (
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center justify-between py-1.5">
-                        <span className="flex items-center gap-2 text-gray-500"><Clock size={13} /> Notified</span>
-                        <span className="font-medium text-gray-500 text-xs">{timeAgo(selectedNotif.createdAt)}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
+        {selectedNotif.type === 'share_request' && (
+          <button
+            type="button"
+            onClick={onViewCandidate}
+            className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-brand-600 text-white text-[12px] font-semibold hover:bg-brand-700"
+          >
+            <Share2 size={13} />
+            View shared candidates
+          </button>
+        )}
 
-                {/* Message */}
-                <div className="bg-gray-50 rounded-lg p-3 mb-4">
-                  <p className="text-xs text-gray-600 leading-relaxed">{selectedNotif.message}</p>
-                </div>
+        {isReportShared && (
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={downloading}
+            className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-brand-600 text-white text-[12px] font-semibold hover:bg-brand-700 disabled:opacity-50"
+          >
+            {downloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+            {downloading ? 'Preparing…' : `Download ${reportMeta.formatLabel}`}
+          </button>
+        )}
 
-                {/* Quick Actions */}
-                <div className="space-y-2">
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Quick Actions</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {/* Invitation-specific actions */}
-                    {selectedNotif.type === 'invitation' && selectedNotif.status === 'pending' && selectedNotif.actionRequired && (
-                      <>
-                        <button
-                          onClick={() => onAccept(selectedNotif)}
-                          disabled={!!processingAction}
-                          className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium transition-colors disabled:opacity-50 col-span-1"
-                        >
-                          <UserPlus size={13} />
-                          Accept Invitation
-                        </button>
-                        <button
-                          onClick={() => onDecline(selectedNotif)}
-                          disabled={!!processingAction}
-                          className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition-colors disabled:opacity-50 col-span-1"
-                        >
-                          <UserX size={13} />
-                          Decline
-                        </button>
-                      </>
-                    )}
-                    
-                    {/* Share / Invitation result - view team */}
-                    {(selectedNotif.type === 'invitation_accepted' || selectedNotif.type === 'invitation_declined' || selectedNotif.type === 'invitation') && (
-                      <button
-                        onClick={onViewTeam}
-                        className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
-                      >
-                        <Users size={13} />
-                        View Team
-                      </button>
-                    )}
-                    
-                    {/* Share notification - view shared candidates in ATS */}
-                    {selectedNotif.type === 'share_request' && (
-                      <button
-                        onClick={() => onViewCandidate(true)}
-                        className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
-                      >
-                        <Eye size={13} />
-                        View Shared Candidates
-                      </button>
-                    )}
-                    
-                    {/* Callback reminder - view in ATS + call */}
-                    {(selectedNotif.type === 'callback_reminder' || selectedNotif.type === 'callback_today' || selectedNotif.type === 'callback_overdue') && (
-                      <>
-                        <button
-                          onClick={onViewCandidate}
-                          className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
-                        >
-                          <Eye size={13} />
-                          View in ATS
-                        </button>
-                        {selectedNotif.candidateContact && (
-                          <a
-                            href={`tel:${selectedNotif.candidateContact}`}
-                            className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium transition-colors"
-                          >
-                            <Phone size={13} />
-                            Call Now
-                          </a>
-                        )}
-                      </>
-                    )}
-                    
-                    <button
-                      onClick={() => onDismiss(selectedNotif._id)}
-                      className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-medium transition-colors"
-                    >
-                      <Check size={13} />
-                      Dismiss
-                    </button>
-                    <button
-                      onClick={() => onDismiss(selectedNotif._id)}
-                      className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-medium transition-colors"
-                    >
-                      <X size={13} />
-                      Done / Handled
-                    </button>
-                  </div>
-                </div>
-              </div>
+        {isFreelanceSub && (
+          <button
+            type="button"
+            onClick={onViewCandidate}
+            className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-brand-600 text-white text-[12px] font-semibold hover:bg-brand-700"
+          >
+            <Eye size={13} />
+            {isFreelancer ? 'Open pipeline' : 'Review submission'}
+          </button>
+        )}
+
+        {isJob && (
+          <button
+            type="button"
+            onClick={onViewCandidate}
+            className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-brand-600 text-white text-[12px] font-semibold hover:bg-brand-700"
+          >
+            <Briefcase size={13} />
+            Open Jobs
+          </button>
+        )}
+
+        {isCallback && (
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={onViewCandidate}
+              className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-brand-600 text-white text-[12px] font-semibold hover:bg-brand-700"
+            >
+              <Eye size={13} />
+              Open in ATS
+            </button>
+            {selectedNotif.candidateContact ? (
+              <a
+                href={`tel:${selectedNotif.candidateContact}`}
+                className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg border border-brand-200 bg-white text-brand-800 text-[12px] font-semibold hover:bg-brand-50"
+              >
+                <Phone size={13} />
+                Call
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onDismiss(selectedNotif._id)}
+                className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg border border-brand-200 bg-white text-brand-800 text-[12px] font-semibold hover:bg-brand-50"
+              >
+                <Check size={13} />
+                Done
+              </button>
+            )}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => onDismiss(selectedNotif._id)}
+          className="inline-flex items-center justify-center h-9 text-[12px] font-medium text-stone-500 hover:text-stone-800"
+        >
+          Dismiss
+        </button>
+      </div>
+    </div>
   );
 }

@@ -5,7 +5,7 @@ const Application = require('../models/Application');
 const Organization = require('../models/Organization');
 const Notification = require('../models/Notification');
 const FreelancerSubmission = require('../models/FreelancerSubmission');
-const { isFreelancer, createdByFilter, jobListFilter } = require('../utils/dataScope');
+const { isFreelancer, createdByFilter, jobListFilter, userIdParts } = require('../utils/dataScope');
 const { sendEmail } = require('./emailService');
 const {
   wrapBrandedEmailHtml,
@@ -22,9 +22,10 @@ const ops = require('./freelancerOps');
 const SPOC_ROLES = ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales'];
 const ADMIN_OVERRIDE_ROLES = ['owner', 'admin'];
 
-function httpError(message, statusCode = 400) {
+function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
   err.statusCode = statusCode;
+  Object.assign(err, extra);
   return err;
 }
 
@@ -381,6 +382,28 @@ async function notifyCompanyOfExistingCandidateShare({ user, spoc, candidate, jo
 }
 
 async function notifyFreelancerOfReview({ user, submission, status }) {
+  const statusLabel = String(status || '').replace(/_/g, ' ');
+  const message = submission.feedback
+    ? `${user.name || user.email || 'Company SPOC'} marked ${statusLabel} for ${submission.jobId?.title || submission.jobId?.role || 'the mandate'}: ${submission.feedback}`
+    : `${user.name || user.email || 'Company SPOC'} moved this handoff to ${statusLabel} for ${submission.jobId?.title || submission.jobId?.role || 'the mandate'}.`;
+  await notifyFreelancerOfDeskUpdate({
+    user,
+    submission,
+    title: `Review update · ${submission.candidateId?.name || 'your candidate'}`,
+    message,
+    priority: status === 'rejected' ? 'medium' : 'high',
+    statusLabel,
+  });
+}
+
+async function notifyFreelancerOfDeskUpdate({
+  user,
+  submission,
+  title,
+  message,
+  priority = 'high',
+  statusLabel = '',
+}) {
   const freelancer = submission.freelancerId;
   const candidate = submission.candidateId;
   const job = submission.jobId;
@@ -388,35 +411,42 @@ async function notifyFreelancerOfReview({ user, submission, status }) {
   const reviewerName = user.name || user.email || 'Company SPOC';
   const candidateName = candidate?.name || 'your candidate';
   const jobTitle = job?.title || job?.role || 'the mandate';
-  const statusLabel = String(status || '').replace(/_/g, ' ');
+  const prefsSvc = require('./notificationPreferencesService');
+  const freelancerId = freelancer._id;
 
   try {
-    await Notification.create({
-      userId: freelancer._id,
-      senderId: user.id,
-      senderName: reviewerName,
-      type: 'freelancer_submission',
-      title: `Review update · ${candidateName}`,
-      message: submission.feedback
-        ? `${reviewerName} marked ${statusLabel} for ${jobTitle}: ${submission.feedback}`
-        : `${reviewerName} moved this handoff to ${statusLabel} for ${jobTitle}.`,
-      candidateId: candidate?._id,
-      candidateName,
-      candidatePosition: jobTitle,
-      relatedEmail: user.email || '',
-      priority: status === 'rejected' ? 'medium' : 'high',
-      actionRequired: false,
-      status: 'pending',
+    const inAppOk = await prefsSvc.shouldDeliver(freelancerId, 'freelancer_submission', 'inApp', {
+      priority,
     });
+    if (inAppOk) {
+      await Notification.create({
+        userId: freelancerId,
+        senderId: user.id,
+        senderName: reviewerName,
+        type: 'freelancer_submission',
+        title: title || `Review update · ${candidateName}`,
+        message: message || `${reviewerName} updated ${candidateName} for ${jobTitle}.`,
+        candidateId: candidate?._id,
+        candidateName,
+        candidatePosition: jobTitle,
+        relatedEmail: user.email || '',
+        priority,
+        actionRequired: false,
+        status: 'pending',
+      });
+    }
   } catch (err) {
     logger.warn({ err }, 'Freelance review in-app notification failed');
   }
 
   if (!freelancer.email) return;
   try {
+    const emailOk = await prefsSvc.shouldDeliver(freelancerId, 'freelancer_submission', 'email');
+    if (!emailOk) return;
+
     const brand = await loadOrgEmailBrand(user.organizationId);
     const html = wrapBrandedEmailHtml({
-      title: 'Submission update',
+      title: title || 'Submission update',
       eyebrow: 'Mandate handoff',
       orgName: brand.name,
       logoUrl: brand.logoUrl,
@@ -425,20 +455,25 @@ async function notifyFreelancerOfReview({ user, submission, status }) {
       bodyHtml: `
         <p style="margin:0 0 16px 0;font-size:16px;color:#0f172a;">Hi ${escapeHtml(freelancer.name || 'there')},</p>
         <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;">
-          ${escapeHtml(reviewerName)} updated your submission on <strong style="color:#0f172a;">${escapeHtml(brand.name)}</strong>.
+          ${escapeHtml(message || `${reviewerName} updated ${candidateName} for ${jobTitle}.`)}
         </p>
         ${infoPanelHtml([
           { label: 'Candidate', value: candidateName },
           { label: 'Mandate', value: jobTitle },
-          { label: 'Status', value: statusLabel },
+          statusLabel ? { label: 'Status', value: statusLabel } : null,
           submission.feedback ? { label: 'Feedback', value: submission.feedback } : null,
-        ].filter(Boolean), brand.brandColor)}`,
+        ].filter(Boolean), brand.brandColor)}
+        ${brandButtonHtml({
+          href: `${process.env.FRONTEND_URL || process.env.APP_URL || 'https://www.peopleconnecthr.com'}/my-pipeline`,
+          label: 'Open My Pipeline',
+          brandColor: brand.brandColor,
+        })}`,
     });
     await sendEmail(
       freelancer.email,
-      `${candidateName} marked ${statusLabel}`,
+      title || `${candidateName} · review update`,
       html,
-      `${reviewerName} marked ${candidateName} as ${statusLabel} for ${jobTitle}.`,
+      message || `${reviewerName} updated ${candidateName} for ${jobTitle}.`,
       {
         senderName: brand.name,
         organizationId: user.organizationId,
@@ -471,7 +506,16 @@ async function listMandates(user) {
       .lean(),
     User.find(orgStaffFilter(user.organizationId)).select('name email role phone').lean(),
   ]);
-  return jobs.map((job) => attachMandateSpoc(job, pickSpocFromStaff(job, staff)));
+  // Urgent hiring first for freelancer priority worklist, then recency from Mongo sort.
+  const ranked = [...jobs].sort((a, b) => {
+    const ua = String(a?.priority || '').toLowerCase() === 'urgent' ? 1 : 0;
+    const ub = String(b?.priority || '').toLowerCase() === 'urgent' ? 1 : 0;
+    if (ua !== ub) return ub - ua;
+    const ta = Math.max(new Date(a?.updatedAt || 0).getTime(), new Date(a?.createdAt || 0).getTime());
+    const tb = Math.max(new Date(b?.updatedAt || 0).getTime(), new Date(b?.createdAt || 0).getTime());
+    return tb - ta;
+  });
+  return ranked.map((job) => attachMandateSpoc(job, pickSpocFromStaff(job, staff)));
 }
 
 async function listOwnCandidates(user) {
@@ -497,7 +541,10 @@ async function getDeskSummary(user) {
   const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
 
-  const [totalCandidates, thisMonth, lastMonth, mandates, submissions, recentCandidates] = await Promise.all([
+  const DEFAULT_STAGES = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'];
+  const { foldStatusCounts, pipelineList } = require('../utils/statusCanon');
+
+  const [totalCandidates, thisMonth, lastMonth, mandates, submissions, recentCandidates, statusAgg, org] = await Promise.all([
     Candidate.countDocuments(own),
     Candidate.countDocuments({ ...own, createdAt: { $gte: startOfMonth } }),
     Candidate.countDocuments({ ...own, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } }),
@@ -508,6 +555,13 @@ async function getDeskSummary(user) {
       .limit(6)
       .select('name email position status source createdAt')
       .lean(),
+    Candidate.aggregate([
+      { $match: own },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]),
+    user.organizationId
+      ? Organization.findById(user.organizationId).select('atsSettings.pipelineStages').lean()
+      : Promise.resolve(null),
   ]);
 
   const byStatus = { submitted: 0, reviewing: 0, shortlisted: 0, selection: 0, joined: 0, rejected: 0 };
@@ -523,6 +577,20 @@ async function getDeskSummary(user) {
     : (thisMonth > 0 ? 100 : 0);
   const settings = await ops.loadDeskSettings(user.organizationId);
   const slaBreaches = submissions.filter((row) => row.slaBreached).length;
+
+  // Same KPI stage cards as company dashboard (org pipeline + zeros)
+  let preferredStages = DEFAULT_STAGES;
+  if (Array.isArray(org?.atsSettings?.pipelineStages) && org.atsSettings.pipelineStages.length) {
+    preferredStages = org.atsSettings.pipelineStages;
+  }
+  const candidatePipeline = foldStatusCounts(statusAgg);
+  const statusCards = pipelineList(candidatePipeline, preferredStages, {
+    includeZero: true,
+    ensureStages: ['Rejected', 'Dropped'],
+  }).map((row) => ({
+    stage: row.stage,
+    count: row.count,
+  }));
 
   return {
     totalCandidates,
@@ -541,6 +609,10 @@ async function getDeskSummary(user) {
     mandates: mandates.slice(0, 20),
     recentSubmissions: submissions.slice(0, 8),
     recentCandidates,
+    // Company-parity ATS stage cards for freelancer dashboard
+    statusCards,
+    pipelineStages: preferredStages,
+    candidatePipeline,
   };
 }
 
@@ -555,6 +627,7 @@ async function createSubmission(user, body) {
     _id: candidateId,
     organizationId: user.organizationId,
     ...createdByFilter(user),
+    hiddenFromFreelancerIds: { $nin: [user.id, String(user.id)] },
   });
   if (!candidate) throw httpError('Candidate not found on your desk', 404);
 
@@ -709,7 +782,7 @@ async function createSubmission(user, body) {
 
   return submission.populate([
     { path: 'candidateId', select: 'name email contact position resume noticePeriod expectedCtc ctc phone' },
-    { path: 'jobId', select: 'title role location status department jobCode clientName' },
+    { path: 'jobId', select: 'title role location status department jobCode clientName priority' },
     { path: 'spocUserId', select: 'name email role phone' },
   ]);
 }
@@ -718,7 +791,7 @@ function submissionScopeQuery(user, id) {
   const query = { _id: id, organizationId: user.organizationId };
   if (isFreelancer(user)) {
     query.freelancerId = user.id;
-  } else if (!['owner', 'admin', 'hr_manager'].includes(user.role)) {
+  } else if (!ops.isOrgWideViewer(user)) {
     query.spocUserId = user.id;
   }
   return query;
@@ -729,10 +802,28 @@ async function listSubmissions(user, opts = {}) {
   const filter = { organizationId: user.organizationId };
   if (isFreelancer(user)) {
     filter.freelancerId = user.id;
-  } else if (['owner', 'admin', 'hr_manager'].includes(user.role)) {
-    // Leadership: all freelance handoffs in the org
+    // Product rule: My Pipeline only shows handoffs for candidates still on the freelancer desk.
+    // Soft-remove from ATS ⇒ gone from freelancer pipeline; company board keeps the handoff.
+    const { userIdStr, userIdObj } = userIdParts(user);
+    const hideIds = [userIdObj, userIdStr].filter(Boolean);
+    const deskCandidates = await Candidate.find({
+      organizationId: user.organizationId,
+      ...createdByFilter(user),
+      ...(hideIds.length ? { hiddenFromFreelancerIds: { $nin: hideIds } } : {}),
+    }).select('_id').lean();
+    filter.candidateId = { $in: deskCandidates.map((c) => c._id) };
+    filter.$and = [
+      {
+        $or: [
+          { freelancerDismissedAt: null },
+          { freelancerDismissedAt: { $exists: false } },
+        ],
+      },
+    ];
+  } else if (ops.isOrgWideViewer(user)) {
+    // Owner only: all freelance handoffs in the org
   } else {
-    // Recruiters / sales: only handoffs where they are the mandate SPOC
+    // Admin, manager, recruiter, sales: only handoffs where they are the mandate SPOC
     filter.spocUserId = user.id;
   }
   if (!includeArchived) {
@@ -740,8 +831,8 @@ async function listSubmissions(user, opts = {}) {
   }
 
   const rows = await FreelancerSubmission.find(filter)
-    .populate('candidateId', 'name email contact position location companyName resume noticePeriod expectedCtc ctc phone')
-    .populate('jobId', 'title role location locations status department jobCode clientName')
+    .populate('candidateId', 'name email contact position status location companyName resume noticePeriod expectedCtc ctc phone')
+    .populate('jobId', 'title role location locations status department jobCode clientName priority')
     .populate('freelancerId', 'name email lastActiveAt lastLoginAt profilePicture')
     .populate('spocUserId', 'name email role phone')
     .sort({ createdAt: -1 })
@@ -750,15 +841,144 @@ async function listSubmissions(user, opts = {}) {
   return hydrateSubmissions(rows);
 }
 
+/**
+ * Freelancer soft-removed candidate(s) from their ATS desk —
+ * hide matching handoffs from My Pipeline only (company review keeps them).
+ */
+async function dismissHandoffsForFreelancer(user, candidateIds = []) {
+  if (!isFreelancer(user)) return { modifiedCount: 0 };
+  const mongoose = require('mongoose');
+  const ids = (Array.isArray(candidateIds) ? candidateIds : [candidateIds])
+    .filter(Boolean)
+    .map((id) => {
+      try {
+        return new mongoose.Types.ObjectId(String(id));
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+  if (!ids.length) return { modifiedCount: 0 };
+
+  const uid = user.id || user._id;
+  const freelancerIds = [uid];
+  try {
+    freelancerIds.push(new mongoose.Types.ObjectId(String(uid)));
+  } catch { /* already ObjectId or invalid */ }
+
+  const result = await FreelancerSubmission.updateMany(
+    {
+      organizationId: user.organizationId,
+      freelancerId: { $in: freelancerIds },
+      candidateId: { $in: ids },
+      $or: [
+        { freelancerDismissedAt: null },
+        { freelancerDismissedAt: { $exists: false } },
+      ],
+    },
+    { $set: { freelancerDismissedAt: new Date() } }
+  );
+  return { modifiedCount: result.modifiedCount || 0 };
+}
+
 async function updateSubmissionStatus(user, id, body) {
   if (isFreelancer(user)) throw httpError('Company reviewers only', 403);
-  const status = typeof body === 'string' ? body : body?.status;
+  const rawStatus = typeof body === 'string' ? body : body?.status;
   const feedbackRaw = typeof body === 'string' ? undefined : body?.feedback;
-  const allowed = ['submitted', 'reviewing', 'shortlisted', 'selection', 'joined', 'rejected'];
-  if (!allowed.includes(status)) throw httpError('Invalid status');
+  const handoffAllowed = ['submitted', 'reviewing', 'shortlisted', 'selection', 'joined', 'rejected'];
+
+  const mapAtsToHandoff = (label) => {
+    const k = String(label || '').trim().toUpperCase().replace(/[_-]+/g, ' ');
+    if (!k) return 'submitted';
+    if (/REJECT|DROP|DECLIN/.test(k)) return 'rejected';
+    if (/JOIN|HIRE/.test(k)) return 'joined';
+    if (/OFFER|SELECT/.test(k)) return 'selection';
+    if (/SHORT/.test(k)) return 'shortlisted';
+    if (/INTERVIEW|SCREEN|PENDING|TURN|REVIEW/.test(k)) return 'reviewing';
+    if (/APPLIED|SOURCED|SUBMIT/.test(k)) return 'submitted';
+    return 'reviewing';
+  };
+
+  const isHandoffEnum = handoffAllowed.includes(String(rawStatus || '').toLowerCase());
+  const status = isHandoffEnum
+    ? String(rawStatus).toLowerCase()
+    : mapAtsToHandoff(rawStatus);
+  // Prefer exact org ATS label so freelancer pipeline columns stay aligned.
+  const candidateAtsStatus = isHandoffEnum ? null : String(rawStatus || '').trim();
+
+  if (!handoffAllowed.includes(status)) throw httpError('Invalid status');
 
   const query = submissionScopeQuery(user, id);
   query.archivedAt = null;
+
+  const needsGate = ops.GATED_HANDOFF_STATUSES.includes(status)
+    || ops.isGatedAtsStage(candidateAtsStatus || '');
+  const forceApproved = Boolean(body && body.forceApproved);
+  const isOwner = user.role === 'owner';
+
+  if (needsGate && !forceApproved && !isOwner) {
+    const existing = await FreelancerSubmission.findOne(query);
+    if (!existing) {
+      throw httpError('Submission not found', 404);
+    }
+    const alreadyOk = existing.approval?.status === 'approved'
+      && (
+        existing.approval?.targetStage === status
+        || (candidateAtsStatus && existing.approval?.targetAtsStage === candidateAtsStatus)
+      );
+    if (!alreadyOk) {
+      existing.approval = {
+        status: 'pending',
+        targetStage: status,
+        targetAtsStage: candidateAtsStatus || '',
+        note: String(body?.approvalNote || '').trim().slice(0, 1000),
+        requestedAt: new Date(),
+        requestedBy: user.id,
+        requestedByName: user.name || user.email || '',
+        decidedAt: undefined,
+        decidedBy: undefined,
+        decidedByName: '',
+      };
+      existing.history = existing.history || [];
+      existing.history.push({
+        action: 'approval_requested',
+        at: new Date(),
+        by: user.id,
+        byName: user.name || user.email || '',
+        meta: { status, atsStage: candidateAtsStatus || undefined },
+      });
+      if (existing.history.length > 80) existing.history = existing.history.slice(-80);
+      await existing.save();
+      await ops.writeAudit(user, 'freelancer.approval_requested', existing._id, { status, candidateAtsStatus });
+
+      try {
+        const owners = await User.find({
+          organizationId: user.organizationId,
+          role: 'owner',
+          isActive: { $ne: false },
+        }).select('_id').lean();
+        const name = existing.candidateId?.name
+          || (await Candidate.findById(existing.candidateId).select('name').lean())?.name
+          || 'Candidate';
+        await ops.notifyDeskUsers({
+          organizationId: user.organizationId,
+          userIds: owners.map((o) => o._id),
+          title: 'Stage approval needed',
+          message: `${user.name || user.email} requested move of ${name} to ${candidateAtsStatus || status}.`,
+          link: '/freelance-review',
+          type: 'freelancer_submission',
+        });
+      } catch (err) {
+        logger.warn({ err }, 'Approval request notify failed');
+      }
+
+      throw httpError(
+        'This stage needs owner / manager approval. A request was sent.',
+        409,
+        { code: 'APPROVAL_REQUIRED', approval: existing.approval }
+      );
+    }
+  }
 
   // Warn on shortlist if org already has another candidate with same email/phone
   if ((status === 'shortlisted' || status === 'selection' || status === 'joined') && !(body && body.forceDuplicate)) {
@@ -782,12 +1002,58 @@ async function updateSubmissionStatus(user, id, body) {
     at: new Date(),
     by: user.id,
     byName: user.name || user.email || '',
-    meta: { status, feedbackUpdated: feedbackRaw !== undefined },
+    meta: {
+      status,
+      atsStage: candidateAtsStatus || undefined,
+      feedbackUpdated: feedbackRaw !== undefined,
+    },
   };
+
+  const STATUS_TO_STAGE_LABEL = {
+    submitted: 'Applied',
+    reviewing: 'Screening',
+    shortlisted: 'Shortlisted',
+    selection: 'Offer',
+    joined: 'Hired',
+    rejected: 'Rejected',
+  };
+  const stageKey = String(
+    candidateAtsStatus || STATUS_TO_STAGE_LABEL[status] || status || ''
+  ).trim().slice(0, 80);
+
+  // Load BEFORE update so legacy feedback can seed stage history (not wiped on save).
+  const existingDoc = await FreelancerSubmission.findOne(query);
+  if (!existingDoc) {
+    const archived = await FreelancerSubmission.findOne({
+      ...submissionScopeQuery(user, id),
+      archivedAt: { $ne: null },
+    }).select('_id').lean();
+    if (archived) throw httpError('This handoff is archived. Restore it before changing stage.', 409);
+    throw httpError('Submission not found', 404);
+  }
 
   const $set = { status, reviewedAt: new Date(), reviewedBy: user.id };
   if (feedbackRaw !== undefined) {
-    $set.feedback = String(feedbackRaw || '').trim().slice(0, 4000);
+    const noteText = String(feedbackRaw || '').trim().slice(0, 4000);
+    $set.feedback = noteText;
+    if (stageKey) {
+      const { upsertStageNote } = require('../utils/stageNotes');
+      $set.stageNotes = upsertStageNote(existingDoc, { stageKey, noteText, user });
+    }
+  }
+  if (needsGate || forceApproved || isOwner) {
+    $set.approval = {
+      status: 'none',
+      targetStage: '',
+      targetAtsStage: '',
+      note: '',
+      requestedAt: null,
+      requestedBy: null,
+      requestedByName: '',
+      decidedAt: null,
+      decidedBy: null,
+      decidedByName: '',
+    };
   }
 
   const submission = await FreelancerSubmission.findOneAndUpdate(
@@ -795,8 +1061,8 @@ async function updateSubmissionStatus(user, id, body) {
     { $set, $push: { history: historyEntry } },
     { new: true }
   )
-    .populate('candidateId', 'name email contact position resume noticePeriod expectedCtc ctc phone')
-    .populate('jobId', 'title role location jobCode clientName')
+    .populate('candidateId', 'name email contact position resume noticePeriod expectedCtc ctc phone status')
+    .populate('jobId', 'title role location jobCode clientName priority')
     .populate('freelancerId', 'name email lastActiveAt lastLoginAt profilePicture')
     .populate('spocUserId', 'name email role phone');
 
@@ -809,7 +1075,10 @@ async function updateSubmissionStatus(user, id, body) {
     throw httpError('Submission not found', 404);
   }
 
-  await ops.writeAudit(user, 'freelancer.status_change', submission._id, { status });
+  await ops.writeAudit(user, 'freelancer.status_change', submission._id, {
+    status,
+    atsStage: candidateAtsStatus || undefined,
+  });
 
   // Mirror review into the company application pipeline (enterprise handoff).
   const STATUS_TO_STAGE = {
@@ -835,7 +1104,7 @@ async function updateSubmissionStatus(user, id, body) {
         organizationId: user.organizationId,
       });
       if (application) {
-        const nextStage = STATUS_TO_STAGE[status];
+        const nextStage = candidateAtsStatus || STATUS_TO_STAGE[status];
         application.metadata = {
           ...(application.metadata || {}),
           freelancerSubmission: true,
@@ -850,7 +1119,7 @@ async function updateSubmissionStatus(user, id, body) {
             stage: nextStage,
             movedAt: new Date(),
             movedBy: user.id,
-            remark: `Freelance desk review → ${status}`,
+            remark: `Freelance desk review → ${candidateAtsStatus || status}`,
           });
         } else if (status === 'rejected') {
           application.stageHistory = application.stageHistory || [];
@@ -871,7 +1140,7 @@ async function updateSubmissionStatus(user, id, body) {
   // Keep the linked candidate status company-driven so freelancers see read-only progress.
   try {
     const candId = submission.candidateId?._id || submission.candidateId;
-    const nextCandStatus = STATUS_TO_CANDIDATE[status];
+    const nextCandStatus = candidateAtsStatus || STATUS_TO_CANDIDATE[status];
     if (candId && nextCandStatus) {
       await Candidate.findOneAndUpdate(
         { _id: candId, organizationId: user.organizationId },
@@ -888,6 +1157,9 @@ async function updateSubmissionStatus(user, id, body) {
 
 async function archiveSubmission(user, id) {
   if (isFreelancer(user)) throw httpError('Company reviewers only', 403);
+  if (!ops.canDeskOps(user)) {
+    throw httpError('Only owners, admins, and HR managers can archive handoffs', 403);
+  }
 
   const query = { ...submissionScopeQuery(user, id), archivedAt: null };
   const submission = await FreelancerSubmission.findOneAndUpdate(
@@ -912,7 +1184,7 @@ async function archiveSubmission(user, id) {
     { new: true }
   )
     .populate('candidateId', 'name email contact position')
-    .populate('jobId', 'title role location jobCode clientName')
+    .populate('jobId', 'title role location jobCode clientName priority')
     .populate('freelancerId', 'name email lastActiveAt lastLoginAt profilePicture')
     .populate('spocUserId', 'name email role phone');
 
@@ -952,6 +1224,9 @@ async function archiveSubmission(user, id) {
 
 async function restoreSubmission(user, id) {
   if (isFreelancer(user)) throw httpError('Company reviewers only', 403);
+  if (!ops.canDeskOps(user)) {
+    throw httpError('Only owners, admins, and HR managers can restore handoffs', 403);
+  }
 
   const query = {
     ...submissionScopeQuery(user, id),
@@ -979,7 +1254,7 @@ async function restoreSubmission(user, id) {
     { new: true }
   )
     .populate('candidateId', 'name email contact position')
-    .populate('jobId', 'title role location jobCode clientName')
+    .populate('jobId', 'title role location jobCode clientName priority')
     .populate('freelancerId', 'name email lastActiveAt lastLoginAt profilePicture')
     .populate('spocUserId', 'name email role phone');
 
@@ -1026,7 +1301,7 @@ async function requestFeedback(user, submissionId) {
     archivedAt: null,
   })
     .populate('candidateId', 'name email contact position')
-    .populate('jobId', 'title role jobCode')
+    .populate('jobId', 'title role jobCode priority')
     .populate('spocUserId', 'name email role phone');
   if (!submission) throw httpError('Submission not found', 404);
 
@@ -1134,6 +1409,7 @@ module.exports = {
   getDeskSummary,
   createSubmission,
   listSubmissions,
+  dismissHandoffsForFreelancer,
   updateSubmissionStatus,
   archiveSubmission,
   restoreSubmission,
@@ -1155,4 +1431,8 @@ module.exports = {
   getDeskSettingsForUser: ops.getDeskSettingsForUser,
   getMandateCapacity: ops.getMandateCapacity,
   previewSubmissionQuality: ops.previewSubmissionQuality,
+  saveDeskScorecard: ops.saveDeskScorecard,
+  decideDeskApproval: ops.decideDeskApproval,
+  escalateSlaBreaches: ops.escalateSlaBreaches,
+  notifyFreelancerOfDeskUpdate,
 };

@@ -39,6 +39,7 @@ const FEATURES = {
   'export.data': 'professional',
 
   'integrations.byoEmail': 'professional',
+  'integrations.marketing': 'professional',
   'integrations.calendar': 'professional',
   'integrations.sms': 'enterprise',
   'integrations.jobBoard': 'enterprise',
@@ -135,6 +136,7 @@ export const getEntitlements = (plan) => {
 /** Any integration category entitlement — used to show Integrations nav. */
 export const INTEGRATION_NAV_FEATURES = [
   'integrations.byoEmail',
+  'integrations.marketing',
   'integrations.calendar',
   'integrations.aiScoring',
   'integrations.video',

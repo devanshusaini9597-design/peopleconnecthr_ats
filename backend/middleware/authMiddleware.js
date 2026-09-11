@@ -40,7 +40,7 @@ const verifyToken = async (req, res, next) => {
     
     // Check if user still exists in DB
     const User = mongoose.model('User');
-    const user = await User.findById(decoded.id).select('+isActive +role +organizationId +email +name +mfaEnabled +customRoleId');
+    const user = await User.findById(decoded.id).select('+isActive +role +organizationId +email +name +mfaEnabled +customRoleId +signupStatus');
     
     if (!user) {
       return res.status(401).json({ success: false, message: 'The user belonging to this token no longer exists.' });
@@ -49,6 +49,14 @@ const verifyToken = async (req, res, next) => {
     // Check if user is active
     if (user.isActive === false) {
       return res.status(401).json({ success: false, code: 'ACCOUNT_DEACTIVATED', message: 'Your account has been deactivated.' });
+    }
+
+    if (user.signupStatus === 'pending_approval' || user.signupStatus === 'rejected') {
+      return res.status(403).json({
+        success: false,
+        code: 'SIGNUP_PENDING_APPROVAL',
+        message: 'Your trial request is still under review. Our team will contact you shortly.',
+      });
     }
 
     // Session policy (idle timeout / revocation)
@@ -73,22 +81,8 @@ const verifyToken = async (req, res, next) => {
         return res.status(401).json({ success: false, code: 'ORG_DEACTIVATED', message: 'Your organization has been deactivated.' });
       }
 
-      // MFA enforcement — block API access until enrolled
+      // Login already required an email OTP. Authenticator MFA stays optional in settings.
       const { planHasFeature } = require('../config/planFeatures');
-      if (
-        org?.securitySettings?.mfaEnforced &&
-        planHasFeature(org.plan, 'security.mfaEnforcement') &&
-        !user.mfaEnabled &&
-        decoded.purpose !== 'mfa_enrollment'
-      ) {
-        return res.status(403).json({
-          success: false,
-          code: 'MFA_ENROLLMENT_REQUIRED',
-          message: 'Your organization requires multi-factor authentication. Please enroll MFA before continuing.'
-        });
-      }
-
-      // IP allowlist
       if (planHasFeature(org.plan, 'security.ipAllowlist')) {
         const allowlist = org.securitySettings?.ipAllowlist || [];
         if (allowlist.length) {
@@ -116,6 +110,13 @@ const verifyToken = async (req, res, next) => {
     
     next();
   } catch (err) {
+    if (err && err.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        success: false,
+        code: 'SESSION_EXPIRED',
+        message: 'Your session ended. Please sign in again.',
+      });
+    }
     return res.status(401).json({ success: false, message: 'Not authorized, token failed' });
   }
 };

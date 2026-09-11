@@ -26,7 +26,7 @@ const JDLibraryModal = ({ isOpen, onClose, onSelectTemplate }) => {
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await authenticatedFetch(`${BASE_API_URL}/jobs?isTemplate=true`);
+      const res = await authenticatedFetch(`${BASE_API_URL}/api/jobs?isTemplate=true`);
       if (isUnauthorized(res)) return handleUnauthorized();
       if (res.ok) {
         const data = await res.json();
@@ -123,7 +123,7 @@ const JDLibraryModal = ({ isOpen, onClose, onSelectTemplate }) => {
     };
 
     try {
-      const url = editingId ? `${BASE_API_URL}/jobs/${editingId}` : `${BASE_API_URL}/jobs`;
+      const url = editingId ? `${BASE_API_URL}/api/jobs/${editingId}` : `${BASE_API_URL}/api/jobs`;
       const method = editingId ? 'PUT' : 'POST';
       const res = await authenticatedFetch(url, {
         method,
@@ -152,7 +152,7 @@ const JDLibraryModal = ({ isOpen, onClose, onSelectTemplate }) => {
     if (!t || t.isStarter || !t._id) return;
     setDeletingId(t._id);
     try {
-      const res = await authenticatedFetch(`${BASE_API_URL}/jobs/${t._id}`, { method: 'DELETE' });
+      const res = await authenticatedFetch(`${BASE_API_URL}/api/jobs/${t._id}`, { method: 'DELETE' });
       if (isUnauthorized(res)) return handleUnauthorized();
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

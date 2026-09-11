@@ -5,6 +5,8 @@ const clientSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: { type: String },
   isActive: { type: Boolean, default: true },
+  /** When true, candidates for this client must have a PAN number */
+  requiresPan: { type: Boolean, default: false },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
   organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', index: true },
 
@@ -30,6 +32,7 @@ clientSchema.statics.generatePortalToken = () => crypto.randomBytes(24).toString
 
 clientSchema.index({ createdBy: 1, name: 1 }, { unique: true });
 clientSchema.index({ organizationId: 1, name: 1 });
+clientSchema.index({ organizationId: 1, isActive: 1, name: 1 });
 clientSchema.index({ 'portal.token': 1 }, { unique: true, sparse: true });
 
 clientSchema.plugin(require('../utils/tenantPlugin'));

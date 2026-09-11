@@ -1,45 +1,76 @@
 import React from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { CheckCircle, ArrowLeft } from 'lucide-react';
+import { CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react';
+import PublicMarketingShell, {
+  primaryBtnClassName,
+  secondaryBtnClassName,
+} from './PublicMarketingShell';
 
 const UnsubscribeThankYouPage = () => {
   const [searchParams] = useSearchParams();
   const error = searchParams.get('error');
-  const errorMsg = error ? (error === 'invalid' ? 'Invalid email.' : error === 'invalid_link' ? 'Invalid or expired link.' : error === 'unavailable' ? 'Service temporarily unavailable.' : 'Unsubscribe failed. Please try again.') : null;
+  const errorMsg = error
+    ? error === 'invalid'
+      ? 'The email on this link is missing or invalid.'
+      : error === 'invalid_link'
+        ? 'This link is invalid or has expired. Please try again from a recent message.'
+        : error === 'unavailable'
+          ? 'Preference updates are temporarily unavailable. Please try again shortly.'
+          : 'We could not update your preferences. Please try again.'
+    : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden text-center">
-          <div className="p-8">
-            {errorMsg ? (
-              <>
-                <p className="text-red-600 text-sm font-medium mb-4">{errorMsg}</p>
-                <Link to="/unsubscribe" className="text-indigo-600 hover:text-indigo-800 font-medium text-sm">Try again</Link>
-              </>
-            ) : (
-              <>
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-5">
-                  <CheckCircle className="w-9 h-9 text-gray-600" />
-                </div>
-                <h1 className="text-xl font-bold text-gray-900 mb-2">You have been unsubscribed</h1>
-                <p className="text-gray-600 text-sm leading-relaxed max-w-sm mx-auto">
-                  You have been removed from our mailing list. You will no longer receive marketing emails from Skillnix Recruitment Services.
-                </p>
-                <p className="text-gray-500 text-xs mt-4">
-                  To receive updates again, you can <Link to="/subscribe" className="text-indigo-600 hover:text-indigo-800 font-medium underline underline-offset-2">subscribe here</Link>.
-                </p>
-              </>
-            )}
+    <PublicMarketingShell
+      eyebrow={errorMsg ? 'Action needed' : 'Preferences updated'}
+      title={errorMsg ? 'Unable to update preferences' : 'You are unsubscribed'}
+      subtitle={
+        errorMsg
+          ? undefined
+          : 'You will no longer receive marketing emails about open roles and hiring drives from Skillnix Recruitment.'
+      }
+      backTo="/unsubscribe"
+      backLabel="Back to preferences"
+    >
+      {errorMsg ? (
+        <div className="space-y-5">
+          <div className="flex items-start gap-3 rounded-xl border border-red-100 bg-red-50 px-3.5 py-3">
+            <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <p className="text-sm text-red-700 leading-relaxed">{errorMsg}</p>
           </div>
-          <div className="px-6 pb-8 pt-2 border-t border-gray-100">
-            <Link to="/" className="inline-flex items-center gap-2 text-gray-600 hover:text-indigo-600 font-medium text-sm">
-              <ArrowLeft className="w-4 h-4" /> Back to home
+          <Link to="/unsubscribe" className={`${primaryBtnClassName} no-underline`}>
+            Try again
+          </Link>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5">
+            <CheckCircle2 className="w-5 h-5 text-slate-600 shrink-0 mt-0.5" />
+            <p className="text-sm text-slate-700 leading-relaxed">
+              Your preference is saved. You will not receive further marketing updates unless
+              you choose to subscribe again.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-teal-100 bg-teal-50/50 px-4 py-4">
+            <p className="text-sm font-semibold text-slate-900">Want updates again later?</p>
+            <p className="mt-1 text-[13px] text-slate-600 leading-relaxed">
+              You can rejoin our talent network anytime for curated roles and hiring drives.
+            </p>
+            <Link
+              to="/subscribe"
+              className={`${primaryBtnClassName} no-underline mt-4`}
+            >
+              Subscribe to job &amp; career updates
+              <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
+
+          <Link to="/unsubscribe" className={`${secondaryBtnClassName} no-underline`}>
+            Manage another email
+          </Link>
         </div>
-      </div>
-    </div>
+      )}
+    </PublicMarketingShell>
   );
 };
 

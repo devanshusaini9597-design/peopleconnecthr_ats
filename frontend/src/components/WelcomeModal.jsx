@@ -10,21 +10,21 @@ const ACTIONS = [
   {
     icon: UserPlus,
     title: 'Add a candidate',
-    desc: 'Start building your pipeline',
+    desc: 'Add a candidate to your pipeline',
     path: '/ats?add=1',
     tone: 'from-brand-500 to-teal-500',
   },
   {
     icon: Briefcase,
-    title: 'Post a job',
-    desc: 'Open a role on careers',
+    title: 'Create job opening',
+    desc: 'Publish a role on your careers page',
     path: '/jobs',
     tone: 'from-violet-500 to-fuchsia-500',
   },
   {
     icon: Kanban,
     title: 'View applications',
-    desc: 'Track stages & interviews',
+    desc: 'Track stages and interviews',
     path: '/applications',
     tone: 'from-sky-500 to-cyan-500',
   },
@@ -42,7 +42,10 @@ const ACTIONS = [
  */
 const WelcomeModal = ({ open, onClose, displayName }) => {
   const navigate = useNavigate();
-  const firstName = (displayName || 'there').split(' ')[0];
+  const firstName = String(displayName || '').trim().split(/\s+/)[0];
+  const title = firstName && firstName.toLowerCase() !== 'there'
+    ? `Welcome back, ${firstName}`
+    : 'Welcome back';
 
   const go = (path) => {
     onClose?.();
@@ -54,8 +57,8 @@ const WelcomeModal = ({ open, onClose, displayName }) => {
       open={open}
       onClose={onClose}
       size="lg"
-      title={`Welcome back, ${firstName}`}
-      description="Your recruitment workspace is ready. Pick a quick start — or continue to the dashboard."
+      title={title}
+      description="Your recruitment workspace is ready. Choose a starting point, or continue to the dashboard."
       footer={
         <>
           <button type="button" onClick={onClose} className="btn-secondary">
@@ -73,8 +76,8 @@ const WelcomeModal = ({ open, onClose, displayName }) => {
             <Sparkles className="w-5 h-5 text-white" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-bold text-stone-900">Session started</p>
-            <p className="text-xs text-stone-500 mt-0.5">Everything is synced — candidates, jobs, and analytics.</p>
+            <p className="text-sm font-bold text-stone-900">You&apos;re signed in</p>
+            <p className="text-xs text-stone-500 mt-0.5">Your candidates, jobs, and analytics are up to date.</p>
           </div>
         </div>
 
@@ -102,7 +105,7 @@ const WelcomeModal = ({ open, onClose, displayName }) => {
         <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-stone-50 border border-stone-100 text-xs text-stone-500">
           <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0" />
           <span>
-            Tip: use <span className="font-semibold text-stone-700">Notifications</span> for callback reminders and team shares.
+            Use <span className="font-semibold text-stone-700">Notifications</span> for callback reminders and team updates.
           </span>
           <LayoutDashboard size={14} className="text-stone-300 ml-auto flex-shrink-0 hidden sm:block" />
         </div>

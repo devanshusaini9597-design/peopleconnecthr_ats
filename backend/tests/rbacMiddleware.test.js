@@ -1,4 +1,4 @@
-const { requireRole, requireOwner, requireAdmin, requireRecruiterOrAbove, checkPlanLimit } = require('../middleware/rbacMiddleware');
+const { requireRole, requireOwner, requireAdmin, requireRecruiterOrAbove, requireFreelancerOrRecruiter, checkPlanLimit } = require('../middleware/rbacMiddleware');
 
 const mockRes = () => {
   const res = {};
@@ -35,16 +35,31 @@ describe('rbacMiddleware.requireRole', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  test('requireRecruiterOrAbove allows owner/admin/recruiter but not interviewer/readonly', () => {
-    for (const role of ['owner', 'admin', 'recruiter']) {
+  test('requireRecruiterOrAbove allows hiring roles but not interviewer/readonly/other', () => {
+    for (const role of ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales']) {
       const next = jest.fn();
       requireRecruiterOrAbove({ user: { role } }, mockRes(), next);
       expect(next).toHaveBeenCalledTimes(1);
     }
-    for (const role of ['interviewer', 'readonly']) {
+    for (const role of ['interviewer', 'readonly', 'other', 'freelancer']) {
       const res = mockRes();
       const next = jest.fn();
       requireRecruiterOrAbove({ user: { role } }, res, next);
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(403);
+    }
+  });
+
+  test('requireFreelancerOrRecruiter allows hiring roles and freelancer, not interviewer/readonly', () => {
+    for (const role of ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales', 'freelancer']) {
+      const next = jest.fn();
+      requireFreelancerOrRecruiter({ user: { role } }, mockRes(), next);
+      expect(next).toHaveBeenCalledTimes(1);
+    }
+    for (const role of ['interviewer', 'readonly', 'other']) {
+      const res = mockRes();
+      const next = jest.fn();
+      requireFreelancerOrRecruiter({ user: { role } }, res, next);
       expect(next).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(403);
     }
@@ -63,12 +78,12 @@ describe('rbacMiddleware.requireRole', () => {
 });
 
 describe('rbacMiddleware.checkPlanLimit', () => {
-  test('401s with no organization context', async () => {
+  test('403s with no organization context', async () => {
     const req = { user: {} };
     const res = mockRes();
     const next = jest.fn();
     await checkPlanLimit('jobs')(req, res, next);
-    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.status).toHaveBeenCalledWith(403);
   });
 
   test('500s on an invalid resource name (fails closed, not silently allowed)', async () => {

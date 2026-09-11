@@ -18,6 +18,7 @@ import {
 import { ReportsStudioBody } from './reportsStudio/ReportsStudioPanels';
 
 export default function ReportsStudioPage() {
+  const { t } = useTranslation();
   const [tourOpen, setTourOpen] = usePageTour(REPORTS_TOUR_KEY);
   const toast = useToast();
   const [loading, setLoading] = useState(true);
@@ -31,18 +32,18 @@ export default function ReportsStudioPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, s, t, j] = await Promise.all([
+      const [p, s, tthRes, j] = await Promise.all([
         authenticatedFetch('/api/reports-studio/pipeline').then(readApiJson),
         authenticatedFetch('/api/reports-studio/sources').then(readApiJson),
         authenticatedFetch('/api/reports-studio/time-to-hire').then(readApiJson),
         authenticatedFetch('/api/reports-studio/jobs-performance').then(readApiJson).catch(() => ({ success: false }))
       ]);
-      if (!p.success && !s.success && !t.success) {
-        throw new Error(p.message || s.message || t.message || 'Failed to load reports');
+      if (!p.success && !s.success && !tthRes.success) {
+        throw new Error(p.message || s.message || tthRes.message || 'Failed to load reports');
       }
       setPipeline(p.success ? (p.data || []) : []);
       setSources(s.success ? (s.data || []) : []);
-      setTth(t.success ? t.data : null);
+      setTth(tthRes.success ? tthRes.data : null);
       setJobs(j.success ? (j.data || []) : []);
     } catch (err) {
       toast.error(err.message || 'Failed to load reports');
@@ -73,7 +74,6 @@ export default function ReportsStudioPage() {
   };
 
   const exportAll = () => {
-  const { t } = useTranslation();
     const packs = [
       [pipeline, 'pipeline.csv'],
       [sources, 'sources.csv'],
@@ -133,17 +133,18 @@ export default function ReportsStudioPage() {
           </button>
         </PageHeader>
 
-        <div data-tour="reports-toolbar" className="toolbar-ats flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+        <div data-tour="reports-toolbar" className="toolbar-ats flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between min-w-0">
           <div className="flex flex-wrap items-center gap-2 min-w-0">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500 px-1">
+            <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500 px-1 flex-shrink-0">
               <Filter size={14} /> View
             </div>
+            <div className="flex flex-wrap gap-2 min-w-0">
             {SECTIONS.map((s) => (
               <button
                 key={s.key}
                 type="button"
                 onClick={() => setSection(s.key)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all whitespace-nowrap ${
                   section === s.key
                     ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-500/20'
                     : 'bg-white text-stone-600 border-stone-200 hover:border-brand-300 hover:bg-brand-50/50'
@@ -152,9 +153,10 @@ export default function ReportsStudioPage() {
                 {s.label}
               </button>
             ))}
+            </div>
           </div>
           <p className="text-[11px] text-stone-400 font-medium sm:text-right flex-shrink-0">
-            {loading ? 'Loading reports…' : 'Data refreshes on demand'}
+            {loading ? 'Loading reports…' : 'Refresh to update figures'}
           </p>
         </div>
 

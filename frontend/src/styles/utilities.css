@@ -48,6 +48,19 @@ body {
   background: linear-gradient(180deg, #14b8a6 0%, #0f766e 100%);
 }
 
+/*
+ * Single-scrollbar app shell.
+ * The logged-in Layout renders #main-content as the only vertical scroll
+ * container. Lock the window/document scroll whenever that shell is present so
+ * we never show a second (window) scrollbar next to it. Auth/public pages have
+ * no #main-content, so they keep their normal page scroll.
+ */
+html:has(#main-content),
+body:has(#main-content) {
+  height: 100%;
+  overflow: hidden;
+}
+
 /* Candidates table: grab only on data cells; native cursor on scrollbar */
 .cand-table-scroll {
   cursor: default;
@@ -91,24 +104,43 @@ select[data-long-list] {
   }
 }
 
-/* Sidebar nav scrollbar — brand teal */
+/* Sidebar nav scrollbar — subtle enterprise (matches dark rail) */
 .sidebar-nav-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(13, 148, 136, 0.45) transparent;
+  scrollbar-color: rgba(214, 211, 209, 0.28) transparent;
 }
 .sidebar-nav-scrollbar::-webkit-scrollbar {
-  width: 5px;
+  width: 4px;
 }
 .sidebar-nav-scrollbar::-webkit-scrollbar-track {
-  background: rgba(28, 25, 23, 0.35);
+  background: transparent;
   border-radius: 999px;
 }
 .sidebar-nav-scrollbar::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgba(20, 184, 166, 0.75), rgba(13, 148, 136, 0.9));
+  background: rgba(214, 211, 209, 0.28);
   border-radius: 999px;
 }
 .sidebar-nav-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, rgba(45, 212, 191, 0.9), rgba(20, 184, 166, 1));
+  background: rgba(231, 229, 228, 0.45);
+}
+
+/* PremiumSelect dropdown — quiet stone thumb */
+.premium-select-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #d6d3d1 transparent;
+}
+.premium-select-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+.premium-select-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.premium-select-scroll::-webkit-scrollbar-thumb {
+  background: #d6d3d1;
+  border-radius: 999px;
+}
+.premium-select-scroll::-webkit-scrollbar-thumb:hover {
+  background: #a8a29e;
 }
 .scrollbar-hide {
   -ms-overflow-style: none;
@@ -117,6 +149,14 @@ select[data-long-list] {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+.notif-inbox-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #d6d3d1 transparent;
+}
+.notif-inbox-scroll::-webkit-scrollbar { width: 6px; }
+.notif-inbox-scroll::-webkit-scrollbar-track { background: transparent; }
+.notif-inbox-scroll::-webkit-scrollbar-thumb { background: #d6d3d1; border-radius: 999px; }
+.notif-inbox-scroll::-webkit-scrollbar-thumb:hover { background: #a8a29e; }
 
 .touch-target {
   @apply min-h-[44px] min-w-[44px];

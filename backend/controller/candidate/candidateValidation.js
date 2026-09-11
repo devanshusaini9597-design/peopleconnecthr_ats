@@ -40,13 +40,11 @@ const validateAndFixName = (name) => {
     // Remove all digits and special characters, keep only alphabets and spaces
     let fixed = String(name).replace(/[0-9!@#$%^&*()_+=\[\]{};:'",.<>?/\\|`~-]/g, '').trim();
 
-    // Convert to title case (First letter of each word capitalized)
-    fixed = fixed.split(/\s+/)
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-        .join(' ');
+    // Block letters (ALL CAPS) — consistent with Candidate storage
+    fixed = fixed.replace(/\s+/g, ' ').toUpperCase();
 
     // Check if length >= 2 and only has alphabets and spaces
-    const isValid = fixed.length >= 2 && /^[a-zA-Z\s]+$/.test(fixed);
+    const isValid = fixed.length >= 2 && /^[A-Z\s]+$/.test(fixed);
 
     return { isValid, value: fixed };
 };
@@ -59,10 +57,7 @@ const is100PercentCorrect = (candidate) => {
     return emailCheck.isValid && mobileCheck.isValid && nameCheck.isValid;
 };
 
-/** Tenant boundary: same-org access, or createdBy-only for legacy accounts. */
-const orgOrOwnerScope = (req) => (
-    req.user.organizationId ? { organizationId: req.user.organizationId } : { createdBy: req.user.id }
-);
+const { orgOrOwnerScope, candidateWriteScope, candidateResumeScope } = require('../../utils/dataScope');
 
 module.exports = {
     validateAndFixEmail,
@@ -70,4 +65,6 @@ module.exports = {
     validateAndFixName,
     is100PercentCorrect,
     orgOrOwnerScope,
+    candidateWriteScope,
+    candidateResumeScope,
 };

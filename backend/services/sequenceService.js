@@ -7,6 +7,7 @@ const Candidate = require('../models/Candidate');
 const MessageThread = require('../models/MessageThread');
 const Message = require('../models/Message');
 const { sendEmail } = require('./emailService');
+const { wrapBrandedEmailHtml, loadOrgEmailBrand } = require('./emailBrandLayout');
 const { getAdapter } = require('../adapters');
 
 function httpError(message, statusCode = 400, extra = {}) {
@@ -40,25 +41,40 @@ async function sendStep(orgId, candidate, step, user) {
   if (channel === 'sms' && !consent.sms) throw new Error('No SMS consent');
   if (channel === 'whatsapp' && !consent.whatsapp) throw new Error('No WhatsApp consent');
 
+  let providerId = '';
   if (channel === 'email') {
+    const brand = await loadOrgEmailBrand(orgId);
+    const html = wrapBrandedEmailHtml({
+      orgName: brand.name,
+      logoUrl: brand.logoUrl,
+      brandColor: brand.brandColor,
+      wordmark: brand.wordmark,
+      bodyHtml: `<div style="color:#3f3f46;white-space:pre-wrap;line-height:1.7;">${body
+        .split('\n')
+        .map((line) => line || '&nbsp;')
+        .join('<br/>')}</div>`,
+    });
     await sendEmail(
       toAddress,
       subject,
-      `<p>${body.replace(/\n/g, '<br/>')}</p>`,
+      html,
       body,
       { userId: user?.id || user?._id }
     );
   } else if (channel === 'sms') {
     const adapter = await getAdapter(orgId, 'sms');
     if (!adapter) throw new Error('SMS not configured');
-    await adapter.send({ to: toAddress, message: body });
+    const result = await adapter.send({ to: toAddress, message: body });
+    providerId = result?.id || result?.sid || '';
   } else if (channel === 'whatsapp') {
     const adapter = await getAdapter(orgId, 'whatsapp');
-    if (!adapter) throw new Error('WhatsApp not configured');
+    if (!adapter) throw new Error('WhatsApp is not connected. Open Integrations and click Connect WhatsApp.');
     if (typeof adapter.sendWhatsApp === 'function') {
-      await adapter.sendWhatsApp({ to: toAddress, message: body });
+      const result = await adapter.sendWhatsApp({ to: toAddress, message: body });
+      providerId = result?.id || '';
     } else {
-      await adapter.send({ to: toAddress, message: body });
+      const result = await adapter.send({ to: toAddress, message: body });
+      providerId = result?.id || result?.sid || '';
     }
   }
 
@@ -108,6 +124,7 @@ async function sendStep(orgId, candidate, step, user) {
       status: 'sent',
       isRead: true,
       sentBy: user?.id || user?._id,
+      externalId: providerId,
       sentAt: new Date()
     });
   } catch {

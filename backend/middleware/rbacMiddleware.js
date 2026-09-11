@@ -7,6 +7,8 @@ const logger = require('../utils/logger');
  */
 
 const mongoose = require('mongoose');
+const { getLimitsForPlan } = require('../config/planLimits');
+const { isFreelancer } = require('../utils/dataScope');
 
 /**
  * Returns middleware that checks req.user.role against allowedRoles.
@@ -34,6 +36,9 @@ const requireOwner = requireRole('owner');
 /** Owner or Admin only — privileged org settings (system role templates, etc.). */
 const requireOwnerOrAdmin = requireRole('owner', 'admin');
 const requireAdmin = requireRole('owner', 'admin', 'hr_manager');
+/** Candidate Excel export — owner, admin, and manager only. */
+const CANDIDATE_EXPORT_ROLES = ['owner', 'admin', 'hr_manager'];
+const requireCandidateExport = requireRole(...CANDIDATE_EXPORT_ROLES);
 const requireRecruiterOrAbove = requireRole(
   'owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales'
 );
@@ -66,7 +71,22 @@ const checkPlanLimit = (resource) => {
   return async (req, res, next) => {
     try {
       if (!req.user || !req.user.organizationId) {
-        return res.status(401).json({ success: false, message: 'Organization context required' });
+        return res.status(403).json({
+          success: false,
+          code: 'ORG_REQUIRED',
+          message: 'Organization context required to continue.',
+        });
+      }
+
+      // Templates / drafts that are not real openings should not burn job quota.
+      if (resource === 'jobs' && (req.body?.isTemplate === true || String(req.body?.status || '').toLowerCase() === 'draft')) {
+        return next();
+      }
+
+      // Freelancers send via their own mail app (mailto), not ZeptoMail / Zoho
+      // Campaigns. Email plan quota applies later when that access is enabled.
+      if (resource === 'emails' && isFreelancer(req.user)) {
+        return next();
       }
 
       const fields = RESOURCE_FIELD_MAP[resource];
@@ -81,18 +101,34 @@ const checkPlanLimit = (resource) => {
         return res.status(404).json({ success: false, message: 'Organization not found' });
       }
 
-      const limit = org.usageLimits && org.usageLimits[fields.limitField];
+      const planCeiling = getLimitsForPlan(org.plan || 'starter');
+      const stored = org.usageLimits?.[fields.limitField];
+      // Plan definition wins when unlimited (-1). Otherwise use stored org ceiling,
+      // falling back to the plan table (avoids stale maxJobs:10 on enterprise orgs).
+      const limit = planCeiling[fields.limitField] === -1
+        ? -1
+        : (typeof stored === 'number' ? stored : planCeiling[fields.limitField]);
       const current = (org.usageCurrent && org.usageCurrent[fields.currentField]) || 0;
 
-      // If limit is 0 or undefined, we assume unlimited, or depending on business logic. 
-      // Typically -1 means unlimited, or missing limit means unlimited. Let's assume undefined = unlimited, 0 = no access.
       if (typeof limit === 'number' && limit !== -1 && current >= limit) {
+        const label = resource === 'jobs'
+          ? 'jobs'
+          : resource === 'candidates'
+            ? 'candidates'
+            : resource === 'users'
+              ? 'team seats'
+              : resource === 'emails'
+                ? 'emails this month'
+                : resource;
         return res.status(403).json({
           success: false,
           code: 'PLAN_LIMIT_EXCEEDED',
-          message: `You have reached your plan limit for ${resource} (${current}/${limit}). Please upgrade your plan to continue.`,
+          message: `Plan limit exceeded for ${label} (${current}/${limit}). Upgrade your plan in Billing to continue.`,
           upgradeRequired: true,
-          resource
+          resource,
+          current,
+          limit,
+          plan: org.plan,
         });
       }
 
@@ -109,6 +145,8 @@ module.exports = {
   requireOwner,
   requireOwnerOrAdmin,
   requireAdmin,
+  CANDIDATE_EXPORT_ROLES,
+  requireCandidateExport,
   requireRecruiterOrAbove,
   requireFreelancerOrRecruiter,
   requireInterviewerOrAbove,

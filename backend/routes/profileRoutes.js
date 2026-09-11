@@ -6,7 +6,6 @@ const path = require('path');
 const multer = require('multer');
 const rateLimit = require('express-rate-limit');
 const { verifyToken } = require('../middleware/authMiddleware');
-const { setAuthCookie } = require('../utils/authCookies');
 const svc = require('../services/profileService');
 
 const router = express.Router();
@@ -25,13 +24,7 @@ const uploadLimiter = rateLimit({
 });
 
 const profilePicUpload = multer({
-  storage: multer.diskStorage({
-    destination: path.join(__dirname, '..', 'uploads'),
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname) || '.jpg';
-      cb(null, `profile-${req.user.id}-${Date.now()}${ext}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
@@ -44,6 +37,7 @@ const profilePicUpload = multer({
 router.get('/', verifyToken, async (req, res) => {
   try {
     const data = await svc.getProfile(req.user.id);
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.json({ success: true, ...data });
   } catch (err) {
     handle(res, err);
@@ -52,8 +46,7 @@ router.get('/', verifyToken, async (req, res) => {
 
 router.put('/', verifyToken, async (req, res) => {
   try {
-    const { token, user } = await svc.updateProfile(req.user.id, req.body);
-    setAuthCookie(res, token);
+    const { user } = await svc.updateProfile(req.user.id, req.body);
     res.json({ success: true, message: 'Profile updated successfully', user });
   } catch (err) {
     handle(res, err);
@@ -80,7 +73,7 @@ router.delete('/picture', verifyToken, async (req, res) => {
 
 router.put('/change-password', verifyToken, async (req, res) => {
   try {
-    await svc.changePassword(req.user.id, req.body);
+    await svc.changePassword(req.user.id, req.body, { keepJti: req.user.jti });
     res.json({ success: true, message: 'Password changed successfully' });
   } catch (err) {
     handle(res, err);

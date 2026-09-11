@@ -36,9 +36,10 @@ const messageSchema = new mongoose.Schema({
   bodyHtml: { type: String, default: '' },
   status: {
     type: String,
-    enum: ['draft', 'queued', 'sent', 'delivered', 'failed', 'received'],
+    enum: ['draft', 'queued', 'sent', 'delivered', 'read', 'failed', 'received'],
     default: 'sent'
   },
+  externalId: { type: String, default: '', index: true },
   isRead: { type: Boolean, default: false },
   readAt: { type: Date },
   sentBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -48,5 +49,9 @@ const messageSchema = new mongoose.Schema({
 
 messageSchema.index({ threadId: 1, sentAt: 1 });
 messageSchema.index({ organizationId: 1, sentAt: -1 });
+messageSchema.index(
+  { organizationId: 1, externalId: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { externalId: { $type: 'string', $gt: '' } } }
+);
 
 module.exports = mongoose.model('Message', messageSchema);

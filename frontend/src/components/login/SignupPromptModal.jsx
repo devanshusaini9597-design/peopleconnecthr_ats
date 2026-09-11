@@ -27,8 +27,8 @@ export default function SignupPromptModal({ open, unmatchedEmail, onClose }) {
                     <AlertCircle size={20} className="text-amber-600" />
                   </div>
                   <div>
-                    <h3 className="text-base font-semibold text-stone-900">Account not found</h3>
-                    <p className="text-xs text-stone-500 mt-0.5">No account exists with this email</p>
+                    <h3 className="text-base font-semibold text-stone-900">This email is not registered</h3>
+                    <p className="text-xs text-stone-500 mt-0.5">We could not find an account for this address</p>
                   </div>
                 </div>
                 <button
@@ -49,7 +49,7 @@ export default function SignupPromptModal({ open, unmatchedEmail, onClose }) {
                 </div>
               </div>
               <p className="text-sm text-stone-500 mt-3">
-                Want to create a new account with this email address?
+                Request a trial and our sales team will contact you. After approval you can sign in.
               </p>
             </div>
 
@@ -66,7 +66,7 @@ export default function SignupPromptModal({ open, unmatchedEmail, onClose }) {
                 className="btn-primary flex-1"
               >
                 <UserPlus size={16} />
-                Create account
+                Request a trial
               </Link>
             </div>
           </motion.div>

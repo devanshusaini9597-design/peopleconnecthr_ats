@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { authenticatedFetch, readApiJson } from '../utils/fetchUtils';
+import { canViewOrgAnalytics } from '../utils/analyticsScope';
 import { useToast } from './Toast';
 import PageHeader from './ui/PageHeader';
 import FeatureGate from './FeatureGate';
@@ -22,12 +23,18 @@ import {
 } from './announcements/announcementsConstants';
 import AnnouncementFormModal, { AnnouncementFields } from './announcements/AnnouncementFormModal';
 import AnnouncementFeed from './announcements/AnnouncementFeed';
+import AnnouncementInbox from './announcements/AnnouncementInbox';
 
 export default function AnnouncementsPage() {
+  return <AnnouncementsPageInner />;
+}
+
+function AnnouncementsPageInner() {
   const { t } = useTranslation();
   const toast = useToast();
-  const { organization } = useAuth();
+  const { organization, user } = useAuth();
   const careersSlug = organization?.slug;
+  const canManage = canViewOrgAnalytics(user?.role);
   const [tourOpen, setTourOpen] = usePageTour(ANN_TOUR_KEY);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,15 +42,23 @@ export default function AnnouncementsPage() {
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null); // { row, mode: 'deactivate' | 'purge' }
   const [deleting, setDeleting] = useState(false);
   const [filter, setFilter] = useState('active');
   const [q, setQ] = useState('');
+  const [markingAll, setMarkingAll] = useState(false);
+
+  const notifyLiveBanner = () => {
+    window.dispatchEvent(new Event('announcements:refresh'));
+    window.dispatchEvent(new Event('announcements:changed'));
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await authenticatedFetch('/api/announcements/all');
+      const res = await authenticatedFetch(
+        canManage ? '/api/announcements/all' : '/api/announcements/inbox'
+      );
       const data = await readApiJson(res);
       if (!data.success) throw new Error(data.message);
       setRows(data.data || []);
@@ -52,13 +67,25 @@ export default function AnnouncementsPage() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, canManage]);
 
   useEffect(() => { load(); }, [load]);
 
-  const notifyLiveBanner = () => {
-    window.dispatchEvent(new Event('announcements:refresh'));
-  };
+  // Enterprise pattern: opening this page clears the sidebar / dashboard "new" badge
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authenticatedFetch('/api/announcements/mark-seen', { method: 'POST' });
+        if (!cancelled && res.ok) {
+          window.dispatchEvent(new Event('announcements:changed'));
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const closeEditModal = () => {
     if (saving) return;
@@ -72,7 +99,7 @@ export default function AnnouncementsPage() {
       title: a.title || '',
       body: a.body || '',
       severity: a.severity || 'info',
-      audience: a.audience || 'all'
+      audience: a.audience || 'all',
     });
   };
 
@@ -91,12 +118,19 @@ export default function AnnouncementsPage() {
           title: compose.title.trim(),
           body: compose.body.trim(),
           severity: compose.severity,
-          audience: compose.audience || 'all'
-        })
+          audience: compose.audience || 'all',
+          notifyEmail: compose.audience === 'public' || compose.audience === 'freelancers'
+            ? false
+            : compose.notifyEmail !== false,
+        }),
       });
       const data = await readApiJson(res);
       if (!data.success) throw new Error(data.message);
-      toast.success('Announcement published');
+      toast.success(
+        compose.audience === 'public' || compose.notifyEmail === false
+          ? 'Announcement published'
+          : 'Announcement published — emailing the team'
+      );
       setCompose(EMPTY_FORM);
       await load();
       notifyLiveBanner();
@@ -123,8 +157,8 @@ export default function AnnouncementsPage() {
           title: editForm.title.trim(),
           body: editForm.body.trim(),
           severity: editForm.severity,
-          audience: editForm.audience || 'all'
-        })
+          audience: editForm.audience || 'all',
+        }),
       });
       const data = await readApiJson(res);
       if (!data.success) throw new Error(data.message);
@@ -139,15 +173,19 @@ export default function AnnouncementsPage() {
     }
   };
 
-  const deactivate = async () => {
-    if (!deleteTarget) return;
+  const confirmDeleteAction = async () => {
+    if (!deleteTarget?.row) return;
+    const hard = deleteTarget.mode === 'purge';
     setDeleting(true);
     try {
-      const res = await authenticatedFetch(`/api/announcements/${deleteTarget._id}`, { method: 'DELETE' });
+      const url = hard
+        ? `/api/announcements/${deleteTarget.row._id}?hard=1`
+        : `/api/announcements/${deleteTarget.row._id}`;
+      const res = await authenticatedFetch(url, { method: 'DELETE' });
       const data = await readApiJson(res);
-      if (!data.success) throw new Error(data.message || 'Failed to deactivate');
-      toast.success('Announcement deactivated');
-      if (editingId === deleteTarget._id) closeEditModal();
+      if (!data.success) throw new Error(data.message || (hard ? 'Failed to delete' : 'Failed to deactivate'));
+      toast.success(hard ? 'Announcement deleted' : 'Announcement deactivated');
+      if (editingId === deleteTarget.row._id) closeEditModal();
       setDeleteTarget(null);
       await load();
       notifyLiveBanner();
@@ -163,7 +201,7 @@ export default function AnnouncementsPage() {
       const res = await authenticatedFetch(`/api/announcements/${a._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: true })
+        body: JSON.stringify({ isActive: true }),
       });
       const data = await readApiJson(res);
       if (!data.success) throw new Error(data.message);
@@ -175,10 +213,40 @@ export default function AnnouncementsPage() {
     }
   };
 
+  const dismissOne = async (a) => {
+    try {
+      const res = await authenticatedFetch(`/api/announcements/${a._id}/seen`, { method: 'POST' });
+      const data = await readApiJson(res);
+      if (!data.success) throw new Error(data.message || 'Failed to mark read');
+      setRows((prev) => prev.map((r) => (
+        r._id === a._id ? { ...r, isRead: true, isDismissed: true } : r
+      )));
+      notifyLiveBanner();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  const markAllRead = async () => {
+    setMarkingAll(true);
+    try {
+      const res = await authenticatedFetch('/api/announcements/dismiss-all', { method: 'POST' });
+      const data = await readApiJson(res);
+      if (!data.success) throw new Error(data.message || 'Failed to mark all read');
+      toast.success('All announcements marked as read');
+      setRows((prev) => prev.map((r) => ({ ...r, isRead: true, isDismissed: true })));
+      notifyLiveBanner();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setMarkingAll(false);
+    }
+  };
+
   const counts = useMemo(() => ({
     total: rows.length,
     active: rows.filter((r) => r.isActive).length,
-    inactive: rows.filter((r) => !r.isActive).length
+    inactive: rows.filter((r) => !r.isActive).length,
   }), [rows]);
 
   const filtered = useMemo(() => {
@@ -193,22 +261,16 @@ export default function AnnouncementsPage() {
 
   const composeSeverity = severityMeta(compose.severity);
   const showGuide = !loading && filtered.length > 0 && filtered.length < 4;
+  const isFreelancer = user?.role === 'freelancer';
 
-  return (
-    <FeatureGate
-      feature="announcements"
-      fallback={
-        <UpgradeFeatureFallback
-          title="Announcements are a Professional feature"
-          description="Upgrade to publish org-wide notices for your hiring team."
-        />
-      }
-    >
+  const page = (
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={Megaphone}
           title={t('pages.announcements.title')}
-          subtitle="Publish notices for your hiring team (in-app) or public careers site — enterprise-style banners."
+          subtitle={canManage
+            ? 'Publish notices for your hiring team (in-app) or public careers site — enterprise-style banners.'
+            : 'Company noticeboard — read leadership updates here. New notices also appear as a banner and sidebar badge.'}
           gradientTitle
         >
           <button type="button" onClick={load} className="btn-secondary w-full sm:w-auto" disabled={loading}>
@@ -216,141 +278,192 @@ export default function AnnouncementsPage() {
           </button>
         </PageHeader>
 
-        <div className="rounded-xl border border-brand-200/70 bg-brand-50/40 px-4 py-3 text-sm text-stone-700 leading-relaxed space-y-1">
-          <p>
-            <span className="font-semibold text-stone-900">Hiring team</span> → banner under the header on every signed-in page.
-            {' '}<span className="font-semibold text-stone-900">Careers site</span> → slim strip on public careers / job pages
-            {careersSlug ? (
-              <>
-                {' '}(
-                <a
-                  href={`/careers/${careersSlug}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-brand-700 font-semibold hover:underline"
-                >
-                  /careers/{careersSlug}
-                </a>
-                ).
-              </>
-            ) : '.'}
-          </p>
-          <p className="text-xs text-stone-500">Teammates can dismiss in-app notices for themselves. Deactivate removes a notice for everyone.</p>
-        </div>
-
-        <div data-tour="ann-toolbar" className="toolbar-ats flex flex-col gap-3">
-          <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-            <div className="relative flex-1 min-w-0 max-w-full sm:max-w-md">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
-              <input
-                type="search"
-                className="input-ats !pl-10 !pr-9 w-full"
-                placeholder="Search notices…"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-              />
-              {q && (
-                <button
-                  type="button"
-                  onClick={() => setQ('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100"
-                  aria-label="Clear search"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-            <p className="text-[11px] text-stone-400 font-medium sm:text-right flex-shrink-0">
-              {loading ? 'Loading…' : `${counts.active} active · ${counts.total} total`}
+        {canManage ? (
+          <div className="rounded-xl border border-brand-200/70 bg-brand-50/40 px-4 py-3 text-sm text-stone-700 leading-relaxed space-y-1">
+            <p>
+              <span className="font-semibold text-stone-900">Hiring team</span>
+              {' '}
+              → banner under the header on every signed-in page.
+              {' '}
+              <span className="font-semibold text-stone-900">Careers site</span>
+              {' '}
+              → slim strip on public careers / job pages
+              {careersSlug ? (
+                <>
+                  {' '}
+                  (
+                  <a
+                    href={`/careers/${careersSlug}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-brand-700 font-semibold hover:underline"
+                  >
+                    /careers/
+                    {careersSlug}
+                  </a>
+                  ).
+                </>
+              ) : '.'}
+            </p>
+            <p className="text-xs text-stone-500">
+              Teammates can dismiss in-app notices for themselves. Deactivate removes a notice for everyone.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500 px-1">
-              <Filter size={14} /> Status
-            </div>
-            {FILTERS.map((f) => (
-              <button
-                key={f.key}
-                type="button"
-                onClick={() => setFilter(f.key)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                  filter === f.key
-                    ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-500/20'
-                    : 'bg-white text-stone-600 border-stone-200 hover:border-brand-300 hover:bg-brand-50/50'
-                }`}
-              >
-                {f.label}
-                <span className="ml-1 opacity-70">
-                  {f.key === 'all' ? counts.total : f.key === 'active' ? counts.active : counts.inactive}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
+        ) : null}
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
-          {/* Compose — create only */}
-          <form
-            data-tour="ann-compose"
-            onSubmit={publishCompose}
-            className="lg:col-span-4 card-ats-bordered p-5 sm:p-6 relative overflow-hidden space-y-4 h-fit lg:sticky lg:top-4 min-w-0"
-          >
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-            <div className="relative flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <h2 className="text-base font-bold text-stone-900 tracking-tight">Compose notice</h2>
-                <p className="text-[11px] text-stone-400 mt-0.5">Publish a new banner. Edit existing ones from the feed.</p>
+        {canManage ? (
+          <div data-tour="ann-toolbar" className="toolbar-ats flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+              <div className="relative flex-1 min-w-0 max-w-full sm:max-w-md">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
+                <input
+                  type="search"
+                  className="input-ats !pl-10 !pr-9 w-full"
+                  placeholder="Search notices…"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                />
+                {q && (
+                  <button
+                    type="button"
+                    onClick={() => setQ('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100"
+                    aria-label="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
-              <span className={`${composeSeverity.badge} text-[10px] capitalize flex-shrink-0`}>
-                {compose.severity}
-              </span>
+              <p className="text-[11px] text-stone-400 font-medium sm:text-right flex-shrink-0">
+                {loading ? 'Loading…' : `${counts.active} active · ${counts.total} total`}
+              </p>
             </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500 px-1">
+                <Filter size={14} /> Status
+              </div>
+              {FILTERS.map((f) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setFilter(f.key)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                    filter === f.key
+                      ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-500/20'
+                      : 'bg-white text-stone-600 border-stone-200 hover:border-brand-300 hover:bg-brand-50/50'
+                  }`}
+                >
+                  {f.label}
+                  <span className="ml-1 opacity-70">
+                    {f.key === 'all' ? counts.total : f.key === 'active' ? counts.active : counts.inactive}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
-            <AnnouncementFields form={compose} setForm={setCompose} idPrefix="compose" />
+        {canManage ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
+            <form
+              data-tour="ann-compose"
+              onSubmit={publishCompose}
+              className="lg:col-span-4 card-ats-bordered p-5 sm:p-6 relative overflow-hidden space-y-4 h-fit lg:sticky lg:top-4 min-w-0"
+            >
+              <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+              <div className="relative flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="text-base font-bold text-stone-900 tracking-tight">Compose notice</h2>
+                  <p className="text-[11px] text-stone-400 mt-0.5">
+                    Publish a new banner. Edit existing ones from the feed.
+                  </p>
+                </div>
+                <span className={`${composeSeverity.badge} text-[10px] capitalize flex-shrink-0`}>
+                  {compose.severity}
+                </span>
+              </div>
 
-            <button type="submit" className="btn-primary w-full relative" disabled={saving || !!editingId}>
-              {saving && !editingId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              Publish
-            </button>
-          </form>
+              <AnnouncementFields form={compose} setForm={setCompose} idPrefix="compose" showEmailOption />
 
-          <AnnouncementFeed
+              <button type="submit" className="btn-primary w-full relative" disabled={saving || !!editingId}>
+                {saving && !editingId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                Publish
+              </button>
+            </form>
+
+            <AnnouncementFeed
+              loading={loading}
+              rows={rows}
+              filtered={filtered}
+              filter={filter}
+              careersSlug={careersSlug}
+              showGuide={showGuide}
+              onClearFilters={() => { setQ(''); setFilter('all'); }}
+              onEdit={startEdit}
+              onDeactivate={(a) => setDeleteTarget({ row: a, mode: 'deactivate' })}
+              onReactivate={reactivate}
+              onPurge={(a) => setDeleteTarget({ row: a, mode: 'purge' })}
+            />
+          </div>
+        ) : (
+          <AnnouncementInbox
             loading={loading}
             rows={rows}
-            filtered={filtered}
-            filter={filter}
-            careersSlug={careersSlug}
-            showGuide={showGuide}
-            onClearFilters={() => { setQ(''); setFilter('all'); }}
-            onEdit={startEdit}
-            onDeactivate={setDeleteTarget}
-            onReactivate={reactivate}
+            onRefresh={load}
+            onMarkRead={dismissOne}
+            onMarkAllRead={markAllRead}
+            markingAll={markingAll}
+            q={q}
+            setQ={setQ}
           />
-        </div>
+        )}
 
-        <AnnouncementFormModal
-          open={!!editingId}
-          onClose={closeEditModal}
-          form={editForm}
-          setForm={setEditForm}
-          onSubmit={saveEdit}
-          saving={saving}
-        />
+        {canManage ? (
+          <>
+            <AnnouncementFormModal
+              open={!!editingId}
+              onClose={closeEditModal}
+              form={editForm}
+              setForm={setEditForm}
+              onSubmit={saveEdit}
+              saving={saving}
+            />
 
-        <ConfirmationModal
-          isOpen={!!deleteTarget}
-          onClose={() => setDeleteTarget(null)}
-          onConfirm={deactivate}
-          title="Deactivate announcement?"
-          message={`Deactivate “${deleteTarget?.title || 'this announcement'}”? It will disappear from team banners.`}
-          confirmText="Deactivate"
-          type="delete"
-          isLoading={deleting}
-        />
+            <ConfirmationModal
+              isOpen={!!deleteTarget}
+              onClose={() => setDeleteTarget(null)}
+              onConfirm={confirmDeleteAction}
+              title={deleteTarget?.mode === 'purge' ? 'Delete announcement permanently?' : 'Deactivate announcement?'}
+              message={
+                deleteTarget?.mode === 'purge'
+                  ? `Permanently delete “${deleteTarget?.row?.title || 'this announcement'}”? This cannot be undone.`
+                  : `Deactivate “${deleteTarget?.row?.title || 'this announcement'}”? It will disappear from team banners. You can delete it later from Inactive.`
+              }
+              confirmText={deleteTarget?.mode === 'purge' ? 'Delete forever' : 'Deactivate'}
+              type="delete"
+              isLoading={deleting}
+            />
 
-        <TourHelpFab onClick={() => setTourOpen(true)} label="Take a tour" title="Take a tour of Announcements" />
-        <ProductTour open={tourOpen} onClose={() => setTourOpen(false)} steps={ANN_TOUR_STEPS} storageKey={ANN_TOUR_KEY} />
+            <TourHelpFab onClick={() => setTourOpen(true)} label="Take a tour" title="Take a tour of Announcements" />
+            <ProductTour open={tourOpen} onClose={() => setTourOpen(false)} steps={ANN_TOUR_STEPS} storageKey={ANN_TOUR_KEY} />
+          </>
+        ) : null}
       </div>
+  );
+
+  if (isFreelancer) return page;
+
+  return (
+    <FeatureGate
+      feature="announcements"
+      fallback={(
+        <UpgradeFeatureFallback
+          title="Announcements are a Professional feature"
+          description="Upgrade to publish org-wide notices for your hiring team."
+        />
+      )}
+    >
+      {page}
     </FeatureGate>
   );
 }

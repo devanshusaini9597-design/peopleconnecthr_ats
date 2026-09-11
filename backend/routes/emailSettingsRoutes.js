@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 const router = express.Router();
 const mongoose = require('mongoose');
 const { sendEmail } = require('../services/emailService');
+const { isFreelancer } = require('../utils/dataScope');
 const {
   getMaskedSettings,
   saveZohoSettings,
@@ -18,6 +19,16 @@ function handleServiceError(res, err, fallbackLog) {
   logger.error(fallbackLog || 'Email settings error:', err);
   return res.status(500).json({ success: false, message: err.message });
 }
+
+// Email Settings (personal SMTP / Zoho / ZeptoMail) are NOT available to
+// freelancers yet — they send via their own inbuilt system mail app (mailto).
+// This will be opened up in future when freelancers get ZeptoMail/Zoho access.
+router.use((req, res, next) => {
+  if (isFreelancer(req.user)) {
+    return res.status(403).json({ success: false, message: 'Email settings are not available for freelance recruiters' });
+  }
+  next();
+});
 
 // GET — masked personal email settings
 router.get('/', async (req, res) => {

@@ -5,18 +5,12 @@ const multer = require('multer');
 const path = require('path');
 const os = require('os');
 const candidateController = require('../controller/candidateController');
-const { requireRecruiterOrAbove, requireAdmin } = require('../middleware/rbacMiddleware');
+const { requireRecruiterOrAbove, requireFreelancerOrRecruiter, requireAdmin, requireCandidateExport } = require('../middleware/rbacMiddleware');
 const { requireFeature } = require('../middleware/featureMiddleware');
 
 // Multer Setup — disk storage only (avoids holding large files in RAM)
-const ALLOWED_UPLOAD_EXTS = ['.pdf', '.doc', '.docx', '.xlsx', '.xls', '.csv', '.txt',
-  '.jpg', '.jpeg', '.png', '.gif', '.webp'];
-
-const fileFilter = (req, file, cb) => {
-  const ext = path.extname(file.originalname).toLowerCase();
-  if (ALLOWED_UPLOAD_EXTS.includes(ext)) cb(null, true);
-  else cb(new Error(`File type ${ext} not allowed`));
-};
+const { multerFileFilter } = require('../utils/uploadAllowlist');
+const fileFilter = multerFileFilter;
 
 // Permanent uploads (resumes stored under uploads/)
 const diskUpload = multer({
@@ -28,7 +22,7 @@ const diskUpload = multer({
       cb(null, uniqueName);
     }
   }),
-  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB — match frontend auto-import limit
   fileFilter
 });
 
@@ -41,7 +35,7 @@ const memoryUpload = multer({
       cb(null, `upload-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
     }
   }),
-  limits: { fileSize: 25 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter
 });
 
@@ -59,11 +53,12 @@ router.post('/pending/clear-all', requireRecruiterOrAbove, candidateController.c
 router.post('/pending/import', requireRecruiterOrAbove, candidateController.importPending);
 
 // --- CREATE / BULK / IMPORT ---
-router.post('/', requireRecruiterOrAbove, diskUpload.single('resume'), candidateController.createCandidate);
-router.post('/bulk-from-parsed', requireRecruiterOrAbove, candidateController.bulkCreateFromParsed);
+router.post('/', requireFreelancerOrRecruiter, diskUpload.single('resume'), candidateController.createCandidate);
+router.post('/bulk-from-parsed', requireFreelancerOrRecruiter, candidateController.bulkCreateFromParsed);
 router.post('/extract-headers', diskUpload.single('file'), candidateController.extractHeaders);
-router.post('/bulk-upload-auto', requireRecruiterOrAbove, requireFeature('jobs.bulkImport'), diskUpload.single('file'), candidateController.bulkUploadCandidates);
-router.post('/bulk-upload', requireRecruiterOrAbove, requireFeature('jobs.bulkImport'), diskUpload.single('file'), (req, res, next) => {
+// Freelancers: same Excel bulk flow as company (desk-scoped); plan gate waived in requireFeature for freelancers.
+router.post('/bulk-upload-auto', requireFreelancerOrRecruiter, requireFeature('jobs.bulkImport'), diskUpload.single('file'), candidateController.bulkUploadCandidates);
+router.post('/bulk-upload', requireFreelancerOrRecruiter, requireFeature('jobs.bulkImport'), diskUpload.single('file'), (req, res, next) => {
     try {
         logger.info('--- 📥 BULK UPLOAD REQUEST RECEIVED ---');
         logger.info('--- 📦 req.body keys:', Object.keys(req.body || {}));
@@ -85,20 +80,22 @@ router.post('/bulk-upload', requireRecruiterOrAbove, requireFeature('jobs.bulkIm
 router.post('/parse-logic', memoryUpload.single('resume'), candidateController.parseLogic);
 
 // --- REVIEW / SHARE ---
-router.post('/revalidate-record', requireRecruiterOrAbove, candidateController.revalidateRecord);
-router.post('/import-reviewed', requireRecruiterOrAbove, candidateController.importReviewedCandidates);
+router.post('/revalidate-record', requireFreelancerOrRecruiter, candidateController.revalidateRecord);
+router.post('/import-reviewed', requireFreelancerOrRecruiter, candidateController.importReviewedCandidates);
+router.post('/export', requireCandidateExport, candidateController.exportCandidatesExcel);
 router.post('/share', requireRecruiterOrAbove, candidateController.shareCandidate);
 router.post('/import-shared', requireRecruiterOrAbove, candidateController.importSharedCandidates);
 router.post('/import-all-to-mine', requireRecruiterOrAbove, candidateController.importAllToMine);
 
-// --- BULK DELETE / CLEAR ---
-router.post('/bulk-delete', requireRecruiterOrAbove, candidateController.bulkDeleteCandidates);
+// --- BULK DELETE / UPDATE / CLEAR ---
+router.post('/bulk-delete', requireFreelancerOrRecruiter, candidateController.bulkDeleteCandidates);
+router.post('/bulk-update', requireFreelancerOrRecruiter, candidateController.bulkUpdateCandidates);
 router.delete('/clear-all/now', requireAdmin, candidateController.clearAllCandidates);
 
 // --- SINGLE CANDIDATE (param routes last) ---
 router.get('/:id/resume', candidateController.getResume);
 router.get('/:id', candidateController.getCandidateById);
-router.put('/:id', requireRecruiterOrAbove, diskUpload.single('resume'), candidateController.updateCandidate);
-router.delete('/:id', requireRecruiterOrAbove, candidateController.deleteCandidate);
+router.put('/:id', requireFreelancerOrRecruiter, diskUpload.single('resume'), candidateController.updateCandidate);
+router.delete('/:id', requireFreelancerOrRecruiter, candidateController.deleteCandidate);
 
 module.exports = router;

@@ -27,6 +27,15 @@ describe('applicationService', () => {
     ).rejects.toMatchObject({ message: 'jobId is required', statusCode: 400 });
   });
 
+  it('createApplication rejects jobId all', async () => {
+    await expect(
+      applicationService.createApplication(
+        { id: 'u1', organizationId: 'o1' },
+        { jobId: 'all' }
+      )
+    ).rejects.toMatchObject({ message: 'jobId is required', statusCode: 400 });
+  });
+
   it('createApplication requires candidateId or candidate details', async () => {
     await expect(
       applicationService.createApplication(
@@ -37,6 +46,16 @@ describe('applicationService', () => {
       message: 'candidateId or candidate details required',
       statusCode: 400,
     });
+  });
+
+  it('changeStage requires stage', async () => {
+    await expect(
+      applicationService.changeStage(
+        { id: new mongoose.Types.ObjectId(), organizationId: new mongoose.Types.ObjectId() },
+        new mongoose.Types.ObjectId().toString(),
+        {}
+      )
+    ).rejects.toMatchObject({ message: 'stage is required', statusCode: 400 });
   });
 
   it('scheduleInterview requires scheduledAt', async () => {

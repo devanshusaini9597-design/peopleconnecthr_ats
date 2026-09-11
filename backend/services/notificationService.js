@@ -5,7 +5,7 @@
  * - Scans all candidates with callBackDate set
  * - Generates notifications starting 7 days before callback
  * - Creates 2-4 reminders per day as the date approaches
- * - Sends email reminders to users (if email settings configured)
+ * - Sends email to each recruiter's own login address (User.email) the working day before and on the due date
  * - Auto-manages notification lifecycle (dedup, expiry, cleanup)
  * 
  * Schedule:
@@ -17,24 +17,27 @@
  *   2 days before  → 3 notifications (morning + afternoon + evening)
  *   1 day before   → 3 notifications (morning + afternoon + evening)
  *   Day of callback → 4 notifications (every 4 hours)
- *   Overdue         → 1 daily notification until 7 days past
+ *   Overdue / missed → 1 daily in-app notice for 7 days, plus a “you missed” email the next morning
  */
 
 const Notification = require('../models/Notification');
 const Candidate = require('../models/Candidate');
-const { sendEmail, checkUserEmailConfigured, getUserTransporter } = require('./emailService');
+const { sendEmail, checkUserEmailConfigured } = require('./emailService');
+const { wrapBrandedEmailHtml, loadPlatformEmailBrand, escapeHtml } = require('./emailBrandLayout');
+const { isCallbackEmailNotifyDay, toYmd } = require('../utils/workingDays');
+const prefsSvc = require('./notificationPreferencesService');
 const logger = require('../utils/logger');
 
 // ─── SCHEDULE CONFIG ─────────────────────────────────────────────
 const REMINDER_SCHEDULE = {
-  7: ['08:00'],                              // 7 days: 1x morning
-  6: ['08:00'],                              // 6 days: 1x morning
-  5: ['09:00'],                              // 5 days: 1x morning
-  4: ['08:00', '17:00'],                     // 4 days: 2x
-  3: ['08:00', '17:00'],                     // 3 days: 2x
-  2: ['08:00', '13:00', '17:00'],            // 2 days: 3x
-  1: ['08:00', '12:00', '17:00'],            // 1 day: 3x
-  0: ['08:00', '11:00', '14:00', '17:00'],   // Day of: 4x
+  7: ['09:00'],
+  6: ['09:00'],
+  5: ['09:00'],
+  4: ['09:00'],
+  3: ['09:00'],
+  2: ['09:00', '17:00'],
+  1: ['09:00', '17:00'],
+  0: ['09:00', '13:00', '17:00'],
 };
 
 // ─── HELPER: Parse callBackDate string to Date ──────────────────
@@ -95,105 +98,223 @@ function buildNotification(candidate, daysRemaining) {
   
   if (daysRemaining < 0) {
     const overdueDays = Math.abs(daysRemaining);
-    title = `⚠️ Overdue Callback: ${name}`;
-    message = `Callback for ${name} (${position}) was due ${overdueDays} day${overdueDays > 1 ? 's' : ''} ago. Contact: ${contact}. Please follow up immediately.`;
+    title = `Overdue callback: ${name}`;
+    message = `Callback for ${name} (${position}) was due ${overdueDays} day${overdueDays > 1 ? 's' : ''} ago. Contact: ${contact}. Please follow up now.`;
   } else if (daysRemaining === 0) {
-    title = `🔴 Callback TODAY: ${name}`;
-    message = `Today is the callback date for ${name} (${position}). Contact: ${contact}. Don't forget to reach out!`;
+    title = `Callback due today: ${name}`;
+    message = `Today is the callback date for ${name} (${position}). Contact: ${contact}.`;
   } else if (daysRemaining === 1) {
-    title = `🟠 Callback Tomorrow: ${name}`;
-    message = `Callback for ${name} (${position}) is tomorrow. Contact: ${contact}. Prepare for the follow-up.`;
+    title = `Callback tomorrow: ${name}`;
+    message = `Callback for ${name} (${position}) is tomorrow. Contact: ${contact}.`;
   } else if (daysRemaining <= 3) {
-    title = `🟡 Callback in ${daysRemaining} days: ${name}`;
-    message = `Callback for ${name} (${position}) is in ${daysRemaining} days. Contact: ${contact}. Plan your outreach.`;
+    title = `Callback in ${daysRemaining} days: ${name}`;
+    message = `Callback for ${name} (${position}) is in ${daysRemaining} days. Contact: ${contact}.`;
   } else {
-    title = `📅 Upcoming Callback: ${name}`;
-    message = `Callback for ${name} (${position}) is scheduled in ${daysRemaining} days. Contact: ${contact}.`;
+    title = `Upcoming callback: ${name}`;
+    message = `Callback for ${name} (${position}) is in ${daysRemaining} days. Contact: ${contact}.`;
   }
   
   return { title, message };
 }
 
 // ─── HELPER: Build email reminder HTML ──────────────────────────
-function buildReminderEmailHTML(notifications, userName) {
-  const rows = notifications.map(n => {
-    const priorityBadge = {
-      urgent: '<span style="background:#dc2626;color:#fff;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">URGENT</span>',
-      high: '<span style="background:#ea580c;color:#fff;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">HIGH</span>',
-      medium: '<span style="background:#ca8a04;color:#fff;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">MEDIUM</span>',
-      low: '<span style="background:#2563eb;color:#fff;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">LOW</span>'
-    };
-    
-    const daysText = n.daysRemaining < 0 
-      ? `<strong style="color:#dc2626;">${Math.abs(n.daysRemaining)} day(s) overdue</strong>`
-      : n.daysRemaining === 0 
-        ? '<strong style="color:#dc2626;">TODAY</strong>'
-        : `<strong>${n.daysRemaining} day(s)</strong>`;
-    
+function buildReminderEmailHTML(notifications, userName, { dayBefore = false, dueToday = false, missed = false } = {}) {
+  const priorityColors = {
+    urgent: '#dc2626',
+    high: '#ea580c',
+    medium: '#ca8a04',
+    low: '#2563eb',
+  };
+
+  const rows = notifications.map((n) => {
+    const color = priorityColors[n.priority] || '#71717a';
+    const daysText =
+      n.daysRemaining < 0
+        ? `<strong style="color:#dc2626;">Missed · ${Math.abs(n.daysRemaining)}d</strong>`
+        : n.daysRemaining === 0
+          ? '<strong style="color:#dc2626;">TODAY</strong>'
+          : n.daysRemaining === 1
+            ? '<strong style="color:#ea580c;">TOMORROW</strong>'
+            : `<strong style="color:#292524;">${n.daysRemaining} day(s)</strong>`;
+
     return `
-      <tr style="border-bottom:1px solid #e5e7eb;">
-        <td style="padding:12px 16px;font-size:14px;">
-          <strong style="color:#111827;">${n.candidateName}</strong><br/>
-          <span style="color:#6b7280;font-size:12px;">${n.candidatePosition || 'N/A'}</span>
+      <tr style="border-bottom:1px solid #f0eeee;">
+        <td style="padding:14px 14px 14px 0;font-size:14px;">
+          <strong style="color:#18181b;">${escapeHtml(n.candidateName)}</strong><br/>
+          <span style="color:#a1a1aa;font-size:12px;">${escapeHtml(n.candidatePosition || 'N/A')}</span>
         </td>
-        <td style="padding:12px 16px;font-size:14px;color:#374151;">${n.candidateContact || '—'}</td>
-        <td style="padding:12px 16px;font-size:14px;color:#374151;">${n.callBackDate}</td>
-        <td style="padding:12px 16px;font-size:14px;">${daysText}</td>
-        <td style="padding:12px 16px;">${priorityBadge[n.priority]}</td>
+        <td style="padding:14px;font-size:13.5px;color:#57534e;">${escapeHtml(n.candidateContact || '—')}</td>
+        <td style="padding:14px;font-size:13.5px;color:#57534e;white-space:nowrap;">${escapeHtml(n.callBackDate)}</td>
+        <td style="padding:14px;font-size:13.5px;">${daysText}</td>
+        <td style="padding:14px 0 14px 14px;"><span style="display:inline-block;background:${color}1a;color:${color};padding:3px 10px;border-radius:999px;font-size:10.5px;font-weight:700;letter-spacing:0.04em;">${n.priority.toUpperCase()}</span></td>
       </tr>`;
   }).join('');
 
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"/></head>
-<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Segoe UI',Arial,sans-serif;">
-  <div style="max-width:680px;margin:24px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-    
-    <!-- Header -->
-    <div style="background:linear-gradient(135deg,#1e40af,#3b82f6);padding:28px 32px;">
-      <h1 style="color:#ffffff;font-size:22px;margin:0;">🔔 Callback Reminders</h1>
-      <p style="color:#bfdbfe;font-size:14px;margin:8px 0 0;">Skillnix Recruitment Services</p>
-    </div>
-    
-    <!-- Body -->
-    <div style="padding:24px 32px;">
-      <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 20px;">
-        Hi <strong>${userName}</strong>,<br/>
-        You have <strong>${notifications.length}</strong> upcoming callback reminder${notifications.length > 1 ? 's' : ''} that need your attention:
-      </p>
-      
-      <!-- Table -->
-      <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-        <thead>
-          <tr style="background:#f9fafb;">
-            <th style="padding:10px 16px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;">Candidate</th>
-            <th style="padding:10px 16px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;">Contact</th>
-            <th style="padding:10px 16px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;">Callback Date</th>
-            <th style="padding:10px 16px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;">Due In</th>
-            <th style="padding:10px 16px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;">Priority</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows}
-        </tbody>
-      </table>
-      
-      <p style="color:#6b7280;font-size:13px;margin:20px 0 0;line-height:1.5;">
-        💡 <em>Log in to your dashboard to view full details and take action on these callbacks.</em>
-      </p>
-    </div>
-    
-    <!-- Footer -->
-    <div style="background:#f9fafb;padding:16px 32px;border-top:1px solid #e5e7eb;">
-      <p style="color:#9ca3af;font-size:12px;margin:0;text-align:center;">
-        Skillnix Recruitment Services — Automated Callback Reminder System<br/>
-        This is an automated notification. You can manage your reminders from the dashboard.
-      </p>
-    </div>
-  </div>
-</body>
-</html>`;
+  const brand = loadPlatformEmailBrand();
+  const intro = missed
+    ? `Hi <strong style="color:#18181b;">${escapeHtml(userName)}</strong>, you
+      <strong style="color:#dc2626;">missed</strong> ${notifications.length} callback${notifications.length > 1 ? 's' : ''}
+      that were due. Please follow up today.`
+    : dueToday
+    ? `Hi <strong style="color:#18181b;">${escapeHtml(userName)}</strong>, this is your
+      <strong style="color:#18181b;">due-today</strong> callback reminder
+      (${notifications.length} candidate${notifications.length > 1 ? 's' : ''}).
+      Please follow up today.`
+    : dayBefore
+    ? `Hi <strong style="color:#18181b;">${escapeHtml(userName)}</strong>, this is your
+      <strong style="color:#18181b;">one-day-before</strong> callback reminder
+      (${notifications.length} candidate${notifications.length > 1 ? 's' : ''}).
+      If the day before falls on a Sunday or holiday, we send this one working day earlier.`
+    : `Hi <strong style="color:#18181b;">${escapeHtml(userName)}</strong>, you have
+      <strong style="color:#18181b;">${notifications.length}</strong> upcoming callback reminder${notifications.length > 1 ? 's' : ''}
+      that need your attention:`;
+
+  const bodyHtml = `
+    <p style="margin:0 0 20px 0;font-size:15px;color:#3f3f46;line-height:1.65;">
+      ${intro}
+    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+      <thead>
+        <tr style="border-bottom:2px solid #f0eeee;">
+          <th style="padding:0 14px 10px 0;text-align:left;font-size:11px;font-weight:700;color:#a1a1aa;text-transform:uppercase;letter-spacing:0.04em;">Candidate</th>
+          <th style="padding:0 14px 10px;text-align:left;font-size:11px;font-weight:700;color:#a1a1aa;text-transform:uppercase;letter-spacing:0.04em;">Contact</th>
+          <th style="padding:0 14px 10px;text-align:left;font-size:11px;font-weight:700;color:#a1a1aa;text-transform:uppercase;letter-spacing:0.04em;">Callback</th>
+          <th style="padding:0 14px 10px;text-align:left;font-size:11px;font-weight:700;color:#a1a1aa;text-transform:uppercase;letter-spacing:0.04em;">Due in</th>
+          <th style="padding:0 0 10px 14px;text-align:left;font-size:11px;font-weight:700;color:#a1a1aa;text-transform:uppercase;letter-spacing:0.04em;">Priority</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>
+    <p style="margin:22px 0 0 0;color:#78716c;font-size:13px;line-height:1.6;">Log in to ATS to view full details and take action on these callbacks.</p>`;
+
+  return wrapBrandedEmailHtml({
+    title: missed ? 'You missed these callbacks' : dueToday ? 'Callbacks due today' : dayBefore ? 'Callback tomorrow — reminder' : 'Callback reminders',
+    eyebrow: missed ? 'Missed' : dueToday ? 'Due today' : dayBefore ? 'One day before' : 'Daily digest',
+    orgName: brand.name,
+    logoUrl: brand.logoUrl,
+    brandColor: brand.brandColor,
+    wordmark: brand.wordmark,
+    bodyHtml,
+  });
+}
+
+/**
+ * Send callback digest emails to each recruiter's own login email (User.email).
+ * kind: 'dayBefore' | 'dueToday' | 'missed'
+ */
+async function sendCallbackDigestEmails(byUser, todayStr, currentHour, { kind }) {
+  if (currentHour < 7 || currentHour > 11) return 0;
+
+  const meta = {
+    dueToday: {
+      prefix: 'email_cb0d_',
+      subject: (n) => `${n} Callback Due Today — ATS`,
+      title: 'Due-today callback email sent',
+      label: 'Due-today',
+      text: (n) => `You have ${n} callback(s) due today. Log in to ATS to review.`,
+    },
+    missed: {
+      prefix: 'email_cbmiss_',
+      subject: (n) => `${n} Missed Callback — ATS`,
+      title: 'Missed callback email sent',
+      label: 'Missed',
+      text: (n) => `You missed ${n} callback(s). Log in to ATS to follow up.`,
+    },
+    dayBefore: {
+      prefix: 'email_cb1d_',
+      subject: (n) => `${n} Callback Tomorrow Reminder — ATS`,
+      title: 'Day-before callback email sent',
+      label: 'Day-before',
+      text: (n) => `You have ${n} callback(s) coming up (one-day-before reminder). Log in to ATS to review.`,
+    },
+  }[kind] || null;
+  if (!meta) return 0;
+
+  let totalEmails = 0;
+
+  for (const [userId, list] of Object.entries(byUser || {})) {
+    if (!list.length) continue;
+
+    try {
+      const emailDedupKey = `${meta.prefix}${userId}_${todayStr}`;
+      const existingEmail = await Notification.findOne({ dedupKey: emailDedupKey }).lean();
+      if (existingEmail) continue;
+
+      const User = require('mongoose').model('User');
+      const user = await User.findById(userId).select('name email role organizationId').lean();
+      if (!user?.email) continue;
+
+      const isFreelancerUser = String(user.role || '') === 'freelancer';
+      // Freelancers receive system/platform mail (not company Zepto send-as).
+      if (!isFreelancerUser) {
+        const isConfigured = await checkUserEmailConfigured(userId);
+        if (!isConfigured) {
+          logger.info(`   ⏭ Skip ${kind} email for ${user.email} — outbound email not configured`);
+          continue;
+        }
+      }
+
+      const emailAllowed = await prefsSvc.shouldDeliver(userId, 'callback_reminder', 'email');
+      if (!emailAllowed) {
+        logger.info(`   ⏭ Skip ${kind} email for ${user.email} — disabled in notification preferences`);
+        continue;
+      }
+
+      const payload = list.map((candidate) => {
+        const days = candidate._daysRemaining;
+        return {
+          candidateName: candidate.name,
+          candidatePosition: candidate.position || '',
+          candidateContact: candidate.contact || '',
+          callBackDate: candidate.callBackDate,
+          priority: getPriority(days),
+          daysRemaining: days,
+        };
+      });
+
+      const html = buildReminderEmailHTML(payload, user.name || 'Team Member', {
+        dayBefore: kind === 'dayBefore',
+        dueToday: kind === 'dueToday',
+        missed: kind === 'missed',
+      });
+
+      await sendEmail(
+        user.email,
+        meta.subject(payload.length),
+        html,
+        meta.text(payload.length),
+        isFreelancerUser
+          ? {
+              system: true,
+              senderName: 'Skillnix Recruitment',
+              organizationId: user.organizationId,
+            }
+          : { userId, senderName: 'Skillnix Recruitment' }
+      );
+
+      await Notification.create({
+        userId,
+        type: 'system',
+        title: meta.title,
+        message: `${meta.label} callback email sent to ${user.email} (${payload.length} candidate(s))`,
+        priority: 'low',
+        isRead: true,
+        dedupKey: emailDedupKey,
+        emailSent: true,
+        emailSentAt: new Date(),
+        expiresAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+      }).catch(() => {});
+
+      totalEmails += 1;
+      logger.info(`   📧 ${meta.label} callback email sent to ${user.email} (${payload.length})`);
+    } catch (emailErr) {
+      logger.error(`   ${kind} email failed for user ${userId}: ${emailErr.message}`);
+    }
+  }
+
+  return totalEmails;
 }
 
 // ─── MAIN: Scan and generate notifications ──────────────────────
@@ -201,11 +322,11 @@ async function scanAndNotify() {
   try {
     const now = new Date();
     const currentHour = now.getHours();
-    const todayStr = now.toISOString().split('T')[0]; // yyyy-mm-dd
+    const todayStr = toYmd(now) || now.toISOString().split('T')[0];
     
     logger.info(`\n🔔 [${now.toLocaleString()}] Callback Reminder Scan Started...`);
     
-    // Find all candidates with callBackDate set
+    // ATS candidates with callBackDate set
     const candidates = await Candidate.find({
       callBackDate: { $ne: '', $exists: true }
     }).lean();
@@ -217,26 +338,44 @@ async function scanAndNotify() {
     
     logger.info(`   Found ${candidates.length} candidates with callback dates.`);
     
-    // Group by user (createdBy)
+    // Group by recipient (owner, SPOC, manager per enterprise routing)
     const userCandidates = {};
+    const dayBeforeCandidates = {};
+    const dueTodayCandidates = {};
+    const missedCandidates = {};
     for (const c of candidates) {
       const cbDate = parseCallbackDate(c.callBackDate);
       if (!cbDate) continue;
-      
+
       const daysRemaining = getDaysRemaining(cbDate);
-      
-      // Only notify for -7 to +7 range
-      if (daysRemaining < -7 || daysRemaining > 7) continue;
-      
-      const userId = c.createdBy?.toString();
-      if (!userId) continue;
-      
-      if (!userCandidates[userId]) userCandidates[userId] = [];
-      userCandidates[userId].push({ ...c, _parsedDate: cbDate, _daysRemaining: daysRemaining });
+      const enriched = { ...c, _parsedDate: cbDate, _daysRemaining: daysRemaining };
+      const recipientIds = await prefsSvc.resolveCallbackRecipientIds(c);
+
+      for (const userId of recipientIds) {
+        // Day-before email window (allow holiday shift up to ~2 weeks out)
+        if (daysRemaining >= 0 && daysRemaining <= 14 && isCallbackEmailNotifyDay(cbDate, now)) {
+          if (!dayBeforeCandidates[userId]) dayBeforeCandidates[userId] = [];
+          dayBeforeCandidates[userId].push(enriched);
+        }
+
+        if (daysRemaining === 0) {
+          if (!dueTodayCandidates[userId]) dueTodayCandidates[userId] = [];
+          dueTodayCandidates[userId].push(enriched);
+        }
+
+        if (daysRemaining === -1) {
+          if (!missedCandidates[userId]) missedCandidates[userId] = [];
+          missedCandidates[userId].push(enriched);
+        }
+
+        if (daysRemaining < -7 || daysRemaining > 7) continue;
+
+        if (!userCandidates[userId]) userCandidates[userId] = [];
+        userCandidates[userId].push(enriched);
+      }
     }
     
     let totalCreated = 0;
-    let totalEmails = 0;
     
     for (const [userId, candidateList] of Object.entries(userCandidates)) {
       const notificationsToCreate = [];
@@ -261,6 +400,21 @@ async function scanAndNotify() {
         });
         
         if (!shouldNotifyNow && schedule.length > 0) continue;
+
+        const priority = getPriority(days);
+        const inAppOk = await prefsSvc.shouldCreateCallbackInApp(userId, {
+          daysRemaining: days,
+          currentHour,
+        });
+        if (!inAppOk) continue;
+
+        const quietBlocked = !(await prefsSvc.shouldDeliver(
+          userId,
+          days < 0 ? 'callback_overdue' : days === 0 ? 'callback_today' : 'callback_reminder',
+          'inApp',
+          { priority }
+        ));
+        if (quietBlocked) continue;
         
         // Dedup key: userId_candidateId_date_timeSlot
         const timeSlot = `${Math.floor(currentHour / 3)}`; // Group by 3-hour blocks
@@ -297,58 +451,13 @@ async function scanAndNotify() {
           }
         }
       }
-      
-      // Send email digest if user has email configured and it's a morning slot (8-10 AM)
-      if (currentHour >= 7 && currentHour <= 10 && notificationsToCreate.length > 0) {
-        try {
-          const isConfigured = await checkUserEmailConfigured(userId);
-          if (isConfigured) {
-            // Check if we already sent email today
-            const emailDedupKey = `email_${userId}_${todayStr}`;
-            const existingEmail = await Notification.findOne({ dedupKey: emailDedupKey });
-            
-            if (!existingEmail) {
-              // Get user info
-              const User = require('mongoose').model('User');
-              const user = await User.findById(userId).lean();
-              
-              if (user && user.email) {
-                const { transporter, configured } = await getUserTransporter(userId);
-                if (configured && transporter) {
-                  const html = buildReminderEmailHTML(notificationsToCreate, user.name || 'Team Member');
-                  
-                  await transporter.sendMail({
-                    from: user.emailSettings?.smtpEmail || user.email,
-                    to: user.email,
-                    subject: `🔔 ${notificationsToCreate.length} Callback Reminder${notificationsToCreate.length > 1 ? 's' : ''} — Skillnix Recruitment`,
-                    html
-                  });
-                  
-                  // Mark email as sent with dedup
-                  await Notification.create({
-                    userId,
-                    type: 'system',
-                    title: 'Email Reminder Sent',
-                    message: `Callback reminder email sent with ${notificationsToCreate.length} reminders`,
-                    priority: 'low',
-                    isRead: true,
-                    dedupKey: emailDedupKey,
-                    expiresAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)
-                  }).catch(() => {}); // Ignore dedup errors
-                  
-                  totalEmails++;
-                  logger.info(`   📧 Email reminder sent to ${user.email}`);
-                }
-              }
-            }
-          }
-        } catch (emailErr) {
-          logger.error(`   Email reminder failed for user ${userId}: ${emailErr.message}`);
-        }
-      }
     }
+
+    const dayBeforeEmails = await sendCallbackDigestEmails(dayBeforeCandidates, todayStr, currentHour, { kind: 'dayBefore' });
+    const dueTodayEmails = await sendCallbackDigestEmails(dueTodayCandidates, todayStr, currentHour, { kind: 'dueToday' });
+    const missedEmails = await sendCallbackDigestEmails(missedCandidates, todayStr, currentHour, { kind: 'missed' });
     
-    logger.info(`   ✅ Scan complete: ${totalCreated} notifications created, ${totalEmails} emails sent.\n`);
+    logger.info(`   ✅ Scan complete: ${totalCreated} in-app, ${dayBeforeEmails} day-before emails, ${dueTodayEmails} due-today emails, ${missedEmails} missed emails.\n`);
     
   } catch (error) {
     logger.error('❌ Notification scan error:', error);
@@ -410,21 +519,34 @@ function httpError(message, statusCode = 400, extra = {}) {
   return err;
 }
 
-const PRIORITY_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 };
-
-async function listNotifications(userId, { status, limit = 50, page = 1 } = {}) {
+async function listNotifications(userId, { status, channel, limit = 50, page = 1, sort = 'latest' } = {}) {
   try {
-    const filter = { userId, isDismissed: false, type: { $ne: 'system' } };
+    await syncCallbackNotificationsForUser(userId);
+    await syncJobOpeningNotificationsForUser(userId);
+
+    const { notificationChannelFilter } = require('../utils/reportingScope');
+    const channelFilter = notificationChannelFilter(channel);
+    const filter = {
+      userId,
+      isDismissed: false,
+      ...channelFilter,
+    };
+    if (!channelFilter.type) {
+      filter.type = { $ne: 'system' };
+    } else if (channelFilter.type.$nin) {
+      filter.type = { $nin: [...new Set([...channelFilter.type.$nin, 'system'])] };
+    }
     if (status === 'unread') filter.isRead = false;
     else if (status === 'read') filter.isRead = true;
 
     const limitNum = parseInt(limit);
     const pageNum = parseInt(page);
     const skip = (pageNum - 1) * limitNum;
+    const newestFirst = sort !== 'oldest';
 
     const [notifications, totalCount, unreadCount] = await Promise.all([
       Notification.find(filter)
-        .sort({ priority: 1, createdAt: -1 })
+        .sort(newestFirst ? { createdAt: -1 } : { createdAt: 1 })
         .skip(skip)
         .limit(limitNum)
         .lean(),
@@ -437,11 +559,8 @@ async function listNotifications(userId, { status, limit = 50, page = 1 } = {}) 
       }),
     ]);
 
-    notifications.sort((a, b) => {
-      const pDiff = (PRIORITY_ORDER[a.priority] || 3) - (PRIORITY_ORDER[b.priority] || 3);
-      if (pDiff !== 0) return pDiff;
-      return new Date(b.createdAt) - new Date(a.createdAt);
-    });
+    // "Latest" / "Oldest" are chronological — do not re-rank by priority
+    // (that buried brand-new report shares under older high-priority callbacks).
 
     return {
       notifications,
@@ -449,6 +568,7 @@ async function listNotifications(userId, { status, limit = 50, page = 1 } = {}) 
       totalCount,
       page: pageNum,
       totalPages: Math.ceil(totalCount / limitNum),
+      sort: newestFirst ? 'latest' : 'oldest',
     };
   } catch (error) {
     if (error.statusCode) throw error;
@@ -459,6 +579,9 @@ async function listNotifications(userId, { status, limit = 50, page = 1 } = {}) 
 
 async function getNotificationCounts(userId) {
   try {
+    await syncCallbackNotificationsForUser(userId);
+    await syncJobOpeningNotificationsForUser(userId);
+
     const unreadCount = await Notification.countDocuments({
       userId,
       isRead: false,
@@ -481,33 +604,282 @@ async function getNotificationCounts(userId) {
   }
 }
 
-async function getUpcomingCallbacks(userId) {
-  try {
-    const notifications = await Notification.find({
-      userId,
-      isDismissed: false,
-      type: { $in: ['callback_reminder', 'callback_today', 'callback_overdue'] },
-    })
-      .sort({ daysRemaining: 1 })
-      .lean();
+const CALLBACK_NOTIF_TYPES = ['callback_reminder', 'callback_today', 'callback_overdue'];
 
-    const seen = new Map();
-    for (const n of notifications) {
-      const cid = n.candidateId?.toString();
-      if (!cid) continue;
-      if (!seen.has(cid) || (n.priority === 'urgent' && seen.get(cid).priority !== 'urgent')) {
-        seen.set(cid, n);
+function liveCallbackTitle(candidateName, daysRemaining) {
+  const name = candidateName || 'Unknown';
+  if (daysRemaining < 0) return `Missed callback: ${name}`;
+  if (daysRemaining === 0) return `Callback due today: ${name}`;
+  if (daysRemaining === 1) return `Callback tomorrow: ${name}`;
+  return `Callback in ${daysRemaining} days: ${name}`;
+}
+
+/**
+ * Collapse duplicate callback notifications (one per candidate) and refresh live due state.
+ * Dismisses reminders when the candidate callback date was cleared.
+ */
+async function syncJobOpeningNotificationsForUser(userId) {
+  if (!userId) return;
+  const Job = require('../models/Job');
+  const rows = await Notification.find({
+    userId,
+    isDismissed: false,
+    type: 'job_opening',
+  })
+    .select('_id relatedJobId title')
+    .lean();
+  if (!rows.length) return;
+
+  const withJob = rows.filter((r) => r.relatedJobId);
+  const dismissIds = [];
+
+  if (withJob.length) {
+    const ids = withJob.map((r) => r.relatedJobId);
+    const existing = await Job.find({ _id: { $in: ids } }).select('_id').lean();
+    const alive = new Set(existing.map((j) => String(j._id)));
+    for (const r of withJob) {
+      if (!alive.has(String(r.relatedJobId))) dismissIds.push(r._id);
+    }
+  }
+
+  // Legacy rows without relatedJobId: drop if title no longer matches any open job
+  const legacy = rows.filter((r) => !r.relatedJobId);
+  if (legacy.length) {
+    const titles = [...new Set(legacy.map((r) => {
+      const m = String(r.title || '').match(/^New opening:\s*(.+)$/i);
+      return m ? m[1].trim() : '';
+    }).filter(Boolean))];
+    if (titles.length) {
+      const aliveJobs = await Job.find({
+        $or: [{ title: { $in: titles } }, { role: { $in: titles } }],
+      })
+        .select('title role')
+        .lean();
+      const aliveTitles = new Set(
+        aliveJobs.flatMap((j) => [j.title, j.role].filter(Boolean).map((t) => String(t).trim()))
+      );
+      for (const r of legacy) {
+        const m = String(r.title || '').match(/^New opening:\s*(.+)$/i);
+        const t = m ? m[1].trim() : '';
+        if (!t || !aliveTitles.has(t)) dismissIds.push(r._id);
       }
+    } else {
+      dismissIds.push(...legacy.map((r) => r._id));
+    }
+  }
+
+  if (dismissIds.length) {
+    await Notification.updateMany(
+      { _id: { $in: dismissIds } },
+      { $set: { isDismissed: true, isRead: true } }
+    );
+  }
+}
+
+async function syncCallbackNotificationsForUser(userId) {
+  if (!userId) return;
+  const callbacks = await Notification.find({
+    userId,
+    isDismissed: false,
+    type: { $in: CALLBACK_NOTIF_TYPES },
+  })
+    .select('_id candidateId candidateName callBackDate createdAt isRead')
+    .lean();
+
+  if (!callbacks.length) return;
+
+  const byCandidate = new Map();
+  const orphanIds = [];
+  for (const n of callbacks) {
+    const cid = n.candidateId?.toString();
+    if (!cid) {
+      orphanIds.push(n._id);
+      continue;
+    }
+    if (!byCandidate.has(cid)) byCandidate.set(cid, []);
+    byCandidate.get(cid).push(n);
+  }
+
+  const candidateIds = [...byCandidate.keys()];
+  const candidates = await Candidate.find({ _id: { $in: candidateIds } })
+    .select('_id callBackDate name contact position')
+    .lean();
+  const candMap = new Map(candidates.map((c) => [c._id.toString(), c]));
+
+  const dismissIds = [...orphanIds];
+  const refreshOps = [];
+
+  for (const [cid, list] of byCandidate.entries()) {
+    list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const cand = candMap.get(cid);
+    const callBackDate = cand?.callBackDate || '';
+    if (!callBackDate) {
+      dismissIds.push(...list.map((n) => n._id));
+      continue;
     }
 
-    const callbacks = Array.from(seen.values())
-      .sort((a, b) => (a.daysRemaining || 0) - (b.daysRemaining || 0))
-      .slice(0, 10);
+    const [keep, ...dupes] = list;
+    dismissIds.push(...dupes.map((n) => n._id));
 
-    return { callbacks, total: seen.size };
+    const parsed = parseCallbackDate(callBackDate);
+    if (!parsed) {
+      dismissIds.push(keep._id);
+      continue;
+    }
+    const days = getDaysRemaining(parsed);
+    const type = days < 0 ? 'callback_overdue' : days === 0 ? 'callback_today' : 'callback_reminder';
+    const name = cand.name || keep.candidateName || 'Unknown';
+    refreshOps.push({
+      updateOne: {
+        filter: { _id: keep._id },
+        update: {
+          $set: {
+            type,
+            title: liveCallbackTitle(name, days),
+            message: days < 0
+              ? `Callback for ${name} was due ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ago.`
+              : days === 0
+                ? `Today is the callback date for ${name}.`
+                : `Callback for ${name} is in ${days} day${days === 1 ? '' : 's'}.`,
+            candidateName: name,
+            candidatePosition: cand.position || '',
+            candidateContact: cand.contact || '',
+            callBackDate,
+            daysRemaining: days,
+            priority: getPriority(days),
+          },
+        },
+      },
+    });
+  }
+
+  if (dismissIds.length) {
+    await Notification.updateMany(
+      { _id: { $in: dismissIds } },
+      { $set: { isDismissed: true, isRead: true } }
+    );
+  }
+  if (refreshOps.length) {
+    await Notification.bulkWrite(refreshOps, { ordered: false }).catch(() => {});
+  }
+}
+
+async function dismissCallbackNotificationsForCandidate(userId, candidateId) {
+  if (!userId || !candidateId) return;
+  await Notification.updateMany(
+    {
+      userId,
+      candidateId,
+      type: { $in: CALLBACK_NOTIF_TYPES },
+      isDismissed: false,
+    },
+    { $set: { isDismissed: true, isRead: true } }
+  );
+}
+
+function formatCallbackYmd(date) {
+  return toYmd(date) || '';
+}
+
+function mapCandidateToCallbackRow(candidate) {
+  const cbDate = parseCallbackDate(candidate.callBackDate);
+  if (!cbDate) return null;
+  const daysRemaining = getDaysRemaining(cbDate);
+  // Live queue: keep overdue up to 90 days; upcoming within 14 days
+  if (daysRemaining < -90 || daysRemaining > 14) return null;
+  return {
+    _id: candidate._id,
+    candidateId: candidate._id,
+    candidateName: candidate.name || 'Unknown',
+    candidatePosition: candidate.position || '',
+    candidateContact: candidate.contact || candidate.phone || '',
+    callBackDate: candidate.callBackDate,
+    daysRemaining,
+    priority: getPriority(daysRemaining),
+  };
+}
+
+/**
+ * Live callback queue from candidates.callBackDate (desk-scoped), not notification cache.
+ */
+async function getUpcomingCallbacks(user) {
+  try {
+    const { candidateListFilter } = require('../utils/dataScope');
+    const deskFilter = candidateListFilter({ user }, 'mine');
+    const candidates = await Candidate.find({
+      ...deskFilter,
+      callBackDate: { $ne: '', $exists: true },
+    })
+      .select('name position contact phone callBackDate')
+      .lean();
+
+    const callbacks = candidates
+      .map(mapCandidateToCallbackRow)
+      .filter(Boolean)
+      .sort((a, b) => (a.daysRemaining || 0) - (b.daysRemaining || 0));
+
+    return { callbacks: callbacks.slice(0, 10), total: callbacks.length };
   } catch (error) {
     if (error.statusCode) throw error;
     throw httpError('Failed to fetch callbacks', 500);
+  }
+}
+
+async function completeCallback(req, candidateId) {
+  try {
+    const { candidateWriteScope } = require('../utils/dataScope');
+    const userId = req.user?.id || req.user?._id;
+    const candidate = await Candidate.findOneAndUpdate(
+      { _id: candidateId, ...candidateWriteScope(req) },
+      { $set: { callBackDate: '' } },
+      { new: true }
+    ).select('_id name callBackDate');
+    if (!candidate) throw httpError('Candidate not found or not editable', 404);
+    await dismissCallbackNotificationsForCandidate(userId, candidateId);
+    return { candidateId: candidate._id, callBackDate: '' };
+  } catch (error) {
+    if (error.statusCode) throw error;
+    throw httpError('Failed to complete callback', 500);
+  }
+}
+
+async function snoozeCallback(req, candidateId, daysInput) {
+  try {
+    const days = Number(daysInput);
+    if (![1, 3, 7].includes(days)) {
+      throw httpError('Snooze days must be 1, 3, or 7', 400);
+    }
+    const { candidateWriteScope } = require('../utils/dataScope');
+    const userId = req.user?.id || req.user?._id;
+    const existing = await Candidate.findOne({
+      _id: candidateId,
+      ...candidateWriteScope(req),
+    })
+      .select('_id name callBackDate')
+      .lean();
+    if (!existing) throw httpError('Candidate not found or not editable', 404);
+
+    const base = parseCallbackDate(existing.callBackDate) || new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    // Snooze from max(today, current callback) so overdue moves forward from today
+    const from = base > today ? base : today;
+    const next = new Date(from);
+    next.setDate(next.getDate() + days);
+    const callBackDate = formatCallbackYmd(next);
+
+    const candidate = await Candidate.findOneAndUpdate(
+      { _id: candidateId, ...candidateWriteScope(req) },
+      { $set: { callBackDate } },
+      { new: true }
+    ).select('_id name callBackDate');
+
+    await dismissCallbackNotificationsForCandidate(userId, candidateId);
+    const row = mapCandidateToCallbackRow(candidate.toObject ? candidate.toObject() : candidate);
+    return { candidateId: candidate._id, callBackDate, callback: row };
+  } catch (error) {
+    if (error.statusCode) throw error;
+    throw httpError('Failed to snooze callback', 500);
   }
 }
 
@@ -568,6 +940,29 @@ async function triggerNotificationScan() {
   }
 }
 
+async function getReportShareUnreadCount(userId) {
+  const count = await Notification.countDocuments({
+    userId,
+    type: 'report_shared',
+    isRead: false,
+    isDismissed: false,
+  });
+  return { count };
+}
+
+async function markReportSharesSeen(userId) {
+  const result = await Notification.updateMany(
+    {
+      userId,
+      type: 'report_shared',
+      isRead: false,
+      isDismissed: false,
+    },
+    { $set: { isRead: true } }
+  );
+  return { modified: result.modifiedCount || 0 };
+}
+
 module.exports = {
   startNotificationScheduler,
   stopNotificationScheduler,
@@ -576,9 +971,13 @@ module.exports = {
   listNotifications,
   getNotificationCounts,
   getUpcomingCallbacks,
+  completeCallback,
+  snoozeCallback,
   markNotificationRead,
   markAllNotificationsRead,
   dismissNotification,
   clearReadNotifications,
   triggerNotificationScan,
+  getReportShareUnreadCount,
+  markReportSharesSeen,
 };

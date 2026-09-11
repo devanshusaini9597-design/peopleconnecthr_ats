@@ -1,16 +1,21 @@
 {
+  "headers": [
+    {
+      "source": "/((?!assets/).*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" },
+        { "key": "Pragma", "value": "no-cache" },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://api.stripe.com; frame-src 'self' blob: https://js.stripe.com https://hooks.stripe.com; object-src 'self' blob:; base-uri 'self'; form-action 'self' mailto:; frame-ancestors 'none'"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",
       "destination": "https://peopleconnecthrats-production.up.railway.app/api/:path*"
-    },
-    {
-      "source": "/jobs",
-      "destination": "https://peopleconnecthrats-production.up.railway.app/jobs"
-    },
-    {
-      "source": "/jobs/:path*",
-      "destination": "https://peopleconnecthrats-production.up.railway.app/jobs/:path*"
     },
     {
       "source": "/candidates",

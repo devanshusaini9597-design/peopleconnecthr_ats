@@ -26,6 +26,9 @@ function handle(res, err) {
 // accounts that somehow have no organizationId yet.
 router.get('/', async (req, res) => {
   try {
+    if (req.user?.role === 'freelancer') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
     const members = await listTeamMembers(req.user);
     res.json({ success: true, members });
   } catch (err) {

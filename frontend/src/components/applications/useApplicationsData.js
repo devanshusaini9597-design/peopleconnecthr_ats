@@ -6,7 +6,7 @@ import { normalizeApp } from './constants';
 export function useApplicationsData({ setJobs, setApplications, setStats, setLoading, showToast }) {
   const fetchJobs = useCallback(async () => {
     try {
-      const res = await authenticatedFetch(`${API_URL}/jobs?isTemplate=false`);
+      const res = await authenticatedFetch(`${API_URL}/api/jobs?isTemplate=false`);
       if (isUnauthorized(res)) return handleUnauthorized();
       if (res.ok) {
         const data = await res.json();
@@ -20,7 +20,7 @@ export function useApplicationsData({ setJobs, setApplications, setStats, setLoa
 
   const fetchStats = useCallback(async (jobId) => {
     try {
-      const q = jobId ? `?jobId=${jobId}` : '';
+      const q = jobId && jobId !== 'all' ? `?jobId=${jobId}` : '';
       const res = await authenticatedFetch(`${API_URL}/api/applications/stats${q}`);
       if (isUnauthorized(res)) return handleUnauthorized();
       if (res.ok) {
@@ -40,7 +40,8 @@ export function useApplicationsData({ setJobs, setApplications, setStats, setLoa
   const fetchApplications = useCallback(async (jobId) => {
     setLoading(true);
     try {
-      const res = await authenticatedFetch(`${API_URL}/api/applications?jobId=${jobId}&limit=200`);
+      const q = jobId && jobId !== 'all' ? `jobId=${jobId}&limit=500` : 'limit=500';
+      const res = await authenticatedFetch(`${API_URL}/api/applications?${q}`);
       if (isUnauthorized(res)) return handleUnauthorized();
       if (res.ok) {
         const json = await res.json();

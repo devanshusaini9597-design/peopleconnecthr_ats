@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Bell, Loader2, CheckCircle2, RefreshCw, BellOff,
@@ -6,6 +7,7 @@ import {
 } from 'lucide-react';
 import { authenticatedFetch, readApiJson } from '../utils/fetchUtils';
 import { useToast } from './Toast';
+import { useAuth } from '../context/AuthContext';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
 import FeatureGate from './FeatureGate';
@@ -46,10 +48,12 @@ const ALERT_TYPES = [
   { icon: Calendar, title: 'Interview reminders', desc: 'Upcoming interviews on your calendar' },
   { icon: AtSign, title: '@mention alerts', desc: 'When someone tags you on a candidate' },
   { icon: Megaphone, title: 'Announcements', desc: 'Org-wide updates from your team' },
+  { icon: Bell, title: 'Callback reminders', desc: 'Follow-ups on call-back dates — configure in Notification preferences' },
 ];
 
 export default function PushNotificationsPage() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(PUSH_TOUR_KEY);
   const [configured, setConfigured] = useState(false);
@@ -157,17 +161,9 @@ export default function PushNotificationsPage() {
 
   const isOn = status === 'subscribed';
   const isWorking = status === 'working';
+  const isFreelancer = user?.role === 'freelancer';
 
-  return (
-    <FeatureGate
-      feature="push.notifications"
-      fallback={
-        <UpgradeFeatureFallback
-          title="Push notifications are a Professional feature"
-          description="Upgrade for browser alerts on interviews, mentions, and announcements."
-        />
-      }
-    >
+  const page = (
       <div className="page-shell-ats animate-page-enter">
         <PageHeader
           icon={Bell}
@@ -181,8 +177,11 @@ export default function PushNotificationsPage() {
         </PageHeader>
 
         <div className="rounded-xl border border-brand-200/60 bg-gradient-to-r from-brand-50/70 via-white to-teal-50/40 px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed">
-          One click enables alerts on this browser. Your browser will ask for permission — allow it, and you’re done.
-          Press <span className="font-semibold text-stone-800">?</span> for a tour.
+          One click enables alerts on this browser. Manage which alert types you receive in{' '}
+          <Link to="/notification-settings" className="font-semibold text-brand-700 hover:underline">
+            Notification preferences
+          </Link>
+          . Press <span className="font-semibold text-stone-800">?</span> for a tour.
         </div>
 
         {loading ? (
@@ -370,6 +369,21 @@ export default function PushNotificationsPage() {
           storageKey={PUSH_TOUR_KEY}
         />
       </div>
+  );
+
+  if (isFreelancer) return page;
+
+  return (
+    <FeatureGate
+      feature="push.notifications"
+      fallback={
+        <UpgradeFeatureFallback
+          title="Push notifications are a Professional feature"
+          description="Upgrade for browser alerts on interviews, mentions, and announcements."
+        />
+      }
+    >
+      {page}
     </FeatureGate>
   );
 }

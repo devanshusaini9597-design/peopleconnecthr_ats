@@ -4,12 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, UserPlus } from 'lucide-react';
 import PageHeader from './ui/PageHeader';
 import BASE_API_URL from '../config';
-import { isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
+import { authenticatedFetch, isUnauthorized, handleUnauthorized, planLimitErrorMessage } from '../utils/fetchUtils';
 import useCountries from '../utils/useCountries';
 import { useToast } from './Toast';
 import { formatByFieldName } from '../utils/textFormatter';
 import { dedupeByName } from '../utils/dedupeMasterData';
-import { INITIAL_FORM_STATE } from './addCandidate/addCandidateConstants';
+import { blankCandidateForm } from './addCandidate/addCandidateConstants';
 import {
   stripCountryCode,
   validateCandidateForm,
@@ -17,18 +17,31 @@ import {
   VALID_TLDS,
 } from './addCandidate/addCandidateHelpers';
 import AddCandidateForm from './addCandidate/AddCandidateForm';
+import { clientRequiresPan, normalizePan, validatePan } from '../utils/panClientRules';
+import {
+  resumeIdentityConflicts,
+  mergeResumeIntoForm,
+} from '../utils/resumeFormMerge';
+import ConfirmationModal from './ConfirmationModal';
+import { useAuth } from '../context/AuthContext';
 
 const AddCandidatePage = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
+  const isFreelancer = user?.role === 'freelancer';
+  const blankForm = () => blankCandidateForm(user?.role);
   const [isLoading, setIsLoading] = useState(false);
   const [isAutoParsing, setIsAutoParsing] = useState(false);
   const [positions, setPositions] = useState([]);
   const [clients, setClients] = useState([]);
   const [sources, setSources] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [showPanRequiredModal, setShowPanRequiredModal] = useState(false);
+  const [resumeConflictModal, setResumeConflictModal] = useState({ isOpen: false, result: null });
 
-  const [formData, setFormData] = useState(INITIAL_FORM_STATE);
+  const [formData, setFormData] = useState(() => blankCandidateForm(user?.role));
   const [countryCode, setCountryCode] = useState('+91');
   const [formErrors, setFormErrors] = useState({});
   const fieldRefs = {
@@ -37,6 +50,9 @@ const AddCandidatePage = () => {
     contact: useRef(null),
     companyName: useRef(null),
     ctc: useRef(null),
+    pan: useRef(null),
+    product: useRef(null),
+    resume: useRef(null),
   };
 
   const countryCodes = useCountries();
@@ -44,10 +60,11 @@ const AddCandidatePage = () => {
   useEffect(() => {
     const fetchMasterData = async () => {
       try {
-        const [positionsRes, clientsRes, sourcesRes] = await Promise.all([
+        const [positionsRes, clientsRes, sourcesRes, productsRes] = await Promise.all([
           fetch(`${BASE_API_URL}/api/positions/all`, { credentials: 'include' }),
           fetch(`${BASE_API_URL}/api/clients/all`, { credentials: 'include' }),
           fetch(`${BASE_API_URL}/api/sources/all`, { credentials: 'include' }),
+          fetch(`${BASE_API_URL}/api/org-lists/product/all`, { credentials: 'include' }),
         ]);
 
         if (positionsRes.ok) {
@@ -57,7 +74,15 @@ const AddCandidatePage = () => {
           setClients(dedupeByName(await clientsRes.json()));
         }
         if (sourcesRes.ok) {
-          setSources(dedupeByName(await sourcesRes.json()));
+          const list = dedupeByName(await sourcesRes.json());
+          if (isFreelancer && !list.some((s) => String(s.name).toLowerCase() === 'freelance')) {
+            list.unshift({ name: 'Freelance' });
+          }
+          setSources(list);
+        }
+        if (productsRes.ok) {
+          const product = await productsRes.json();
+          setProducts(Array.isArray(product) ? dedupeByName(product) : []);
         }
       } catch (error) {
         console.error('Error fetching master data:', error);
@@ -108,19 +133,16 @@ const AddCandidatePage = () => {
         .replace(/@gmail\.con$/, '@gmail.com')
         .replace(/@gmal\.com$/, '@gmail.com');
     } else if (
-      (name === 'name' || name === 'spoc' || name === 'location' || name === 'companyName' || name === 'skills' || name === 'remark')
-      && value
+      name === 'name' || name === 'spoc' || name === 'location' || name === 'companyName' || name === 'remark'
+      || name === 'position' || name === 'client' || name === 'source' || name === 'ctc' || name === 'expectedCtc'
+      || name === 'noticePeriod' || name === 'status' || name === 'experience' || name === 'fls' || name === 'feedback'
+      || name === 'skills' || name === 'company' || name === 'product'
     ) {
       let v = value.replace(/^\s+/, '');
       v = v.replace(/\s{2,}/g, ' ');
-      v = v
-        .split(' ')
-        .map((word) => {
-          if (!word) return '';
-          return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-        })
-        .join(' ');
-      finalValue = v;
+      finalValue = v.toUpperCase();
+    } else if (name === 'pan') {
+      finalValue = normalizePan(value).slice(0, 10);
     }
 
     if (typeof finalValue === 'string' && name !== 'email') {
@@ -130,6 +152,12 @@ const AddCandidatePage = () => {
     if (name === 'resume') {
       const file = files[0];
       setFormData((prev) => ({ ...prev, resume: file }));
+      setFormErrors((prev) => {
+        if (!prev.resume) return prev;
+        const next = { ...prev };
+        delete next.resume;
+        return next;
+      });
 
       if (file) {
         setIsAutoParsing(true);
@@ -137,31 +165,66 @@ const AddCandidatePage = () => {
         data.append('resume', file);
 
         try {
-          const response = await fetch(`${BASE_API_URL}/candidates/parse-logic`, {
+          const response = await authenticatedFetch(`${BASE_API_URL}/candidates/parse-logic`, {
             method: 'POST',
             body: data,
           });
 
           if (response.ok) {
             const result = await response.json();
-            setFormData((prev) => ({
-              ...prev,
-              name: result.name ? formatByFieldName('name', result.name) : prev.name,
-              email: result.email
-                ? result.email.toLowerCase().replace(/@gnail\.con$/, '@gmail.com').replace(/@gmail\.con$/, '@gmail.com')
-                : prev.email,
-              contact: result.contact ? stripCountryCode(result.contact) : prev.contact,
+            const conflict = resumeIdentityConflicts(formData, result);
+            if (conflict) {
+              setResumeConflictModal({ isOpen: true, result });
+              return;
+            }
+
+            setFormData((prev) => mergeResumeIntoForm(prev, result, 'empty-only', {
+              formatName: (s) => formatByFieldName('name', s),
+              stripContact: (s) => stripCountryCode(s),
             }));
+            toast.success('Resume read — empty fields filled where possible');
+          } else {
+            const err = await response.json().catch(() => ({}));
+            toast.warning(err.details || err.error || 'Could not auto-read this resume');
           }
         } catch (error) {
           console.error('Auto-parse error:', error);
+          toast.warning('Resume uploaded, but auto-read failed');
         } finally {
           setIsAutoParsing(false);
         }
       }
     } else {
       setFormData((prev) => ({ ...prev, [name]: finalValue }));
+      if (name === 'client') {
+        const needsPan = clientRequiresPan(finalValue, clients);
+        const panErr = validatePan(formData.pan, { required: needsPan });
+        setFormErrors((prev) => ({ ...prev, client: '', pan: panErr }));
+        if (needsPan && !normalizePan(formData.pan)) {
+          setShowPanRequiredModal(true);
+        }
+      } else if (name === 'pan') {
+        const panErr = validatePan(finalValue, {
+          required: clientRequiresPan(formData.client, clients),
+        });
+        setFormErrors((prev) => ({ ...prev, pan: panErr }));
+      }
     }
+  };
+
+  const applyResumeMerge = (mode) => {
+    const result = resumeConflictModal.result;
+    setResumeConflictModal({ isOpen: false, result: null });
+    if (!result) return;
+    setFormData((prev) => mergeResumeIntoForm(prev, result, mode, {
+      formatName: (s) => formatByFieldName('name', s),
+      stripContact: (s) => stripCountryCode(s),
+    }));
+    toast.success(
+      mode === 'replace'
+        ? 'Resume applied — form fields replaced'
+        : 'Kept your typed details — empty fields filled only'
+    );
   };
 
   const handleBlur = (e) => {
@@ -212,11 +275,6 @@ const AddCandidatePage = () => {
           }
         }
         break;
-      case 'companyName':
-        if (!trimmedValue) {
-          setFormErrors((prev) => ({ ...prev, companyName: 'Company is required' }));
-        }
-        break;
       case 'ctc':
         if (!trimmedValue) {
           setFormErrors((prev) => ({ ...prev, ctc: 'Current CTC is required' }));
@@ -239,18 +297,18 @@ const AddCandidatePage = () => {
       }
     });
 
-    ['name', 'spoc', 'location', 'companyName'].forEach((field) => {
+    ['name', 'spoc', 'location', 'companyName', 'remark', 'position', 'client', 'source', 'ctc', 'expectedCtc', 'noticePeriod', 'status', 'experience', 'fls', 'feedback', 'skills', 'company', 'product'].forEach((field) => {
       if (trimmed[field]) {
-        trimmed[field] = trimmed[field]
-          .split(/\s+/)
-          .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-          .join(' ');
+        trimmed[field] = trimmed[field].replace(/\s{2,}/g, ' ').toUpperCase();
       }
     });
+    if (trimmed.pan) trimmed.pan = normalizePan(trimmed.pan);
 
     setFormData((prev) => ({ ...prev, ...trimmed }));
 
-    const errors = validateCandidateForm(trimmed, countryCode);
+    const errors = validateCandidateForm(trimmed, countryCode, clients, {
+      requireResume: isFreelancer,
+    });
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
       const firstErrorField = Object.keys(errors)[0];
@@ -268,12 +326,12 @@ const AddCandidatePage = () => {
       setIsLoading(true);
 
       const data = new FormData();
-      Object.keys(formData).forEach((key) => {
+      Object.keys(trimmed).forEach((key) => {
         if (['statusHistory', '_id', '__v', 'updatedAt'].includes(key)) return;
         if (key === 'resume') {
-          if (formData[key] instanceof File) data.append('resume', formData[key]);
+          if (trimmed[key] instanceof File) data.append('resume', trimmed[key]);
         } else {
-          data.append(key, formData[key] || '');
+          data.append(key, trimmed[key] || '');
         }
       });
 
@@ -290,11 +348,11 @@ const AddCandidatePage = () => {
 
       if (response.ok) {
         toast.success('Candidate added successfully!');
-        setFormData(INITIAL_FORM_STATE);
+        setFormData(blankForm());
         navigate('/ats');
       } else {
-        const errJson = await response.json();
-        toast.error('Error: ' + errJson.message);
+        const errJson = await response.json().catch(() => ({}));
+        toast.error(planLimitErrorMessage(errJson, 'candidates'));
       }
     } catch (err) {
       console.error(err);
@@ -305,7 +363,7 @@ const AddCandidatePage = () => {
   };
 
   const handleReset = () => {
-    setFormData(INITIAL_FORM_STATE);
+    setFormData(blankForm());
   };
 
   return (
@@ -341,6 +399,7 @@ const AddCandidatePage = () => {
             positions={positions}
             clients={clients}
             sources={sources}
+            products={products}
             isLoading={isLoading}
             isAutoParsing={isAutoParsing}
             handleInputChange={handleInputChange}
@@ -348,9 +407,30 @@ const AddCandidatePage = () => {
             handleReset={handleReset}
             handleSubmit={handleSubmit}
             onCancel={() => navigate('/ats')}
+            showPanRequiredModal={showPanRequiredModal}
+            setShowPanRequiredModal={setShowPanRequiredModal}
+            isFreelancer={isFreelancer}
           />
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={Boolean(resumeConflictModal.isOpen)}
+        onClose={() => applyResumeMerge('empty-only')}
+        onConfirm={() => applyResumeMerge('replace')}
+        type="warning"
+        eyebrow="Resume upload"
+        title="Different person detected"
+        message={
+          resumeConflictModal.result?.name || resumeConflictModal.result?.email
+            ? `This resume looks like ${resumeConflictModal.result.name || resumeConflictModal.result.email}, which doesn’t match the details already in the form.`
+            : 'This resume doesn’t match the details already in the form.'
+        }
+        details="Replace updates name, email, phone, and other resume fields. Keep mine only fills empty fields and leaves your typed values."
+        confirmText="Replace with resume"
+        cancelText="Keep my details"
+        zClass="z-[320]"
+      />
     </>
   );
 };

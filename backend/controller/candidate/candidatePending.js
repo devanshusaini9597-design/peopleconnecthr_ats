@@ -2,15 +2,24 @@ const mongoose = require('mongoose');
 const Candidate = require('../../models/Candidate');
 const PendingCandidate = require('../../models/PendingCandidate');
 const logger = require('../../utils/logger');
+const { promoteNamesSafe } = require('../../services/skillCatalogSync');
+const { promoteNamesSafe: promotePositionsSafe } = require('../../services/positionCatalogSync');
+
+function escapeRegex(value) {
+    return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 async function savePending(req, res) {
     try {
-        const { records, fileName } = req.body;
+        const { records, fileName, batchId: clientBatchId } = req.body;
         if (!records || !Array.isArray(records) || records.length === 0) {
             return res.status(400).json({ success: false, message: 'No records provided' });
         }
 
-        const batchId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        // Reuse batchId across chunked saves from the same upload session
+        const batchId = (typeof clientBatchId === 'string' && clientBatchId.trim())
+            ? clientBatchId.trim()
+            : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const userId = req.user.id;
         const createdByObj = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
 
@@ -37,6 +46,9 @@ async function savePending(req, res) {
             remark: getVal(r, 'remark') || '',
             fls: getVal(r, 'fls') || '',
             date: getVal(r, 'date') || new Date().toISOString().split('T')[0],
+            skills: getVal(r, 'skills') || '',
+            product: getVal(r, 'product') || '',
+            pan: getVal(r, 'pan') || '',
             originalData: r.original || {},
             confidence: r.validation?.confidence || '',
             validationErrors: r.validation?.errors || [],
@@ -46,7 +58,10 @@ async function savePending(req, res) {
             createdBy: createdByObj
         }));
 
-        await PendingCandidate.insertMany(docs);
+        const INSERT_CHUNK = 500;
+        for (let i = 0; i < docs.length; i += INSERT_CHUNK) {
+            await PendingCandidate.insertMany(docs.slice(i, i + INSERT_CHUNK), { ordered: false });
+        }
 
         res.json({ success: true, message: `Saved ${docs.length} records to pending`, batchId, count: docs.length });
     } catch (err) {
@@ -67,7 +82,7 @@ async function getPending(req, res) {
         if (category && category !== 'all') filter.category = category;
         if (batchId) filter.batchId = batchId;
         if (search && search.trim()) {
-            const q = new RegExp(search.trim(), 'i');
+            const q = new RegExp(escapeRegex(search.trim()), 'i');
             filter.$or = [
                 { name: q }, { email: q }, { contact: q },
                 { companyName: q }, { location: q }, { position: q }
@@ -157,37 +172,73 @@ async function importPending(req, res) {
         let failed = 0;
         const errors = [];
 
-        const bulkOps = pendingRecords.map(p => ({
-            updateOne: {
-                filter: { email: p.email.toLowerCase(), createdBy: userId },
-                update: {
-                    $set: {
-                        name: p.name, contact: p.contact, position: p.position,
-                        companyName: p.companyName, location: p.location, ctc: p.ctc,
-                        expectedCtc: p.expectedCtc, experience: p.experience,
-                        noticePeriod: p.noticePeriod, status: p.status || 'Applied',
-                        source: p.source, client: p.client, spoc: p.spoc,
-                        remark: p.remark, fls: p.fls, date: p.date,
-                        createdBy: userId
-                    },
-                    $setOnInsert: { email: p.email.toLowerCase() }
-                },
-                upsert: true
-            }
-        }));
+        const { loadOrgEmployeeNames, resolveEmployeeSpocLabel, canEditCandidateSpoc } = require('../../utils/spocIdentity');
+        const orgNames = await loadOrgEmployeeNames(req.user.organizationId);
+        const mySpoc = resolveEmployeeSpocLabel(req.user, orgNames);
+        const lockSpoc = !canEditCandidateSpoc(req.user);
 
-        try {
-            const bulkResult = await Candidate.bulkWrite(bulkOps, { ordered: false });
-            imported = (bulkResult.upsertedCount || 0) + (bulkResult.modifiedCount || 0);
-        } catch (bulkErr) {
-            if (bulkErr.result) {
-                imported = (bulkErr.result.nUpserted || 0) + (bulkErr.result.nModified || 0);
-                failed = bulkErr.writeErrors?.length || 0;
-                errors.push(...(bulkErr.writeErrors || []).map(e => e.errmsg));
-            } else {
-                throw bulkErr;
+        const { normalizeText, applyBlockLettersToObject } = require('../../utils/textNormalize');
+        const bulkOps = pendingRecords.map(p => {
+            const email = String(p.email || '').trim().toLowerCase();
+            const setFields = {
+                name: p.name, contact: p.contact, position: p.position,
+                companyName: p.companyName, location: p.location, ctc: p.ctc,
+                expectedCtc: p.expectedCtc, experience: p.experience,
+                noticePeriod: p.noticePeriod, status: p.status || 'Applied',
+                source: p.source, client: p.client,
+                spoc: lockSpoc ? mySpoc : (p.spoc || mySpoc),
+                remark: p.remark, fls: p.fls, date: p.date,
+                skills: p.skills || '', product: p.product || '', pan: p.pan || '',
+                createdBy: userId,
+            };
+            applyBlockLettersToObject(setFields);
+            if (req.user.organizationId) {
+                setFields.organizationId = req.user.organizationId;
+            }
+            const createdByField = userId;
+            const filter = req.user.organizationId
+                ? { organizationId: req.user.organizationId, email }
+                : { email, createdBy: userId };
+            const { createdBy: _ignoreCreatedBy, ...safeSet } = setFields;
+            return {
+                updateOne: {
+                    filter,
+                    update: {
+                        $set: safeSet,
+                        $setOnInsert: { email, createdBy: createdByField }
+                    },
+                    upsert: true
+                }
+            };
+        });
+
+        const WRITE_CHUNK = 500;
+        for (let i = 0; i < bulkOps.length; i += WRITE_CHUNK) {
+            const slice = bulkOps.slice(i, i + WRITE_CHUNK);
+            try {
+                const bulkResult = await Candidate.bulkWrite(slice, { ordered: false });
+                imported += (bulkResult.upsertedCount || 0) + (bulkResult.modifiedCount || 0);
+            } catch (bulkErr) {
+                if (bulkErr.result) {
+                    imported += (bulkErr.result.nUpserted || 0) + (bulkErr.result.nModified || 0);
+                    failed += bulkErr.writeErrors?.length || 0;
+                    errors.push(...(bulkErr.writeErrors || []).map(e => e.errmsg));
+                } else {
+                    throw bulkErr;
+                }
             }
         }
+
+        await promoteNamesSafe(
+            req.user.organizationId,
+            req.user.id,
+            pendingRecords.map((p) => p.product)
+        );
+        await promotePositionsSafe(
+            req.user.organizationId,
+            req.user.id,
+            pendingRecords.map((p) => p.position)
+        );
 
         // Remove successfully imported records from pending
         if (imported > 0) {

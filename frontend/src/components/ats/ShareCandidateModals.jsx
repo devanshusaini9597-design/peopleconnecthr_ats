@@ -43,8 +43,25 @@ export default function ShareCandidateModals(props) {
             </p>
 
             <div className="space-y-3 max-h-64 overflow-y-auto mb-6">
-              {teamMembers && teamMembers.length > 0 ? (
-                teamMembers.map((member) => (
+              {(() => {
+                const shareable = (teamMembers || []).filter((m) => {
+                  if (m.isYou) return false;
+                  if (m.kind === 'contact') return false;
+                  if (m.isActive === false) return false;
+                  return true;
+                });
+                if (shareable.length === 0) {
+                  return (
+                    <EmptyState
+                      compact
+                      icon={Users}
+                      tone="brand"
+                      message="No teammates to share with"
+                      subMessage="Invite a colleague with a Skillnix seat from Team Directory."
+                    />
+                  );
+                }
+                return shareable.map((member) => (
                   <label key={member._id} className="flex items-center gap-3 p-3 hover:bg-stone-50 rounded-lg cursor-pointer transition-colors">
                     <input
                       type="checkbox"
@@ -68,16 +85,8 @@ export default function ShareCandidateModals(props) {
                       </span>
                     )}
                   </label>
-                ))
-              ) : (
-                <EmptyState
-                  icon={Users}
-                  tone="emerald"
-                  compact
-                  message="No team members available"
-                  subMessage="Invite colleagues to share candidates with them."
-                />
-              )}
+                ));
+              })()}
             </div>
 
             <div className="flex gap-3 justify-end">

@@ -18,7 +18,7 @@ import {
 import {
   LOGO_CLOUD, USE_CASES, GUARANTEES, DEMO_VIDEO,
   INTEGRATIONS, TESTIMONIALS,
-  FEATURES, STEPS, COMPARISON, TOUR_TABS, CHART_DATA,
+  FEATURES, STEPS, COMPARISON, TOUR_TABS, CHART_DATA, COMPANY_STATS,
 } from './home/homeData';
 import { ScrollToTopButton } from './home/ScrollToTopButton';
 import { HomePageStyles } from './home/HomePageStyles';
@@ -116,63 +116,84 @@ const Home = () => {
       >
         <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none" aria-hidden="true">
           <div className="absolute top-0 left-1/4 w-64 sm:w-96 h-64 sm:h-96 animate-blob">
-            <motion.div style={prefersReduced ? undefined : { x: heroX, y: heroY }} className="w-full h-full bg-brand-300/40 rounded-full filter blur-[120px] opacity-80" />
+            <motion.div style={prefersReduced ? undefined : { x: heroX, y: heroY }} className="w-full h-full bg-gradient-to-br from-brand-400/50 to-teal-500/50 rounded-full filter blur-[120px] opacity-80" />
           </div>
           <div className="absolute top-0 right-1/4 w-64 sm:w-96 h-64 sm:h-96 animate-blob animation-delay-2000">
-            <motion.div style={prefersReduced ? undefined : { x: heroXInverse, y: heroYInverse }} className="w-full h-full bg-teal-300/35 rounded-full filter blur-[120px] opacity-70" />
+            <motion.div style={prefersReduced ? undefined : { x: heroXInverse, y: heroYInverse }} className="w-full h-full bg-gradient-to-br from-teal-400/50 to-brand-500/50 rounded-full filter blur-[120px] opacity-70" />
           </div>
-          <div className="absolute -bottom-32 left-1/2 w-64 sm:w-96 h-64 sm:h-96 bg-emerald-200/35 rounded-full filter blur-[120px] opacity-70 animate-blob animation-delay-4000"></div>
+          <div className="absolute -bottom-32 left-1/2 w-64 sm:w-96 h-64 sm:h-96 bg-gradient-to-br from-emerald-300/50 to-teal-400/50 rounded-full filter blur-[120px] opacity-70 animate-blob animation-delay-4000"></div>
         </div>
 
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center w-full">
           <motion.div initial="hidden" animate="show" variants={staggerContainer}>
-            <motion.div variants={fadeUp} className="mb-4 sm:mb-5">
-              <span className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-stone-900">
-                Skill<span className="text-gradient">Nix</span>
-              </span>
+            <motion.div variants={fadeUp} className="mb-6 sm:mb-8">
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                transition={{ duration: 0.3 }}
+                className="inline-flex items-center gap-3 px-6 py-3 rounded-full bg-gradient-to-r from-brand-100 to-teal-100 border border-brand-200/50 shadow-lg shadow-brand-500/20"
+              >
+                <motion.div
+                  whileHover={{ rotate: 360 }}
+                  transition={{ duration: 0.6 }}
+                  className="w-10 h-10 rounded-xl overflow-hidden shadow-md"
+                >
+                  <img src="/logo.png" alt="People Connect HR" className="w-full h-full object-cover" />
+                </motion.div>
+                <span className="text-lg sm:text-xl font-bold text-stone-900">People Connect HR</span>
+              </motion.div>
             </motion.div>
 
-            <motion.div variants={fadeUp} className="inline-flex mb-6 sm:mb-8 mx-auto overflow-visible">
-              <div className="section-eyebrow relative pulse-ring">
-                <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                <span>People Connect HR 2.0 — AI resume parsing is live</span>
+            <motion.div variants={fadeUp} className="inline-flex mb-8 sm:mb-10 mx-auto overflow-visible">
+              <div className="relative inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-brand-600 to-teal-700 text-white font-semibold text-sm shadow-xl shadow-brand-500/30 border border-brand-500/30">
+                <Sparkles className="w-4 h-4 shrink-0 animate-pulse" />
+                <span>AI resume parsing is live</span>
+                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-brand-400 to-teal-500 opacity-0 animate-ping" />
               </div>
             </motion.div>
 
-            <motion.h1 variants={fadeUp} className="text-[2.15rem] leading-[1.15] sm:text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight mb-5 sm:mb-6 text-stone-900 sm:leading-[1.08] break-words px-1">
+            <motion.h1 variants={fadeUp} className="text-[2.15rem] leading-[1.15] sm:text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight mb-6 sm:mb-8 text-stone-900 sm:leading-[1.08] break-words px-1">
               Hire Smarter.<br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-500 via-teal-600 to-brand-800 bg-[length:200%_auto] animate-aurora">
                 Scale Faster.
               </span>
             </motion.h1>
 
-            <motion.p variants={fadeUp} className="mt-3 sm:mt-4 text-base sm:text-lg md:text-xl text-stone-600 max-w-2xl mx-auto mb-8 sm:mb-10 leading-relaxed px-1">
+            <motion.p variants={fadeUp} className="mt-3 sm:mt-4 text-base sm:text-lg md:text-xl text-stone-600 max-w-2xl mx-auto mb-10 sm:mb-12 leading-relaxed px-1">
               The modern ATS that grows with your team. Track candidates, schedule interviews, and close hires — all in one workspace built like your dashboard.
             </motion.p>
 
-            <motion.div variants={fadeUp} className="flex flex-col sm:flex-row justify-center items-stretch sm:items-center gap-3 sm:gap-5 max-w-md sm:max-w-none mx-auto w-full">
+            <motion.div variants={fadeUp} className="flex flex-col sm:flex-row justify-center items-stretch sm:items-center gap-4 sm:gap-6 max-w-md sm:max-w-none mx-auto w-full">
               <Magnetic strength={0.25} className="w-full sm:w-auto">
                 <Link
                   to="/register"
-                  className="btn-cta-primary w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 rounded-full text-base md:text-lg inline-flex justify-center shadow-xl shadow-brand-500/30"
+                  className="btn-cta-primary w-full sm:w-auto px-8 py-4 rounded-full text-base md:text-lg inline-flex justify-center shadow-2xl shadow-brand-500/40 hover:shadow-2xl hover:shadow-brand-500/50 transition-all"
                 >
-                  Start Free Trial <ArrowRight className="ml-1 w-5 h-5" />
+                  Start Free Trial <ArrowRight className="ml-2 w-5 h-5" />
                 </Link>
               </Magnetic>
               <Magnetic strength={0.25} className="w-full sm:w-auto">
-                <a href="#video-demo" className="w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 bg-white/90 border-2 border-stone-200 hover:border-brand-300 hover:bg-brand-50/60 text-stone-800 rounded-full font-semibold text-base md:text-lg transition-all shadow-sm flex items-center justify-center gap-2 backdrop-blur-sm">
-                  <Play className="w-5 h-5 text-brand-600 shrink-0 fill-brand-600" />
+                <a href="#video-demo" className="w-full sm:w-auto px-8 py-4 bg-white/95 border-2 border-stone-200 hover:border-brand-400 hover:bg-brand-50/70 text-stone-800 rounded-full font-semibold text-base md:text-lg transition-all shadow-xl shadow-stone-200/30 hover:shadow-xl hover:shadow-brand-500/20 flex items-center justify-center gap-3 backdrop-blur-md">
+                  <motion.div
+                    whileHover={{ scale: 1.1 }}
+                    className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-500 to-teal-600 flex items-center justify-center shadow-lg shadow-brand-500/30"
+                  >
+                    <Play className="w-5 h-5 text-white shrink-0 fill-white" />
+                  </motion.div>
                   Watch Demo
                 </a>
               </Magnetic>
             </motion.div>
 
-            <motion.div variants={fadeUp} className="mt-6 sm:mt-8 flex flex-wrap justify-center items-center gap-x-4 gap-y-2 text-xs sm:text-sm text-stone-500 font-medium px-2">
-              <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-brand-500 shrink-0" /> No credit card</span>
-              <span className="hidden sm:inline text-stone-300">·</span>
-              <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-brand-500 shrink-0" /> 14-day free trial</span>
-              <span className="hidden sm:inline text-stone-300">·</span>
-              <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-brand-500 shrink-0" /> Cancel anytime</span>
+            <motion.div variants={fadeUp} className="mt-8 sm:mt-10 flex flex-wrap justify-center items-center gap-x-6 gap-y-3 text-sm text-stone-600 font-medium px-2">
+              <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 backdrop-blur-sm border border-stone-200/80 shadow-sm">
+                <CheckCircle2 className="w-5 h-5 text-brand-600 shrink-0" /> No credit card required
+              </span>
+              <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 backdrop-blur-sm border border-stone-200/80 shadow-sm">
+                <CheckCircle2 className="w-5 h-5 text-brand-600 shrink-0" /> 14-day free trial
+              </span>
+              <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 backdrop-blur-sm border border-stone-200/80 shadow-sm">
+                <CheckCircle2 className="w-5 h-5 text-brand-600 shrink-0" /> Cancel anytime
+              </span>
             </motion.div>
           </motion.div>
 
@@ -288,46 +309,107 @@ const Home = () => {
       </section>
 
       {/* Logo Cloud */}
-      <section className="landing-section !py-10 sm:!py-14 relative z-10">
+      <section className="landing-section !py-12 sm:!py-16 relative z-10 bg-gradient-to-b from-white to-brand-50/30">
         <div className="max-w-6xl mx-auto landing-pad">
           <Reveal>
-            <p className="text-center text-[10px] sm:text-xs font-semibold text-stone-400 uppercase tracking-[0.18em] sm:tracking-[0.2em] mb-6 sm:mb-8 px-2">
-              Trusted by hiring teams at
-            </p>
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-brand-100 to-teal-100 border border-brand-200/50 mb-8 mx-auto">
+              <Building2 className="w-4 h-4 text-brand-600" />
+              <span className="text-xs font-semibold text-brand-700 uppercase tracking-wider">Trusted by hiring teams at</span>
+            </div>
           </Reveal>
-          <Reveal stagger className="flex flex-wrap justify-center items-center gap-x-4 sm:gap-x-10 gap-y-3 sm:gap-y-5">
+          <Reveal stagger className="flex flex-wrap justify-center items-center gap-x-6 sm:gap-x-12 gap-y-4 sm:gap-y-6">
             {LOGO_CLOUD.map((name, i) => (
-              <motion.span
+              <motion.div
                 key={i}
                 variants={fadeUp}
-                whileHover={{ scale: 1.06, y: -2 }}
-                className="text-sm sm:text-lg font-bold tracking-tight text-stone-300 hover:text-brand-600 transition-colors duration-300 cursor-default select-none px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg hover:bg-brand-50/50"
+                whileHover={{ y: -4, scale: 1.05 }}
+                className="px-6 py-3 rounded-2xl bg-white border border-stone-200/80 shadow-lg shadow-stone-200/50 hover:shadow-xl hover:shadow-brand-500/20 transition-all duration-300"
               >
-                {name}
-              </motion.span>
+                <span className="text-sm sm:text-base font-bold tracking-tight text-stone-600 hover:text-brand-700 transition-colors">
+                  {name}
+                </span>
+              </motion.div>
             ))}
           </Reveal>
         </div>
       </section>
 
       {/* Stats */}
-      <section className="py-12 sm:py-16 border-y border-stone-200/70 bg-white/70 backdrop-blur-sm relative z-10">
-        <div className="max-w-7xl mx-auto landing-pad">
+      <section className="py-16 sm:py-20 border-y border-stone-200/70 bg-gradient-to-br from-brand-50/50 via-white to-teal-50/50 backdrop-blur-sm relative z-10 overflow-hidden">
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-brand-200/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-teal-200/10 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="max-w-7xl mx-auto landing-pad relative">
           <Reveal>
-            <p className="text-center text-xs sm:text-sm font-semibold text-stone-500 uppercase tracking-wider mb-8 sm:mb-10">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-brand-100 to-teal-100 border border-brand-200/50 mb-6 mx-auto">
+              <TrendingUp className="w-4 h-4 text-brand-600" />
+              <span className="text-sm font-semibold text-brand-700">Our Impact</span>
+            </div>
+            <p className="text-center text-sm sm:text-base font-semibold text-stone-500 uppercase tracking-wider mb-10 sm:mb-12">
               The numbers behind the switch
             </p>
           </Reveal>
           <Reveal stagger className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8">
-            <CountUpStat end={50} suffix="K+" label="Candidates Tracked" icon={<Users size={20} className="text-brand-600" />} color="bg-brand-50 ring-1 ring-brand-100" />
-            <CountUpStat end={10} suffix="K+" label="Hires Made" icon={<TrendingUp size={20} className="text-emerald-600" />} color="bg-emerald-50 ring-1 ring-emerald-100" />
-            <CountUpStat end={99.9} suffix="%" decimals={1} label="Uptime" icon={<Server size={20} className="text-teal-700" />} color="bg-teal-50 ring-1 ring-teal-100" />
-            <motion.div variants={fadeUp} className="flex flex-col items-center text-center">
-              <div className="w-11 h-11 rounded-xl bg-amber-50 ring-1 ring-amber-100 flex items-center justify-center mb-3">
-                <Clock size={20} className="text-amber-600" />
+            <motion.div variants={fadeUp} whileHover={{ y: -8 }} className="relative group">
+              <div className="relative bg-white rounded-3xl p-6 sm:p-8 border border-stone-200/80 shadow-xl shadow-stone-200/50 overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-brand-500/5 to-teal-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                <div className="relative z-10 flex flex-col items-center text-center">
+                  <motion.div
+                    whileHover={{ rotate: 360, scale: 1.1 }}
+                    transition={{ duration: 0.6 }}
+                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-brand-500 to-teal-600 flex items-center justify-center shadow-lg shadow-brand-500/30 mb-4"
+                  >
+                    <Building2 size={24} className="text-white" />
+                  </motion.div>
+                  <CountUpStat end={500} suffix="+" label="Companies Trust Us" color="text-transparent" />
+                </div>
               </div>
-              <div className="text-3xl sm:text-4xl font-bold text-stone-900 mb-1">24/7</div>
-              <div className="text-xs sm:text-sm text-stone-500 font-medium">Support</div>
+            </motion.div>
+            <motion.div variants={fadeUp} whileHover={{ y: -8 }} className="relative group">
+              <div className="relative bg-white rounded-3xl p-6 sm:p-8 border border-stone-200/80 shadow-xl shadow-stone-200/50 overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                <div className="relative z-10 flex flex-col items-center text-center">
+                  <motion.div
+                    whileHover={{ rotate: 360, scale: 1.1 }}
+                    transition={{ duration: 0.6 }}
+                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/30 mb-4"
+                  >
+                    <Users size={24} className="text-white" />
+                  </motion.div>
+                  <CountUpStat end={50} suffix="K+" label="Candidates Managed" color="text-transparent" />
+                </div>
+              </div>
+            </motion.div>
+            <motion.div variants={fadeUp} whileHover={{ y: -8 }} className="relative group">
+              <div className="relative bg-white rounded-3xl p-6 sm:p-8 border border-stone-200/80 shadow-xl shadow-stone-200/50 overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-teal-500/5 to-brand-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                <div className="relative z-10 flex flex-col items-center text-center">
+                  <motion.div
+                    whileHover={{ rotate: 360, scale: 1.1 }}
+                    transition={{ duration: 0.6 }}
+                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-teal-500 to-brand-600 flex items-center justify-center shadow-lg shadow-teal-500/30 mb-4"
+                  >
+                    <TrendingUp size={24} className="text-white" />
+                  </motion.div>
+                  <CountUpStat end={10} suffix="K+" label="Successful Hires" color="text-transparent" />
+                </div>
+              </div>
+            </motion.div>
+            <motion.div variants={fadeUp} whileHover={{ y: -8 }} className="relative group">
+              <div className="relative bg-white rounded-3xl p-6 sm:p-8 border border-stone-200/80 shadow-xl shadow-stone-200/50 overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-orange-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                <div className="relative z-10 flex flex-col items-center text-center">
+                  <motion.div
+                    whileHover={{ rotate: 360, scale: 1.1 }}
+                    transition={{ duration: 0.6 }}
+                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/30 mb-4"
+                  >
+                    <CheckCircle2 size={24} className="text-white" />
+                  </motion.div>
+                  <div className="text-3xl sm:text-4xl lg:text-5xl font-bold text-stone-900 mb-2">99.9%</div>
+                  <div className="text-xs sm:text-sm text-stone-500 font-medium">Satisfaction</div>
+                </div>
+              </div>
             </motion.div>
           </Reveal>
         </div>

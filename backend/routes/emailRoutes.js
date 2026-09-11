@@ -2,6 +2,7 @@ const express = require('express');
 const logger = require('../utils/logger');
 const router = express.Router();
 const { checkPlanLimit } = require('../middleware/rbacMiddleware');
+const { rejectFreelancerCompanyMail } = require('../utils/dataScope');
 const {
   getSenderStatus,
   sendTypedEmail,
@@ -11,6 +12,7 @@ const {
   sendMarketing,
   getEmailChannels,
 } = require('../services/emailOutboundService');
+const emailReports = require('../services/emailReportService');
 
 function handle(res, error, label) {
   if (error.code === 'USE_VERIFIED_DOMAIN') {
@@ -34,7 +36,7 @@ router.get('/sender-status', async (req, res) => {
   }
 });
 
-router.post('/send', checkPlanLimit('emails'), async (req, res) => {
+router.post('/send', rejectFreelancerCompanyMail, checkPlanLimit('emails'), async (req, res) => {
   try {
     const result = await sendTypedEmail(req.user, req.body);
     res.json({ success: true, ...result });
@@ -43,7 +45,7 @@ router.post('/send', checkPlanLimit('emails'), async (req, res) => {
   }
 });
 
-router.post('/send-bulk', checkPlanLimit('emails'), async (req, res) => {
+router.post('/send-bulk', rejectFreelancerCompanyMail, checkPlanLimit('emails'), async (req, res) => {
   try {
     const result = await sendBulkTypedEmails(req.user, req.body);
     res.json({ success: true, ...result });
@@ -70,7 +72,7 @@ router.post('/test', async (req, res) => {
   }
 });
 
-router.post('/send-marketing', async (req, res) => {
+router.post('/send-marketing', rejectFreelancerCompanyMail, async (req, res) => {
   try {
     const result = await sendMarketing(req.user, req.body);
     res.json({ success: true, ...result });
@@ -87,10 +89,71 @@ router.post('/send-marketing', async (req, res) => {
 
 router.get('/channels', async (req, res) => {
   try {
-    const result = await getEmailChannels(req.user?.id);
+    const result = await getEmailChannels(req.user?.id, req.user?.organizationId);
     res.json({ success: true, ...result });
   } catch (error) {
     handle(res, error);
+  }
+});
+
+router.get('/reports', async (req, res) => {
+  try {
+    if (!req.user?.organizationId) {
+      return res.status(400).json({ success: false, message: 'Organization required' });
+    }
+    const data = await emailReports.listEmailReports(req.user.organizationId, req.query);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    handle(res, error, 'Email reports list error:');
+  }
+});
+
+router.get('/reports/:id', async (req, res) => {
+  try {
+    if (!req.user?.organizationId) {
+      return res.status(400).json({ success: false, message: 'Organization required' });
+    }
+    const item = await emailReports.getEmailReportDetail(req.params.id, req.user.organizationId);
+    res.json({ success: true, item });
+  } catch (error) {
+    handle(res, error, 'Email report detail error:');
+  }
+});
+
+router.post('/reports/:id/sync', async (req, res) => {
+  try {
+    if (!req.user?.organizationId) {
+      return res.status(400).json({ success: false, message: 'Organization required' });
+    }
+    const item = await emailReports.syncEmailSend(req.params.id, req.user.organizationId);
+    res.json({ success: true, item });
+  } catch (error) {
+    handle(res, error, 'Email report sync error:');
+  }
+});
+
+router.post('/reports/sync', async (req, res) => {
+  try {
+    if (!req.user?.organizationId) {
+      return res.status(400).json({ success: false, message: 'Organization required' });
+    }
+    const [stale, campaigns] = await Promise.all([
+      emailReports.syncStaleReports(req.user.organizationId, { max: 20 }),
+      emailReports.syncRecentCampaigns(req.user.organizationId, { limit: 15 }).catch((err) => ({
+        error: err.message,
+        imported: 0,
+        synced: 0,
+        total: 0,
+      })),
+    ]);
+    res.json({
+      success: true,
+      message: 'Email reports refreshed from ZeptoMail / Zoho Campaigns',
+      stale,
+      campaigns,
+    });
+  } catch (error) {
+    handle(res, error, 'Email reports sync-all error:');
   }
 });
 

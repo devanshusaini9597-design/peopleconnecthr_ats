@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Mail, Loader2, ArrowRight } from 'lucide-react';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { Loader2, ArrowRight } from 'lucide-react';
 import BASE_API_URL from '../config';
+import PublicMarketingShell, {
+  FieldLabel,
+  fieldClassName,
+  primaryBtnClassName,
+} from './PublicMarketingShell';
 
 const SubscribePage = () => {
   const navigate = useNavigate();
@@ -17,12 +22,15 @@ const SubscribePage = () => {
     if (prefill && prefill.includes('@')) setEmail(prefill.trim());
   }, [searchParams]);
 
+  const orgSlug = (searchParams.get('org') || searchParams.get('orgSlug') || '').trim();
+  const orgId = (searchParams.get('orgId') || '').trim();
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     const trim = (s) => (s || '').trim();
     const eTrim = trim(email).toLowerCase();
-    if (!eTrim || !eTrim.includes('@')) {
+    if (!eTrim || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(eTrim)) {
       setError('Please enter a valid email address.');
       return;
     }
@@ -35,11 +43,23 @@ const SubscribePage = () => {
           email: eTrim,
           firstName: trim(firstName),
           lastName: trim(lastName),
+          ...(orgSlug ? { orgSlug } : {}),
+          ...(orgId ? { orgId } : {}),
         }),
       });
-      const data = await res.json();
-      if (data.success) {
-        navigate('/subscribe/thank-you', { replace: true });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        const qs = new URLSearchParams();
+        if (data.status && data.status !== 'ok') qs.set('status', data.status);
+        navigate(`/subscribe/thank-you${qs.toString() ? `?${qs}` : ''}`, {
+          replace: true,
+          state: {
+            signupFormUrl: data.signupFormUrl || '',
+            zohoEnrolled: Boolean(data.zohoEnrolled),
+            status: data.status || 'ok',
+            email: eTrim,
+          },
+        });
         return;
       }
       setError(data.message || 'Subscription failed. Please try again.');
@@ -51,80 +71,95 @@ const SubscribePage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-          <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 px-6 py-8 text-center">
-            <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Mail className="w-7 h-7 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Subscribe for Updates</h1>
-            <p className="text-white/90 text-sm mt-1">Skillnix Recruitment Services</p>
-            <p className="text-white/70 text-xs mt-2 max-w-xs mx-auto">Job alerts, hiring drives & career insights delivered to your inbox.</p>
+    <PublicMarketingShell
+      eyebrow="Job & career updates"
+      title="Subscribe to open roles"
+      subtitle="Hiring drives, curated positions, and career opportunities from Skillnix Recruitment."
+    >
+      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        {error ? (
+          <div
+            role="alert"
+            className="bg-red-50 text-red-700 text-sm rounded-lg px-3.5 py-3 border border-red-100"
+          >
+            {error}
           </div>
+        ) : null}
 
-          <div className="p-6">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <div className="bg-red-50 text-red-700 text-sm rounded-lg px-4 py-3 border border-red-200">
-                  {error}
-                </div>
-              )}
+        <div>
+          <FieldLabel required>Email address</FieldLabel>
+          <input
+            type="email"
+            name="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            className={fieldClassName}
+            required
+          />
+        </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Email address <span className="text-red-500">*</span></label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">First name</label>
-                  <input
-                    type="text"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    placeholder="Optional"
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Last name</label>
-                  <input
-                    type="text"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    placeholder="Optional"
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading || !email.trim()}
-                className="w-full py-3 bg-indigo-600 text-white rounded-lg font-semibold text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
-              >
-                {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Subscribing...</> : <>Subscribe <ArrowRight className="w-4 h-4" /></>}
-              </button>
-
-              <p className="text-[11px] text-gray-400 text-center leading-relaxed">
-                By subscribing you agree to receive marketing emails. You can unsubscribe at any time from the link in our emails.
-              </p>
-            </form>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <FieldLabel>First name</FieldLabel>
+            <input
+              type="text"
+              name="firstName"
+              autoComplete="given-name"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              placeholder="Optional"
+              className={fieldClassName}
+            />
+          </div>
+          <div>
+            <FieldLabel>Last name</FieldLabel>
+            <input
+              type="text"
+              name="lastName"
+              autoComplete="family-name"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              placeholder="Optional"
+              className={fieldClassName}
+            />
           </div>
         </div>
-        <p className="text-center text-xs text-gray-400 mt-4">
-          <a href="/" className="hover:text-indigo-600">Back to home</a>
-        </p>
-      </div>
-    </div>
+
+        <button
+          type="submit"
+          disabled={loading || !email.trim()}
+          className={primaryBtnClassName}
+        >
+          {loading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" /> Subscribing…
+            </>
+          ) : (
+            <>
+              Subscribe <ArrowRight className="w-4 h-4" />
+            </>
+          )}
+        </button>
+
+        <div className="pt-1 border-t border-stone-100 space-y-3">
+          <p className="text-[12px] text-slate-500 leading-relaxed text-center">
+            Marketing emails only — separate from interview or offer messages.
+            Unsubscribe anytime.
+          </p>
+          <p className="text-[12px] text-center text-slate-500">
+            Already subscribed?{' '}
+            <Link
+              to="/unsubscribe"
+              className="text-teal-800 font-medium underline underline-offset-2 hover:text-teal-950"
+            >
+              Manage preferences
+            </Link>
+          </p>
+        </div>
+      </form>
+    </PublicMarketingShell>
   );
 };
 

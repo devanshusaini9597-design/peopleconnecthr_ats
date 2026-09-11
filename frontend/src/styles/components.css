@@ -218,7 +218,7 @@ select[data-long-list] {
   transform: translateY(-2px);
 }
 .card-ats-bordered {
-  @apply rounded-2xl border border-stone-200/80 bg-white shadow-[var(--shadow-card)] transition-shadow duration-300;
+  @apply rounded-2xl border border-stone-200/80 bg-white shadow-[var(--shadow-card)] transition-all duration-300;
 }
 .card-ats-bordered:hover {
   box-shadow: var(--shadow-elevated);
@@ -238,6 +238,286 @@ select[data-long-list] {
   box-shadow: var(--shadow-card);
   padding: 1rem;
 }
+
+/* Candidates advanced filters — theme-token premium panel */
+.cand-filters-panel {
+  --cand-filter-accent: var(--primary-main);
+  --cand-filter-accent-soft: color-mix(in srgb, var(--primary-main) 12%, white);
+  --cand-filter-accent-border: color-mix(in srgb, var(--primary-main) 26%, white);
+  --cand-filter-accent-text: color-mix(in srgb, var(--primary-dark) 85%, #0f172a);
+  --cand-filter-header: var(--gradient-primary);
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+  font-family: var(--font-family);
+}
+.cand-filters-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2.75rem;
+  padding: 0.55rem 1rem;
+  background: var(--cand-filter-header);
+  color: var(--text-inverse);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.12), var(--shadow-sm);
+}
+@media (min-width: 640px) {
+  .cand-filters-header {
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+}
+.cand-filters-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  flex-shrink: 0;
+}
+.cand-filters-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 1.25rem;
+  padding: 0 0.45rem;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+.cand-filters-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 1.75rem;
+  padding: 0 0.65rem;
+  border-radius: var(--radius-md);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-inverse);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  transition: background var(--transition-fast), opacity var(--transition-fast);
+}
+.cand-filters-clear:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.22);
+}
+.cand-filters-clear:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+.cand-filters-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-light);
+}
+@media (min-width: 640px) {
+  .cand-filters-chips {
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+}
+.cand-filters-chips-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-right: 0.15rem;
+}
+.cand-filters-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 100%;
+  height: 1.5rem;
+  padding: 0 0.3rem 0 0.5rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--cand-filter-accent-border);
+  background: var(--cand-filter-accent-soft);
+  color: var(--cand-filter-accent-text);
+  font-size: 11px;
+  font-weight: 500;
+  transition: filter var(--transition-fast), background var(--transition-fast);
+}
+.cand-filters-chip:hover {
+  filter: brightness(0.97);
+}
+.cand-filters-chip-key {
+  opacity: 0.75;
+  font-weight: 600;
+}
+.cand-filters-chip-key::after {
+  content: ':';
+}
+.cand-filters-chip-val {
+  max-width: 8.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+.cand-filters-body {
+  padding: 0.9rem 1rem 1rem;
+  background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+@media (min-width: 640px) {
+  .cand-filters-body {
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+}
+.cand-filters-label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.cand-filters-control {
+  height: 2.25rem !important;
+  border-radius: var(--radius-md) !important;
+  font-size: 13px !important;
+  background: var(--bg-primary) !important;
+  border-color: var(--border-main) !important;
+}
+.cand-filters-control:hover {
+  border-color: var(--border-dark) !important;
+}
+.cand-filters-control:focus {
+  border-color: var(--cand-filter-accent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cand-filter-accent) 18%, transparent) !important;
+}
+.cand-filters-range-sep {
+  display: flex;
+  align-items: center;
+  padding: 0 0.15rem;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  user-select: none;
+}
+.cand-filters-section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+.cand-filters-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.cand-filters-section-rule {
+  height: 1px;
+  flex: 1;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--cand-filter-accent) 35%, var(--border-light)) 0%,
+    var(--border-light) 100%
+  );
+}
+.cand-filters-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.65rem 1rem;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--cand-filter-accent) 6%, var(--bg-secondary)) 0%,
+      var(--bg-secondary) 100%
+    );
+  border-top: 1px solid var(--border-light);
+}
+@media (min-width: 640px) {
+  .cand-filters-footer {
+    flex-direction: row;
+    align-items: center;
+    gap: 1rem;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+}
+.cand-filters-footer-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.cand-filters-footer-hint {
+  display: none;
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+@media (min-width: 1024px) {
+  .cand-filters-footer-hint {
+    display: block;
+  }
+}
+.cand-filters-sort-group {
+  display: inline-flex;
+  height: 2.25rem;
+  padding: 0.125rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-main);
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-xs);
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+@media (min-width: 640px) {
+  .cand-filters-sort-group {
+    align-self: auto;
+  }
+}
+.cand-filters-sort-btn {
+  min-width: 5.5rem;
+  padding: 0 0.65rem;
+  border-radius: calc(var(--radius-md) - 2px);
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  transition: background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.cand-filters-sort-btn:hover:not(.is-active) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+.cand-filters-sort-btn.is-active {
+  color: var(--text-inverse);
+  background: var(--cand-filter-header);
+  box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--cand-filter-accent) 55%, transparent);
+}
+
 .table-shell-ats {
   border-radius: 1rem;
   border: 1px solid rgb(231 229 228 / 0.8);
@@ -546,6 +826,8 @@ select:focus-visible {
 /* Content area under sticky header — full-height pages */
 .content-fill-ats {
   @apply h-full min-h-0 flex flex-col;
+  /* Keep flex children able to shrink so nested boards don't clip */
+  overflow: hidden;
 }
 /* Small screens: let fill pages grow with content so filter + board/list are not clipped */
 @media (max-width: 767px) {

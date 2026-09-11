@@ -1,6 +1,6 @@
-// Utility function to handle logout — clears all SaaS auth data
-export const handleLogout = (navigate) => {
-  // Clear all authentication data from localStorage
+import { BASE_API_URL } from '../config';
+
+export const clearClientAuthStorage = () => {
   localStorage.removeItem('token');
   localStorage.removeItem('isLoggedIn');
   localStorage.removeItem('userEmail');
@@ -10,7 +10,37 @@ export const handleLogout = (navigate) => {
   localStorage.removeItem('orgData');
   localStorage.removeItem('orgName');
   localStorage.removeItem('orgId');
-  
-  // Redirect to login page
-  navigate('/login');
+};
+
+export const isPublicAuthPath = (path = typeof window !== 'undefined' ? window.location.pathname : '') => {
+  const p = String(path || '');
+  return (
+    p.startsWith('/login')
+    || p.startsWith('/register')
+    || p.startsWith('/reset-password')
+    || p.startsWith('/verify-email')
+    || p.startsWith('/accept-invite')
+    || p.startsWith('/sso')
+  );
+};
+
+/**
+ * End the server session (HttpOnly cookie), drop client auth, and leave the
+ * app with a history replace so Back cannot restore a logged-in page.
+ */
+export const handleLogout = async () => {
+  try {
+    await fetch(`${BASE_API_URL}/api/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      cache: 'no-store',
+      keepalive: true,
+    });
+  } catch {
+    /* still clear locally if the network call fails */
+  }
+  clearClientAuthStorage();
+  if (!isPublicAuthPath()) {
+    window.location.replace('/login');
+  }
 };

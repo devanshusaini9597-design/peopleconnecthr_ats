@@ -71,6 +71,8 @@ router.put('/', requireAdmin, async (req, res) => {
         linkedin: companyBrand.socialLinks?.linkedin || '',
         twitter: companyBrand.socialLinks?.twitter || '',
         facebook: companyBrand.socialLinks?.facebook || '',
+        instagram: companyBrand.socialLinks?.instagram || '',
+        youtube: companyBrand.socialLinks?.youtube || '',
         github: companyBrand.socialLinks?.github || '',
         website: companyBrand.socialLinks?.website || ''
       },

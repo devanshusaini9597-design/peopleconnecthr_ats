@@ -56,13 +56,16 @@ export default function OrgPoliciesSection({
             <label className="label-ats inline-flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5" /> Session idle timeout
             </label>
+            <p className="text-[11px] text-stone-400 mb-1.5">
+              Sign-in always expires 7 days after login. A shorter idle logs people out sooner if the app is unused.
+            </p>
             <PremiumSelect
               compact
               icon={Clock}
               value={idleValue}
               onChange={(v) => setSettings((s) => ({
                 ...s,
-                sessionIdleMinutes: parseInt(v, 10) || 480
+                sessionIdleMinutes: parseInt(v, 10) || 10080
               }))}
               options={idleOptions}
               placeholder="Timeout"

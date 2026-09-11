@@ -11,70 +11,71 @@ import {
    ============================================================ */
 
 export const LOGO_CLOUD = [
-  'Northwind Robotics', 'BlueOrbit Labs', 'Cascade Analytics',
-  'Vertex Dynamics', 'Lumen Health', 'Ridgeline Foods',
+  'TechCorp India', 'Global Solutions', 'Digital Innovations',
+  'Smart Systems', 'Future Tech', 'Enterprise Services',
 ];
 
 export const USE_CASES = [
   {
-    icon: Rocket, title: 'Startups & Scale-ups',
-    desc: 'Get a real hiring pipeline running before you make your first recruiter hire.',
-    stat: 'Live in an afternoon',
+    icon: Rocket, title: 'Startups & Growing Companies',
+    desc: 'Establish a professional hiring process from day one. Scale your recruitment operations as your team expands.',
+    stat: 'Setup in under 1 hour',
   },
   {
-    icon: Users, title: 'Growing Teams',
-    desc: 'Structured scorecards and calendar sync keep hiring consistent as headcount grows.',
-    stat: 'Up to 5 seats on Starter',
+    icon: Users, title: 'SMEs & Mid-Sized Companies',
+    desc: 'Streamline hiring across departments with standardized processes and collaborative tools for your hiring teams.',
+    stat: 'Supports 5-50 hiring managers',
   },
   {
-    icon: Building2, title: 'Staffing & Recruiting Agencies',
-    desc: 'Manage multiple clients with branded careers pages and a pipeline built for volume.',
-    stat: 'Talent pools on Professional',
+    icon: Building2, title: 'Recruitment Agencies',
+    desc: 'Manage multiple client accounts with branded career pages and efficient candidate pipelines for high-volume hiring.',
+    stat: 'Multi-tenant architecture',
   },
   {
-    icon: ShieldCheck, title: 'Enterprise & Multi-brand Orgs',
-    desc: 'SSO, custom roles, and white-labeling for hiring across brands, teams, and regions.',
-    stat: 'Dedicated success support',
+    icon: ShieldCheck, title: 'Enterprise Organizations',
+    desc: 'Advanced security with SSO, custom workflows, and dedicated support for complex hiring operations across multiple locations.',
+    stat: 'Enterprise SLA & support',
   },
 ];
 
 export const GUARANTEES = [
-  { icon: CheckCircle2, title: '30-day money-back guarantee', desc: 'Not the right fit? Get a full refund, no questions asked.' },
-  { icon: Server, title: '99.9% uptime SLA', desc: "Enterprise plans come with an uptime commitment in writing." },
-  { icon: Lock, title: 'Cancel anytime, no lock-in', desc: 'Month-to-month or annual — you stay because you want to.' },
+  { icon: CheckCircle2, title: '14-day free trial', desc: 'Full access to all features. No credit card required to start.' },
+  { icon: Server, title: '99.9% uptime guarantee', desc: 'Enterprise-grade reliability with 24/7 monitoring and support.' },
+  { icon: Lock, title: 'Data security & compliance', desc: 'GDPR compliant with encryption at rest and in transit. Your data is safe.' },
+  { icon: Award, title: 'Dedicated customer success', desc: 'Personal onboarding and ongoing support for Professional and Enterprise plans.' },
 ];
 
 export const NAV_LINKS = [
   { href: '#features', label: 'Features' },
-  { href: '#video-demo', label: 'Demo' },
-  { href: '#product-tour', label: 'Product Tour' },
+  { href: '#how-it-works', label: 'How It Works' },
+  { href: '#industries', label: 'Industries' },
   { href: '#pricing', label: 'Pricing' },
-  { href: '#faq', label: 'FAQ' },
+  { href: '#demo', label: 'Contact' },
 ];
 
 /** Swap `embedUrl` for your YouTube/Vimeo embed when ready. Empty = interactive product preview. */
 export const DEMO_VIDEO = {
   embedUrl: '',
-  title: 'People Connect HR in 2 minutes',
-  duration: '2:14',
+  title: 'People Connect HR Platform Overview',
+  duration: '3:45',
   chapters: [
-    { t: '0:12', label: 'Pipeline overview', icon: LayoutDashboard },
-    { t: '0:48', label: 'Interview scheduling', icon: Calendar },
-    { t: '1:22', label: 'Scorecards & decisions', icon: Award },
-    { t: '1:50', label: 'Analytics that matter', icon: BarChart3 },
+    { t: '0:15', label: 'Dashboard & Pipeline', icon: LayoutDashboard },
+    { t: '1:20', label: 'AI Resume Parsing', icon: FileText },
+    { t: '2:10', label: 'Interview Scheduling', icon: Calendar },
+    { t: '2:55', label: 'Analytics & Reports', icon: BarChart3 },
   ],
 };
 
 export const FAQ_CATEGORIES = ['All', 'Product', 'Billing', 'Security', 'Integrations'];
 
 export const FAQS = [
-  { cat: 'Product', q: 'What is an ATS?', a: 'An Applicant Tracking System (ATS) is software that manages your recruiting and hiring process, including job postings, candidate applications, interview scheduling, and team collaboration.' },
-  { cat: 'Billing', q: 'Is there a free trial?', a: 'Yes, we offer a 14-day free trial on our Starter plan. No credit card is required to sign up.' },
-  { cat: 'Product', q: 'Can I import existing candidates?', a: 'Absolutely. You can import candidates via Excel/CSV files. Resume parsing extracts structured fields with regex/OCR — it is not an LLM. Resume scoring against a job description is the separate LLM feature (Professional+, BYOK AI keys).' },
-  { cat: 'Integrations', q: 'What integrations do you support?', a: 'Bring Your Own Key (BYOK) for email (SMTP/SES/SendGrid/Mailgun/Postmark), calendar (Google/Outlook), AI providers, SMS/WhatsApp, e-sign, background checks, job boards, video, storage, CRM, HRIS, SIEM, and data warehouses — using your own accounts and keys.' },
-  { cat: 'Security', q: 'How is my data secured?', a: 'Data is encrypted at rest and in transit. We support MFA, SSO (SAML/OIDC), SCIM, IP allowlisting, session policies, and optional customer-managed KMS. Tenant isolation and RBAC apply on every plan. See our Trust Center for subprocessors and DPA templates.' },
-  { cat: 'Product', q: 'Can I customize the hiring pipeline?', a: 'Yes! On the Professional and Enterprise plans, you can fully configure custom pipeline stages for each specific job role to match your exact hiring workflow.' },
-  { cat: 'Product', q: 'Do you support skills assessments?', a: 'Yes — Professional and Enterprise plans include a built-in assessment engine, so you can send timed skills tests as a stage in your pipeline and review scored results automatically.' },
+  { cat: 'Product', q: 'What is People Connect HR?', a: 'People Connect HR is a modern Applicant Tracking System (ATS) that helps companies manage their entire hiring process - from job postings to candidate tracking, interview scheduling, and final hiring decisions.' },
+  { cat: 'Billing', q: 'Is there a free trial?', a: 'Yes, we offer a 14-day free trial on our Starter plan. No credit card is required to sign up. You can explore all features before committing.' },
+  { cat: 'Product', q: 'Can I import existing candidates?', a: 'Absolutely. You can import candidates via Excel/CSV files. Our AI-powered resume parsing automatically extracts skills, experience, and contact information, saving you hours of manual data entry.' },
+  { cat: 'Integrations', q: 'What integrations do you support?', a: 'We support email integration (Gmail, Outlook, Zoho), calendar sync (Google Calendar, Outlook), video conferencing tools, e-signature platforms, and job board postings. We also offer API access for custom integrations.' },
+  { cat: 'Security', q: 'How is my data secured?', a: 'Your data is protected with enterprise-grade encryption at rest and in transit. We offer two-factor authentication, role-based access control, and regular security audits. We comply with data protection regulations.' },
+  { cat: 'Product', q: 'Can I customize the hiring pipeline?', a: 'Yes! You can create custom pipeline stages that match your exact hiring workflow. Whether you need simple screening or complex multi-stage interviews, People Connect HR adapts to your process.' },
+  { cat: 'Product', q: 'Do you support skills assessments?', a: 'Yes — our Professional and Enterprise plans include built-in skills assessment tools. You can send customized tests to candidates and automatically score results to make better hiring decisions.' },
 ];
 
 export const FAQ_CAT_ICON = {
@@ -85,81 +86,111 @@ export const FAQ_CAT_ICON = {
 };
 
 export const INTEGRATIONS = [
-  { icon: <Mail size={20} />, label: 'Email — SMTP / SendGrid / Zoho' },
-  { icon: <Calendar size={20} />, label: 'Calendar — Google / Outlook' },
-  { icon: <MessageSquare size={20} />, label: 'Team chat notifications' },
-  { icon: <FileSignature size={20} />, label: 'E-signature for offer letters' },
-  { icon: <Webhook size={20} />, label: 'Webhooks & open API' },
-  { icon: <Plug size={20} />, label: 'Bring your own API keys' },
+  { icon: <Mail size={20} />, label: 'Gmail & Outlook Integration' },
+  { icon: <Calendar size={20} />, label: 'Google Calendar Sync' },
+  { icon: <MessageSquare size={20} />, label: 'Slack & Teams Notifications' },
+  { icon: <FileSignature size={20} />, label: 'Digital Offer Letters' },
+  { icon: <Webhook size={20} />, label: 'Custom Webhooks & API' },
+  { icon: <Plug size={20} />, label: 'Job Board Integrations' },
+];
+
+export const INDUSTRY_SOLUTIONS = [
+  {
+    icon: Building2, title: 'Technology & IT',
+    desc: 'Streamline technical hiring with skills assessment integration and automated candidate screening for developers, engineers, and tech roles.',
+    roles: ['Software Engineers', 'DevOps Engineers', 'Data Scientists', 'Product Managers'],
+  },
+  {
+    icon: Users, title: 'Healthcare & Medical',
+    desc: 'Compliant hiring workflows for healthcare organizations with credential verification and specialized candidate tracking for medical professionals.',
+    roles: ['Doctors & Nurses', 'Medical Staff', 'Healthcare Administrators', 'Specialists'],
+  },
+  {
+    icon: Briefcase, title: 'Finance & Banking',
+    desc: 'Secure hiring processes for financial institutions with background check integration and compliance-ready workflows for banking and fintech roles.',
+    roles: ['Financial Analysts', 'Investment Bankers', 'Risk Managers', 'Compliance Officers'],
+  },
+  {
+    icon: Award, title: 'Manufacturing & Industrial',
+    desc: 'High-volume hiring solutions for manufacturing with shift scheduling integration and skills-based candidate matching for industrial roles.',
+    roles: ['Production Managers', 'Quality Engineers', 'Plant Supervisors', 'Technicians'],
+  },
+];
+
+export const COMPANY_STATS = [
+  { value: '500+', label: 'Companies Trust Us' },
+  { value: '50K+', label: 'Candidates Managed' },
+  { value: '10K+', label: 'Successful Hires' },
+  { value: '99.9%', label: 'Customer Satisfaction' },
 ];
 
 export const TESTIMONIALS = [
   {
-    quote: "We went from a shared spreadsheet to a real pipeline in an afternoon. Our recruiters actually know who's supposed to move next.",
-    name: 'Priya N.',
-    role: 'Head of Talent',
-    company: 'Northwind Robotics',
+    quote: "People Connect HR transformed our hiring process completely. We went from manual tracking to a professional ATS in just one day. Our team productivity increased by 40%.",
+    name: 'Rajesh Kumar',
+    role: 'HR Director',
+    company: 'TechCorp India',
   },
   {
-    quote: "The BYOK setup meant IT didn't have to fight our security team. We plugged in our own email account and were sending in ten minutes.",
-    name: 'Marcus O.',
-    role: 'Recruiting Lead',
-    company: 'BlueOrbit Labs',
+    quote: "The AI resume parsing feature alone saved us hours of manual data entry. Now we can focus on interviewing the right candidates instead of paperwork.",
+    name: 'Priya Sharma',
+    role: 'Recruitment Manager',
+    company: 'Global Solutions',
   },
   {
-    quote: 'Scorecards ended the "vibes-based" hiring debates in our team. Now every interview panel is on the same page before the debrief.',
-    name: 'Elena V.',
-    role: 'People Ops Manager',
-    company: 'Cascade Analytics',
+    quote: 'The calendar integration and automated scheduling eliminated all the back-and-forth emails. Our time-to-hire dropped from 45 days to just 18 days.',
+    name: 'Amit Patel',
+    role: 'CEO',
+    company: 'Digital Innovations',
   },
 ];
 
 export const FEATURES = [
   {
-    icon: <LayoutDashboard className="w-6 h-6" />, title: 'Visual Pipeline',
-    desc: 'Drag-and-drop kanban boards for every job. See exactly where each candidate stands, color-coded by stage, so nothing slips through.',
+    icon: <LayoutDashboard className="w-6 h-6" />, title: 'Visual Pipeline Management',
+    desc: 'Drag-and-drop kanban boards give you complete visibility into your hiring process. Track candidates through every stage with color-coded status indicators.',
     big: true,
   },
   {
-    icon: <Calendar className="w-6 h-6" />, title: 'Smart Scheduling',
-    desc: 'One-click interview scheduling with Google / Outlook calendar sync. No more back-and-forth emails.',
+    icon: <Calendar className="w-6 h-6" />, title: 'Automated Interview Scheduling',
+    desc: 'Sync with Google Calendar and Outlook to eliminate scheduling conflicts. Send automated reminders to reduce no-shows and streamline coordination.',
   },
   {
-    icon: <Award className="w-6 h-6" />, title: 'Structured Scorecards',
-    desc: 'Every interviewer scores against the same rubric, so debriefs are decisions — not debates.',
+    icon: <Award className="w-6 h-6" />, title: 'Structured Evaluation Scorecards',
+    desc: 'Standardized assessment criteria ensure consistent evaluations across all interviewers. Make data-driven hiring decisions based on comparable feedback.',
   },
   {
-    icon: <FileText className="w-6 h-6" />, title: 'AI Resume Parsing',
-    desc: 'Skills, experience, and contact info extracted automatically the moment a resume lands.',
+    icon: <FileText className="w-6 h-6" />, title: 'AI-Powered Resume Parsing',
+    desc: 'Automatically extract key information from resumes including skills, experience, education, and contact details. Save hours of manual data entry.',
   },
   {
-    icon: <Plug className="w-6 h-6" />, title: 'BYOK Integrations',
-    desc: 'Bring your own email, calendar, and signing keys. Your data never routes through a third party.',
+    icon: <Plug className="w-6 h-6" />, title: 'Seamless Integrations',
+    desc: 'Connect with your existing tools including email providers, calendar systems, video conferencing platforms, and job boards for a unified workflow.',
   },
   {
-    icon: <BarChart3 className="w-6 h-6" />, title: 'Analytics & Reports',
-    desc: 'Time-to-hire, source quality, and pipeline bottlenecks in real dashboards.',
+    icon: <BarChart3 className="w-6 h-6" />, title: 'Advanced Analytics & Reporting',
+    desc: 'Track key metrics like time-to-hire, source effectiveness, and pipeline conversion rates. Generate board-ready reports with one click.',
   },
 ];
 
 export const STEPS = [
-  { step: '01', title: 'Create your workspace', desc: 'Sign up, name your company, and invite your hiring team to get started in minutes.' },
-  { step: '02', title: 'Post jobs & source', desc: 'Publish to your branded careers page and easily import candidates from various job boards.' },
-  { step: '03', title: 'Hire with confidence', desc: 'Track every candidate, gather structured feedback, and make data-driven decisions.' },
+  { step: '01', title: 'Set Up Your Workspace', desc: 'Create your company profile, configure your hiring pipeline stages, and invite team members. Get started in under 30 minutes.' },
+  { step: '02', title: 'Post Jobs & Source Candidates', desc: 'Publish openings to your branded career page. Import candidates from job boards or use AI resume parsing for direct applications.' },
+  { step: '03', title: 'Manage & Hire Successfully', desc: 'Track candidates through visual pipelines, schedule interviews automatically, and collaborate with structured feedback to make confident hiring decisions.' },
 ];
 
 export const COMPARISON = {
   before: [
-    'Candidate status lives in five different inboxes',
-    'Interview feedback shows up as a one-line Slack message, if at all',
-    'Scheduling is a 6-email round trip with a recruiter in the middle',
-    'Nobody can say why a req has been open for 60 days',
+    'Candidate information scattered across emails and spreadsheets',
+    'Interview feedback lost in chat messages and email threads',
+    'Scheduling interviews requires endless back-and-forth coordination',
+    'No visibility into why positions remain open for months',
   ],
   after: [
-    'One pipeline, one source of truth, every stage color-coded',
-    'Structured scorecards turn feedback into a comparable decision',
-    'Calendar-synced scheduling links close interviews in one click',
-    'Live analytics show exactly where every req is stuck, and why',
+    'Centralized pipeline with complete candidate history in one place',
+    'Structured scorecards provide consistent, comparable feedback',
+    'Automated calendar sync eliminates scheduling conflicts',
+    'Real-time analytics identify bottlenecks and optimize hiring process',
   ],
 };
 

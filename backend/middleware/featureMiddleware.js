@@ -26,6 +26,24 @@ const requireFeature = (featureKey) => {
         return res.status(401).json({ success: false, message: 'Organization context required' });
       }
 
+      // Freelancer private desk: Excel bulk import is included without company plan upgrade.
+      // Records stay scoped to createdBy / freelancer isolation in candidate controllers.
+      if (
+        featureKey === 'jobs.bulkImport'
+        && String(req.user.role || '').toLowerCase() === 'freelancer'
+      ) {
+        return next();
+      }
+
+      // Freelancers inherit org announcements / push when the hosting company has them;
+      // also allow read/prefs even if FeatureGate UI was bypassed for their desk.
+      if (
+        (featureKey === 'announcements' || featureKey === 'push.notifications')
+        && String(req.user.role || '').toLowerCase() === 'freelancer'
+      ) {
+        return next();
+      }
+
       const Organization = mongoose.model('Organization');
       const org = await Organization.findById(req.user.organizationId).select('plan');
 

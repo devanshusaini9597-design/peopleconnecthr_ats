@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Megaphone, Trash2, Pencil, Info, CheckCircle2, Calendar, Users, Globe2,
-  LayoutTemplate, Sparkles
+  LayoutTemplate, Sparkles, Check, Ban,
 } from 'lucide-react';
 import EmptyState from '../ui/EmptyState';
 import { AUDIENCES, severityMeta, formatWhen } from './announcementsConstants';
@@ -73,19 +73,28 @@ export default function AnnouncementFeed({
   onEdit,
   onDeactivate,
   onReactivate,
+  onPurge,
+  onDismiss,
+  readOnly = false,
 }) {
   return (
-    <div data-tour="ann-feed" className="lg:col-span-8 min-w-0">
+    <div data-tour="ann-feed" className={`${readOnly ? '' : 'lg:col-span-8'} min-w-0`}>
       <div className="card-ats-bordered relative overflow-hidden min-h-[32rem] flex flex-col">
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
         <div className="relative px-4 sm:px-5 pt-5 pb-3 border-b border-stone-100 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-base font-bold text-stone-900 tracking-tight">Notice feed</h2>
+            <h2 className="text-base font-bold text-stone-900 tracking-tight">
+              {readOnly ? 'Your notices' : 'Notice feed'}
+            </h2>
             <p className="text-[11px] text-stone-400 mt-0.5">
               {loading ? 'Loading…' : filtered.length === 0 ? 'Nothing in this view' : `${filtered.length} in this view`}
             </p>
           </div>
-          <span className="badge-neutral text-[10px] flex-shrink-0">{filter}</span>
+          {!readOnly ? (
+            <span className="badge-neutral text-[10px] flex-shrink-0">{filter}</span>
+          ) : filtered.length > 0 ? (
+            <span className="badge-brand text-[10px] flex-shrink-0">{filtered.length} unread</span>
+          ) : null}
         </div>
 
         <div className="relative flex-1 flex flex-col p-4 sm:p-5 gap-3">
@@ -101,7 +110,9 @@ export default function AnnouncementFeed({
                 message={rows.length === 0 ? 'No announcements yet' : 'No matching notices'}
                 subMessage={
                   rows.length === 0
-                    ? 'Compose on the left — your first notice will land here, then show as a live banner.'
+                    ? (readOnly
+                      ? 'You’re all caught up — new company notices will show here and on the sidebar badge.'
+                      : 'Compose on the left — your first notice will land here, then show as a live banner.')
                     : 'Try a different search or status filter.'
                 }
                 action={
@@ -112,7 +123,7 @@ export default function AnnouncementFeed({
                   ) : null
                 }
               />
-              {rows.length === 0 && (
+              {rows.length === 0 && !readOnly && (
                 <div className="mt-2">
                   <ChannelGuide careersSlug={careersSlug} />
                 </div>
@@ -164,26 +175,40 @@ export default function AnnouncementFeed({
                           )}
                         </div>
                         <div className="flex flex-col gap-1 flex-shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => onEdit(a)}
-                            className="p-2 rounded-xl text-stone-400 hover:text-brand-700 hover:bg-brand-50 transition-colors"
-                            aria-label="Edit"
-                            title="Edit"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          {a.isActive ? (
+                          {readOnly && onDismiss ? (
+                            <button
+                              type="button"
+                              onClick={() => onDismiss(a)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-100 transition-colors"
+                              title="Mark as read"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              Read
+                            </button>
+                          ) : null}
+                          {!readOnly && onEdit ? (
+                            <button
+                              type="button"
+                              onClick={() => onEdit(a)}
+                              className="p-2 rounded-xl text-stone-400 hover:text-brand-700 hover:bg-brand-50 transition-colors"
+                              aria-label="Edit"
+                              title="Edit"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                          ) : null}
+                          {!readOnly && a.isActive && onDeactivate ? (
                             <button
                               type="button"
                               onClick={() => onDeactivate(a)}
-                              className="p-2 rounded-xl text-stone-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                              className="p-2 rounded-xl text-stone-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
                               aria-label="Deactivate"
                               title="Deactivate"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Ban className="w-4 h-4" />
                             </button>
-                          ) : (
+                          ) : null}
+                          {!readOnly && !a.isActive && onReactivate ? (
                             <button
                               type="button"
                               onClick={() => onReactivate(a)}
@@ -193,7 +218,18 @@ export default function AnnouncementFeed({
                             >
                               <CheckCircle2 className="w-4 h-4" />
                             </button>
-                          )}
+                          ) : null}
+                          {!readOnly && !a.isActive && onPurge ? (
+                            <button
+                              type="button"
+                              onClick={() => onPurge(a)}
+                              className="p-2 rounded-xl text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              aria-label="Delete permanently"
+                              title="Delete permanently"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                     </article>

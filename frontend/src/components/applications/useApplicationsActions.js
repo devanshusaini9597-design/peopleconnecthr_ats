@@ -55,6 +55,12 @@ export function useApplicationsActions({
       });
       if (isUnauthorized(res)) return handleUnauthorized();
       if (!res.ok) throw new Error('Failed to update stage');
+      const json = await res.json().catch(() => ({}));
+      const updated = normalizeApp(json.data);
+      if (updated?._id) {
+        setApplications((prev) => prev.map((app) => (app._id === updated._id ? { ...app, ...updated } : app)));
+        if (selectedApp?._id === updated._id) setSelectedApp((s) => ({ ...s, ...updated }));
+      }
       showToast(`Moved to ${newStage}`);
       fetchStats(selectedJobId);
     } catch (err) {
@@ -105,13 +111,15 @@ export function useApplicationsActions({
     }
   };
 
-  const handleReject = async () => {
+  const handleReject = async (talentPoolIds) => {
     if (!selectedApp) return;
     setRejecting(true);
     try {
+      const body = { reason: rejectReason.trim() || 'Not a fit' };
+      if (Array.isArray(talentPoolIds)) body.talentPoolIds = talentPoolIds;
       const res = await authenticatedFetch(`${API_URL}/api/applications/${selectedApp._id}/reject`, {
         method: 'PUT',
-        body: JSON.stringify({ reason: rejectReason.trim() || 'Not a fit' }),
+        body: JSON.stringify(body),
       });
       if (isUnauthorized(res)) return handleUnauthorized();
       if (!res.ok) {
@@ -122,7 +130,7 @@ export function useApplicationsActions({
       setIsRejectModalOpen(false);
       setRejectReason('');
       closePanel();
-      showToast('Application rejected');
+      showToast(talentPoolIds?.length ? 'Rejected — kept in talent pool for other roles' : 'Application rejected');
       fetchStats(selectedJobId);
     } catch (err) {
       showToast(err.message || 'Failed to reject', 'error');
@@ -171,29 +179,40 @@ export function useApplicationsActions({
     e.preventDefault();
     setAdding(true);
     try {
-      const jobId = addForm.jobId || selectedJobId;
+      const jobId = addForm.jobId && addForm.jobId !== 'all'
+        ? addForm.jobId
+        : (selectedJobId && selectedJobId !== 'all' ? selectedJobId : '');
       if (!jobId) throw new Error('Please select a job');
-      if (!addForm.name.trim() || !addForm.email.trim()) throw new Error('Name and email are required');
+      const usingExisting = Boolean(addForm.candidateId);
+      if (!usingExisting && (!addForm.name.trim() || !addForm.email.trim())) {
+        throw new Error('Name and email are required');
+      }
+
+      const payload = {
+        jobId,
+        source: addForm.source || 'Direct',
+      };
+      if (usingExisting) {
+        payload.candidateId = addForm.candidateId;
+      } else {
+        payload.candidate = {
+          name: addForm.name.trim(),
+          email: addForm.email.trim(),
+          contact: addForm.phone.trim() || undefined,
+          phone: addForm.phone.trim() || undefined,
+        };
+      }
 
       const res = await authenticatedFetch(`${API_URL}/api/applications`, {
         method: 'POST',
-        body: JSON.stringify({
-          jobId,
-          source: addForm.source || 'Direct',
-          candidate: {
-            name: addForm.name.trim(),
-            email: addForm.email.trim(),
-            contact: addForm.phone.trim() || undefined,
-            phone: addForm.phone.trim() || undefined,
-          },
-        }),
+        body: JSON.stringify(payload),
       });
       if (isUnauthorized(res)) return handleUnauthorized();
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || 'Failed to add application');
 
       const created = normalizeApp(json.data);
-      if (jobId === selectedJobId) {
+      if (selectedJobId === 'all' || jobId === selectedJobId) {
         setApplications((prev) => [created, ...prev]);
         fetchStats(selectedJobId);
       } else {
@@ -232,7 +251,7 @@ export function useApplicationsActions({
   };
 
   const openAddModal = () => {
-    setAddForm({ ...emptyAddForm, jobId: selectedJobId || '' });
+    setAddForm({ ...emptyAddForm, jobId: selectedJobId && selectedJobId !== 'all' ? selectedJobId : '' });
     setIsAddModalOpen(true);
   };
 

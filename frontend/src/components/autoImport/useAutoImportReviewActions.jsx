@@ -1,5 +1,5 @@
 import React from 'react';
-import { authenticatedFetch } from '../../utils/fetchUtils';
+import { importReviewedInChunks, savePendingInChunks } from '../../utils/bulkImportApi';
 import { formatNameForInput } from '../../utils/textFormatter';
 import { DRAFT_KEY, rowKey } from './constants';
 
@@ -12,6 +12,7 @@ export function useAutoImportReviewActions({
   reviewData,
   fileName,
   pageRows,
+  selected,
   selectedList,
   selectedNew,
   selectedUpdates,
@@ -53,6 +54,25 @@ export function useAutoImportReviewActions({
     });
   };
 
+  const deselectPageReady = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      pageRows.forEach((r) => {
+        if (r._category === 'ready') next.delete(rowKey(r));
+      });
+      return next;
+    });
+  };
+
+  /** Header checkbox: select all Ready on this page, or clear page if already all selected. */
+  const togglePageReady = () => {
+    const readyOnPage = pageRows.filter((r) => r._category === 'ready');
+    if (readyOnPage.length === 0) return;
+    const allOn = readyOnPage.every((r) => selected.has(rowKey(r)));
+    if (allOn) deselectPageReady();
+    else selectPageReady();
+  };
+
   const selectAllReady = () => {
     setSelected(new Set((reviewData?.ready || []).map((r) => `ready-${r.rowIndex}`)));
   };
@@ -77,20 +97,16 @@ export function useAutoImportReviewActions({
     setConfirmModal({ isOpen: false });
     setIsImporting(true);
     try {
-      const readyRecords = toImport.map((r) => ({
-        rowIndex: r.rowIndex,
-        fixed: r.fixed || {},
-        original: r.original || {},
-        validation: r.validation || {},
-        autoFixChanges: r.autoFixChanges || [],
-      }));
-
-      const res = await authenticatedFetch('/candidates/import-reviewed', {
-        method: 'POST',
-        body: JSON.stringify({ readyRecords, reviewRecords: [] }),
+      // Chunked POSTs — a single 10k-row JSON body exceeds the server 10mb limit
+      const data = await importReviewedInChunks({
+        readyRecords: toImport,
+        reviewRecords: [],
+        onProgress: ({ chunk, totalChunks }) => {
+          if (totalChunks > 1) {
+            toast.info(`Importing batch ${chunk}/${totalChunks}…`, 2000);
+          }
+        },
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || 'Import failed');
 
       const selectedIndexes = new Set(toImport.map((r) => `ready-${r.rowIndex}`));
       const remainingReview = reviewCount;
@@ -106,7 +122,7 @@ export function useAutoImportReviewActions({
       });
       setSelected(new Set());
       setImportResult({
-        imported: data.imported ?? toImport.length,
+        imported: data.imported ?? 0,
         upserted: data.upserted ?? 0,
         modified: data.modified ?? 0,
         fileName,
@@ -117,11 +133,18 @@ export function useAutoImportReviewActions({
       localStorage.removeItem(DRAFT_KEY);
       const up = data.upserted ?? 0;
       const mod = data.modified ?? 0;
-      toast.success(
-        mod > 0 || up > 0
-          ? `Done — ${up} new, ${mod} updated`
-          : `Imported ${data.imported ?? toImport.length} candidates`
-      );
+      const total = data.imported ?? 0;
+      if (data.failedChunks > 0) {
+        toast.warning(`Partially imported ${total}. ${data.failedChunks} batch(es) failed — open Candidates, then retry import for the rest.`);
+      } else if (total > 0 || up > 0 || mod > 0) {
+        toast.success(
+          mod > 0 || up > 0
+            ? `Done — ${up} new, ${mod} updated. Open Candidates to view them.`
+            : `Imported ${total} candidates. Open Candidates to view them.`
+        );
+      } else {
+        toast.warning('Import finished but no rows were written. Try again or contact support.');
+      }
     } catch (err) {
       toast.error(err.message || 'Import failed');
     } finally {
@@ -176,12 +199,7 @@ export function useAutoImportReviewActions({
     }
     setIsSavingPending(true);
     try {
-      const res = await authenticatedFetch('/candidates/pending/save', {
-        method: 'POST',
-        body: JSON.stringify({ records: pending, fileName }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) throw new Error(data.message || 'Could not save pending');
+      const data = await savePendingInChunks({ records: pending, fileName });
       setReviewData((prev) => (prev ? { ...prev, review: [], blocked: [] } : prev));
       toast.success(`${data.count ?? pending.length} sent to Pending Review`);
     } catch (err) {
@@ -271,6 +289,8 @@ export function useAutoImportReviewActions({
   return {
     toggleRow,
     selectPageReady,
+    deselectPageReady,
+    togglePageReady,
     selectAllReady,
     skipExistingInAts,
     clearSelection,

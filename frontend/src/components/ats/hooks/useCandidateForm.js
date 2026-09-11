@@ -193,6 +193,12 @@ export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, cur
   };
 
   const goCandidateStep = (nextId) => {
+    // Never leave profile while a resume is still being read into the form.
+    if (isAutoParsing) {
+      setFormSection('basic');
+      toast.info('Wait for resume parsing to finish before leaving step 1.');
+      return;
+    }
     const order = ['basic', 'experience', 'placement'];
     const from = order.indexOf(formSection);
     const to = order.indexOf(nextId);
@@ -315,7 +321,10 @@ const handleInputChange = async (e) => {
   // --- Resume parsing ---
   if (name === 'resume') {
     const file = files[0];
-    setFormData(prev => ({ ...prev, resume: file }));
+    // File picker can fire a ghost click that advances the wizard — lock on step 1.
+    recentStepChangeRef.current = true;
+    setFormSection('basic');
+    setFormData(prev => ({ ...prev, resume: file || null }));
     setFormErrors((prev) => {
       if (!prev.resume) return prev;
       const next = { ...prev };
@@ -344,6 +353,7 @@ const handleInputChange = async (e) => {
 
           if (conflict) {
             setResumeConflictModal({ isOpen: true, result });
+            setFormSection('basic');
             return;
           }
 
@@ -353,7 +363,7 @@ const handleInputChange = async (e) => {
           const filled = ['name', 'email', 'contact', 'position', 'company', 'experience', 'location']
             .filter((k) => result[k]);
           if (filled.length) {
-            toast.success(`Resume read — filled empty fields (${filled.length})`);
+            toast.success(`Resume read — filled empty fields (${filled.length}). Review step 1, then continue.`);
           } else {
             toast.warning('Resume uploaded, but no name/email/phone could be read. Enter details manually.');
           }
@@ -367,7 +377,10 @@ const handleInputChange = async (e) => {
       } finally {
         setIsAutoParsing(false);
         setFormSection('basic');
+        window.setTimeout(() => { recentStepChangeRef.current = false; }, 700);
       }
+    } else {
+      window.setTimeout(() => { recentStepChangeRef.current = false; }, 400);
     }
   } else {
     setFormData(prev => ({ ...prev, [name]: finalValue }));
@@ -536,12 +549,15 @@ const handleAddCandidate = async (e) => {
     } else {
       const errJson = await response.json().catch(() => ({}));
       if (errJson?.code === 'DUPLICATE_EMAIL' || errJson?.code === 'DUPLICATE_PHONE' || /already exists|duplicate/i.test(String(errJson?.message || ''))) {
-        toast.error(errJson.message || 'This candidate already exists in the organization.');
+        const dupMsg = isFreelancer
+          ? (errJson.message || 'The candidate is duplicate kindly check with the hiring manager')
+          : (errJson.message || 'This candidate already exists in the organization.');
+        toast.error(dupMsg);
         if (errJson.code === 'DUPLICATE_EMAIL' || /email/i.test(String(errJson?.message || ''))) {
-          setFormErrors((prev) => ({ ...prev, email: errJson.message || 'Email already exists' }));
+          setFormErrors((prev) => ({ ...prev, email: errJson.message || 'Candidate already exists (email)' }));
           setFormSection('basic');
         } else if (errJson.code === 'DUPLICATE_PHONE' || /phone|contact/i.test(String(errJson?.message || ''))) {
-          setFormErrors((prev) => ({ ...prev, contact: errJson.message || 'Phone already exists' }));
+          setFormErrors((prev) => ({ ...prev, contact: errJson.message || 'Candidate already exists (phone)' }));
           setFormSection('basic');
         }
       } else {
@@ -588,13 +604,17 @@ const handleAddCandidate = async (e) => {
   const applyResumeMerge = (mode) => {
     const result = resumeConflictModal.result;
     setResumeConflictModal({ isOpen: false, result: null });
+    // Always stay on profile step after resume decisions.
+    recentStepChangeRef.current = true;
+    setFormSection('basic');
+    window.setTimeout(() => { recentStepChangeRef.current = false; }, 700);
     if (!result) return;
     const formatName = (s) => String(s).trim().replace(/\s{2,}/g, ' ').toUpperCase();
     setFormData((prev) => mergeResumeIntoForm(prev, result, mode, { formatName }));
     toast.success(
       mode === 'replace'
-        ? 'Resume applied — form fields replaced'
-        : 'Kept your typed details — empty fields filled only'
+        ? 'Resume applied — form fields replaced. Review step 1, then continue.'
+        : 'Kept your typed details — empty fields filled only. Stay on step 1 to review.'
     );
   };
 
@@ -624,7 +644,7 @@ const handleAddCandidate = async (e) => {
           const data = await response.json();
           if (Array.isArray(data) && data.length > 0) setStatusOptions(data);
         }
-      } catch (err) {
+      } catch (_err) {
         // fallback to default
       }
     };

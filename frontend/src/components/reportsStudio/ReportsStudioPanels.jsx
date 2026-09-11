@@ -190,15 +190,15 @@ export function ReportsStudioBody({
               />
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[560px]">
+            <div className="overflow-x-auto -mx-px">
+              <table className="w-full text-sm min-w-[640px]">
                 <thead className="bg-stone-50/80 text-stone-500 text-left">
                   <tr>
-                    <th className="px-4 sm:px-5 py-3 text-xs font-bold uppercase tracking-wide">Job</th>
-                    <th className="px-4 sm:px-5 py-3 text-xs font-bold uppercase tracking-wide">Apps</th>
-                    <th className="px-4 sm:px-5 py-3 text-xs font-bold uppercase tracking-wide">Hired</th>
-                    <th className="px-4 sm:px-5 py-3 text-xs font-bold uppercase tracking-wide">Hire rate</th>
-                    <th className="px-4 sm:px-5 py-3 text-xs font-bold uppercase tracking-wide w-40">Funnel</th>
+                    <th className="px-4 sm:px-5 py-3 text-xs font-bold uppercase tracking-wide whitespace-nowrap">Job</th>
+                    <th className="px-4 sm:px-5 py-3 text-xs font-bold uppercase tracking-wide whitespace-nowrap">Apps</th>
+                    <th className="px-4 sm:px-5 py-3 text-xs font-bold uppercase tracking-wide whitespace-nowrap">Hired</th>
+                    <th className="px-4 sm:px-5 py-3 text-xs font-bold uppercase tracking-wide whitespace-nowrap">Hire rate</th>
+                    <th className="px-4 sm:px-5 py-3 text-xs font-bold uppercase tracking-wide w-40 whitespace-nowrap">Funnel</th>
                   </tr>
                 </thead>
                 <tbody>

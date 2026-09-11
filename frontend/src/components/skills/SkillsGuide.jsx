@@ -21,7 +21,7 @@ export default function SkillsGuide() {
           <div className="min-w-0">
             <p className="text-xs font-bold text-stone-800">Candidates</p>
             <p className="text-[11px] text-stone-500 mt-0.5 leading-relaxed">
-              Attach skills with proficiency when profiling talent.
+              Product / Skill on candidate forms uses this same catalog. Add a skill here and it appears in the dropdown immediately.
             </p>
           </div>
         </div>
@@ -30,7 +30,7 @@ export default function SkillsGuide() {
           <div className="min-w-0">
             <p className="text-xs font-bold text-stone-800">Jobs</p>
             <p className="text-[11px] text-stone-500 mt-0.5 leading-relaxed">
-              Require skills on roles, then score shortlists with match %.
+              Job skills use the same list. Add from a job form or here — both stay in sync.
             </p>
           </div>
         </div>

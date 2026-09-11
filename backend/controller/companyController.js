@@ -1,13 +1,8 @@
 const Company = require('../models/Company');
 const { normalizeText } = require('../utils/textNormalize');
+const { masterDataScope } = require('../utils/dataScope');
 
-// Tenant scope: prefer organizationId (multi-tenant safe, shared across the
-// org's team) so this list matches how every other module in the codebase
-// scopes data. Falls back to createdBy only for legacy users somehow
-// without an org.
-const scopeFilter = (req) => (
-  req.user.organizationId ? { organizationId: req.user.organizationId } : { createdBy: req.user.id }
-);
+const scopeFilter = (req) => masterDataScope(req);
 
 exports.getAllCompanies = async (req, res) => {
   try {
@@ -24,7 +19,10 @@ exports.createCompany = async (req, res) => {
     if (!name) return res.status(400).json({ message: 'Name is required' });
 
     const scope = scopeFilter(req);
-    const existing = await Company.findOne({ ...scope, name: { $regex: new RegExp(`^${name}$`, 'i') } });
+    const existing = await Company.findOne({
+      ...scope,
+      name: { $regex: new RegExp(`^${String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+    });
     if (existing) return res.status(400).json({ message: 'Company already exists' });
 
     const company = new Company({

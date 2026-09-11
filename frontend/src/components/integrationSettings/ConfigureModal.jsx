@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import PremiumSelect from '../ui/PremiumSelect';
+import ConnectWhatsAppPanel from '../ConnectWhatsAppPanel';
 import {
   AWS_REGION_OPTIONS, PORT_OPTIONS, MODEL_OPTIONS_BY_PROVIDER,
   TEXTAREA_FIELDS, HALF_WIDTH_FIELDS, FIELD_LABELS, FIELD_HINTS,
@@ -23,7 +24,10 @@ export default function ConfigureModal({
   onTest,
   onDisconnect,
   onOAuthConnect,
+  onWhatsAppConnected,
+  setFeedback,
 }) {
+  const isMetaWhatsApp = activeProvider?.id === 'meta';
   return (
     <Modal
       open={!!activeProvider}
@@ -58,6 +62,13 @@ export default function ConfigureModal({
     >
       {activeProvider && (
         <div className="space-y-5">
+          {isMetaWhatsApp && (
+            <ConnectWhatsAppPanel
+              activeConfig={activeConfig}
+              onConnected={onWhatsAppConnected}
+              onFeedback={setFeedback}
+            />
+          )}
           {(activeProvider.id === 'google' || activeProvider.id === 'outlook') && (
             <button
               type="button"
@@ -74,7 +85,9 @@ export default function ConfigureModal({
             </p>
           ) : (
             <p className="text-[13px] text-stone-500 leading-relaxed">
-              Enter credentials from your provider dashboard.
+              {isMetaWhatsApp
+                ? 'Or paste Meta API Setup values and Save if you are connecting this company manually.'
+                : 'Enter credentials from your provider dashboard.'}
             </p>
           )}
 
@@ -157,6 +170,7 @@ export default function ConfigureModal({
                       <FieldIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
                     )}
                     <input
+                      id={isMetaWhatsApp && field === 'accessToken' ? 'whatsapp-access-token-field' : undefined}
                       type={inputType}
                       value={formValues[field] || ''}
                       onChange={(e) => setField(e.target.value)}

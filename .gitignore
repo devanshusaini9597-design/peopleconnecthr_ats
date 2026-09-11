@@ -16,6 +16,7 @@ frontend/build/
 
 # Uploads / local storage
 backend/uploads/
+backend/backups/
 
 # Logs
 *.log
@@ -35,3 +36,5 @@ coverage/
 
 # Vercel
 .vercel/
+.vercel
+.env*.local

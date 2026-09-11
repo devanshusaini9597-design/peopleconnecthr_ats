@@ -7,6 +7,7 @@ const router = express.Router();
 const StatusIncident = require('../models/StatusIncident');
 const { verifyToken } = require('../middleware/authMiddleware');
 const { requireAdmin } = require('../middleware/rbacMiddleware');
+const { isPlatformOperator } = require('../utils/orgDomain');
 
 const computeOverallStatus = (incidents) => {
   const active = incidents.filter((i) => i.status !== 'resolved');
@@ -48,8 +49,15 @@ router.get('/history', async (req, res) => {
   }
 });
 
+function requirePlatformOperator(req, res, next) {
+  if (!isPlatformOperator(req.user)) {
+    return res.status(403).json({ success: false, message: 'Only the platform team can update the public status page' });
+  }
+  next();
+}
+
 /** POST /incidents — admin create incident (platform ops) */
-router.post('/incidents', verifyToken, requireAdmin, async (req, res) => {
+router.post('/incidents', verifyToken, requireAdmin, requirePlatformOperator, async (req, res) => {
   try {
     const { title, description, status, impact, affectedComponents } = req.body;
     if (!title) return res.status(400).json({ success: false, message: 'title is required' });
@@ -71,7 +79,7 @@ router.post('/incidents', verifyToken, requireAdmin, async (req, res) => {
 });
 
 /** PATCH /incidents/:id — admin update incident */
-router.patch('/incidents/:id', verifyToken, requireAdmin, async (req, res) => {
+router.patch('/incidents/:id', verifyToken, requireAdmin, requirePlatformOperator, async (req, res) => {
   try {
     const incident = await StatusIncident.findById(req.params.id);
     if (!incident) return res.status(404).json({ success: false, message: 'Incident not found' });

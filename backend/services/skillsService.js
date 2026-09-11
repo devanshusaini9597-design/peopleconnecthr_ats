@@ -7,6 +7,7 @@ const JobSkill = require('../models/JobSkill');
 const Candidate = require('../models/Candidate');
 const Job = require('../models/Job');
 const { slugifySkill, orgSkillSlug, computeSkillMatch } = require('../utils/skillHelpers');
+const skillCatalogSync = require('./skillCatalogSync');
 const SEED = require('../data/skills-seed');
 
 const slugify = slugifySkill;
@@ -36,6 +37,9 @@ function buildSkillsFilter(orgId, { q = '', category = '', source = 'all' } = {}
 }
 
 async function listSkills(organizationId, query = {}) {
+  if (organizationId) {
+    await skillCatalogSync.reconcileSkillCatalog(organizationId);
+  }
   const { q = '', category = '', source = 'all' } = query;
   const page = Math.max(1, parseInt(query.page, 10) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(query.limit, 10) || 50));
@@ -91,13 +95,15 @@ async function createSkill(organizationId, body = {}) {
   }
 
   try {
-    return await Skill.create({
+    const skill = await Skill.create({
       organizationId,
       name,
       slug,
       category,
       isSystem: false
     });
+    await skillCatalogSync.ensureProductItem(organizationId, null, name).catch(() => {});
+    return skill;
   } catch (error) {
     if (error.code === 11000) {
       throw httpError('Skill already exists', 409);
@@ -222,6 +228,7 @@ async function updateSkill(organizationId, skillId, body = {}) {
     throw httpError('Custom skill not found', 404);
   }
 
+  const previousName = skill.name;
   const name = body.name != null ? String(body.name).trim() : skill.name;
   const category = body.category != null
     ? (String(body.category).trim() || 'Custom')
@@ -247,6 +254,11 @@ async function updateSkill(organizationId, skillId, body = {}) {
   skill.category = category;
   try {
     await skill.save();
+    if (previousName && previousName !== name) {
+      await skillCatalogSync.renameLinked(organizationId, previousName, name);
+    } else {
+      await skillCatalogSync.ensureProductItem(organizationId, null, name);
+    }
     return skill;
   } catch (error) {
     if (error.code === 11000) {
@@ -263,9 +275,11 @@ async function deleteSkill(organizationId, skillId) {
     isSystem: false
   });
   if (!skill) throw httpError('Custom skill not found', 404);
+  const skillName = skill.name;
   await CandidateSkill.deleteMany({ skillId: skill._id });
   await JobSkill.deleteMany({ skillId: skill._id });
   await skill.deleteOne();
+  await skillCatalogSync.removeLinked(organizationId, skillName).catch(() => {});
   return { success: true };
 }
 

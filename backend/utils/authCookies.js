@@ -7,16 +7,17 @@
 const COOKIE_NAME = 'ats_token';
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-const cookieOptions = () => ({
+const cookieOptions = (maxAge = SEVEN_DAYS_MS) => ({
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
   sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-  maxAge: SEVEN_DAYS_MS,
+  maxAge,
   path: '/',
 });
 
-const setAuthCookie = (res, token) => {
-  res.cookie(COOKIE_NAME, token, cookieOptions());
+const setAuthCookie = (res, token, maxAgeMs) => {
+  const maxAge = Number.isFinite(maxAgeMs) && maxAgeMs > 0 ? Math.floor(maxAgeMs) : SEVEN_DAYS_MS;
+  res.cookie(COOKIE_NAME, token, cookieOptions(maxAge));
 };
 
 const clearAuthCookie = (res) => {

@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Mail, Edit3 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import PremiumSelect from '../ui/PremiumSelect';
+import { useAuth } from '../../context/AuthContext';
 import { VARIABLE_OPTIONS, TIME_OPTIONS } from './emailTemplatesConstants';
+import { sanitizeHtml } from '../../utils/sanitizeHtml';
 
 export default function EmailTemplatePreview({
   open,
@@ -13,6 +15,14 @@ export default function EmailTemplatePreview({
   renderPreviewText,
   onEdit,
 }) {
+  const { organization } = useAuth();
+  const companyBrand = useMemo(() => {
+    const fromVars = String(previewVars?.company || '').trim();
+    if (fromVars) return fromVars;
+    const fromOrg = String(organization?.name || localStorage.getItem('orgName') || '').trim();
+    return fromOrg || 'Your Company';
+  }, [previewVars?.company, organization?.name]);
+
   return (
     <Modal
       open={open && !!previewTemplate}
@@ -107,35 +117,106 @@ export default function EmailTemplatePreview({
                 </p>
               </div>
               <div className="p-4 sm:p-5 bg-white min-h-[12rem]">
-                <div
-                  className="email-preview-html text-[13px] text-stone-700 leading-relaxed"
-                  dangerouslySetInnerHTML={{
-                    __html:
-                      previewTemplate.name === 'Subscribe for Updates' && previewTemplate.category === 'marketing'
-                        ? renderPreviewText(
-                            String(previewTemplate.body || '').replace(
-                              /Subscribe now:\s*\{\{subscribeLink\}\}/gi,
-                              ''
-                            )
-                          )
-                        : renderPreviewText(previewTemplate.body),
-                  }}
-                />
-                {previewTemplate.name === 'Subscribe for Updates' && previewTemplate.category === 'marketing' && (
-                  <div className="mt-5">
-                    <a
-                      href={previewVars.subscribeLink?.startsWith('http') ? previewVars.subscribeLink : '#'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center px-4 py-2 rounded-lg bg-brand-700 text-white text-[13px] font-semibold hover:bg-brand-800 transition-colors"
-                    >
-                      Subscribe for updates
-                    </a>
+                {previewTemplate.name === 'Subscribe for Updates' && previewTemplate.category === 'marketing' ? (
+                  <div className="space-y-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-400">
+                      Job alerts invitation
+                    </p>
+                    <p className="text-[15px] font-semibold text-stone-900">
+                      Dear {previewVars.candidateName || 'Candidate'},
+                    </p>
+                    <p className="text-[14px] text-stone-600 leading-relaxed">
+                      Thank you for your interest in{' '}
+                      <span className="font-semibold text-stone-800">{companyBrand}</span>.
+                      Stay connected with opportunities that fit your profile — subscribe once, and we will keep you informed.
+                    </p>
+                    <div className="rounded-lg border border-stone-200 bg-stone-50/80 p-4 space-y-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">
+                        When you subscribe
+                      </p>
+                      {[
+                        ['Curated job alerts', 'Roles matched to your skills and preferences.'],
+                        ['Early hiring notice', 'Be first to hear about new openings and drives.'],
+                        ['Career insights', 'Occasional updates from our talent team.'],
+                      ].map(([title, desc]) => (
+                        <div key={title} className="flex gap-2.5">
+                          <span className="text-brand-700 font-bold text-sm leading-5">✓</span>
+                          <div>
+                            <p className="text-[13px] font-semibold text-stone-900">{title}</p>
+                            <p className="text-[12px] text-stone-500 leading-snug">{desc}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="pt-1 text-center">
+                      <a
+                        href={previewVars.subscribeLink?.startsWith('http') ? previewVars.subscribeLink : '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex w-full sm:w-auto justify-center items-center px-5 py-3 rounded-md bg-brand-700 text-white text-[14px] font-semibold hover:bg-brand-800 transition-colors"
+                      >
+                        Subscribe for job alerts
+                      </a>
+                      <p className="mt-2 text-[11px] text-stone-400">Takes a few seconds · Unsubscribe anytime</p>
+                      <p className="mt-3 text-[12px] text-stone-500">
+                        <a href={previewVars.unsubscribeLink?.startsWith('http') ? previewVars.unsubscribeLink : '#'} className="text-brand-700 underline">Unsubscribe</a>
+                        {' | '}
+                        <a href={previewVars.unsubscribeLink?.startsWith('http') ? previewVars.unsubscribeLink : '#'} className="text-brand-700 underline">Manage preferences</a>
+                      </p>
+                    </div>
                   </div>
+                ) : /Talent Pool Nurture|Open Role Spotlight|Job Alert/i.test(previewTemplate.name || '') &&
+                  previewTemplate.category === 'marketing' ? (
+                  <div className="space-y-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-400">
+                      Open role
+                    </p>
+                    <p className="text-[15px] font-semibold text-stone-900">
+                      Dear {previewVars.candidateName || 'Candidate'},
+                    </p>
+                    <p className="text-[14px] text-stone-600 leading-relaxed">
+                      We believe you may be a strong match for{' '}
+                      <span className="font-semibold text-stone-800">{previewVars.position || 'this role'}</span>
+                      {' '}with{' '}
+                      <span className="font-semibold text-stone-800">{companyBrand}</span>.
+                    </p>
+                    <div className="rounded-lg border border-stone-200 bg-teal-50/40 p-4 space-y-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">
+                        Role highlights
+                      </p>
+                      {[
+                        ['Compensation', previewVars.ctc],
+                        ['Experience', previewVars.experience],
+                        ['Location', previewVars.location],
+                      ]
+                        .filter(([, v]) => v)
+                        .map(([label, value]) => (
+                          <div key={label}>
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">{label}</p>
+                            <p className="text-[14px] font-semibold text-stone-900">{value}</p>
+                          </div>
+                        ))}
+                    </div>
+                    <div className="pt-1 text-center">
+                      <a
+                        href={previewVars.subscribeLink?.startsWith('http') ? previewVars.subscribeLink : '#'}
+                        className="inline-flex w-full sm:w-auto justify-center items-center px-5 py-3 rounded-md bg-brand-700 text-white text-[14px] font-semibold"
+                      >
+                        Stay subscribed for roles
+                      </a>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className="email-preview-html text-[13px] text-stone-700 leading-relaxed"
+                    dangerouslySetInnerHTML={{
+                      __html: sanitizeHtml(renderPreviewText(previewTemplate.body)),
+                    }}
+                  />
                 )}
               </div>
               <div className="px-4 py-2.5 bg-stone-50 border-t border-stone-100">
-                <p className="text-[10px] text-stone-400 font-medium">Skillnix Recruitment Services</p>
+                <p className="text-[10px] text-stone-400 font-medium">{companyBrand}</p>
               </div>
             </div>
           </div>

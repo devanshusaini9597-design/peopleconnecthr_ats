@@ -15,6 +15,7 @@ export default function CandidatesPageHeader(props) {
     dedupeLoading,     setEditId, setFormData, setFormErrors, setCountryCode, setCountryIso,
     setShowModal, isLoadingInitial, candidates, isFreelancer,
     initialFormState, openAddCandidate,
+    onRefresh, refreshing, lastSyncedAt, autoRefreshSeconds,
   } = props;
   return (
     <>
@@ -24,7 +25,24 @@ export default function CandidatesPageHeader(props) {
         subtitle={t('candidates.subtitle', { count: (typeof filteredCount === 'number' ? filteredCount : filteredCandidates.length).toLocaleString() })}
         gradientTitle
       >
-        <div className="relative w-full sm:w-auto" data-tour="cand-actions">
+        <div className="flex w-full sm:w-auto flex-wrap items-center gap-2" data-tour="cand-actions">
+          {isFreelancer && typeof onRefresh === 'function' ? (
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={refreshing || isLoadingInitial}
+              className="btn-secondary flex-1 sm:flex-none justify-center"
+              title={
+                lastSyncedAt
+                  ? `Refresh candidates · auto every ${autoRefreshSeconds || 30}s`
+                  : 'Refresh candidates'
+              }
+            >
+              {refreshing ? <RefreshCw size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+              Refresh
+            </button>
+          ) : null}
+          <div className="relative flex-1 sm:flex-none min-w-0">
           <button
             type="button"
             onClick={() => setShowImportMenu((v) => !v)}
@@ -118,39 +136,40 @@ export default function CandidatesPageHeader(props) {
               </div>
             </>
           )}
-        </div>
-        {!isFreelancer && (
-        <FeatureGate feature="candidates.dedupe">
+          </div>
+          {!isFreelancer && (
+          <FeatureGate feature="candidates.dedupe">
+            <button
+              type="button"
+              onClick={handleFindDuplicates}
+              disabled={dedupeLoading}
+              className="btn-secondary flex-1 sm:flex-none"
+              title="Find duplicate candidates by email, phone, or name"
+            >
+              {dedupeLoading ? <RefreshCw size={16} className="animate-spin" /> : <GitMerge size={16} />}
+              {t('candidates.findDuplicates')}
+            </button>
+          </FeatureGate>
+          )}
           <button
             type="button"
-            onClick={handleFindDuplicates}
-            disabled={dedupeLoading}
-            className="btn-secondary flex-1 sm:flex-none"
-            title="Find duplicate candidates by email, phone, or name"
+            onClick={() => {
+              if (typeof openAddCandidate === 'function') {
+                openAddCandidate();
+                return;
+              }
+              setEditId(null);
+              setFormData(typeof initialFormState === 'function' ? initialFormState() : blankCandidateForm(isFreelancer ? 'freelancer' : ''));
+              setFormErrors({});
+              setCountryCode('+91');
+              setCountryIso('IN');
+              setShowModal(true);
+            }}
+            className="btn-primary flex-1 sm:flex-none"
           >
-            {dedupeLoading ? <RefreshCw size={16} className="animate-spin" /> : <GitMerge size={16} />}
-            {t('candidates.findDuplicates')}
+            <Plus size={16} /> {t('candidates.addNew')}
           </button>
-        </FeatureGate>
-        )}
-        <button
-          type="button"
-          onClick={() => {
-            if (typeof openAddCandidate === 'function') {
-              openAddCandidate();
-              return;
-            }
-            setEditId(null);
-            setFormData(typeof initialFormState === 'function' ? initialFormState() : blankCandidateForm(isFreelancer ? 'freelancer' : ''));
-            setFormErrors({});
-            setCountryCode('+91');
-            setCountryIso('IN');
-            setShowModal(true);
-          }}
-          className="btn-primary flex-1 sm:flex-none"
-        >
-          <Plus size={16} /> {t('candidates.addNew')}
-        </button>
+        </div>
       </PageHeader>
 
       {!isFreelancer && (

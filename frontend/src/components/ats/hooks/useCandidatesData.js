@@ -1,10 +1,11 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import BASE_API_URL from '../../../config';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../../../utils/fetchUtils';
+import { PAGE_SIZE } from '../atsConstants';
 
-export function useCandidatesData({ candidatesViewMode = "all", toast } = {}) {
+export function useCandidatesData({ candidatesViewMode = 'all', scopeUserId = '', toast } = {}) {
   const API_URL = `${BASE_API_URL}/candidates`;
-  const JOBS_URL = `${BASE_API_URL}/jobs`;
+  const JOBS_URL = `${BASE_API_URL}/api/jobs`;
 
   const [candidates, setCandidates] = useState([]);
   const [jobs, setJobs] = useState([]);
@@ -16,34 +17,124 @@ export function useCandidatesData({ candidatesViewMode = "all", toast } = {}) {
   const [isLoadingInitial, setIsLoadingInitial] = useState(true);
   const [totalRecordsInDB, setTotalRecordsInDB] = useState(0);
   const [blindMode, setBlindMode] = useState(false);
+  const loadGenRef = useRef(0);
+  const jobsLoadedRef = useRef(false);
 
+  const buildParams = useCallback((page, limit, options = {}) => {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+    });
+    const append = (key, value) => {
+      const v = String(value ?? '').trim();
+      if (v) params.append(key, v);
+    };
+    append('search', options.search);
+    append('searchScope', options.searchScope);
+    append('status', options.status);
+    append('position', options.position);
+    append('location', options.location);
+    append('companyName', options.companyName);
+    append('skills', options.skills);
+    append('product', options.product);
+    append('spoc', options.spoc);
+    append('client', options.client);
+    append('date', options.date);
+    append('dateRange', options.dateRange);
+    append('customFrom', options.customFrom);
+    append('customTo', options.customTo);
+    append('expMin', options.expMin);
+    append('expMax', options.expMax);
+    append('ctcMin', options.ctcMin);
+    append('ctcMax', options.ctcMax);
+    append('expectedCtcMin', options.expectedCtcMin);
+    append('expectedCtcMax', options.expectedCtcMax);
+    append('sortField', options.sortField || 'date');
+    append('sortOrder', options.sortOrder || 'desc');
+    if (options.freelanceOnly) params.append('freelanceOnly', '1');
+    if (options.idsOnly) params.append('idsOnly', '1');
+    if (options.ids) {
+      const idList = Array.isArray(options.ids)
+        ? options.ids
+        : String(options.ids || '').split(/[,\s]+/);
+      const cleaned = [...new Set(idList.map((id) => String(id || '').trim()).filter(Boolean))];
+      if (cleaned.length) params.append('ids', cleaned.join(','));
+    }
+
+    const effectiveView = scopeUserId ? 'mine' : candidatesViewMode;
+    params.append('view', effectiveView);
+    if (scopeUserId) params.append('userId', String(scopeUserId));
+    return params;
+  }, [candidatesViewMode, scopeUserId]);
+
+  const parseCandidatesResponse = (res, response) => {
+    let candidatesData = [];
+    let pages = 1;
+    let total = 0;
+
+    if (!res.ok) {
+      return { error: response?.message || `Server error (${res.status})`, candidatesData: null };
+    }
+    if (response?.success === true && Array.isArray(response?.data)) {
+      candidatesData = response.data;
+      pages = response.pagination?.totalPages || 1;
+      total = response.pagination?.totalCount ?? candidatesData.length;
+    } else if (response && Array.isArray(response.data)) {
+      candidatesData = response.data;
+      pages = response.pagination?.totalPages || 1;
+      total = response.pagination?.totalCount ?? candidatesData.length;
+    } else if (Array.isArray(response)) {
+      candidatesData = response;
+      pages = 1;
+      total = candidatesData.length;
+    } else if (response?.success === false) {
+      return { error: response.message || 'Server error', candidatesData: null };
+    } else {
+      candidatesData = [];
+      pages = 1;
+      total = 0;
+    }
+    return { candidatesData, pages, total };
+  };
+
+  const fetchJobsOnce = async () => {
+    if (jobsLoadedRef.current) return;
+    // Freelancers use mandates, not the company jobs catalog — skip extra round-trip.
+    try {
+      const raw = localStorage.getItem('userData');
+      const role = raw ? JSON.parse(raw)?.role : '';
+      if (role === 'freelancer') {
+        jobsLoadedRef.current = true;
+        setJobs([]);
+        return;
+      }
+    } catch { /* ignore */ }
+    try {
+      const jobRes = await authenticatedFetch(`${JOBS_URL}?isTemplate=false`);
+      if (isUnauthorized(jobRes)) {
+        handleUnauthorized();
+        return;
+      }
+      const jobData = await jobRes.json();
+      if (Array.isArray(jobData)) setJobs(jobData);
+      else if (jobData?.data && Array.isArray(jobData.data)) setJobs(jobData.data);
+      jobsLoadedRef.current = true;
+    } catch (jobError) {
+      console.warn('⚠️ Failed to load jobs:', jobError.message);
+    }
+  };
+
+  /** Server-side page fetch — filters/search run in Mongo, not in the browser. */
   const fetchData = async (page = 1, options = {}) => {
+    const gen = ++loadGenRef.current;
+    const pageNum = Math.max(1, Number(page) || 1);
     try {
       setIsLoadingInitial(true);
-      const search = (options.search || '').trim();
-      const position = (options.position || '').trim();
-      const isSearch = Boolean(search || position);
-      
-      // ✅ FETCH ALL DATA: Always load all records so filtering/search works across entire DB
-      const limit = 50000;
-      
-      setIsLoadingMore(page > 1 && !isSearch);
+      setIsLoadingMore(pageNum > 1);
 
-      const params = new URLSearchParams({
-        page: String(page),
-        limit: String(limit)
-      });
-      if (search) params.append('search', search);
-      if (position) params.append('position', position);
-      // view=mine (default): own + shared; view=all: all candidates in DB
-      params.append('view', candidatesViewMode);
-
-      console.log('📤 Fetching candidates from:', `${API_URL}?${params.toString()}`);
-      // Run candidates and jobs in parallel so initial load is faster
-      const [res, jobRes] = await Promise.all([
-        authenticatedFetch(`${API_URL}?${params.toString()}`, { cache: 'no-store' }),
-        authenticatedFetch(`${JOBS_URL}?isTemplate=false`)
-      ]);
+      const params = buildParams(pageNum, PAGE_SIZE, options);
+      const res = await authenticatedFetch(`${API_URL}?${params.toString()}`, { cache: 'no-store' });
+      if (gen !== loadGenRef.current) return;
 
       if (isUnauthorized(res)) {
         handleUnauthorized();
@@ -60,92 +151,47 @@ export function useCandidatesData({ candidatesViewMode = "all", toast } = {}) {
         return;
       }
 
-      console.log('🔍 HTTP Status:', res.status, 'OK:', res.ok);
-      console.log('🔍 API Response - isSearch:', isSearch, 'limit:', limit, 'page:', page);
-      console.log('🔍 API Response:', response);
-      console.log('🔍 response.success:', response?.success, 'response.data type:', Array.isArray(response?.data) ? `array[${response.data.length}]` : typeof response?.data);
-
-      // Handle both paginated and raw array formats — only update list on success so failed "View all" doesn't wipe the list
-      let candidatesData = [];
-      let pages = 1;
-
-      // Check HTTP status first — on failure, keep previous candidates and toast (do not clear)
-      if (!res.ok) {
-        console.error('❌ HTTP Error:', res.status, response?.message || response?.error);
-        toast.error(response?.message || `Server error (${res.status})`);
-        candidatesData = null; // signal: do not update state
-      }
-      // Format 1: Success response with pagination
-      else if (response?.success === true && Array.isArray(response?.data)) {
-        candidatesData = response.data;
-        pages = response.pagination?.totalPages || 1;
-        const total = response.pagination?.totalCount ?? candidatesData.length;
-        setTotalPages(pages);
-        setTotalRecordsInDB(total);
-        console.log('✅ Candidates loaded (paginated):', candidatesData.length, 'Total:', total);
-      }
-      // Format 2: Response with data property (success may be undefined)
-      else if (response && Array.isArray(response.data)) {
-        candidatesData = response.data;
-        pages = response.pagination?.totalPages || 1;
-        const total = response.pagination?.totalCount ?? candidatesData.length;
-        setTotalPages(pages);
-        setTotalRecordsInDB(total);
-        console.log('✅ Candidates loaded (data property):', candidatesData.length, 'Total:', total);
-      }
-      // Format 3: Raw array response (legacy)
-      else if (Array.isArray(response)) {
-        candidatesData = response;
-        setTotalPages(1);
-        setTotalRecordsInDB(candidatesData.length);
-        console.log('✅ Candidates loaded (raw array):', candidatesData.length);
-      }
-      // Format 4: Error response
-      else if (response?.success === false) {
-        console.error('❌ API Error:', response.message);
-        toast.error(response.message || 'Server error');
-        candidatesData = null;
-      }
-      // Format 5: Empty or unexpected
-      else {
-        console.warn('⚠️ Unexpected format - treating as empty result:', response);
-        candidatesData = [];
-        setTotalPages(1);
-        setTotalRecordsInDB(0);
+      const parsed = parseCandidatesResponse(res, response);
+      if (parsed.error) {
+        toast.error(parsed.error);
+        setCandidates([]);
+      } else if (Array.isArray(parsed.candidatesData)) {
+        setCandidates(parsed.candidatesData);
+        setTotalPages(Math.max(1, parsed.pages || 1));
+        setTotalRecordsInDB(parsed.total || 0);
+        setCurrentPage(pageNum);
       }
 
-      if (candidatesData !== null && Array.isArray(candidatesData)) {
-        if (page === 1) {
-          setCandidates(candidatesData);
-        } else {
-          setCandidates(prev => [...prev, ...candidatesData]);
-        }
-        setCurrentPage(page);
-      }
-
-      // Process jobs (fetched in parallel above)
-      try {
-        if (isUnauthorized(jobRes)) {
-          handleUnauthorized();
-          return;
-        }
-        const jobData = await jobRes.json();
-        if (Array.isArray(jobData)) {
-          setJobs(jobData);
-        } else if (jobData && jobData.data && Array.isArray(jobData.data)) {
-          setJobs(jobData.data);
-        }
-      } catch (jobError) {
-        console.warn('⚠️ Failed to load jobs:', jobError.message);
-      }
+      void fetchJobsOnce();
     } catch (error) {
-      console.error("❌ Error fetching data:", error);
+      console.error('❌ Error fetching data:', error);
       toast.error('Failed to load candidates. Please refresh page or check your connection.');
-      // Do not clear candidates on network error so "View all" / switch doesn't wipe the list
     } finally {
-      setIsLoadingMore(false);
-      setIsLoadingInitial(false);
+      if (gen === loadGenRef.current) {
+        setIsLoadingMore(false);
+        setIsLoadingInitial(false);
+      }
     }
+  };
+
+  /** IDs for "select all matching" (capped server-side). */
+  const fetchMatchingIds = async (options = {}) => {
+    const params = buildParams(1, PAGE_SIZE, { ...options, idsOnly: true });
+    const res = await authenticatedFetch(`${API_URL}?${params.toString()}`, { cache: 'no-store' });
+    if (isUnauthorized(res)) {
+      handleUnauthorized();
+      return { ids: [], totalCount: 0, capped: false };
+    }
+    const json = await res.json();
+    if (!res.ok || json?.success === false) {
+      throw new Error(json?.message || 'Failed to load matching IDs');
+    }
+    const ids = Array.isArray(json?.ids) ? json.ids.map(String) : [];
+    return {
+      ids,
+      totalCount: Number(json?.pagination?.totalCount) || ids.length,
+      capped: Boolean(json?.pagination?.capped),
+    };
   };
 
   return {
@@ -154,6 +200,6 @@ export function useCandidatesData({ candidatesViewMode = "all", toast } = {}) {
     currentPage, setCurrentPage, totalPages, setTotalPages,
     isLoadingMore, isHeaderLoading, isShowingAll, setIsShowingAll,
     isLoadingInitial, setIsLoadingInitial, totalRecordsInDB,
-    blindMode, setBlindMode, fetchData,
+    blindMode, setBlindMode, fetchData, fetchMatchingIds,
   };
 }

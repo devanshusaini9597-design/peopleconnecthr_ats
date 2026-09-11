@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users, Trash2, Loader2, UserPlus, ArrowLeft,
-  ChevronLeft, ChevronRight, Info, Settings2,
-  Layers, CheckSquare, Square,
+  ChevronLeft, ChevronRight, Settings2,
+  Layers, CheckSquare, Square, Search,
 } from 'lucide-react';
 import { authenticatedFetch, readApiJson } from '../../utils/fetchUtils';
 import EmptyState from '../ui/EmptyState';
 import ConfirmationModal from '../ConfirmationModal';
 import { useAuth } from '../../context/AuthContext';
 import { planHasFeature } from '../../config/planFeatures';
-import { MEMBER_PAGE_SIZE } from './talentPoolsConstants';
+import { MEMBER_PAGE_SIZE, AUTO_OPTIONS } from './talentPoolsConstants';
 import { AddCandidatesModal } from './AddCandidatesModal';
 
 export const PoolDetail = ({ pool, onBack, toast, onPoolUpdated, onManage }) => {
@@ -23,6 +23,7 @@ export const PoolDetail = ({ pool, onBack, toast, onPoolUpdated, onManage }) => 
   const [savingAuto, setSavingAuto] = useState(false);
   const [localPool, setLocalPool] = useState(pool);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [memberQuery, setMemberQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [bulkRemoving, setBulkRemoving] = useState(false);
 
@@ -49,10 +50,21 @@ export const PoolDetail = ({ pool, onBack, toast, onPoolUpdated, onManage }) => 
 
   useEffect(() => { load(); }, [load]);
 
-  const totalPages = Math.max(1, Math.ceil(candidates.length / MEMBER_PAGE_SIZE));
+  const visibleCandidates = memberQuery.trim()
+    ? candidates.filter((c) => {
+      const q = memberQuery.trim().toLowerCase();
+      return (
+        (c.name || '').toLowerCase().includes(q)
+        || (c.email || '').toLowerCase().includes(q)
+        || (c.position || '').toLowerCase().includes(q)
+        || (c.contact || c.phone || '').toLowerCase().includes(q)
+      );
+    })
+    : candidates;
+  const totalPages = Math.max(1, Math.ceil(visibleCandidates.length / MEMBER_PAGE_SIZE));
   const safePage = Math.min(currentPage, totalPages);
   const pageStart = (safePage - 1) * MEMBER_PAGE_SIZE;
-  const paged = candidates.slice(pageStart, pageStart + MEMBER_PAGE_SIZE);
+  const paged = visibleCandidates.slice(pageStart, pageStart + MEMBER_PAGE_SIZE);
 
   const allPageSelected = paged.length > 0 && paged.every((c) => selectedIds.has(c._id));
 
@@ -162,7 +174,19 @@ export const PoolDetail = ({ pool, onBack, toast, onPoolUpdated, onManage }) => 
               {localPool.name}
             </h2>
             {localPool.description && <p className="text-sm text-stone-500 mt-1 leading-relaxed break-words">{localPool.description}</p>}
-            <span className="badge-brand mt-2">{candidates.length} candidate{candidates.length === 1 ? '' : 's'}</span>
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <span className="badge-brand">{candidates.length} candidate{candidates.length === 1 ? '' : 's'}</span>
+              {localPool.industry && (
+                <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-stone-100 text-stone-600">
+                  {localPool.industry}
+                </span>
+              )}
+              {localPool.product && (
+                <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-teal-50 text-teal-700">
+                  {localPool.product}
+                </span>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
@@ -179,32 +203,24 @@ export const PoolDetail = ({ pool, onBack, toast, onPoolUpdated, onManage }) => 
         <div className="card-ats-bordered p-4 space-y-3 relative overflow-hidden">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
           <h3 className="text-sm font-semibold text-stone-900">Automation</h3>
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              className="mt-1 rounded border-stone-300 text-brand-600 focus:ring-brand-500"
-              checked={!!localPool.addOnReject}
-              disabled={savingAuto}
-              onChange={(e) => patchAutomation({ addOnReject: e.target.checked }, 'Automation updated')}
-            />
-            <span>
-              <span className="block text-sm font-medium text-stone-800">Add on reject (silver medalist)</span>
-              <span className="block text-xs text-stone-500">When an application is rejected, add the candidate to this pool.</span>
-            </span>
-          </label>
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              className="mt-1 rounded border-stone-300 text-brand-600 focus:ring-brand-500"
-              checked={!!localPool.isDefaultRejectPool}
-              disabled={savingAuto}
-              onChange={(e) => patchAutomation({ isDefaultRejectPool: e.target.checked }, 'Default reject pool updated')}
-            />
-            <span>
-              <span className="block text-sm font-medium text-stone-800">Default reject pool</span>
-              <span className="block text-xs text-stone-500">Primary pool used for rejected candidates (one per org).</span>
-            </span>
-          </label>
+          <p className="text-xs text-stone-500 leading-relaxed">
+            Industry / skill matching is always on for this pool if those fields are set. These boxes are extra catch-alls.
+          </p>
+          {AUTO_OPTIONS.map((opt) => (
+            <label key={opt.key} className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-1 rounded border-stone-300 text-brand-600 focus:ring-brand-500"
+                checked={!!localPool[opt.key]}
+                disabled={savingAuto}
+                onChange={(e) => patchAutomation({ [opt.key]: e.target.checked }, 'Automation updated')}
+              />
+              <span>
+                <span className="block text-sm font-medium text-stone-800">{opt.label}</span>
+                <span className="block text-xs text-stone-500">{opt.hint}</span>
+              </span>
+            </label>
+          ))}
         </div>
       )}
 
@@ -225,6 +241,19 @@ export const PoolDetail = ({ pool, onBack, toast, onPoolUpdated, onManage }) => 
       )}
 
       <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
+        {candidates.length > 0 && (
+          <div className="px-4 pt-4 pb-2">
+            <div className="relative">
+              <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                value={memberQuery}
+                onChange={(e) => { setMemberQuery(e.target.value); setCurrentPage(1); }}
+                placeholder="Filter this pool by name, email, or position…"
+                className="input-ats input-ats-icon"
+              />
+            </div>
+          </div>
+        )}
         {loading ? (
           <div className="p-12 flex flex-col items-center gap-2">
             <Loader2 className="w-7 h-7 text-brand-600 animate-spin" />
@@ -235,7 +264,7 @@ export const PoolDetail = ({ pool, onBack, toast, onPoolUpdated, onManage }) => 
             icon={Users}
             tone="brand"
             message="No candidates in this pool yet"
-            subMessage="Add candidates to keep them warm for future roles."
+            subMessage="Reject from Applications, set status to Rejected on Candidates, or add people below. Matching industry/skill fills this pool without ticking Automation."
             action={(
               <button type="button" onClick={() => setShowAdd(true)} className="btn-primary">
                 <UserPlus className="w-4 h-4" /> Add candidates
@@ -334,7 +363,7 @@ export const PoolDetail = ({ pool, onBack, toast, onPoolUpdated, onManage }) => 
                   {paged.length > 0 ? pageStart + 1 : 0}–{pageStart + paged.length}
                 </span>
                 {' '}of{' '}
-                <span className="text-stone-800 font-semibold">{candidates.length.toLocaleString()}</span>
+                <span className="text-stone-800 font-semibold">{visibleCandidates.length.toLocaleString()}</span>
                 <span className="text-stone-400"> · {MEMBER_PAGE_SIZE} per page</span>
               </p>
               <div className="flex items-center gap-2 flex-wrap">

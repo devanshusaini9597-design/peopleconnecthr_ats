@@ -20,6 +20,7 @@
     "@tiptap/react": "^3.29.2",
     "@tiptap/starter-kit": "^3.29.2",
     "axios": "^1.13.4",
+    "docx-preview": "^0.4.0",
     "i18next": "^26.3.6",
     "lucide-react": "^0.562.0",
     "motion": "^12.43.0",
@@ -32,8 +33,7 @@
     "react-router-dom": "^7.12.0",
     "react-window": "^2.2.6",
     "recharts": "^3.7.0",
-    "tailwindcss": "^4.1.18",
-    "xlsx": "^0.18.5"
+    "tailwindcss": "^4.1.18"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

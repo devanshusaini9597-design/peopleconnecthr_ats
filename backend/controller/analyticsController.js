@@ -1,17 +1,65 @@
 // backend/controllers/analyticsController.js
 const Candidate = require('../models/Candidate');
+const Organization = require('../models/Organization');
+const User = require('../models/User');
+const {
+  analyticsScope,
+  analyticsScopeMeta,
+  canViewOrgAnalytics,
+  requestedAnalyticsUserId,
+} = require('../utils/dataScope');
+const { foldStatusCounts, pipelineList, statusMatchValues, canonCandidateStatus } = require('../utils/statusCanon');
+const { monthRanges, lastNDaysRange, DEFAULT_TZ, buildDateFilter, previousPeriodFilter, getDateRangeLabel, chartBucketConfig } = require('../utils/analyticsTime');
+const { withActivityDateRange, activityDateExpr, backfillAppliedAtForOrg } = require('../utils/candidateActivityDate');
 
-// Tenant scope: prefer organizationId (multi-tenant safe, includes all
-// teammates' candidates) so team analytics actually reflect the whole org,
-// not just the requesting user's own records. Falls back to createdBy only
-// for legacy users somehow without an org.
-const scopeFilter = (req) => (
-  req.user.organizationId ? { organizationId: req.user.organizationId } : { createdBy: req.user.id }
-);
+async function scopedFilter(req, res) {
+  try {
+    // Owner/admin/manager: full org analytics. Recruiter: own SPOC desk only.
+    return await analyticsScope(req);
+  } catch (err) {
+    const status = err.statusCode || 500;
+    res.status(status).json({ success: false, message: err.message });
+    return null;
+  }
+}
+
+exports.listAnalyticsEmployees = async (req, res) => {
+  try {
+    if (!canViewOrgAnalytics(req.user)) {
+      return res.status(200).json({ success: true, canSelectEmployee: false, employees: [] });
+    }
+    if (!req.user.organizationId) {
+      return res.status(200).json({ success: true, canSelectEmployee: true, employees: [] });
+    }
+    const users = await User.find({
+      organizationId: req.user.organizationId,
+      isActive: { $ne: false },
+    })
+      .select('name email role profilePicture')
+      .sort({ name: 1, email: 1 })
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      canSelectEmployee: true,
+      employees: users.map((u) => ({
+        id: String(u._id),
+        name: u.name || (u.email || '').split('@')[0] || 'Teammate',
+        email: u.email || '',
+        role: u.role || '',
+        profilePicture: u.profilePicture || '',
+      })),
+    });
+  } catch (err) {
+    console.error('Analytics employees error:', err);
+    res.status(500).json({ success: false, message: 'Error listing employees' });
+  }
+};
 
 exports.getAnalytics = async (req, res) => {
   try {
-    const userFilter = scopeFilter(req);
+    const userFilter = await scopedFilter(req, res);
+    if (!userFilter) return;
 
     // 1. Daily CV Submission Tracking (Last 7 days)
     const dailySubmissions = await Candidate.aggregate([
@@ -41,7 +89,7 @@ exports.getAnalytics = async (req, res) => {
     // 3. Offer vs Joining Ratio
     const statusCounts = await Candidate.aggregate([
       {
-        $match: { ...userFilter, status: { $in: ["Offer", "Joined"] } } 
+        $match: { ...userFilter, status: { $in: statusMatchValues(['Offer', 'Joined', 'Hired']) } } 
       },
       {
         $group: {
@@ -53,7 +101,7 @@ exports.getAnalytics = async (req, res) => {
 
     // 4. Time-to-Hire (Average days)
     const timeToHire = await Candidate.aggregate([
-      { $match: { ...userFilter, status: "Joined", hiredDate: { $exists: true } } },
+      { $match: { ...userFilter, status: { $in: statusMatchValues(['Joined']) }, hiredDate: { $exists: true } } },
       {
         $project: {
           days: {
@@ -76,7 +124,8 @@ exports.getAnalytics = async (req, res) => {
       dailySubmissions,
       sourcePerformance,
       statusCounts,
-      avgTimeToHire: timeToHire[0]?.avgDays || 0
+      avgTimeToHire: timeToHire[0]?.avgDays || 0,
+      ...analyticsScopeMeta(req),
     });
 
   } catch (err) {
@@ -92,12 +141,13 @@ exports.getAnalytics = async (req, res) => {
 // sensitive and this endpoint's whole purpose is to keep them that way.
 exports.getDEIAnalytics = async (req, res) => {
   try {
-    const userFilter = scopeFilter(req);
+    const userFilter = await scopedFilter(req, res);
+    if (!userFilter) return;
 
     const buildBreakdown = async (field) => {
       const rows = await Candidate.aggregate([
         { $match: { ...userFilter, [field]: { $exists: true, $ne: '' } } },
-        { $group: { _id: `$${field}`, total: { $sum: 1 }, hired: { $sum: { $cond: [{ $in: ['$status', ['Hired', 'Joined']] }, 1, 0] } } } },
+        { $group: { _id: `$${field}`, total: { $sum: 1 }, hired: { $sum: { $cond: [{ $in: ['$status', statusMatchValues(['Hired', 'Joined'])] }, 1, 0] } } } },
         { $sort: { total: -1 } }
       ]);
       return rows.map(r => ({ label: r._id, total: r.total, hired: r.hired }));
@@ -128,7 +178,8 @@ exports.getDEIAnalytics = async (req, res) => {
         selfReportedCount,
         selfReportRate: totalCandidates > 0 ? Math.round((selfReportedCount / totalCandidates) * 100) : 0,
         breakdowns: { genderIdentity, ethnicity, veteranStatus, disabilityStatus }
-      }
+      },
+      ...analyticsScopeMeta(req),
     });
   } catch (err) {
     console.error('DEI analytics error:', err);
@@ -139,125 +190,219 @@ exports.getDEIAnalytics = async (req, res) => {
 // Dashboard Stats endpoint - returns all data needed for dashboard
 exports.getDashboardStats = async (req, res) => {
   try {
-    const userFilter = scopeFilter(req);
+    const userFilter = await scopedFilter(req, res);
+    if (!userFilter) return;
 
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+    const dateRange = String(req.query.dateRange || 'all').trim();
+    const customFrom = req.query.customFrom || '';
+    const customTo = req.query.customTo || '';
+    const { startOfMonth, startOfNextMonth, startOfLastMonth, timeZone } = monthRanges(now);
+    const scopeMeta = analyticsScopeMeta(req);
 
-    // Total candidates (this user only)
-    const totalCandidates = await Candidate.countDocuments(userFilter);
-
-    // This month additions
-    const thisMonthCount = await Candidate.countDocuments({ ...userFilter, createdAt: { $gte: startOfMonth } });
-    
-    // Last month for trend calc
-    const lastMonthCount = await Candidate.countDocuments({ ...userFilter, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } });
-
-    // Status-wise pipeline counts
-    const pipelineCounts = await Candidate.aggregate([
-      { $match: userFilter },
-      { $group: { _id: '$status', count: { $sum: 1 } } }
-    ]);
-    const pipeline = {};
-    pipelineCounts.forEach(p => { pipeline[p._id] = p.count; });
-
-    // Pending review (Applied + Screening)
-    const pendingReview = (pipeline['Applied'] || 0) + (pipeline['Screening'] || 0);
-
-    // Top positions
-    const topPositions = await Candidate.aggregate([
-      { $match: { ...userFilter, position: { $exists: true, $ne: '' } } },
-      { $group: { _id: '$position', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 5 }
-    ]);
-
-    // Top sources
-    const topSources = await Candidate.aggregate([
-      { $match: { ...userFilter, source: { $exists: true, $ne: '' } } },
-      { $group: { _id: '$source', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 5 }
-    ]);
-
-    // Recent candidates (last 5 for this user)
-    const recentCandidates = await Candidate.find(userFilter)
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .select('name position status createdAt source');
-
-    // Monthly trend (percentage)
-    const candidateTrend = lastMonthCount > 0 ? Math.round(((thisMonthCount - lastMonthCount) / lastMonthCount) * 100) : (thisMonthCount > 0 ? 100 : 0);
-
-    // Daily submissions (last 7 days)
-    const sevenDaysAgo = new Date(now);
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-    sevenDaysAgo.setHours(0, 0, 0, 0);
-    const dailySubmissions = await Candidate.aggregate([
-      { $match: { ...userFilter, createdAt: { $gte: sevenDaysAgo } } },
-      { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, count: { $sum: 1 } } },
-      { $sort: { _id: 1 } }
-    ]);
-    // Fill in missing days
-    const dailyData = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(sevenDaysAgo);
-      d.setDate(d.getDate() + i);
-      const key = d.toISOString().split('T')[0];
-      const found = dailySubmissions.find(ds => ds._id === key);
-      dailyData.push({ date: key, day: d.toLocaleDateString('en-US', { weekday: 'short' }), count: found ? found.count : 0 });
+    if (req.user?.organizationId) {
+      setImmediate(() => backfillAppliedAtForOrg(req.user.organizationId, Candidate));
     }
 
-    // Location breakdown
-    const locationBreakdown = await Candidate.aggregate([
-      { $match: { ...userFilter, location: { $exists: true, $ne: '' } } },
-      { $group: { _id: '$location', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 6 }
+    const dateFilter = buildDateFilter(dateRange, customFrom, customTo, now, timeZone);
+    const prevFilter = previousPeriodFilter(dateRange, customFrom, customTo, now, timeZone);
+    const scopedWithDate = withActivityDateRange(userFilter, dateFilter);
+    const scopedPrev = prevFilter ? withActivityDateRange(userFilter, prevFilter) : null;
+
+    // Heal pipeline / casing, and keep Rejected on the org stage list
+    if (req.user?.organizationId) {
+      try {
+        const { ensureCorePipelineStages } = require('../services/pipelineStageSync');
+        await ensureCorePipelineStages(req.user.organizationId, ['Rejected']);
+      } catch (_) { /* non-fatal */ }
+      setImmediate(() => {
+        const { reconcileOrgPipelineSafe } = require('../services/pipelineStageSync');
+        const { healCandidateBlockLettersSafe } = require('../services/candidateCasingHeal');
+        Promise.resolve()
+          .then(() => reconcileOrgPipelineSafe(req.user.organizationId))
+          .catch(() => {})
+          .finally(() => healCandidateBlockLettersSafe(req.user.organizationId));
+      });
+    }
+
+    const DEFAULT_STAGES = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'];
+    const orgStagesPromise = req.user?.organizationId
+      ? Organization.findById(req.user.organizationId).select('atsSettings.pipelineStages').lean()
+      : Promise.resolve(null);
+
+    const thisPeriodFallback = dateFilter
+      ? null
+      : Candidate.countDocuments(
+          withActivityDateRange(userFilter, { $gte: startOfMonth, $lt: startOfNextMonth })
+        );
+    const lastPeriodFallback = scopedPrev
+      ? Candidate.countDocuments(scopedPrev)
+      : Candidate.countDocuments(
+          withActivityDateRange(userFilter, { $gte: startOfLastMonth, $lt: startOfMonth })
+        );
+
+    const bucketCfg = chartBucketConfig(dateRange, customFrom, customTo, now, timeZone);
+    const chartRange = { $gte: bucketCfg.chartStart };
+    if (dateFilter?.$lte) chartRange.$lte = dateFilter.$lte;
+    else if (dateFilter?.$lt) chartRange.$lt = dateFilter.$lt;
+
+    const [
+      totalCandidatesAllTime,
+      totalCandidates,
+      thisPeriodCountRaw,
+      lastPeriodCount,
+      pipelineCounts,
+      org,
+      topPositions,
+      topSources,
+      recentRows,
+      dailySubmissions,
+      locationBreakdown,
+    ] = await Promise.all([
+      Candidate.countDocuments(userFilter),
+      Candidate.countDocuments(scopedWithDate),
+      thisPeriodFallback,
+      lastPeriodFallback,
+      Candidate.aggregate([
+        { $match: scopedWithDate },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      orgStagesPromise,
+      Candidate.aggregate([
+        { $match: { ...scopedWithDate, position: { $exists: true, $ne: '' } } },
+        { $group: { _id: '$position', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 5 },
+      ]),
+      Candidate.aggregate([
+        { $match: { ...scopedWithDate, source: { $exists: true, $ne: '' } } },
+        { $group: { _id: '$source', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 5 },
+      ]),
+      Candidate.aggregate([
+        { $match: scopedWithDate },
+        { $addFields: { activityDate: activityDateExpr() } },
+        { $sort: { activityDate: -1 } },
+        { $limit: 5 },
+        {
+          $project: {
+            name: 1,
+            position: 1,
+            status: 1,
+            source: 1,
+            createdAt: '$activityDate',
+          },
+        },
+      ]),
+      Candidate.aggregate([
+        { $match: userFilter },
+        { $addFields: { activityDate: activityDateExpr() } },
+        { $match: { activityDate: chartRange } },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: '%Y-%m-%d',
+                date: '$activityDate',
+                timezone: timeZone || DEFAULT_TZ,
+              },
+            },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+      Candidate.aggregate([
+        { $match: { ...scopedWithDate, location: { $exists: true, $ne: '' } } },
+        { $group: { _id: '$location', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 6 },
+      ]),
     ]);
 
-    // Offer-to-Join ratio
-    const offerCount = pipeline['Offer'] || 0;
-    const joinedCount = pipeline['Joined'] || 0;
-    const hiredCount = pipeline['Hired'] || 0;
-    const rejectedCount = pipeline['Rejected'] || 0;
-    const droppedCount = pipeline['Dropped'] || 0;
-    const totalOfferPlusJoined = offerCount + joinedCount + hiredCount;
-    const conversionRate = totalCandidates > 0 ? Math.round((totalOfferPlusJoined / totalCandidates) * 100) : 0;
-    const rejectionRate = totalCandidates > 0 ? Math.round(((rejectedCount + droppedCount) / totalCandidates) * 100) : 0;
+    const thisPeriodCount = dateFilter ? totalCandidates : (thisPeriodCountRaw || 0);
+    let pipeline = foldStatusCounts(pipelineCounts);
+    let periodByStatus = pipeline; // same period match as status cards
 
+    let preferredStages = DEFAULT_STAGES;
+    if (Array.isArray(org?.atsSettings?.pipelineStages) && org.atsSettings.pipelineStages.length) {
+      preferredStages = org.atsSettings.pipelineStages;
+    }
+    // KPI cards: every org pipeline stage (including zeros)
+    const statusCards = pipelineList(pipeline, preferredStages, {
+      includeZero: true,
+      ensureStages: ['Rejected', 'Dropped'],
+    }).map((row) => ({
+      stage: row.stage,
+      count: row.count,
+      thisMonth: periodByStatus[row.stage] || 0,
+    }));
+
+    // Pending review (Applied + Screening) — matches Candidates page after ALL-CAPS save
+    const pendingReview = (pipeline.Applied || 0) + (pipeline.Screening || 0);
+
+    // Period trend (percentage vs previous period)
+    const candidateTrend =
+      lastPeriodCount > 0
+        ? Math.round(((thisPeriodCount - lastPeriodCount) / lastPeriodCount) * 100)
+        : thisPeriodCount > 0
+          ? 100
+          : 0;
+
+    const dailyData = bucketCfg.dayKeys.map(({ key, day }) => {
+      const found = dailySubmissions.find((ds) => ds._id === key);
+      return { date: key, day, count: found ? found.count : 0 };
+    });
+
+    // Offer-to-Join ratio — Hired + Joined (aligned with export definition)
+    const joinedCount = pipeline.Joined || 0;
+    const hiredCount = pipeline.Hired || 0;
+    const rejectedCount = pipeline.Rejected || 0;
+    const droppedCount = pipeline.Dropped || 0;
+    const totalOfferPlusJoined = hiredCount + joinedCount;
+    const conversionRate =
+      totalCandidates > 0 ? Math.round((totalOfferPlusJoined / totalCandidates) * 100) : 0;
+    const rejectionRate =
+      totalCandidates > 0
+        ? Math.round(((rejectedCount + droppedCount) / totalCandidates) * 100)
+        : 0;
+
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.status(200).json({
+      ...scopeMeta,
+      dateRange,
+      periodLabel: getDateRangeLabel(dateRange, customFrom, customTo),
+      customFrom: customFrom || undefined,
+      customTo: customTo || undefined,
+      // ATS list view that matches these cards
+      atsView: scopeMeta.scope === 'organization' ? 'all' : 'mine',
       totalCandidates,
-      thisMonth: thisMonthCount,
-      lastMonth: lastMonthCount,
+      totalCandidatesAllTime,
+      thisMonth: thisPeriodCount,
+      lastMonth: lastPeriodCount,
       pendingReview,
       candidateTrend,
       conversionRate,
       rejectionRate,
-      pipeline: [
-        { stage: 'Applied', count: pipeline['Applied'] || 0 },
-        { stage: 'Screening', count: pipeline['Screening'] || 0 },
-        { stage: 'Interview', count: pipeline['Interview'] || 0 },
-        { stage: 'Offer', count: pipeline['Offer'] || 0 },
-        { stage: 'Hired', count: pipeline['Hired'] || 0 },
-        { stage: 'Joined', count: pipeline['Joined'] || 0 },
-        { stage: 'Rejected', count: pipeline['Rejected'] || 0 },
-        { stage: 'Dropped', count: pipeline['Dropped'] || 0 }
-      ],
-      topPositions: topPositions.map(p => ({ position: p._id, count: p.count })),
-      topSources: topSources.map(s => ({ source: s._id, count: s.count })),
-      recentCandidates: recentCandidates.map(c => ({
+      generatedAt: now.toISOString(),
+      timezone: timeZone || DEFAULT_TZ,
+      pipeline: statusCards,
+      statusCards,
+      topPositions: topPositions.map((p) => ({ position: p._id, count: p.count })),
+      topSources: topSources.map((s) => ({ source: s._id, count: s.count })),
+      recentCandidates: recentRows.map((c) => ({
         id: c._id,
         name: c.name,
         position: c.position,
-        status: c.status,
+        status: canonCandidateStatus(c.status),
         createdAt: c.createdAt,
-        source: c.source
+        source: c.source,
       })),
       dailySubmissions: dailyData,
-      locationBreakdown: locationBreakdown.map(l => ({ location: l._id, count: l.count }))
+      chartLabel: bucketCfg.chartLabel,
+      chartDays: bucketCfg.days,
+      locationBreakdown: locationBreakdown.map((l) => ({ location: l._id, count: l.count })),
     });
   } catch (err) {
     console.error('Dashboard stats error:', err);

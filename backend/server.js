@@ -110,6 +110,7 @@ const chatbotRoutes = require('./routes/chatbotRoutes');
 const savedSearchRoutes = require('./routes/savedSearchRoutes');
 const scorecardTemplateRoutes = require('./routes/scorecardTemplateRoutes');
 const commentRoutes = require('./routes/commentRoutes');
+const myTeamRoutes = require('./routes/myTeamRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
 const publicAnnouncementRoutes = require('./routes/publicAnnouncementRoutes');
 const globalSearchRoutes = require('./routes/globalSearchRoutes');
@@ -141,6 +142,8 @@ const slackAppRoutes = require('./routes/slackAppRoutes');
 const { startNotificationScheduler } = require('./services/notificationService');
 const { initWebhookDispatcher } = require('./services/webhookDispatcher');
 const { startReportScheduler } = require('./services/reportScheduler');
+const { startBackupScheduler } = require('./services/backupScheduler');
+const { startFreelanceSlaScheduler } = require('./services/freelanceSlaScheduler');
 
 // ── App Setup ────────────────────────────────────────────────────────
 const app = express();
@@ -153,13 +156,13 @@ app.use(helmet({
   contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "blob:", "https:"],
       connectSrc: ["'self'", process.env.FRONTEND_URL, "https://api.stripe.com"].filter(Boolean),
-      frameSrc: ["'self'", "https://js.stripe.com"],
-      objectSrc: ["'none'"],
+      frameSrc: ["'self'", "blob:", "https://js.stripe.com"],
+      objectSrc: ["'self'", "blob:"],
       baseUri: ["'self'"],
       formAction: ["'self'"],
     },
@@ -196,6 +199,12 @@ app.use((req, res, next) => {
 const stripeWebhookRoutes = require('./routes/stripeWebhookRoutes');
 app.use('/api/billing/webhook', stripeWebhookRoutes);
 app.use('/api/whatsapp/webhook', whatsappWebhookRoutes);
+app.use('/api/integrations/slack/commands', express.urlencoded({
+  extended: true,
+  verify: (req, _res, buf) => {
+    req.rawBody = buf.toString('utf8');
+  },
+}));
 
 // ── CORS ─────────────────────────────────────────────────────────────
 // Production: only FRONTEND_URL + known production hosts (no localhost).
@@ -256,6 +265,14 @@ try {
 
 app.use('/api', globalApiLimiter);
 
+app.use((req, res, next) => {
+  if (req.path === '/health' || req.originalUrl === '/health') return next();
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ success: false, message: 'Service unavailable. Database connection is not ready.' });
+  }
+  next();
+});
+
 // Soft API versioning: accept /api/v1/* as an alias for /api/*
 // Prefer /api/v1 for new clients; unversioned /api remains for compat.
 app.use((req, _res, next) => {
@@ -314,6 +331,7 @@ app.use('/api/background-check', backgroundCheckRoutes);
 app.use('/api/esign', esignRoutes);
 app.use('/api/report-schedules', reportScheduleRoutes);
 
+app.use('/api/presence', require('./routes/presenceRoutes'));
 app.use('/api/analytics', verifyToken, analyticsRoutes);
 app.use('/api/statuses', require('./routes/statusesRoutes'));
 app.use('/api/companies', companyRoutes);
@@ -332,6 +350,7 @@ app.use('/api/company-email-settings', verifyToken, companyEmailSettingsRoutes);
 app.use('/api/notifications', verifyToken, notificationRoutes);
 app.use('/api/team', teamRoutes);
 app.use('/api/freelancer', freelancerRoutes);
+app.use('/api/support', require('./routes/supportRoutes'));
 app.use('/api/talent-pools', verifyToken, talentPoolRoutes); // internally applies requireFeature('candidates.talentPools')
 app.use('/api/skills', verifyToken, skillsRoutes); // requireFeature('candidates.skillsTaxonomy')
 app.use('/api/inbox', verifyToken, inboxRoutes); // requireFeature('messaging.inbox')
@@ -342,6 +361,7 @@ app.use('/api/chatbot', chatbotRoutes); // public ask/config + gated admin setti
 app.use('/api/saved-searches', verifyToken, savedSearchRoutes);
 app.use('/api/scorecard-templates', verifyToken, scorecardTemplateRoutes);
 app.use('/api/comments', verifyToken, commentRoutes);
+app.use('/api/my-team', myTeamRoutes);
 app.use('/api/public/announcements', publicAnnouncementRoutes); // careers-site banners (no auth)
 app.use('/api/announcements', verifyToken, announcementRoutes);
 app.use('/api/search', verifyToken, globalSearchRoutes);
@@ -376,20 +396,28 @@ app.use(
 // ── Static Uploads ───────────────────────────────────────────────────
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+const PUBLIC_UPLOAD_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
 app.use('/uploads', (req, res, next) => {
   const ext = path.extname(req.path).toLowerCase();
-  
-  if (['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
+  if (PUBLIC_UPLOAD_EXTS.includes(ext)) return next();
+  return verifyToken(req, res, next);
+}, async (req, res, next) => {
+  const ext = path.extname(req.path).toLowerCase();
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (ext === '.svg') {
+    res.setHeader('Content-Disposition', 'attachment');
+    res.setHeader('Content-Type', 'application/octet-stream');
+  } else if (['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
     res.setHeader('Content-Disposition', 'inline');
-    next();
-    return;
   }
-  
-  if (!ext) {
-    const filePath = path.join(__dirname, 'uploads', req.path);
-    if (fs.existsSync(filePath)) {
+
+  const rel = decodeURIComponent(String(req.path || '')).replace(/^\/+/, '').replace(/\\/g, '/');
+  if (!rel || rel.includes('..')) return res.status(400).end();
+  const localPath = path.join(uploadDir, rel);
+  if (fs.existsSync(localPath)) {
+    if (!ext) {
       try {
-        const fd = fs.openSync(filePath, 'r');
+        const fd = fs.openSync(localPath, 'r');
         const buffer = Buffer.alloc(8);
         fs.readSync(fd, buffer, 0, 8, 0);
         fs.closeSync(fd);
@@ -406,6 +434,17 @@ app.use('/uploads', (req, res, next) => {
         }
       } catch (e) { /* ignore detection errors */ }
     }
+    return next();
+  }
+
+  try {
+    const s3Service = require('./services/s3Service');
+    if (s3Service.isS3Configured()) {
+      const sent = await s3Service.sendAssetToResponse(rel, res);
+      if (sent) return;
+    }
+  } catch (err) {
+    logger.warn('[uploads] S3 fallback failed:', err.message);
   }
   next();
 }, express.static(uploadDir));
@@ -420,21 +459,8 @@ app.get('/health', (req, res) => {
     version: 'v3-saas-enterprise-byok',
     timestamp: new Date().toISOString(),
     emailConfigured,
-    // Public system sender used for verification/invites (not a secret)
-    emailFrom: zohoFrom || null,
     frontendUrlSet: Boolean((process.env.FRONTEND_URL || '').trim()),
   });
-});
-
-// ── Database connection guard ──────────────────────────────────────────
-app.use((req, res, next) => {
-  if (req.path === '/health') {
-    return next();
-  }
-  if (mongoose.connection.readyState !== 1) {
-    return res.status(503).json({ success: false, message: 'Service unavailable. Database connection is not ready.' });
-  }
-  next();
 });
 
 // Auth handlers live in routes/authRoutes.js (mounted earlier at /api).
@@ -460,11 +486,13 @@ const startServer = () => {
     logger.info(`🚀 SkillNix SaaS ATS v3 running on port ${PORT}`);
     const s3Resume = require('./services/s3Service').isS3Configured();
     logger.info(s3Resume
-      ? `[Resume storage] S3 — bucket: ${process.env.S3_BUCKET_NAME}`
-      : '[Resume storage] Local (uploads/)');
+      ? `[File storage] S3 — bucket: ${process.env.S3_BUCKET_NAME} (resumes / logos / profiles)`
+      : '[File storage] Local (uploads/)');
     startNotificationScheduler();
     initWebhookDispatcher();
     startReportScheduler();
+    startBackupScheduler();
+    startFreelanceSlaScheduler();
     logger.info('[Event Bus] Initialized with listeners:', eventBus.eventNames().join(', '));
   });
 
@@ -484,8 +512,17 @@ mongoose.connect(mongoUrl, {
   retryReads: true,
   bufferCommands: false
 })
-  .then(() => {
+  .then(async () => {
     logger.info('✅ MongoDB Connected');
+    try {
+      const { ensurePositionOrgUniqueness } = require('./services/ensurePositionOrgUniqueness');
+      const result = await ensurePositionOrgUniqueness(mongoose.connection);
+      logger.info(
+        `[Positions] org uniqueness ready (removed ${result.org.removed} org dupes, ${result.legacy.removed} legacy dupes; index ${result.orgIndex}/${result.legacyIndex})`
+      );
+    } catch (err) {
+      logger.error({ err }, '[Positions] org uniqueness failed; catalog still usable');
+    }
     startServer();
   })
   .catch(err => {

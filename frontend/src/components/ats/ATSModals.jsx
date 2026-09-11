@@ -1,5 +1,4 @@
 import React from 'react';
-import { createPortal } from 'react-dom';
 import ConfirmationModal from '../ConfirmationModal';
 import ColumnMapper from '../ColumnMapper';
 import ProductTour from '../ui/ProductTour';
@@ -11,6 +10,7 @@ import ExportExcelModal from './ExportExcelModal';
 import ResumePreviewModal from './ResumePreviewModal';
 import ShareCandidateModals from './ShareCandidateModals';
 import DedupeModal from './DedupeModal';
+import BulkEditModal from './BulkEditModal';
 import VerifiedEmailModal from './VerifiedEmailModal';
 import ImportSharedModals from './ImportSharedModals';
 import UploadingOverlay from './UploadingOverlay';
@@ -27,7 +27,6 @@ export default function ATSModals(props) {
     isUploading,
     showVerifiedEmailRequiredModal, verifiedEmailRequiredMessage,
     setShowVerifiedEmailRequiredModal, setVerifiedEmailRequiredMessage,
-    remarkPopover, remarkPopoverTimeoutRef, setRemarkPopover,
     form, email, filters, importer, share, resume, bulk, toast, fetchData, tourOpen, setTourOpen,
     candidates, orgPlan,
   } = props;
@@ -56,28 +55,11 @@ export default function ATSModals(props) {
         }}
       />
 
-      {remarkPopover && createPortal(
-        <div
-          className="fixed z-[9999] w-64 max-w-[90vw] p-3 bg-white text-stone-800 text-xs rounded-lg shadow-xl border border-stone-200 whitespace-normal"
-          style={{
-            left: Math.max(8, Math.min(remarkPopover.left - 128, typeof window !== 'undefined' ? window.innerWidth - 264 : 0)),
-            ...(remarkPopover.showAbove
-              ? { top: Math.max(8, remarkPopover.top - 8), transform: 'translateY(-100%)' }
-              : { top: remarkPopover.top + 24 }),
-          }}
-          onMouseEnter={() => { if (remarkPopoverTimeoutRef.current) clearTimeout(remarkPopoverTimeoutRef.current); }}
-          onMouseLeave={() => setRemarkPopover(null)}
-        >
-          <div className="font-semibold text-stone-500 mb-1">Remark</div>
-          <div className="leading-relaxed">{remarkPopover.remark}</div>
-        </div>,
-        document.body
-      )}
-
       <CandidateFormModal
         showModal={form.showModal}
         formData={form.formData}
         formSection={form.formSection}
+        stepDirection={form.stepDirection}
         editId={form.editId}
         orgPlan={orgPlan}
         jdForScore={form.jdForScore}
@@ -102,6 +84,7 @@ export default function ATSModals(props) {
         masterPositions={form.masterPositions}
         masterCtcBands={form.masterCtcBands}
         masterNoticePeriods={form.masterNoticePeriods}
+        masterProducts={form.masterProducts}
         setFormData={form.setFormData}
         setQuickList={form.setQuickList}
         formFlsOptions={form.formFlsOptions}
@@ -109,6 +92,7 @@ export default function ATSModals(props) {
         formCtcOptions={form.formCtcOptions}
         formExpectedCtcOptions={form.formExpectedCtcOptions}
         formNoticeOptions={form.formNoticeOptions}
+        formProductOptions={form.formProductOptions}
         formStatusOptions={form.formStatusOptions}
         formClientOptions={form.formClientOptions}
         masterClients={form.masterClients}
@@ -121,6 +105,28 @@ export default function ATSModals(props) {
         isAutoParsing={form.isAutoParsing}
         countryCodes={form.countryCodes}
         recentStepChangeRef={form.recentStepChangeRef}
+        showPanRequiredModal={form.showPanRequiredModal}
+        setShowPanRequiredModal={form.setShowPanRequiredModal}
+        onClientChange={form.onClientChange}
+        masterDataLoading={form.masterDataLoading}
+      />
+
+      <ConfirmationModal
+        isOpen={Boolean(form.resumeConflictModal?.isOpen)}
+        onClose={() => form.applyResumeMerge?.('empty-only')}
+        onConfirm={() => form.applyResumeMerge?.('replace')}
+        type="warning"
+        eyebrow="Resume upload"
+        title="Different person detected"
+        message={
+          form.resumeConflictModal?.result?.name || form.resumeConflictModal?.result?.email
+            ? `This resume looks like ${form.resumeConflictModal.result.name || form.resumeConflictModal.result.email}, which doesn’t match the details already in the form.`
+            : 'This resume doesn’t match the details already in the form.'
+        }
+        details="Replace updates name, email, phone, and other resume fields. Keep mine only fills empty fields and leaves your typed values."
+        confirmText="Replace with resume"
+        cancelText="Keep my details"
+        zClass="z-[320]"
       />
 
       <CandidateEmailModal
@@ -133,6 +139,7 @@ export default function ATSModals(props) {
         emailChannel={email.emailChannel}
         setEmailChannel={email.setEmailChannel}
         channelsAvailable={email.channelsAvailable}
+        emailSenderInfo={email.emailSenderInfo}
         emailMode={email.emailMode}
         setEmailMode={email.setEmailMode}
         emailCC={email.emailCC}
@@ -154,6 +161,12 @@ export default function ATSModals(props) {
         setSelectedTemplate={email.setSelectedTemplate}
         templateVars={email.templateVars}
         setTemplateVars={email.setTemplateVars}
+        templateDraftSubject={email.templateDraftSubject}
+        setTemplateDraftSubject={email.setTemplateDraftSubject}
+        templateDraftBody={email.templateDraftBody}
+        setTemplateDraftBody={email.setTemplateDraftBody}
+        templateDraftDirty={email.templateDraftDirty}
+        setTemplateDraftDirty={email.setTemplateDraftDirty}
         emailType={email.emailType}
         setEmailType={email.setEmailType}
         quickName={email.quickName}
@@ -166,6 +179,8 @@ export default function ATSModals(props) {
         setQuickJoiningDate={email.setQuickJoiningDate}
         customMessage={email.customMessage}
         setCustomMessage={email.setCustomMessage}
+        quickSubject={email.quickSubject}
+        setQuickSubject={email.setQuickSubject}
         showQuickPreview={email.showQuickPreview}
         setShowQuickPreview={email.setShowQuickPreview}
         quickPreviewHtml={email.quickPreviewHtml}
@@ -215,13 +230,18 @@ export default function ATSModals(props) {
         showDownloadModal={props.showDownloadModal}
         setShowDownloadModal={props.setShowDownloadModal}
         filteredCandidates={filters.filteredCandidates}
+        filteredCount={filters.filteredCount}
         selectedIds={props.selectedIds}
         toast={toast}
+        fetchMatchingIds={props.fetchMatchingIds}
+        listQueryOptions={filters.listQueryOptions}
       />
 
       <ResumePreviewModal
         previewResumeUrl={resume.previewResumeUrl}
         previewBlobUrl={resume.previewBlobUrl}
+        previewBlob={resume.previewBlob}
+        previewFileKind={resume.previewFileKind}
         previewResumeCandidate={resume.previewResumeCandidate}
         previewResumeError={resume.previewResumeError}
         isPreviewLoading={resume.isPreviewLoading}
@@ -239,6 +259,22 @@ export default function ATSModals(props) {
         confirmText={bulk.confirmModal.confirmText}
         type={bulk.confirmModal.type}
         isLoading={bulk.confirmModal.isLoading}
+      />
+
+      <BulkEditModal
+        open={bulk.bulkEditOpen}
+        onClose={() => !bulk.bulkEditLoading && bulk.setBulkEditOpen(false)}
+        selectedCount={props.selectedIds?.length || 0}
+        onSubmit={bulk.handleBulkEditSubmit}
+        isLoading={bulk.bulkEditLoading}
+        statusOptions={form.formStatusOptions || []}
+        sourceOptions={form.formSourceOptions || []}
+        clientOptions={form.formClientOptions || []}
+        positionOptions={form.formPositionOptions || []}
+        spocOptions={(form.teamMembers || [])
+          .map((m) => m.name)
+          .filter(Boolean)
+          .map((name) => ({ value: name, label: name }))}
       />
 
       <ImportSharedModals
@@ -276,7 +312,9 @@ export default function ATSModals(props) {
       <DedupeModal
         open={bulk.showDedupeModal}
         dedupeResults={bulk.dedupeResults}
-        onClose={() => bulk.setShowDedupeModal(false)}
+        onClose={() => !bulk.dedupeMerging && bulk.setShowDedupeModal(false)}
+        onMerge={bulk.handleMergeDuplicates}
+        merging={bulk.dedupeMerging}
       />
 
       <TourHelpFab onClick={() => setTourOpen(true)} label="Take a tour" title="Take a tour of Candidates" />

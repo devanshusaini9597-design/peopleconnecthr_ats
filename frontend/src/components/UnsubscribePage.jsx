@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Mail, Loader2, ArrowLeft } from 'lucide-react';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { Loader2, ArrowRight } from 'lucide-react';
 import BASE_API_URL from '../config';
+import PublicMarketingShell, {
+  FieldLabel,
+  fieldClassName,
+  dangerBtnClassName,
+  primaryBtnClassName,
+  secondaryBtnClassName,
+} from './PublicMarketingShell';
 
 const UnsubscribePage = () => {
   const navigate = useNavigate();
@@ -15,11 +22,22 @@ const UnsubscribePage = () => {
     if (e && e.includes('@')) setEmail(e.trim());
   }, [searchParams]);
 
+  const orgSlug = (searchParams.get('org') || searchParams.get('orgSlug') || '').trim();
+  const orgId = (searchParams.get('orgId') || '').trim();
+  const subscribeQs = [
+    email.trim() ? `email=${encodeURIComponent(email.trim())}` : '',
+    orgSlug ? `org=${encodeURIComponent(orgSlug)}` : '',
+    orgId ? `orgId=${encodeURIComponent(orgId)}` : '',
+  ]
+    .filter(Boolean)
+    .join('&');
+  const subscribePath = subscribeQs ? `/subscribe?${subscribeQs}` : '/subscribe';
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     const emailTrim = (email || '').trim().toLowerCase();
-    if (!emailTrim || !emailTrim.includes('@')) {
+    if (!emailTrim || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
       setError('Please enter a valid email address.');
       return;
     }
@@ -28,14 +46,18 @@ const UnsubscribePage = () => {
       const res = await fetch(`${BASE_API_URL}/api/public/unsubscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: emailTrim }),
+        body: JSON.stringify({
+          email: emailTrim,
+          ...(orgSlug ? { orgSlug } : {}),
+          ...(orgId ? { orgId } : {}),
+        }),
       });
-      const data = await res.json();
-      if (data.success) {
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
         navigate('/unsubscribe/thank-you', { replace: true });
         return;
       }
-      setError(data.message || 'Unsubscribe failed. Please try again.');
+      setError(data.message || 'We could not update your preferences. Please try again.');
     } catch {
       setError('Unable to connect. Please check your connection and try again.');
     } finally {
@@ -44,54 +66,76 @@ const UnsubscribePage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-          <div className="p-8">
-            <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-5">
-              <Mail className="w-7 h-7 text-gray-600" />
-            </div>
-            <h1 className="text-xl font-bold text-gray-900 mb-2">Unsubscribe from updates</h1>
-            <p className="text-gray-600 text-sm leading-relaxed max-w-sm mx-auto mb-6">
-              Enter your email address to be removed from our mailing list. You will no longer receive marketing emails from us.
-            </p>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <div className="bg-red-50 text-red-700 text-sm rounded-lg px-4 py-3 border border-red-200">
-                  {error}
-                </div>
-              )}
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Email address</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none"
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={loading || !email.trim()}
-                className="w-full py-3 bg-gray-800 text-white rounded-lg font-semibold text-sm hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
-              >
-                {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Unsubscribing...</> : 'Unsubscribe'}
-              </button>
-            </form>
-            <p className="text-gray-500 text-xs mt-4 text-center">
-              Changed your mind? <a href="/subscribe" className="text-indigo-600 hover:text-indigo-800 font-medium">Subscribe again</a>
-            </p>
+    <PublicMarketingShell
+      eyebrow="Email preferences"
+      title="Manage your email preferences"
+      subtitle="Stop marketing updates from Skillnix Recruitment, or keep receiving curated roles and hiring drives."
+      backTo="/subscribe"
+      backLabel="Back to subscribe"
+    >
+      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        {error && (
+          <div
+            role="alert"
+            className="bg-red-50 text-red-700 text-sm rounded-xl px-3.5 py-3 border border-red-100"
+          >
+            {error}
           </div>
-          <div className="px-6 pb-8 pt-2 border-t border-gray-100 text-center">
-            <a href="/" className="inline-flex items-center gap-2 text-gray-600 hover:text-indigo-600 font-medium text-sm">
-              <ArrowLeft className="w-4 h-4" /> Back to home
-            </a>
+        )}
+
+        <div>
+          <FieldLabel required>Email address</FieldLabel>
+          <input
+            type="email"
+            name="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            className={fieldClassName}
+            required
+          />
+          <p className="mt-2 text-[12px] text-slate-500 leading-relaxed">
+            This only affects marketing updates (open roles and hiring drives). Transactional
+            messages such as interview or offer email are separate.
+          </p>
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading || !email.trim()}
+          className={dangerBtnClassName}
+        >
+          {loading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" /> Updating preferences…
+            </>
+          ) : (
+            'Unsubscribe from marketing updates'
+          )}
+        </button>
+
+        <div className="relative py-1">
+          <div className="absolute inset-0 flex items-center" aria-hidden>
+            <div className="w-full border-t border-stone-200" />
+          </div>
+          <div className="relative flex justify-center">
+            <span className="bg-white px-3 text-[11px] font-medium uppercase tracking-wider text-stone-400">
+              Or
+            </span>
           </div>
         </div>
-      </div>
-    </div>
+
+        <Link to={subscribePath} className={`${primaryBtnClassName} no-underline`}>
+          Stay subscribed — get job updates
+          <ArrowRight className="w-4 h-4" />
+        </Link>
+
+        <Link to={subscribePath} className={`${secondaryBtnClassName} no-underline`}>
+          Subscribe with a different email
+        </Link>
+      </form>
+    </PublicMarketingShell>
   );
 };
 

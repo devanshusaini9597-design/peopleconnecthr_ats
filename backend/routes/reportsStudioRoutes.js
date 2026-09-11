@@ -8,12 +8,28 @@ const Application = require('../models/Application');
 const Candidate = require('../models/Candidate');
 const Job = require('../models/Job');
 const { requireFeature } = require('../middleware/featureMiddleware');
+const { analyticsScope, applicationAnalyticsScope } = require('../utils/dataScope');
+
+async function studioFilters(req, res) {
+  try {
+    const [candidateMatch, applicationMatch] = await Promise.all([
+      analyticsScope(req),
+      applicationAnalyticsScope(req),
+    ]);
+    return { candidateMatch, applicationMatch };
+  } catch (err) {
+    const status = err.statusCode || 500;
+    res.status(status).json({ success: false, message: err.message });
+    return null;
+  }
+}
 
 router.get('/pipeline', requireFeature('analytics.advanced'), async (req, res) => {
   try {
-    const orgId = req.user.organizationId;
+    const filters = await studioFilters(req, res);
+    if (!filters) return;
     const rows = await Application.aggregate([
-      { $match: { organizationId: orgId, isRejected: { $ne: true } } },
+      { $match: { ...filters.applicationMatch, isRejected: { $ne: true } } },
       { $group: { _id: '$stage', count: { $sum: 1 } } },
       { $sort: { count: -1 } }
     ]);
@@ -25,9 +41,10 @@ router.get('/pipeline', requireFeature('analytics.advanced'), async (req, res) =
 
 router.get('/sources', requireFeature('analytics.advanced'), async (req, res) => {
   try {
-    const orgId = req.user.organizationId;
+    const filters = await studioFilters(req, res);
+    if (!filters) return;
     const rows = await Candidate.aggregate([
-      { $match: { organizationId: orgId } },
+      { $match: filters.candidateMatch },
       { $group: { _id: { $ifNull: ['$source', 'Unknown'] }, count: { $sum: 1 } } },
       { $sort: { count: -1 } },
       { $limit: 20 }
@@ -40,9 +57,10 @@ router.get('/sources', requireFeature('analytics.advanced'), async (req, res) =>
 
 router.get('/time-to-hire', requireFeature('analytics.advanced'), async (req, res) => {
   try {
-    const orgId = req.user.organizationId;
+    const filters = await studioFilters(req, res);
+    if (!filters) return;
     const hired = await Application.find({
-      organizationId: orgId,
+      ...filters.applicationMatch,
       stage: { $in: ['Hired', 'Joined'] }
     }).select('createdAt updatedAt stageHistory jobId').populate('jobId', 'title').lean();
 
@@ -69,10 +87,12 @@ router.get('/time-to-hire', requireFeature('analytics.advanced'), async (req, re
 
 router.get('/jobs-performance', requireFeature('reports.custom'), async (req, res) => {
   try {
+    const filters = await studioFilters(req, res);
+    if (!filters) return;
     const orgId = req.user.organizationId;
     const jobs = await Job.find({ organizationId: orgId }).select('title status').lean();
     const counts = await Application.aggregate([
-      { $match: { organizationId: orgId } },
+      { $match: filters.applicationMatch },
       { $group: { _id: '$jobId', total: { $sum: 1 }, hired: { $sum: { $cond: [{ $in: ['$stage', ['Hired', 'Joined']] }, 1, 0] } } } }
     ]);
     const map = new Map(counts.map((c) => [String(c._id), c]));

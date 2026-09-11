@@ -107,11 +107,13 @@ describe('freelancer isolation', () => {
     expect(src).toMatch(/router\.get\('\/:id',\s*requireRecruiterOrAbove/);
   });
 
-  it('import-all-to-mine and bulk upload stay staff-only', () => {
+  it('import-all-to-mine stays staff-only; bulk upload allows freelancers on private desk', () => {
     const src = fs.readFileSync(require.resolve('../routes/candidateRoutes'), 'utf8');
     expect(src).toMatch(/import-all-to-mine',\s*requireRecruiterOrAbove/);
-    expect(src).toMatch(/bulk-upload',\s*requireRecruiterOrAbove/);
-    expect(src).toMatch(/bulk-delete',\s*requireRecruiterOrAbove/);
+    // Freelancer desk Excel import (same flow as company; scoped in controllers)
+    expect(src).toMatch(/bulk-upload-auto',\s*requireFreelancerOrRecruiter/);
+    expect(src).toMatch(/bulk-upload',\s*requireFreelancerOrRecruiter/);
+    expect(src).toMatch(/bulk-delete',\s*requireFreelancerOrRecruiter/);
   });
 
   it('org member directory and usage are blocked for freelancers', () => {
