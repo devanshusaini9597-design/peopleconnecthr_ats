@@ -733,7 +733,7 @@ async function listEmailReports(organizationId, query = {}) {
   const lim = Math.min(100, Math.max(1, Number(limit) || 25));
   const skip = (pageNum - 1) * lim;
 
-  const [items, total, aggregate] = await Promise.all([
+  const [items, total] = await Promise.all([
     EmailSendLog.find(filter)
       .sort({ sentAt: -1 })
       .skip(skip)
@@ -741,25 +741,9 @@ async function listEmailReports(organizationId, query = {}) {
       .populate('sentByUserId', 'name email')
       .lean(),
     EmailSendLog.countDocuments(filter),
-    EmailSendLog.aggregate([
-      { $match: { organizationId: new mongoose.Types.ObjectId(String(organizationId)) } },
-      {
-        $group: {
-          _id: null,
-          sends: { $sum: 1 },
-          recipients: { $sum: '$totals.sent' },
-          delivered: { $sum: '$totals.delivered' },
-          opened: { $sum: '$totals.opened' },
-          clicked: { $sum: '$totals.clicked' },
-          bounced: { $sum: '$totals.bounced' },
-          replied: { $sum: '$totals.replied' },
-          failed: { $sum: '$totals.failed' },
-        },
-      },
-    ]),
   ]);
 
-  const summary = aggregate[0] || {
+  let summary = {
     sends: 0,
     recipients: 0,
     delivered: 0,
@@ -769,7 +753,37 @@ async function listEmailReports(organizationId, query = {}) {
     replied: 0,
     failed: 0,
   };
-  delete summary._id;
+
+  try {
+    const orgOid = mongoose.Types.ObjectId.isValid(String(organizationId))
+      ? new mongoose.Types.ObjectId(String(organizationId))
+      : null;
+    if (orgOid) {
+      const aggregate = await EmailSendLog.aggregate([
+        { $match: { organizationId: orgOid } },
+        {
+          $group: {
+            _id: null,
+            sends: { $sum: 1 },
+            recipients: { $sum: { $ifNull: ['$totals.sent', 0] } },
+            delivered: { $sum: { $ifNull: ['$totals.delivered', 0] } },
+            opened: { $sum: { $ifNull: ['$totals.opened', 0] } },
+            clicked: { $sum: { $ifNull: ['$totals.clicked', 0] } },
+            bounced: { $sum: { $ifNull: ['$totals.bounced', 0] } },
+            replied: { $sum: { $ifNull: ['$totals.replied', 0] } },
+            failed: { $sum: { $ifNull: ['$totals.failed', 0] } },
+          },
+        },
+      ]);
+      if (aggregate[0]) {
+        summary = { ...summary, ...aggregate[0] };
+        delete summary._id;
+      }
+    }
+  } catch (err) {
+    logger.warn({ err: err.message }, '[emailReports] summary aggregate failed');
+  }
+
   summary.openRate = pct(summary.opened, summary.delivered || summary.recipients);
   summary.clickRate = pct(summary.clicked, summary.delivered || summary.recipients);
   summary.bounceRate = pct(summary.bounced, summary.recipients);
