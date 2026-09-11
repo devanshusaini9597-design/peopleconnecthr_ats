@@ -3,20 +3,14 @@ import {
   Mail,
   RefreshCw,
   Search,
-  Send,
-  Eye,
-  MousePointerClick,
-  AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  MessageSquareReply,
   Filter,
-  Loader2,
-  ChevronRight,
   Inbox,
   AlertCircle,
   Megaphone,
   Zap,
+  GitBranch,
+  XCircle,
+  Loader2,
 } from 'lucide-react';
 import PageHeader from './ui/PageHeader';
 import KpiCard from './analytics/KpiCard';
@@ -26,10 +20,12 @@ import usePageTour from '../hooks/usePageTour';
 import { useToast } from './Toast';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import API_URL from '../config';
+import EmailReportsTable from './emailReports/EmailReportsTable';
 import {
   CHANNEL_TABS,
   EMAIL_REPORTS_TOUR_KEY,
   EMAIL_REPORTS_TOUR_STEPS,
+  buildKpiFunnel,
 } from './emailReports/emailReportsConstants';
 
 const BASE = API_URL;
@@ -326,6 +322,11 @@ const EmailReportsPage = () => {
     return summary;
   }, [activeTab, channelSummaries, summary]);
 
+  const kpiFunnel = useMemo(
+    () => buildKpiFunnel(displaySummary, activeTab),
+    [displaySummary, activeTab]
+  );
+
   const queryString = useMemo(() => {
     const p = new URLSearchParams();
     if (activeTab === 'marketing') p.set('channel', 'marketing');
@@ -531,75 +532,45 @@ const EmailReportsPage = () => {
         ) : null}
 
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-bold tracking-tight text-stone-900">{activeMeta.label}</h2>
-            <p className="text-xs text-stone-500">{activeMeta.blurb}</p>
+          <div className="flex items-start gap-2.5">
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700 ring-1 ring-brand-100">
+              <GitBranch size={16} strokeWidth={2.25} />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold tracking-tight text-stone-900">
+                {activeMeta.label} · engagement funnel
+              </h2>
+              <p className="text-xs text-stone-500">
+                Related steps in order — each rate is measured against the previous stage
+              </p>
+            </div>
           </div>
         </div>
 
         <div
           data-tour="email-reports-kpis"
-          className="grid min-w-0 w-full grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4"
+          className="grid min-w-0 w-full grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6"
         >
-          <KpiCard
-            icon={Send}
-            label="Sends"
-            value={displaySummary.sends || 0}
-            loading={loading}
-            gradient="from-brand-500 to-teal-400"
-          />
-          <KpiCard
-            icon={Mail}
-            label="Recipients"
-            value={displaySummary.recipients || 0}
-            loading={loading}
-            gradient="from-sky-500 to-brand-400"
-          />
-          <KpiCard
-            icon={CheckCircle2}
-            label="Delivered"
-            value={displaySummary.delivered || 0}
-            loading={loading}
-            gradient="from-emerald-500 to-teal-400"
-          />
-          <KpiCard
-            icon={Eye}
-            label="Opened"
-            value={displaySummary.opened || 0}
-            caption={`${displaySummary.openRate ?? 0}% open rate`}
-            loading={loading}
-            gradient="from-teal-500 to-cyan-400"
-          />
-          <KpiCard
-            icon={MousePointerClick}
-            label="Clicked"
-            value={displaySummary.clicked || 0}
-            caption={`${displaySummary.clickRate ?? 0}% click rate`}
-            loading={loading}
-            gradient="from-indigo-500 to-violet-400"
-          />
-          <KpiCard
-            icon={AlertTriangle}
-            label="Bounced"
-            value={displaySummary.bounced || 0}
-            caption={`${displaySummary.bounceRate ?? 0}% bounce rate`}
-            loading={loading}
-            gradient="from-amber-500 to-orange-400"
-          />
-          <KpiCard
-            icon={MessageSquareReply}
-            label="Replied"
-            value={displaySummary.replied || 0}
-            loading={loading}
-            gradient="from-violet-500 to-fuchsia-400"
-          />
-          <KpiCard
-            icon={XCircle}
-            label="Failed"
-            value={displaySummary.failed || 0}
-            loading={loading}
-            gradient="from-rose-500 to-red-400"
-          />
+          {kpiFunnel.map((kpi, idx) => (
+            <div key={kpi.key} className="relative min-w-0">
+              {idx > 0 && (
+                <div
+                  className="pointer-events-none absolute -left-1.5 top-1/2 z-10 hidden -translate-y-1/2 text-stone-300 xl:block"
+                  aria-hidden
+                >
+                  →
+                </div>
+              )}
+              <KpiCard
+                icon={kpi.icon}
+                label={kpi.label}
+                value={kpi.value}
+                caption={kpi.caption}
+                loading={loading}
+                gradient={kpi.gradient}
+              />
+            </div>
+          ))}
         </div>
 
         <div className="card-ats-bordered relative overflow-hidden p-4 sm:p-5">
@@ -640,114 +611,16 @@ const EmailReportsPage = () => {
           </div>
         </div>
 
-        <div data-tour="email-reports-table" className="card-ats-bordered relative overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-stone-100 text-sm">
-              <thead className="bg-stone-50/90 text-left text-xs font-semibold uppercase tracking-wide text-stone-500">
-                <tr>
-                  <th className="px-4 py-3">When</th>
-                  <th className="px-4 py-3">Subject / Campaign</th>
-                  <th className="px-4 py-3">Provider</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Sent</th>
-                  <th className="px-4 py-3">Open</th>
-                  <th className="px-4 py-3">Click</th>
-                  <th className="px-4 py-3">Bounce</th>
-                  <th className="px-4 py-3">Reply</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                {loading && (
-                  <tr>
-                    <td colSpan={10} className="px-4 py-12 text-center text-stone-500">
-                      <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-brand-600" />
-                      Loading {activeMeta.short.toLowerCase()} reports…
-                    </td>
-                  </tr>
-                )}
-                {!loading && items.length === 0 && !error && (
-                  <tr>
-                    <td colSpan={10} className="px-4 py-12 text-center text-stone-500">
-                      {activeTab === 'marketing'
-                        ? 'No marketing campaigns logged yet. Send a campaign from the ATS, then click Refresh from Zoho.'
-                        : activeTab === 'transactional'
-                          ? 'No transactional sends logged yet. Email a candidate (interview / custom) to see ZeptoMail tracking here.'
-                          : 'No tracked sends yet. Send mail from the ATS, then refresh.'}
-                    </td>
-                  </tr>
-                )}
-                {!loading &&
-                  items.map((row) => (
-                    <tr key={row._id} className="transition-colors hover:bg-stone-50/80">
-                      <td className="whitespace-nowrap px-4 py-3 text-stone-600">{fmtDate(row.sentAt)}</td>
-                      <td className="max-w-xs px-4 py-3">
-                        <div className="truncate font-semibold text-stone-900">
-                          {row.subject || row.campaignName || '—'}
-                        </div>
-                        <div className="truncate text-xs text-stone-500">
-                          {row.fromEmail || '—'}
-                          {row.sentByUserId?.name ? ` · ${row.sentByUserId.name}` : ''}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 capitalize text-stone-700">
-                        {(row.provider || '').replace(/_/g, ' ')}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge tone={row.status}>{row.status}</Badge>
-                      </td>
-                      <td className="px-4 py-3 font-medium tabular-nums">{row.totals?.sent ?? 0}</td>
-                      <td className="px-4 py-3 tabular-nums">
-                        {row.totals?.opened ?? 0}
-                        <span className="text-xs text-stone-400"> · {row.rates?.openRate ?? 0}%</span>
-                      </td>
-                      <td className="px-4 py-3 tabular-nums">
-                        {row.totals?.clicked ?? 0}
-                        <span className="text-xs text-stone-400"> · {row.rates?.clickRate ?? 0}%</span>
-                      </td>
-                      <td className="px-4 py-3 tabular-nums">{row.totals?.bounced ?? 0}</td>
-                      <td className="px-4 py-3 tabular-nums">{row.totals?.replied ?? 0}</td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => openDetail(row._id)}
-                          className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-900"
-                        >
-                          Details <ChevronRight className="h-4 w-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-          {pagination.pages > 1 && (
-            <div className="flex items-center justify-between border-t border-stone-100 px-4 py-3 text-sm">
-              <span className="text-stone-500">
-                Page {pagination.page} of {pagination.pages} · {pagination.total} sends
-              </span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="btn-secondary px-3 py-1.5"
-                  disabled={pagination.page <= 1}
-                  onClick={() => setFilters((f) => ({ ...f, page: Math.max(1, f.page - 1) }))}
-                >
-                  Previous
-                </button>
-                <button
-                  type="button"
-                  className="btn-secondary px-3 py-1.5"
-                  disabled={pagination.page >= pagination.pages}
-                  onClick={() => setFilters((f) => ({ ...f, page: f.page + 1 }))}
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        <EmailReportsTable
+          items={items}
+          loading={loading}
+          error={error}
+          activeTab={activeTab}
+          activeMeta={activeMeta}
+          pagination={pagination}
+          onPageChange={(page) => setFilters((f) => ({ ...f, page }))}
+          onOpenDetail={openDetail}
+        />
       </div>
 
       <TourHelpFab
