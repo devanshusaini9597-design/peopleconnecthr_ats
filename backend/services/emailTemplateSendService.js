@@ -720,7 +720,12 @@ async function sendTemplateEmail(user, body) {
           emailSubject,
           htmlBody,
           emailBody.replace(/<[^>]*>/g, ''),
-          emailOptions
+          {
+            ...emailOptions,
+            organizationId: user.organizationId,
+            emailType: template.category || 'template',
+            channel: 'transactional',
+          }
         );
       }
       results.success.push(recipient.email);

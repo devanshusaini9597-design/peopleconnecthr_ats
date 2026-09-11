@@ -42,6 +42,8 @@ export function useCandidateEmail({
   const [selectedEmails, setSelectedEmails] = useState(new Set());
   const [campaignStatus, setCampaignStatus] = useState(null);
   const [emailStatuses, setEmailStatuses] = useState({});
+  const [emailCampaignResult, setEmailCampaignResult] = useState(null);
+  const [showEmailCampaignResult, setShowEmailCampaignResult] = useState(false);
 
   const {
     handleBulkEmail,
@@ -134,6 +136,8 @@ export function useCandidateEmail({
     quickPosition,
     quickDepartment,
     quickJoiningDate,
+    setEmailCampaignResult,
+    setShowEmailCampaignResult,
   });
 
   return {
@@ -154,6 +158,8 @@ export function useCandidateEmail({
     showVerifiedEmailRequiredModal, setShowVerifiedEmailRequiredModal,
     verifiedEmailRequiredMessage, setVerifiedEmailRequiredMessage,
     bulkEmailStep, setBulkEmailStep, selectedEmails, setSelectedEmails, campaignStatus, emailStatuses,
+    emailCampaignResult, setEmailCampaignResult,
+    showEmailCampaignResult, setShowEmailCampaignResult,
     handleBulkEmail, startBulkEmailFlow, toggleEmailSelection, selectAllEmails,
     handleConfirmSend, closeBulkEmailFlow, handleSendEmail, selectEmailTemplate,
     sendTemplateEmail, sendSingleEmail,

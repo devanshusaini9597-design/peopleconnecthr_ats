@@ -139,7 +139,7 @@ router.post('/reports/sync', async (req, res) => {
     }
     const [stale, campaigns] = await Promise.all([
       emailReports.syncStaleReports(req.user.organizationId, { max: 20 }),
-      emailReports.syncRecentCampaigns(req.user.organizationId, { limit: 15 }).catch((err) => ({
+      emailReports.syncRecentCampaigns(req.user.organizationId, { limit: 50 }).catch((err) => ({
         error: err.message,
         imported: 0,
         synced: 0,

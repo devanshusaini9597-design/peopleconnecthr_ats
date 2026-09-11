@@ -637,27 +637,64 @@ async function syncEmailSend(id, organizationId) {
   return doc;
 }
 
-async function syncRecentCampaigns(organizationId, { limit = 20 } = {}) {
+async function syncRecentCampaigns(organizationId, { limit = 50 } = {}) {
   const { campaignsRequest } = require('./campaignService');
   let settings = null;
   try {
     settings = await require('./marketingListService').resolveCampaignsSettings(organizationId);
   } catch (_) {}
 
-  const res = await campaignsRequest(
-    'GET',
-    'recentcampaigns',
-    { resfmt: 'JSON', limit: String(limit), sortorder: 'desc' },
-    settings
-  );
+  const range = Math.min(100, Math.max(5, Number(limit) || 50));
+  const collectRows = (res) => {
+    if (!res || typeof res !== 'object') return [];
+    const candidates = [
+      res.recent_campaigns,
+      res['recent-campaigns'],
+      res.recentcampaigns,
+      res.campaigns,
+      res.list_of_details,
+      res.response?.recent_campaigns,
+      res.response?.['recent-campaigns'],
+      res.response?.campaigns,
+    ];
+    for (const c of candidates) {
+      if (Array.isArray(c) && c.length) return c;
+    }
+    // Some Zoho payloads wrap a single object
+    if (res.campaign_key || res.campaignKey) return [res];
+    return [];
+  };
 
-  const rows =
-    res?.recent_campaigns ||
-    res?.['recent-campaigns'] ||
-    res?.campaigns ||
-    res?.list_of_details ||
-    [];
-  const list = Array.isArray(rows) ? rows : [];
+  const endpoints = [
+    ['recentcampaigns', { resfmt: 'JSON', sortorder: 'desc', fromindex: '1', range: String(range) }],
+    ['recentsentcampaigns', { resfmt: 'JSON', sortorder: 'desc', fromindex: '1', range: String(range) }],
+  ];
+
+  const byKey = new Map();
+  let fetchErrors = [];
+
+  for (const [path, params] of endpoints) {
+    try {
+      const res = await campaignsRequest('GET', path, params, settings);
+      const code = String(res?.code ?? res?.response?.code ?? '').trim();
+      if (code && code !== '0' && code !== '200') {
+        fetchErrors.push(`${path}: ${res?.message || res?.status || code}`);
+        continue;
+      }
+      for (const row of collectRows(res)) {
+        const campaignKey = String(
+          row.campaign_key || row.campaignKey || row.campaignkey || row.key || ''
+        ).trim();
+        if (!campaignKey) continue;
+        if (!byKey.has(campaignKey)) byKey.set(campaignKey, row);
+      }
+    } catch (err) {
+      fetchErrors.push(`${path}: ${err.message}`);
+      logger.warn({ err: err.message, path }, '[emailReports] recent campaigns fetch failed');
+    }
+  }
+
+  const list = Array.from(byKey.values());
   let imported = 0;
   let synced = 0;
 
@@ -667,19 +704,29 @@ async function syncRecentCampaigns(organizationId, { limit = 20 } = {}) {
 
     let doc = await EmailSendLog.findOne({ organizationId, campaignKey });
     if (!doc) {
+      const sentRaw = row.sent_time || row.sent_date || row.created_time || row.created_date;
+      let sentAt = new Date();
+      if (sentRaw) {
+        const parsed = new Date(sentRaw);
+        if (!Number.isNaN(parsed.getTime())) sentAt = parsed;
+        else if (/^\d+$/.test(String(sentRaw))) {
+          const ms = Number(sentRaw);
+          sentAt = new Date(ms < 1e12 ? ms * 1000 : ms);
+        }
+      }
       doc = await recordEmailSend({
         organizationId,
         channel: 'marketing',
         provider: 'zoho_campaigns',
         emailType: 'campaign',
-        subject: row.email_subject || row.subject || '',
-        campaignName: row.campaign_name || row.name || '',
+        subject: row.email_subject || row.subject || row.campaign_name || '',
+        campaignName: row.campaign_name || row.campaignname || row.name || '',
         campaignKey,
-        fromEmail: row.email_from || row.from || '',
+        fromEmail: row.email_from || row.from_email || row.from || '',
         status: 'sent',
         recipients: [],
         providerRaw: { recent: row },
-        sentAt: row.sent_time ? new Date(row.sent_time) : new Date(),
+        sentAt,
       });
       imported += 1;
     }
@@ -693,7 +740,12 @@ async function syncRecentCampaigns(organizationId, { limit = 20 } = {}) {
     }
   }
 
-  return { imported, synced, total: list.length };
+  return {
+    imported,
+    synced,
+    total: list.length,
+    error: list.length === 0 && fetchErrors.length ? fetchErrors.join('; ') : undefined,
+  };
 }
 
 async function listEmailReports(organizationId, query = {}) {

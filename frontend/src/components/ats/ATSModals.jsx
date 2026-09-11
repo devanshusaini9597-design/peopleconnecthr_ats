@@ -5,6 +5,8 @@ import ProductTour from '../ui/ProductTour';
 import TourHelpFab from '../ui/TourHelpFab';
 import CandidateFormModal from './CandidateFormModal';
 import CandidateEmailModal from './CandidateEmailModal';
+import EmailCampaignResultModal from './EmailCampaignResultModal';
+import { useNavigate } from 'react-router-dom';
 import ImportReviewModal from './ImportReviewModal';
 import ExportExcelModal from './ExportExcelModal';
 import ResumePreviewModal from './ResumePreviewModal';
@@ -30,6 +32,7 @@ export default function ATSModals(props) {
     form, email, filters, importer, share, resume, bulk, toast, fetchData, tourOpen, setTourOpen,
     candidates, orgPlan,
   } = props;
+  const navigate = useNavigate();
 
   return (
     <>
@@ -193,6 +196,20 @@ export default function ATSModals(props) {
         sendTemplateEmail={email.sendTemplateEmail}
         sendSingleEmail={email.sendSingleEmail}
         toast={toast}
+      />
+
+      <EmailCampaignResultModal
+        open={Boolean(email.showEmailCampaignResult)}
+        result={email.emailCampaignResult}
+        onClose={() => {
+          email.setShowEmailCampaignResult?.(false);
+          email.setEmailCampaignResult?.(null);
+        }}
+        onViewReports={() => {
+          email.setShowEmailCampaignResult?.(false);
+          email.setEmailCampaignResult?.(null);
+          navigate('/email-reports');
+        }}
       />
 
       <DuplicatesModal

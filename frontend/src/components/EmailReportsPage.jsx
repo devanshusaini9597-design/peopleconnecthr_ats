@@ -365,6 +365,25 @@ const EmailReportsPage = () => {
     }
   }, [queryString]);
 
+  // First visit: import recent Zoho Campaigns so older marketing mail appears
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authenticatedFetch(`${BASE}/api/email/reports/sync`, { method: 'POST' });
+        if (isUnauthorized(res) || cancelled) return;
+        await readJson(res);
+        if (!cancelled) load();
+      } catch {
+        /* silent — user can still Refresh manually */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     load();
   }, [load]);

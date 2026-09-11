@@ -51,7 +51,16 @@ export function useCandidateEmailSend(deps) {
     quickPosition,
     quickDepartment,
     quickJoiningDate,
+    setEmailCampaignResult,
+    setShowEmailCampaignResult,
   } = deps;
+
+  const showCampaignResult = (payload) => {
+    if (typeof setEmailCampaignResult === 'function') {
+      setEmailCampaignResult(payload);
+      setShowEmailCampaignResult?.(true);
+    }
+  };
 
   const handleSendEmail = async (candidate) => {
     if (!candidate.email || !candidate.email.includes('@')) {
@@ -219,42 +228,57 @@ export function useCandidateEmailSend(deps) {
         body: JSON.stringify(body)
       });
       const data = await response.json();
-      const failedCount = data.data?.failed?.length ?? 0;
-      const successCount = data.data?.success?.length ?? 0;
+      const failedList = data.data?.failed || [];
+      const successList = data.data?.success || [];
+      const failedCount = failedList.length;
+      const successCount = successList.length;
       if (data.success) {
-        if (bulkEmailRecipients.length > 0) {
+        const isBulk = bulkEmailRecipients.length > 0;
+        if (isBulk || failedCount > 0 || successCount > 1) {
+          showCampaignResult({
+            title: emailChannel === 'marketing' ? 'Marketing campaign complete' : 'Bulk email complete',
+            channel: emailChannel === 'marketing' ? 'marketing' : 'transactional',
+            total: successCount + failedCount,
+            sent: successCount,
+            failed: failedCount,
+            successRate:
+              successCount + failedCount > 0
+                ? `${((successCount / (successCount + failedCount)) * 100).toFixed(1)}%`
+                : '0%',
+            failures: failedList,
+            successes: successList,
+          });
           if (failedCount > 0) {
-            toast.error(`Bulk email: ${successCount} sent, ${failedCount} failed. ${data.data.failed?.[0]?.displayMessage || data.data.failed?.[0]?.error || ''}`, 8000);
-            if (data.data?.failed?.length) console.error('[Send email] Failed:', data.data.failed);
+            toast.error(`${successCount} sent, ${failedCount} failed — see details`, 6000);
           } else {
-            toast.success(`Bulk email sent! Sent: ${successCount}`);
+            toast.success(
+              emailChannel === 'marketing'
+                ? `Campaign sent to ${successCount} recipient${successCount === 1 ? '' : 's'}`
+                : `Emails sent to ${successCount} recipient${successCount === 1 ? '' : 's'}`
+            );
           }
           setShowEmailModal(false);
           setBulkEmailRecipients([]);
           setSelectedIds?.([]);
-        } else {
-          if (failedCount > 0) {
-            const first = data.data?.failed?.[0];
-            const errMsg = first?.displayMessage || first?.error || 'Send failed';
-            // Show user-friendly message for campaign sender issues
-            if (emailChannel === 'marketing' && /not verified|sender|Manage Senders/i.test(errMsg)) {
-              toast.error(errMsg || 'Your login email is not added as a Zoho Campaigns sender yet. Ask admin to add it under Settings → Deliverability → Manage Senders.', 12000);
-            } else {
-              toast.error(`Email not sent: ${errMsg}`, 10000);
-            }
-            console.error('[Send email] Failed:', JSON.stringify(data.data?.failed, null, 2));
+          setEmailRecipient(null);
+        } else if (failedCount > 0) {
+          const first = failedList[0];
+          const errMsg = first?.displayMessage || first?.error || 'Send failed';
+          if (emailChannel === 'marketing' && /not verified|sender|Manage Senders/i.test(errMsg)) {
+            toast.error(errMsg, 12000);
           } else {
-            const via = emailChannel === 'marketing' ? ' (campaign)' : '';
-            toast.success(`Email sent to ${emailRecipient.email}${via}`);
-            setShowEmailModal(false);
-            setEmailRecipient(null);
+            toast.error(`Email not sent: ${errMsg}`, 10000);
           }
+        } else {
+          const via = emailChannel === 'marketing' ? ' (campaign)' : '';
+          toast.success(`Email sent to ${emailRecipient.email}${via}`);
+          setShowEmailModal(false);
+          setEmailRecipient(null);
         }
         setSelectedTemplate(null);
         setTemplateDraftSubject?.('');
         setTemplateDraftBody?.('');
         setTemplateDraftDirty?.(false);
-        if (data.data && failedCount === 0) console.log('[Send email] Success:', data.data);
       } else if (data.message === 'EMAIL_NOT_CONFIGURED') {
         console.error('[Send email] Not configured:', data);
         toast.error('Please configure your email settings first. Go to Email → Email Settings.', 6000);
@@ -310,16 +334,27 @@ export function useCandidateEmailSend(deps) {
         if (data.success) {
           const sent = data.data?.sent ?? 0;
           const failed = data.data?.failed ?? 0;
+          const failedEmails = data.data?.failedEmails || [];
+          const successEmails = data.data?.successEmails || [];
+          showCampaignResult({
+            title: 'Bulk email complete',
+            channel: 'transactional',
+            total: data.data?.total ?? sent + failed,
+            sent,
+            failed,
+            successRate: data.data?.successRate,
+            failures: failedEmails,
+            successes: successEmails,
+          });
           if (failed > 0) {
-            toast.error(`Sent ${sent}, failed ${failed}. ${data.data?.failedEmails?.[0]?.error || ''}`);
+            toast.error(`Sent ${sent}, failed ${failed} — see details`, 6000);
           } else {
-            toast.success(sent === 1 ? `Email sent` : `Emails sent to ${sent} candidates`);
+            toast.success(sent === 1 ? 'Email sent' : `Emails sent to ${sent} candidates`);
           }
           setShowEmailModal(false);
           setBulkEmailRecipients([]);
           setSelectedIds?.([]);
           setEmailRecipient(null);
-          console.log('[Send bulk email] Success:', data.data);
         } else if (data.message === 'EMAIL_NOT_CONFIGURED') {
           console.error('[Send bulk email] Not configured:', data);
           toast.error('Please configure your email settings first. Go to Email → Email Settings.', 6000);
