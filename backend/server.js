@@ -275,7 +275,14 @@ app.use((req, res, next) => {
 
 // Soft API versioning: accept /api/v1/* as an alias for /api/*
 // Prefer /api/v1 for new clients; unversioned /api remains for compat.
+// IMPORTANT: do NOT rewrite /api/v1/public — that is the API-key public REST
+// surface (publicApiRoutes), mounted only at /api/v1/public. Rewriting it to
+// /api/public would collide with careers/brand public routes and 404 the
+// Track/HRMS candidate list + hire webhook resolve calls.
 app.use((req, _res, next) => {
+  if (req.url === '/api/v1/public' || req.url.startsWith('/api/v1/public/') || req.url.startsWith('/api/v1/public?')) {
+    return next();
+  }
   if (req.url === '/api/v1' || req.url.startsWith('/api/v1/') || req.url.startsWith('/api/v1?')) {
     req.url = req.url.replace(/^\/api\/v1/, '/api');
   }
