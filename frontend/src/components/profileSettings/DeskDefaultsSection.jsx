@@ -72,6 +72,7 @@ export default function DeskDefaultsSection({
           </div>
           <p className="text-xs text-stone-500 mt-0.5">
             Auto-fill when you add a candidate. Locked fields are fixed by your admin.
+            Last values you used also stick for the next add (unless locked).
           </p>
         </div>
         <button type="button" onClick={handleSave} disabled={saving} className="btn-primary">

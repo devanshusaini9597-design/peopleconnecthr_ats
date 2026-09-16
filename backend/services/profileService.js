@@ -52,7 +52,21 @@ async function getProfile(userId) {
 
   const { getEffectivePermissions } = require('../middleware/permissionMiddleware');
   const permissions = await getEffectivePermissions(user);
-  const { serializeDeskDefaults } = require('../utils/deskDefaults');
+  const {
+    serializeDeskDefaults,
+    serializeLastUsed,
+    resolveEffectiveForUser,
+    sanitizeRoleDeskDefaultsMap,
+  } = require('../utils/deskDefaults');
+
+  const roleMap = sanitizeRoleDeskDefaultsMap(organization?.atsSettings?.roleDeskDefaults || {});
+  const roleDefaults = roleMap[user.role] || null;
+  const deskDefaults = serializeDeskDefaults(user.deskDefaults);
+  const deskLastUsed = serializeLastUsed(user.deskLastUsed);
+  const effectiveDeskDefaults = resolveEffectiveForUser(
+    { role: user.role, deskDefaults: user.deskDefaults, deskLastUsed: user.deskLastUsed },
+    { atsSettings: { roleDeskDefaults: roleMap } }
+  );
 
   return {
     user: {
@@ -70,7 +84,10 @@ async function getProfile(userId) {
       createdAt: user.createdAt,
       lastLoginAt: user.lastLoginAt,
       permissions,
-      deskDefaults: serializeDeskDefaults(user.deskDefaults),
+      deskDefaults,
+      deskLastUsed,
+      roleDeskDefaults: roleDefaults,
+      effectiveDeskDefaults,
     },
     organization,
     entitlements,

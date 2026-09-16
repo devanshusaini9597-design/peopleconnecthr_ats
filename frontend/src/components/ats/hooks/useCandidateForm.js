@@ -16,7 +16,7 @@ import { canEditCandidateSpoc, resolveEmployeeSpocLabel } from '../../../utils/s
 import { applyDeskDefaultsToForm } from '../../../utils/deskDefaults';
 
 export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, currentPage, setCurrentPage, API_URL } = {}) {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const isFreelancer = user?.role === 'freelancer';
   const canEditSpoc = canEditCandidateSpoc(user?.role);
 
@@ -72,8 +72,9 @@ export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, cur
     const names = teamNamesKey ? teamNamesKey.split('|').filter(Boolean) : [];
     if (user?.name) names.push(user.name);
     next.spoc = resolveEmployeeSpocLabel(user, names);
-    return applyDeskDefaultsToForm(next, user?.deskDefaults);
-  }, [user?.role, user?.name, user?.email, user?.deskDefaults, teamNamesKey]);
+    const defaults = user?.effectiveDeskDefaults || user?.deskDefaults;
+    return applyDeskDefaultsToForm(next, defaults);
+  }, [user?.role, user?.name, user?.email, user?.deskDefaults, user?.effectiveDeskDefaults, teamNamesKey]);
 
   const openAddCandidate = useCallback(() => {
     setEditId(null);
@@ -540,6 +541,22 @@ const handleAddCandidate = async (e) => {
     if (response.ok) {
       toast.success(editId ? 'Profile Updated!' : 'Candidate Added!');
       window.dispatchEvent(new CustomEvent('candidates:changed'));
+      if (!editId && !isFreelancer && typeof updateUser === 'function') {
+        // Refresh sticky last-used / effective defaults for the next Add
+        authenticatedFetch(`${BASE_API_URL}/api/profile`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (data?.user) {
+              updateUser({
+                deskDefaults: data.user.deskDefaults,
+                deskLastUsed: data.user.deskLastUsed,
+                roleDeskDefaults: data.user.roleDeskDefaults,
+                effectiveDeskDefaults: data.user.effectiveDeskDefaults,
+              });
+            }
+          })
+          .catch(() => {});
+      }
       setShowModal(false);
       setEditId(null);
       setFormData(blankForm());

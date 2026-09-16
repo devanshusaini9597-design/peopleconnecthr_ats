@@ -128,13 +128,31 @@ async function createCandidate(req, res) {
             req.body.source = 'Freelance';
         }
 
-        // Enterprise desk defaults: fill empty FLS/client/source/etc from user profile
+        // Enterprise desk defaults: role + user + sticky last-used
         try {
             const User = require('../../models/User');
-            const { applyDeskDefaultsToCandidate } = require('../../utils/deskDefaults');
-            const actor = await User.findById(req.user.id).select('deskDefaults').lean();
-            if (actor?.deskDefaults) {
-                Object.assign(req.body, applyDeskDefaultsToCandidate(req.body, actor.deskDefaults));
+            const Organization = require('../../models/Organization');
+            const {
+              applyDeskDefaultsToCandidate,
+              resolveEffectiveForUser,
+              buildLastUsedFromCandidate,
+              sanitizeRoleDeskDefaultsMap,
+            } = require('../../utils/deskDefaults');
+            const actor = await User.findById(req.user.id).select('role deskDefaults deskLastUsed').lean();
+            let orgLean = null;
+            if (req.user.organizationId) {
+              orgLean = await Organization.findById(req.user.organizationId)
+                .select('atsSettings.roleDeskDefaults')
+                .lean();
+              if (orgLean?.atsSettings) {
+                orgLean.atsSettings.roleDeskDefaults = sanitizeRoleDeskDefaultsMap(
+                  orgLean.atsSettings.roleDeskDefaults || {}
+                );
+              }
+            }
+            if (actor) {
+              const effective = resolveEffectiveForUser(actor, orgLean);
+              Object.assign(req.body, applyDeskDefaultsToCandidate(req.body, effective));
             }
         } catch (deskErr) {
             logger.warn('[deskDefaults] create stamp skipped:', deskErr.message);
@@ -142,6 +160,23 @@ async function createCandidate(req, res) {
 
         const newCandidate = new Candidate(req.body);
         await newCandidate.save();
+
+        // Sticky last-used (does not overwrite locked Profile defaults)
+        try {
+            if (!isFreelancer(req.user)) {
+              const User = require('../../models/User');
+              const { buildLastUsedFromCandidate } = require('../../utils/deskDefaults');
+              const actor = await User.findById(req.user.id).select('deskLastUsed');
+              if (actor) {
+                actor.deskLastUsed = buildLastUsedFromCandidate(newCandidate, actor.deskLastUsed);
+                actor.markModified('deskLastUsed');
+                await actor.save();
+              }
+            }
+        } catch (stickyErr) {
+            logger.warn('[deskDefaults] sticky last-used skipped:', stickyErr.message);
+        }
+
         await promoteNamesSafe(req.user.organizationId, req.user.id, newCandidate.product);
         await promotePositionsSafe(req.user.organizationId, req.user.id, newCandidate.position);
         try {

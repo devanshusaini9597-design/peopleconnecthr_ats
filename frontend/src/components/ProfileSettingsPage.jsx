@@ -97,6 +97,9 @@ const ProfileSettingsPage = () => {
           role: data.user.role,
           isEmailVerified: data.user.isEmailVerified,
           deskDefaults: data.user.deskDefaults || EMPTY_DESK_DEFAULTS,
+          deskLastUsed: data.user.deskLastUsed,
+          roleDeskDefaults: data.user.roleDeskDefaults,
+          effectiveDeskDefaults: data.user.effectiveDeskDefaults,
         });
       } else {
         toast.error(data.message || 'Failed to load profile');

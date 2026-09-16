@@ -171,6 +171,15 @@ router.put('/members/:userId/reports-to', requireAdmin, async (req, res) => {
   }
 });
 
+router.put('/role-desk-defaults', requireAdmin, async (req, res) => {
+  try {
+    const data = await org.updateRoleDeskDefaults(req.user.organizationId, req.body || {});
+    res.json({ success: true, data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
 router.put('/members/:userId/desk-defaults', requireAdmin, async (req, res) => {
   try {
     const data = await org.updateMemberDeskDefaults(

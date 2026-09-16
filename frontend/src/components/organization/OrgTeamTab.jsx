@@ -4,8 +4,11 @@ import { Users, ExternalLink, UserPlus, Shield, ShieldPlus, Loader2, Columns3,
 } from 'lucide-react';
 import PremiumSelect from '../ui/PremiumSelect';
 import OrgTeamRoster from './OrgTeamRoster';
+import RoleDeskDefaultsPanel from './RoleDeskDefaultsPanel';
 import { INVITE_ROLE_OPTIONS } from './constants';
 import { copyToClipboard, openEmailShare, openWhatsAppShare } from '../../utils/shareChannels';
+import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../Toast';
 
 export default function OrgTeamTab({
   navigate,
@@ -38,6 +41,9 @@ export default function OrgTeamTab({
   handleSaveMemberDeskDefaults,
   deskDefaultsSaving,
 }) {
+  const { user } = useAuth();
+  const toast = useToast();
+  const canEditRoleDefaults = ['owner', 'admin', 'hr_manager'].includes(user?.role);
   const share = lastInviteShare;
   const managerOptions = [
     { value: '', label: 'Unassigned', description: 'Does not report to anyone' },
@@ -119,6 +125,8 @@ export default function OrgTeamTab({
           </button>
         </div>
       </div>
+
+      <RoleDeskDefaultsPanel toast={toast} canEdit={canEditRoleDefaults} />
 
       <div className="rounded-xl border border-stone-200/90 bg-white shadow-sm overflow-hidden">
         <div className="h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />

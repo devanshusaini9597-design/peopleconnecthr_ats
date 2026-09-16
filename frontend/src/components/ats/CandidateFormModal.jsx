@@ -86,7 +86,16 @@ export default function CandidateFormModal(props) {
   const formScrollRef = useRef(null);
   const { isTop } = useModalLayer(showModal);
   const [showStatusHistory, setShowStatusHistory] = useState(false);
-  const flsLocked = Boolean(!editId && user?.deskDefaults?.locked?.fls && user?.deskDefaults?.fls);
+  const flsLocked = Boolean(
+    !editId
+    && (user?.effectiveDeskDefaults?.locked?.fls || user?.deskDefaults?.locked?.fls)
+    && (user?.effectiveDeskDefaults?.fls || user?.deskDefaults?.fls)
+  );
+  const showDeskNudge = Boolean(
+    !editId
+    && !isFreelancer
+    && !(user?.effectiveDeskDefaults?.fls || user?.deskDefaults?.fls)
+  );
 
   useEffect(() => {
     if (!showModal) setShowStatusHistory(false);
@@ -176,6 +185,16 @@ export default function CandidateFormModal(props) {
                 <X size={18} />
               </button>
             </div>
+
+            {showDeskNudge && (
+              <div className="mx-3.5 sm:mx-6 mt-3 rounded-xl border border-amber-200 bg-amber-50/70 px-3.5 py-2.5 flex-shrink-0 text-[12px] text-amber-950">
+                <span className="font-semibold">Tip:</span> Set desk defaults once (FLS, client, source) in{' '}
+                <a href="/profile" className="font-semibold text-brand-700 underline underline-offset-2 hover:text-brand-900">
+                  Profile → Desk defaults
+                </a>
+                {' '}so every new candidate opens pre-filled. Your admin can also set role defaults under Organization → Team.
+              </div>
+            )}
 
             {editId && planHasFeature(orgPlan, 'integrations.aiScoring') && (
               <div className="mx-3.5 sm:mx-6 mt-3 rounded-xl border border-violet-200 bg-violet-50/50 p-3 flex-shrink-0 min-w-0">

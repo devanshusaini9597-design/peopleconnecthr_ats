@@ -157,6 +157,10 @@ async function updateOrganization(organizationId, body) {
       );
       if (!hasRejected) nextAts.pipelineStages = [...nextAts.pipelineStages, 'Rejected'];
     }
+    if (Object.prototype.hasOwnProperty.call(nextAts, 'roleDeskDefaults')) {
+      const { sanitizeRoleDeskDefaultsMap } = require('../utils/deskDefaults');
+      nextAts.roleDeskDefaults = sanitizeRoleDeskDefaultsMap(nextAts.roleDeskDefaults || {});
+    }
     update.atsSettings = nextAts;
   }
 
@@ -707,6 +711,18 @@ async function mergePipelineStages(organizationId, sourceNames, newName) {
   return mergeStagesLinked(organizationId, sourceNames, newName);
 }
 
+async function updateRoleDeskDefaults(organizationId, body = {}) {
+  const { sanitizeRoleDeskDefaultsMap } = require('../utils/deskDefaults');
+  const cleaned = sanitizeRoleDeskDefaultsMap(body.roleDeskDefaults || body || {});
+  const org = await Organization.findByIdAndUpdate(
+    organizationId,
+    { $set: { 'atsSettings.roleDeskDefaults': cleaned } },
+    { new: true }
+  ).select('atsSettings.roleDeskDefaults');
+  if (!org) throw httpError('Organization not found', 404);
+  return { roleDeskDefaults: sanitizeRoleDeskDefaultsMap(org.atsSettings?.roleDeskDefaults || {}) };
+}
+
 async function updateMemberDeskDefaults(organizationId, actor, targetUserId, body = {}) {
   const { canAdminSetDeskDefaults, sanitizeDeskDefaults, serializeDeskDefaults } = require('../utils/deskDefaults');
   if (!canAdminSetDeskDefaults(actor)) {
@@ -742,6 +758,7 @@ module.exports = {
   updateMemberRole,
   updateMemberReportsTo,
   updateMemberDeskDefaults,
+  updateRoleDeskDefaults,
   removeMember,
   resetMemberPassword,
   resendTemporaryPasswordEmail,

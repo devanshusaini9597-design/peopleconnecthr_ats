@@ -116,6 +116,15 @@ const userSchema = new mongoose.Schema({
     },
     setupCompletedAt: { type: Date, default: null },
   },
+  /** Sticky values from the last candidate this user added (unlocked fallback). */
+  deskLastUsed: {
+    fls: { type: String, default: '' },
+    client: { type: String, default: '' },
+    source: { type: String, default: '' },
+    product: { type: String, default: '' },
+    location: { type: String, default: '' },
+    updatedAt: { type: Date, default: null },
+  },
 }, { timestamps: true });
 
 // Indexes

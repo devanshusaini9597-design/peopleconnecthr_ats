@@ -131,6 +131,8 @@ const organizationSchema = new mongoose.Schema({
       requireNoticePeriod: { type: Boolean, default: false },
       requireExpectedCtc: { type: Boolean, default: false },
     },
+    /** Per-role ATS desk defaults (applied when the member has no personal value). */
+    roleDeskDefaults: { type: mongoose.Schema.Types.Mixed, default: {} },
     companyBrand: {
       tagline: { type: String, default: '' },
       benefits: [{ title: String, description: String }],
