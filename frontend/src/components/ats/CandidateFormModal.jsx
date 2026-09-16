@@ -1,14 +1,15 @@
-﻿import React, { useEffect, useRef } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import FocusLock from 'react-focus-lock';
 import {
   X, User, IndianRupee, Building2, Settings2, Sparkles, RefreshCw,
   ChevronLeft, ChevronRight, Upload, Check, AlertCircle,
-  Briefcase, Share2, Clock3, Info, Layers,
+  Briefcase, Share2, Clock3, Info, Layers, History,
 } from 'lucide-react';
 import PremiumSelect from '../ui/PremiumSelect';
 import PremiumDatePicker from '../ui/PremiumDatePicker';
 import QuickListManager from '../QuickListManager';
+import HistoryModal from '../HistoryModal';
 import { planHasFeature } from '../../config/planFeatures';
 import { REVIEW_STATUS_OPTIONS } from './atsConstants';
 import { clientRequiresPan, PAN_INFO_TITLE, PAN_INFO_MESSAGE } from '../../utils/panClientRules';
@@ -84,6 +85,11 @@ export default function CandidateFormModal(props) {
   const canEditSpoc = canEditCandidateSpoc(user?.role);
   const formScrollRef = useRef(null);
   const { isTop } = useModalLayer(showModal);
+  const [showStatusHistory, setShowStatusHistory] = useState(false);
+
+  useEffect(() => {
+    if (!showModal) setShowStatusHistory(false);
+  }, [showModal]);
 
   useEffect(() => {
     if (!showModal) return;
@@ -463,7 +469,19 @@ export default function CandidateFormModal(props) {
                       </div>
                       {isFreelancer ? (
                           <div className="min-w-0">
-                            <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Status</label>
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                              <label className="block text-[11px] font-semibold text-stone-600">Status</label>
+                              {editId ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setShowStatusHistory(true)}
+                                  className="inline-flex items-center gap-1 text-[10px] font-semibold text-brand-700 hover:text-brand-900"
+                                >
+                                  <History size={11} />
+                                  History
+                                </button>
+                              ) : null}
+                            </div>
                             <div className="h-11 px-3 rounded-xl border border-stone-200 bg-stone-50 text-sm font-semibold text-stone-700 flex items-center">
                               {String(formData.status || 'APPLIED').replace(/[_-]+/g, ' ')}
                             </div>
@@ -471,8 +489,28 @@ export default function CandidateFormModal(props) {
                           </div>
                       ) : (
                         <div className="min-w-0">
-                          <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Status</label>
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <label className="block text-[11px] font-semibold text-stone-600">Status</label>
+                            {editId ? (
+                              <button
+                                type="button"
+                                onClick={() => setShowStatusHistory(true)}
+                                className="inline-flex items-center gap-1 text-[10px] font-semibold text-brand-700 hover:text-brand-900"
+                              >
+                                <History size={11} />
+                                History
+                              </button>
+                            ) : null}
+                          </div>
                           <PremiumSelect variant="list" value={formData.status || 'APPLIED'} onChange={(v) => setFormField('status', v)} options={formStatusOptions} placeholder="Status" searchable searchPlaceholder="Type to filter…" />
+                          {editId && formData.statusEnteredAt ? (
+                            <p className="text-[11px] text-stone-400 mt-1">
+                              Entered current stage:{' '}
+                              {new Date(formData.statusEnteredAt).toLocaleDateString(undefined, {
+                                day: '2-digit', month: 'short', year: 'numeric',
+                              })}
+                            </p>
+                          ) : null}
                         </div>
                       )}
                     </div>
@@ -760,6 +798,15 @@ export default function CandidateFormModal(props) {
             </div>
           </div>
         )}
+        {showStatusHistory && editId ? (
+          <HistoryModal
+            candidate={{
+              name: formData.name,
+              statusHistory: formData.statusHistory,
+            }}
+            onClose={() => setShowStatusHistory(false)}
+          />
+        ) : null}
         </>
   , document.body);
 }
