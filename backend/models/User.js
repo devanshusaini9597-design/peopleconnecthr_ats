@@ -116,7 +116,7 @@ const userSchema = new mongoose.Schema({
     },
     setupCompletedAt: { type: Date, default: null },
   },
-  /** Sticky values from the last candidate this user added (unlocked fallback). */
+  /** Sticky values from the last candidate this user added (legacy — no longer used for prefill). */
   deskLastUsed: {
     fls: { type: String, default: '' },
     client: { type: String, default: '' },

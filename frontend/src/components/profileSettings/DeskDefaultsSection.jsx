@@ -76,7 +76,6 @@ export default function DeskDefaultsSection({
       updateUser?.({
         deskDefaults: next,
         effectiveDeskDefaults: effective,
-        deskLastUsed: data.deskLastUsed || user?.deskLastUsed,
         roleDeskDefaults: data.roleDeskDefaults !== undefined
           ? data.roleDeskDefaults
           : user?.roleDeskDefaults,

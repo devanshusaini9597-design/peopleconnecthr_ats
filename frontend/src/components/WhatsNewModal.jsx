@@ -8,25 +8,26 @@ import {
   Users,
   History,
   BarChart3,
-  Bookmark,
   ChevronRight,
   ExternalLink,
+  Shield,
 } from 'lucide-react';
 import Modal from './ui/Modal';
-import {
-  PRODUCT_UPDATES,
-  getLatestProductUpdate,
-} from '../config/productUpdates';
+import { getLatestProductUpdate } from '../config/productUpdates';
 import { requestProductTour } from '../utils/productTourTrigger';
+import { useAuth } from '../context/AuthContext';
 
-const HIGHLIGHT_ICONS = [Briefcase, Users, Bookmark, History, BarChart3];
+const HIGHLIGHT_ICONS = [Briefcase, Users, History, BarChart3, Shield];
 
 /**
  * Enterprise release notes for company staff (not freelancers).
+ * Content is filtered by role — owners see admin + everyone items.
  */
 const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
   const navigate = useNavigate();
-  const latest = getLatestProductUpdate();
+  const { user } = useAuth();
+  const role = user?.role || 'recruiter';
+  const latest = useMemo(() => getLatestProductUpdate(role), [role]);
 
   useEffect(() => {
     if (!open || !latest?.id) return;
@@ -37,6 +38,7 @@ const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
     return (latest?.highlights || []).map((h, i) => ({
       title: typeof h === 'string' ? null : h.title,
       body: typeof h === 'string' ? h : h.body,
+      audience: typeof h === 'string' ? 'all' : (h.audience || 'all'),
       Icon: HIGHLIGHT_ICONS[i % HIGHLIGHT_ICONS.length],
     }));
   }, [latest]);
@@ -118,14 +120,9 @@ const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
           <span className="inline-flex items-center rounded-md bg-brand-50 text-brand-800 border border-brand-100 px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase">
             Release notes
           </span>
-          <span className="text-xs text-stone-500 font-medium">
+          <span className="text-xs text-stone-500 font-medium tabular-nums">
             {latest.dateLabel || latest.date}
           </span>
-          {PRODUCT_UPDATES.length > 1 ? (
-            <span className="text-xs text-stone-400">
-              · {PRODUCT_UPDATES.length} recent updates
-            </span>
-          ) : null}
         </div>
 
         {latest.summary ? (
@@ -141,18 +138,25 @@ const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
           <ol className="space-y-0 divide-y divide-stone-100 rounded-xl border border-stone-200 overflow-hidden bg-white">
             {highlights.map((h, idx) => {
               const Icon = h.Icon;
+              const isAdminOnly = h.audience === 'admin';
               return (
                 <li key={h.title || h.body} className="flex gap-3 px-3.5 py-3.5 bg-white hover:bg-stone-50/80 transition-colors">
                   <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-stone-100 text-brand-700 flex items-center justify-center mt-0.5">
                     <Icon size={15} strokeWidth={2.25} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[10px] font-bold text-stone-400 tabular-nums">
                         {String(idx + 1).padStart(2, '0')}
                       </span>
                       {h.title ? (
                         <p className="text-sm font-semibold text-stone-900">{h.title}</p>
+                      ) : null}
+                      {isAdminOnly ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 text-amber-800 border border-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                          <Shield size={10} />
+                          Admin
+                        </span>
                       ) : null}
                     </div>
                     <p className={`text-[13px] text-stone-600 leading-relaxed ${h.title ? 'mt-0.5' : ''}`}>
@@ -193,7 +197,11 @@ const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
                         {item.label}
                       </span>
                       <span className="block text-[11px] text-stone-500 mt-0.5">
-                        {isTour ? 'Guided walkthrough' : 'Open in workspace'}
+                        {item.audience === 'admin'
+                          ? 'Admin setup'
+                          : isTour
+                            ? 'Guided walkthrough'
+                            : 'Open in workspace'}
                       </span>
                     </span>
                     <ChevronRight size={14} className="flex-shrink-0 text-stone-300 group-hover:text-brand-600" />

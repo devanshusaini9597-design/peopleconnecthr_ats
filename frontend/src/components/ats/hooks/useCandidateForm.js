@@ -542,14 +542,13 @@ const handleAddCandidate = async (e) => {
       toast.success(editId ? 'Profile Updated!' : 'Candidate Added!');
       window.dispatchEvent(new CustomEvent('candidates:changed'));
       if (!editId && !isFreelancer && typeof updateUser === 'function') {
-        // Refresh sticky last-used / effective defaults for the next Add
+        // Refresh effective desk defaults for the next Add
         authenticatedFetch(`${BASE_API_URL}/api/profile`)
           .then((r) => (r.ok ? r.json() : null))
           .then((data) => {
             if (data?.user) {
               updateUser({
                 deskDefaults: data.user.deskDefaults,
-                deskLastUsed: data.user.deskLastUsed,
                 roleDeskDefaults: data.user.roleDeskDefaults,
                 effectiveDeskDefaults: data.user.effectiveDeskDefaults,
               });

@@ -46,8 +46,7 @@ function pickDeskValue(...sources) {
 
 /**
  * Resolve defaults for Add Candidate.
- * Priority: personal deskDefaults → effectiveDeskDefaults → role defaults → last-used (if unlocked).
- * Always prefer personal saved values so a Profile save works even if effective* is stale in auth state.
+ * Priority: personal deskDefaults → effectiveDeskDefaults → role defaults.
  */
 export function resolveFormDeskDefaults(user) {
   if (!user || typeof user !== 'object') return null;
@@ -58,7 +57,6 @@ export function resolveFormDeskDefaults(user) {
   const role = user.roleDeskDefaults && typeof user.roleDeskDefaults === 'object'
     ? user.roleDeskDefaults
     : {};
-  const last = user.deskLastUsed && typeof user.deskLastUsed === 'object' ? user.deskLastUsed : {};
 
   const locked = {
     ...EMPTY_DESK_DEFAULTS.locked,
@@ -73,26 +71,7 @@ export function resolveFormDeskDefaults(user) {
   };
 
   for (const key of DESK_KEYS) {
-    const personalVal = pickDeskValue(personal[key]);
-    if (personalVal) {
-      out[key] = personalVal;
-      continue;
-    }
-    const effectiveVal = pickDeskValue(effective[key]);
-    if (effectiveVal) {
-      out[key] = effectiveVal;
-      continue;
-    }
-    const roleVal = pickDeskValue(role[key]);
-    if (roleVal) {
-      out[key] = roleVal;
-      continue;
-    }
-    if (!locked[key]) {
-      out[key] = pickDeskValue(last[key]);
-    } else {
-      out[key] = '';
-    }
+    out[key] = pickDeskValue(personal[key], effective[key], role[key]);
   }
 
   return out;
@@ -105,6 +84,5 @@ export function mergeEffectiveAfterPersonalSave(personal, user) {
     deskDefaults: personal,
     effectiveDeskDefaults: user?.effectiveDeskDefaults,
     roleDeskDefaults: user?.roleDeskDefaults,
-    deskLastUsed: user?.deskLastUsed,
   });
 }

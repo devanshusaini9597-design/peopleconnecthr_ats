@@ -53,10 +53,10 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
     }
     try {
       const seen = localStorage.getItem(PRODUCT_UPDATES_STORAGE_KEY) || '';
-      const count = countUnseenProductUpdates(seen);
+      const count = countUnseenProductUpdates(seen, userRole);
       setUnseenUpdateCount(count);
-      if (hasUnseenProductUpdates(seen)) {
-        const autoKey = `${PRODUCT_UPDATES_STORAGE_KEY}_auto_${latestProductUpdateId()}`;
+      if (hasUnseenProductUpdates(seen, userRole)) {
+        const autoKey = `${PRODUCT_UPDATES_STORAGE_KEY}_auto_${latestProductUpdateId(userRole)}`;
         if (!sessionStorage.getItem(autoKey)) {
           sessionStorage.setItem(autoKey, '1');
           setShowWhatsNew(true);
@@ -65,14 +65,14 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
     } catch {
       setUnseenUpdateCount(0);
     }
-  }, [isFreelancer]);
+  }, [isFreelancer, userRole]);
 
   const acknowledgeWhatsNew = useCallback((id) => {
     try {
-      localStorage.setItem(PRODUCT_UPDATES_STORAGE_KEY, id || latestProductUpdateId());
+      localStorage.setItem(PRODUCT_UPDATES_STORAGE_KEY, id || latestProductUpdateId(userRole));
     } catch { /* ignore */ }
     setUnseenUpdateCount(0);
-  }, []);
+  }, [userRole]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {

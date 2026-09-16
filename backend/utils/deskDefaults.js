@@ -1,11 +1,10 @@
 /**
- * Per-user ATS desk defaults (enterprise: admin + employee + role + sticky last-used).
+ * Per-user ATS desk defaults (enterprise: admin + employee + role defaults).
  * Locked fields can only be changed by owner/admin/hr_manager.
  *
  * Prefill order (empty fields only on the form/create):
  *   1) User deskDefaults (saved)
  *   2) Org roleDeskDefaults for the user's role
- *   3) deskLastUsed (sticky — never overrides locked fields)
  */
 
 const { normalizeText } = require('./textNormalize');
@@ -143,14 +142,13 @@ function sanitizeRoleDeskDefaultsMap(input = {}) {
 }
 
 /**
- * Merge user + role + last-used into one effective desk profile for Add Candidate.
- * Value priority: user saved → role default → last-used (if not locked).
+ * Merge user + role into one effective desk profile for Add Candidate.
+ * Value priority: user saved → role default.
  * Lock: user lock OR role lock.
  */
-function mergeEffectiveDeskDefaults({ userDefaults, roleDefaults, lastUsed } = {}) {
+function mergeEffectiveDeskDefaults({ userDefaults, roleDefaults } = {}) {
   const userD = serializeDeskDefaults(userDefaults || {});
   const roleD = serializeDeskDefaults(roleDefaults || {});
-  const last = serializeLastUsed(lastUsed || {});
   const locked = emptyLocks();
   const out = emptyDeskDefaults();
 
@@ -162,14 +160,12 @@ function mergeEffectiveDeskDefaults({ userDefaults, roleDefaults, lastUsed } = {
       out[key] = userD[key];
     } else if (roleD[key]) {
       out[key] = roleD[key];
-    } else if (!locked[key] && last[key]) {
-      out[key] = last[key];
     } else {
       out[key] = '';
     }
   }
 
-  out.setupCompletedAt = userD.setupCompletedAt || roleD.setupCompletedAt || last.updatedAt || null;
+  out.setupCompletedAt = userD.setupCompletedAt || roleD.setupCompletedAt || null;
   return serializeDeskDefaults(out);
 }
 
@@ -184,10 +180,7 @@ function applyDeskDefaultsToCandidate(body = {}, deskDefaults) {
   return out;
 }
 
-/**
- * Build sticky last-used patch from a created candidate.
- * Does not touch locked defaults — only deskLastUsed.
- */
+/** @deprecated Sticky last-used removed — kept for API compatibility. */
 function buildLastUsedFromCandidate(candidate = {}, previousLastUsed = null) {
   const prev = serializeLastUsed(previousLastUsed || {});
   const next = { ...prev, updatedAt: new Date() };
@@ -208,7 +201,6 @@ function resolveEffectiveForUser(user, org) {
   return mergeEffectiveDeskDefaults({
     userDefaults: user?.deskDefaults,
     roleDefaults,
-    lastUsed: user?.deskLastUsed,
   });
 }
 
