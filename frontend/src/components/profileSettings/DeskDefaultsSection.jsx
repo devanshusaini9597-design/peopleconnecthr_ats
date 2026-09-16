@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Briefcase, Lock, Save, Loader2 } from 'lucide-react';
 import PremiumSelect from '../ui/PremiumSelect';
 import { authenticatedFetch } from '../../utils/fetchUtils';
-import { EMPTY_DESK_DEFAULTS, FLS_OPTIONS } from '../../utils/deskDefaults';
+import { EMPTY_DESK_DEFAULTS } from '../../utils/deskDefaults';
+import useDeskDefaultOptions from '../../utils/useDeskDefaultOptions';
 import { BASE } from './profileConstants';
 
 export default function DeskDefaultsSection({
@@ -14,6 +15,13 @@ export default function DeskDefaultsSection({
 }) {
   const [form, setForm] = useState(() => ({ ...EMPTY_DESK_DEFAULTS, ...(deskDefaults || {}) }));
   const [saving, setSaving] = useState(false);
+  const {
+    loading: optionsLoading,
+    flsOptions,
+    clientOptions,
+    sourceOptions,
+    productOptions,
+  } = useDeskDefaultOptions();
 
   useEffect(() => {
     setForm({
@@ -30,6 +38,15 @@ export default function DeskDefaultsSection({
   const setField = (key, value) => {
     if (locked[key]) return;
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const withCurrent = (options, current) => {
+    const list = Array.isArray(options) ? [...options] : [];
+    const cur = String(current || '').trim().toUpperCase();
+    if (cur && !list.some((o) => String(o.value).toUpperCase() === cur)) {
+      list.unshift({ value: cur, label: cur });
+    }
+    return list;
   };
 
   const handleSave = async () => {
@@ -53,7 +70,7 @@ export default function DeskDefaultsSection({
       const next = data.deskDefaults || form;
       onSaved?.(next);
       updateUser?.({ deskDefaults: next });
-      toast?.success('Desk defaults saved — new candidates will use these');
+      toast?.success('Desk defaults saved. New candidates will use these values.');
     } catch {
       toast?.error('Could not save desk defaults');
     } finally {
@@ -62,7 +79,7 @@ export default function DeskDefaultsSection({
   };
 
   return (
-    <div className="card-ats-bordered overflow-hidden relative" data-tour="desk-defaults">
+    <div id="desk-defaults" className="card-ats-bordered overflow-hidden relative scroll-mt-24" data-tour="desk-defaults">
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
       <div className="px-5 sm:px-6 py-4 border-b border-stone-100 flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
@@ -71,8 +88,8 @@ export default function DeskDefaultsSection({
             <h3 className="text-sm font-bold text-stone-900">Desk defaults</h3>
           </div>
           <p className="text-xs text-stone-500 mt-0.5">
-            Auto-fill when you add a candidate. Locked fields are fixed by your admin.
-            Last values you used also stick for the next add (unless locked).
+            Pre-fill candidate fields when you add someone. Lists stay in sync with your org catalogs.
+            Locked fields are controlled by an admin.
           </p>
         </div>
         <button type="button" onClick={handleSave} disabled={saving} className="btn-primary">
@@ -93,9 +110,10 @@ export default function DeskDefaultsSection({
             <PremiumSelect
               value={form.fls || ''}
               onChange={(v) => setField('fls', v || '')}
-              options={FLS_OPTIONS}
-              placeholder="Select"
+              options={flsOptions}
+              placeholder={optionsLoading ? 'Loading…' : 'Select'}
               allowClear
+              searchable
             />
           )}
         </div>
@@ -104,39 +122,60 @@ export default function DeskDefaultsSection({
             Default client
             {locked.client ? <Lock size={12} className="text-stone-400" /> : null}
           </label>
-          <input
-            className={`input-ats ${locked.client ? 'bg-stone-50' : ''}`}
-            value={form.client || ''}
-            disabled={locked.client}
-            onChange={(e) => setField('client', e.target.value)}
-            placeholder="e.g. HDFC"
-          />
+          {locked.client ? (
+            <div className="input-ats bg-stone-50 text-stone-700 flex items-center">{form.client || '—'}</div>
+          ) : (
+            <PremiumSelect
+              variant="list"
+              value={form.client || ''}
+              onChange={(v) => setField('client', v || '')}
+              options={withCurrent(clientOptions, form.client)}
+              placeholder={optionsLoading ? 'Loading…' : 'Select client'}
+              allowClear
+              searchable
+              searchPlaceholder="Search clients…"
+            />
+          )}
         </div>
         <div>
           <label className="label-ats flex items-center gap-1.5">
             Default source
             {locked.source ? <Lock size={12} className="text-stone-400" /> : null}
           </label>
-          <input
-            className={`input-ats ${locked.source ? 'bg-stone-50' : ''}`}
-            value={form.source || ''}
-            disabled={locked.source}
-            onChange={(e) => setField('source', e.target.value)}
-            placeholder="e.g. Naukri"
-          />
+          {locked.source ? (
+            <div className="input-ats bg-stone-50 text-stone-700 flex items-center">{form.source || '—'}</div>
+          ) : (
+            <PremiumSelect
+              variant="list"
+              value={form.source || ''}
+              onChange={(v) => setField('source', v || '')}
+              options={withCurrent(sourceOptions, form.source)}
+              placeholder={optionsLoading ? 'Loading…' : 'Select source'}
+              allowClear
+              searchable
+              searchPlaceholder="Search sources…"
+            />
+          )}
         </div>
         <div>
           <label className="label-ats flex items-center gap-1.5">
             Default product / skill
             {locked.product ? <Lock size={12} className="text-stone-400" /> : null}
           </label>
-          <input
-            className={`input-ats ${locked.product ? 'bg-stone-50' : ''}`}
-            value={form.product || ''}
-            disabled={locked.product}
-            onChange={(e) => setField('product', e.target.value)}
-            placeholder="Optional"
-          />
+          {locked.product ? (
+            <div className="input-ats bg-stone-50 text-stone-700 flex items-center">{form.product || '—'}</div>
+          ) : (
+            <PremiumSelect
+              variant="list"
+              value={form.product || ''}
+              onChange={(v) => setField('product', v || '')}
+              options={withCurrent(productOptions, form.product)}
+              placeholder={optionsLoading ? 'Loading…' : 'Select product'}
+              allowClear
+              searchable
+              searchPlaceholder="Search products…"
+            />
+          )}
         </div>
         <div className="sm:col-span-2">
           <label className="label-ats flex items-center gap-1.5">
@@ -148,7 +187,7 @@ export default function DeskDefaultsSection({
             value={form.location || ''}
             disabled={locked.location}
             onChange={(e) => setField('location', e.target.value)}
-            placeholder="Optional"
+            placeholder="City / region (optional)"
           />
         </div>
       </div>

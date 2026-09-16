@@ -208,20 +208,60 @@ async function changePassword(userId, { currentPassword, newPassword }, { keepJt
 
 async function getProfileStats(user) {
   const own = createdByFilter(user);
-  const candidateFilter = user.organizationId
-    ? { organizationId: user.organizationId, ...own }
-    : own;
-  const candidateCount = await Candidate.countDocuments(candidateFilter);
+  const orgId = user.organizationId;
+  const myFilter = orgId ? { organizationId: orgId, ...own } : own;
+  const orgFilter = orgId ? { organizationId: orgId } : null;
 
-  const dbUser = await User.findById(user.id).select('createdAt lastLoginAt isEmailVerified');
+  const now = new Date();
+  const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const { activityDateExpr } = require('../utils/candidateActivityDate');
+
+  const dbUserPromise = User.findById(user.id)
+    .select('createdAt lastLoginAt lastActiveAt isEmailVerified role')
+    .lean();
+
+  const myCountPromise = Candidate.countDocuments(myFilter);
+  const orgCountPromise = orgFilter && ['owner', 'admin', 'hr_manager'].includes(user.role)
+    ? Candidate.countDocuments(orgFilter)
+    : Promise.resolve(null);
+
+  const addedThisMonthPromise = Candidate.countDocuments({
+    ...myFilter,
+    $expr: {
+      $and: [
+        { $gte: [activityDateExpr(), startOfMonth] },
+      ],
+    },
+  }).catch(() => Candidate.countDocuments({
+    ...myFilter,
+    createdAt: { $gte: startOfMonth },
+  }));
+
+  const [
+    dbUser,
+    myCandidates,
+    orgCandidates,
+    addedThisMonth,
+  ] = await Promise.all([
+    dbUserPromise,
+    myCountPromise,
+    orgCountPromise,
+    addedThisMonthPromise,
+  ]);
+
   const memberSince = dbUser?.createdAt || (dbUser?._id ? dbUser._id.getTimestamp() : null);
 
   return {
-    totalCandidates: candidateCount,
+    totalCandidates: myCandidates,
+    myCandidates,
+    orgCandidates: orgCandidates == null ? undefined : orgCandidates,
+    addedThisMonth: addedThisMonth || 0,
     memberSince,
     lastLoginAt: dbUser?.lastLoginAt || null,
+    lastActiveAt: dbUser?.lastActiveAt || dbUser?.lastLoginAt || null,
     isEmailVerified: Boolean(dbUser?.isEmailVerified),
-    role: user.role,
+    role: user.role || dbUser?.role,
+    generatedAt: new Date().toISOString(),
   };
 }
 

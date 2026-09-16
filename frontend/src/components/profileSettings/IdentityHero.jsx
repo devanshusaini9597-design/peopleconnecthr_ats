@@ -21,7 +21,7 @@ export default function IdentityHero({
 }) {
   const photoSrc = pendingPhotoPreview || resolveOrgLogoSrc(profilePicture);
   const joined = formatProfileDate(stats.memberSince || profile.createdAt);
-  const lastSeen = formatProfileDateTime(stats.lastLoginAt || profile.lastLoginAt);
+  const lastSeen = formatProfileDateTime(stats.lastActiveAt || stats.lastLoginAt || profile.lastLoginAt);
   const verified = stats.isEmailVerified ?? profile.isEmailVerified;
 
   return (
@@ -120,12 +120,34 @@ export default function IdentityHero({
             )}
           </div>
 
-          <dl className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-1 gap-2 w-full lg:w-auto lg:min-w-[11.5rem]">
+          <dl className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-1 gap-2 w-full lg:w-auto lg:min-w-[12.5rem]">
             <div className="flex items-center gap-2.5 rounded-xl border border-stone-200/80 bg-stone-50/70 px-3 py-2">
               <Database className="w-4 h-4 text-brand-600 shrink-0" />
               <div>
                 <dt className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">My candidates</dt>
-                <dd className="text-sm font-bold text-stone-900 tabular-nums leading-tight mt-0.5">{stats.totalCandidates ?? 0}</dd>
+                <dd className="text-sm font-bold text-stone-900 tabular-nums leading-tight mt-0.5">
+                  {Number(stats.myCandidates ?? stats.totalCandidates ?? 0).toLocaleString()}
+                </dd>
+              </div>
+            </div>
+            {stats.orgCandidates != null && (
+              <div className="flex items-center gap-2.5 rounded-xl border border-stone-200/80 bg-stone-50/70 px-3 py-2">
+                <Building2 className="w-4 h-4 text-brand-600 shrink-0" />
+                <div>
+                  <dt className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">Org candidates</dt>
+                  <dd className="text-sm font-bold text-stone-900 tabular-nums leading-tight mt-0.5">
+                    {Number(stats.orgCandidates || 0).toLocaleString()}
+                  </dd>
+                </div>
+              </div>
+            )}
+            <div className="flex items-center gap-2.5 rounded-xl border border-stone-200/80 bg-stone-50/70 px-3 py-2">
+              <Database className="w-4 h-4 text-teal-600 shrink-0" />
+              <div>
+                <dt className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">Added this month</dt>
+                <dd className="text-sm font-bold text-stone-900 tabular-nums leading-tight mt-0.5">
+                  {Number(stats.addedThisMonth ?? 0).toLocaleString()}
+                </dd>
               </div>
             </div>
             {joined && (
@@ -141,7 +163,7 @@ export default function IdentityHero({
               <div className="flex items-center gap-2.5 rounded-xl border border-stone-200/80 bg-stone-50/70 px-3 py-2 col-span-2 sm:col-span-1">
                 <Clock3 className="w-4 h-4 text-stone-500 shrink-0" />
                 <div>
-                  <dt className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">Last sign-in</dt>
+                  <dt className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">Last active</dt>
                   <dd className="text-sm font-bold text-stone-900 leading-tight mt-0.5">{lastSeen}</dd>
                 </div>
               </div>

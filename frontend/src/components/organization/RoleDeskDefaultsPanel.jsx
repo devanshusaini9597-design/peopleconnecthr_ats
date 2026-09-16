@@ -2,13 +2,23 @@ import React, { useEffect, useState } from 'react';
 import { Briefcase, Loader2, Save } from 'lucide-react';
 import PremiumSelect from '../ui/PremiumSelect';
 import { authenticatedFetch } from '../../utils/fetchUtils';
-import { EMPTY_DESK_DEFAULTS, FLS_OPTIONS } from '../../utils/deskDefaults';
+import { EMPTY_DESK_DEFAULTS } from '../../utils/deskDefaults';
 import { MEMBER_ROLE_OPTIONS } from './constants';
 import API_URL from '../../config';
+import useDeskDefaultOptions from '../../utils/useDeskDefaultOptions';
 
 const EDITABLE_ROLES = MEMBER_ROLE_OPTIONS
   .map((r) => r.value)
   .filter((v) => v !== 'freelancer');
+
+function withCurrent(options, current) {
+  const list = Array.isArray(options) ? [...options] : [];
+  const cur = String(current || '').trim().toUpperCase();
+  if (cur && !list.some((o) => String(o.value).toUpperCase() === cur)) {
+    list.unshift({ value: cur, label: cur });
+  }
+  return list;
+}
 
 export default function RoleDeskDefaultsPanel({ toast, canEdit }) {
   const [map, setMap] = useState({});
@@ -16,6 +26,13 @@ export default function RoleDeskDefaultsPanel({ toast, canEdit }) {
   const [form, setForm] = useState({ ...EMPTY_DESK_DEFAULTS });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const {
+    loading: optionsLoading,
+    flsOptions,
+    clientOptions,
+    sourceOptions,
+    productOptions,
+  } = useDeskDefaultOptions();
 
   useEffect(() => {
     if (!canEdit) return;
@@ -132,9 +149,10 @@ export default function RoleDeskDefaultsPanel({ toast, canEdit }) {
               <PremiumSelect
                 value={form.fls || ''}
                 onChange={(v) => setField('fls', v || '')}
-                options={FLS_OPTIONS}
+                options={flsOptions}
                 allowClear
-                placeholder="Not set"
+                searchable
+                placeholder={optionsLoading ? 'Loading…' : 'Not set'}
               />
               <label className="mt-2 flex items-center gap-2 text-xs text-stone-600">
                 <input type="checkbox" checked={Boolean(form.locked?.fls)} onChange={(e) => setLock('fls', e.target.checked)} />
@@ -143,7 +161,15 @@ export default function RoleDeskDefaultsPanel({ toast, canEdit }) {
             </div>
             <div>
               <label className="label-ats">Default client</label>
-              <input className="input-ats" value={form.client || ''} onChange={(e) => setField('client', e.target.value)} placeholder="Optional" />
+              <PremiumSelect
+                variant="list"
+                value={form.client || ''}
+                onChange={(v) => setField('client', v || '')}
+                options={withCurrent(clientOptions, form.client)}
+                allowClear
+                searchable
+                placeholder={optionsLoading ? 'Loading…' : 'Select client'}
+              />
               <label className="mt-2 flex items-center gap-2 text-xs text-stone-600">
                 <input type="checkbox" checked={Boolean(form.locked?.client)} onChange={(e) => setLock('client', e.target.checked)} />
                 Lock
@@ -151,7 +177,15 @@ export default function RoleDeskDefaultsPanel({ toast, canEdit }) {
             </div>
             <div>
               <label className="label-ats">Default source</label>
-              <input className="input-ats" value={form.source || ''} onChange={(e) => setField('source', e.target.value)} placeholder="Optional" />
+              <PremiumSelect
+                variant="list"
+                value={form.source || ''}
+                onChange={(v) => setField('source', v || '')}
+                options={withCurrent(sourceOptions, form.source)}
+                allowClear
+                searchable
+                placeholder={optionsLoading ? 'Loading…' : 'Select source'}
+              />
               <label className="mt-2 flex items-center gap-2 text-xs text-stone-600">
                 <input type="checkbox" checked={Boolean(form.locked?.source)} onChange={(e) => setLock('source', e.target.checked)} />
                 Lock
@@ -160,7 +194,15 @@ export default function RoleDeskDefaultsPanel({ toast, canEdit }) {
             <div>
               <label className="label-ats">Product / location</label>
               <div className="grid grid-cols-1 gap-2">
-                <input className="input-ats" value={form.product || ''} onChange={(e) => setField('product', e.target.value)} placeholder="Product / skill" />
+                <PremiumSelect
+                  variant="list"
+                  value={form.product || ''}
+                  onChange={(v) => setField('product', v || '')}
+                  options={withCurrent(productOptions, form.product)}
+                  allowClear
+                  searchable
+                  placeholder={optionsLoading ? 'Loading…' : 'Product / skill'}
+                />
                 <input className="input-ats" value={form.location || ''} onChange={(e) => setField('location', e.target.value)} placeholder="Location" />
               </div>
             </div>

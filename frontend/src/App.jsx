@@ -210,6 +210,8 @@ const router = createBrowserRouter([
       { path: '/email-settings', element: <EmailSettingsPage /> },
       { path: '/email-reports', element: <EmailReportsPage /> },
       { path: '/settings', element: <ProfileSettingsPage /> },
+      { path: '/profile', element: <Navigate to="/settings" replace /> },
+      { path: '/profile/*', element: <Navigate to="/settings" replace /> },
       { path: '/team', element: <TeamPage /> },
       { path: '/interviews', element: <Suspense fallback={<LoadingFallback />}><InterviewsPage /></Suspense> },
       { path: '/organization', element: <Suspense fallback={<LoadingFallback />}><OrganizationSettingsPage /></Suspense> },

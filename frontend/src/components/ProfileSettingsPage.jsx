@@ -68,6 +68,36 @@ const ProfileSettingsPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const hash = String(window.location.hash || '').replace(/^#/, '');
+    if (hash === 'desk-defaults') {
+      setActiveSection('profile');
+      const t = window.setTimeout(() => {
+        document.getElementById('desk-defaults')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 120);
+      return () => window.clearTimeout(t);
+    }
+    return undefined;
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => { fetchStats(); };
+    const onVis = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    window.addEventListener('candidates:changed', refresh);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', onVis);
+    const poll = window.setInterval(refresh, 60_000);
+    return () => {
+      window.removeEventListener('candidates:changed', refresh);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', onVis);
+      window.clearInterval(poll);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const applyUser = (user) => ({
     name: user.name || '',
     email: user.email || '',

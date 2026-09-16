@@ -19,6 +19,7 @@ import { authenticatedFetch } from '../../utils/fetchUtils';
 import { searchPicklistOptions, PICKLIST_MIN_SEARCH } from '../../utils/orgListFetch';
 import useModalLayer from '../../hooks/useModalLayer';
 import { canEditCandidateSpoc } from '../../utils/spocIdentity';
+import { useNavigate } from 'react-router-dom';
 
 const LIST_META = {
   positions: { title: 'Positions', singular: 'position', apiEndpoint: '/api/positions', seedable: true, icon: Briefcase },
@@ -81,6 +82,7 @@ export default function CandidateFormModal(props) {
     recentStepChangeRef, showPanRequiredModal, setShowPanRequiredModal, onClientChange,
   } = props;
   const { user } = useAuth();
+  const navigate = useNavigate();
   const isFreelancer = user?.role === 'freelancer';
   const canEditSpoc = canEditCandidateSpoc(user?.role);
   const formScrollRef = useRef(null);
@@ -187,12 +189,20 @@ export default function CandidateFormModal(props) {
             </div>
 
             {showDeskNudge && (
-              <div className="mx-3.5 sm:mx-6 mt-3 rounded-xl border border-amber-200 bg-amber-50/70 px-3.5 py-2.5 flex-shrink-0 text-[12px] text-amber-950">
-                <span className="font-semibold">Tip:</span> Set desk defaults once (FLS, client, source) in{' '}
-                <a href="/profile" className="font-semibold text-brand-700 underline underline-offset-2 hover:text-brand-900">
-                  Profile → Desk defaults
-                </a>
-                {' '}so every new candidate opens pre-filled. Your admin can also set role defaults under Organization → Team.
+              <div className="mx-3.5 sm:mx-6 mt-3 rounded-xl border border-brand-100 bg-brand-50/60 px-3.5 py-2.5 flex-shrink-0 text-[12px] text-stone-800 leading-relaxed">
+                <span className="font-semibold text-stone-900">Save time on every add.</span>{' '}
+                Configure your desk defaults (FLS, client, source) in{' '}
+                <button
+                  type="button"
+                  className="font-semibold text-brand-700 underline underline-offset-2 hover:text-brand-900"
+                  onClick={() => {
+                    setShowModal(false);
+                    navigate('/settings#desk-defaults');
+                  }}
+                >
+                  Settings → Desk defaults
+                </button>
+                . Administrators can also define role-wide defaults under Organization → Team.
               </div>
             )}
 

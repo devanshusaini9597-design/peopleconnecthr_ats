@@ -1,16 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, Search, ChevronDown, User, LogOut, Building2, CreditCard, Settings, Plug, Command, ChevronRight } from 'lucide-react';
+import { Menu, Search, ChevronDown, User, LogOut, Building2, CreditCard, Settings, Plug, Command, ChevronRight, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import NotificationBell from './NotificationBell';
 import LivePresenceBar from './header/LivePresenceBar';
 import ConfirmationModal from './ConfirmationModal';
+import WhatsNewModal from './WhatsNewModal';
 import { authenticatedFetch } from '../utils/fetchUtils';
 import BASE_API_URL from '../config';
 import { resolveAssetSrc } from '../utils/orgLogo';
 import { useAuth } from '../context/AuthContext';
 import { formatRoleLabel } from './organization/constants';
 import { usePresence } from '../context/PresenceContext';
+import {
+  PRODUCT_UPDATES_STORAGE_KEY,
+  hasUnseenProductUpdates,
+  latestProductUpdateId,
+} from '../config/productUpdates';
 
 const Header = ({ setSidebarOpen, sidebarOpen }) => {
   const navigate = useNavigate();
@@ -21,6 +27,8 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
   const selfOnline = self?.status !== 'offline';
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
+  const [hasNewUpdate, setHasNewUpdate] = useState(false);
   const [profilePicture, setProfilePicture] = useState(user?.profilePicture || '');
   const [photoFailed, setPhotoFailed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,6 +43,35 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
   const roleLabel = formatRoleLabel(userRole);
   const orgName = organization?.name || '';
   const isAdmin = ['owner', 'admin'].includes(userRole);
+  const isFreelancer = userRole === 'freelancer';
+
+  useEffect(() => {
+    if (isFreelancer) {
+      setHasNewUpdate(false);
+      return;
+    }
+    try {
+      const seen = localStorage.getItem(PRODUCT_UPDATES_STORAGE_KEY) || '';
+      const unseen = hasUnseenProductUpdates(seen);
+      setHasNewUpdate(unseen);
+      if (unseen) {
+        const autoKey = `${PRODUCT_UPDATES_STORAGE_KEY}_auto_${latestProductUpdateId()}`;
+        if (!sessionStorage.getItem(autoKey)) {
+          sessionStorage.setItem(autoKey, '1');
+          setShowWhatsNew(true);
+        }
+      }
+    } catch {
+      setHasNewUpdate(false);
+    }
+  }, [isFreelancer]);
+
+  const acknowledgeWhatsNew = (id) => {
+    try {
+      localStorage.setItem(PRODUCT_UPDATES_STORAGE_KEY, id || latestProductUpdateId());
+    } catch { /* ignore */ }
+    setHasNewUpdate(false);
+  };
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -163,6 +200,20 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
 
         <div className="flex items-center gap-1 sm:gap-3 flex-shrink-0 min-w-0">
           {!isFreelancer ? <LivePresenceBar /> : null}
+          {!isFreelancer && (
+            <button
+              type="button"
+              onClick={() => setShowWhatsNew(true)}
+              className="relative p-2.5 rounded-xl hover:bg-stone-100 text-stone-600 hover:text-brand-700 transition-colors"
+              title="What's new"
+              aria-label="What's new in this update"
+            >
+              <Sparkles size={18} />
+              {hasNewUpdate ? (
+                <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-brand-500 ring-2 ring-white" />
+              ) : null}
+            </button>
+          )}
           <NotificationBell />
 
           <div className="relative user-menu-container">
@@ -277,6 +328,14 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
         confirmText={t('common.logOut')}
         type="danger"
       />
+
+      {!isFreelancer && (
+        <WhatsNewModal
+          open={showWhatsNew}
+          onClose={() => setShowWhatsNew(false)}
+          onAcknowledge={acknowledgeWhatsNew}
+        />
+      )}
     </header>
   );
 };
