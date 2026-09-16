@@ -122,7 +122,6 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
     return () => window.removeEventListener('profilePictureUpdated', onPictureUpdated);
   }, []);
 
-  const isFreelancer = userRole === 'freelancer';
   const searchInputRef = React.useRef(null);
 
   const handleSearch = (e) => {
