@@ -15,7 +15,7 @@ function periodIntakeLabel(dateRange, periodLabel) {
   if (dateRange === 'quarter') return 'New this quarter';
   if (dateRange === 'year') return 'New this year';
   if (dateRange === 'custom') return 'New in range';
-  return periodLabel ? `New · ${periodLabel}` : 'New in period';
+  return periodLabel ? `New · ${periodLabel}` : 'New this month';
 }
 
 export function DashboardKpis({ d, navigate, isFreelancer, periodLabel, dateRange, customFrom = '', customTo = '', dataFresh = true }) {
@@ -72,7 +72,7 @@ export function DashboardKpis({ d, navigate, isFreelancer, periodLabel, dateRang
             value={item.count || 0}
             caption={
             dataFresh
-              ? (dateRange === 'all' ? 'Currently in this stage' : 'Entered this stage in period')
+              ? (dateRange === 'all' ? 'Currently in this stage' : 'Entered this stage this month')
               : null
           }
             gradient={style.gradient}

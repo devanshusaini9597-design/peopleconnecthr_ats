@@ -1,14 +1,28 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, X, Compass, Map } from 'lucide-react';
+import {
+  Sparkles,
+  Compass,
+  Map,
+  Briefcase,
+  Users,
+  History,
+  BarChart3,
+  Bookmark,
+  ChevronRight,
+  ExternalLink,
+} from 'lucide-react';
+import Modal from './ui/Modal';
 import {
   PRODUCT_UPDATES,
   getLatestProductUpdate,
 } from '../config/productUpdates';
 import { requestProductTour } from '../utils/productTourTrigger';
 
+const HIGHLIGHT_ICONS = [Briefcase, Users, Bookmark, History, BarChart3];
+
 /**
- * What's New modal for company staff (not freelancers).
+ * Enterprise release notes for company staff (not freelancers).
  */
 const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
   const navigate = useNavigate();
@@ -18,6 +32,14 @@ const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
     if (!open || !latest?.id) return;
     onAcknowledge?.(latest.id);
   }, [open, latest?.id, onAcknowledge]);
+
+  const highlights = useMemo(() => {
+    return (latest?.highlights || []).map((h, i) => ({
+      title: typeof h === 'string' ? null : h.title,
+      body: typeof h === 'string' ? h : h.body,
+      Icon: HIGHLIGHT_ICONS[i % HIGHLIGHT_ICONS.length],
+    }));
+  }, [latest]);
 
   if (!open || !latest) return null;
 
@@ -57,109 +79,132 @@ const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
     }
   };
 
+  const primaryTour = (latest.explore || []).find((e) => e.tourKey)
+    || (latest.explore || [])[0];
+
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
-      <button
-        type="button"
-        className="absolute inset-0 bg-stone-900/40 backdrop-blur-[2px]"
-        aria-label="Close"
-        onClick={onClose}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="whats-new-title"
-        className="relative w-full max-w-lg max-h-[min(90vh,640px)] overflow-hidden rounded-2xl bg-white shadow-2xl border border-stone-200 flex flex-col"
-      >
-        <div className="flex items-start gap-3 px-5 pt-5 pb-3 border-b border-stone-100 bg-gradient-to-br from-brand-50/80 to-white">
-          <div className="w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
-            <Sparkles size={20} />
-          </div>
-          <div className="min-w-0 flex-1 pt-0.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-brand-700">Product update</p>
-            <h2 id="whats-new-title" className="text-lg font-bold text-stone-900 leading-snug">
-              {latest.title}
-            </h2>
-            <p className="text-xs text-stone-500 mt-0.5">{latest.dateLabel || latest.date}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100"
-            aria-label="Close"
-          >
-            <X size={18} />
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="lg"
+      zClass="z-[80]"
+      icon={Sparkles}
+      title="What's new"
+      description={latest.title}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="btn-secondary">
+            Dismiss
           </button>
+          {primaryTour ? (
+            <button
+              type="button"
+              onClick={() => goExplore(primaryTour)}
+              className="btn-primary"
+            >
+              <Map size={15} />
+              {primaryTour.tourKey ? 'Start guided tour' : primaryTour.label}
+            </button>
+          ) : (
+            <button type="button" onClick={onClose} className="btn-primary">
+              Continue
+            </button>
+          )}
+        </>
+      }
+    >
+      <div className="space-y-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center rounded-md bg-brand-50 text-brand-800 border border-brand-100 px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase">
+            Release notes
+          </span>
+          <span className="text-xs text-stone-500 font-medium">
+            {latest.dateLabel || latest.date}
+          </span>
+          {PRODUCT_UPDATES.length > 1 ? (
+            <span className="text-xs text-stone-400">
+              · {PRODUCT_UPDATES.length} recent updates
+            </span>
+          ) : null}
         </div>
 
-        <div className="overflow-y-auto px-5 py-4 space-y-4 flex-1">
-          {latest.summary ? (
-            <p className="text-sm text-stone-600 leading-relaxed">{latest.summary}</p>
-          ) : null}
+        {latest.summary ? (
+          <p className="text-sm text-stone-600 leading-relaxed border-l-2 border-brand-400 pl-3">
+            {latest.summary}
+          </p>
+        ) : null}
 
-          <ul className="space-y-3">
-            {(latest.highlights || []).map((h) => {
-              const title = typeof h === 'string' ? null : h.title;
-              const body = typeof h === 'string' ? h : h.body;
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 mb-2.5">
+            What changed
+          </p>
+          <ol className="space-y-0 divide-y divide-stone-100 rounded-xl border border-stone-200 overflow-hidden bg-white">
+            {highlights.map((h, idx) => {
+              const Icon = h.Icon;
               return (
-                <li
-                  key={title || body}
-                  className="rounded-xl border border-stone-100 bg-stone-50/80 px-3.5 py-3"
-                >
-                  {title ? <p className="text-sm font-semibold text-stone-900">{title}</p> : null}
-                  <p className={`text-sm text-stone-600 leading-relaxed ${title ? 'mt-1' : ''}`}>{body}</p>
+                <li key={h.title || h.body} className="flex gap-3 px-3.5 py-3.5 bg-white hover:bg-stone-50/80 transition-colors">
+                  <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-stone-100 text-brand-700 flex items-center justify-center mt-0.5">
+                    <Icon size={15} strokeWidth={2.25} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-[10px] font-bold text-stone-400 tabular-nums">
+                        {String(idx + 1).padStart(2, '0')}
+                      </span>
+                      {h.title ? (
+                        <p className="text-sm font-semibold text-stone-900">{h.title}</p>
+                      ) : null}
+                    </div>
+                    <p className={`text-[13px] text-stone-600 leading-relaxed ${h.title ? 'mt-0.5' : ''}`}>
+                      {h.body}
+                    </p>
+                  </div>
                 </li>
               );
             })}
-          </ul>
+          </ol>
+        </div>
 
-          {Array.isArray(latest.explore) && latest.explore.length > 0 ? (
-            <div className="pt-1">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 mb-2 flex items-center gap-1.5">
-                <Compass size={12} className="text-brand-600" />
-                Explore
-              </p>
-              <div className="flex flex-col gap-2">
-                {latest.explore.map((item) => {
-                  const isTour = Boolean(item.tourKey);
-                  return (
-                    <button
-                      key={`${item.path}-${item.label}`}
-                      type="button"
-                      onClick={() => goExplore(item)}
-                      className="inline-flex items-center gap-2 text-left text-sm font-medium text-brand-700 hover:text-brand-900 hover:bg-brand-50 rounded-lg px-3 py-2.5 border border-brand-100 transition-colors"
-                    >
-                      {isTour ? (
-                        <Map size={16} className="flex-shrink-0" />
-                      ) : (
-                        <Compass size={16} className="flex-shrink-0" />
-                      )}
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
-
-          {PRODUCT_UPDATES.length > 1 ? (
-            <p className="text-xs text-stone-400 pt-1">
-              Showing the latest of {PRODUCT_UPDATES.length} recent updates.
+        {Array.isArray(latest.explore) && latest.explore.length > 0 ? (
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 mb-2.5 flex items-center gap-1.5">
+              <Compass size={12} className="text-brand-600" />
+              Explore & tours
             </p>
-          ) : null}
-        </div>
-
-        <div className="px-5 py-3 border-t border-stone-100 bg-stone-50/50 flex justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl text-sm font-semibold bg-brand-600 text-white hover:bg-brand-700 shadow-sm"
-          >
-            Got it
-          </button>
-        </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {latest.explore.map((item) => {
+                const isTour = Boolean(item.tourKey);
+                return (
+                  <button
+                    key={`${item.path}-${item.label}`}
+                    type="button"
+                    onClick={() => goExplore(item)}
+                    className="group flex items-center gap-2.5 text-left rounded-xl border border-stone-200 bg-white px-3 py-2.5 hover:border-brand-300 hover:bg-brand-50/50 hover:shadow-sm transition-all"
+                  >
+                    <span className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${
+                      isTour
+                        ? 'bg-brand-600 text-white'
+                        : 'bg-stone-100 text-stone-600 group-hover:bg-brand-100 group-hover:text-brand-700'
+                    }`}>
+                      {isTour ? <Map size={14} /> : <ExternalLink size={14} />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[13px] font-semibold text-stone-900 leading-snug">
+                        {item.label}
+                      </span>
+                      <span className="block text-[11px] text-stone-500 mt-0.5">
+                        {isTour ? 'Guided walkthrough' : 'Open in workspace'}
+                      </span>
+                    </span>
+                    <ChevronRight size={14} className="flex-shrink-0 text-stone-300 group-hover:text-brand-600" />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
       </div>
-    </div>
+    </Modal>
   );
 };
 

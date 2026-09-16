@@ -9,57 +9,57 @@
 
 export const PRODUCT_UPDATES = [
   {
-    id: '2026-09-16-whats-new-explore',
+    id: '2026-09-16-whats-new-enterprise',
     date: '2026-09-16',
     dateLabel: 'September 2026',
-    title: 'Desk defaults, status history & clearer stage metrics',
+    title: 'Desk defaults, status history & stage metrics',
     summary:
-      'Configure your Add Candidate preferences once, review every status change on a clear timeline, and measure stage movement by the date candidates entered each stage.',
+      'This release reduces repetitive data entry on Add Candidate, adds an auditable status timeline, and aligns dashboard stage KPIs with when candidates entered each stage.',
     highlights: [
       {
         title: 'Personal desk defaults',
-        body: 'Under Profile → Desk defaults, set your usual client, source, product, and FLS. These values apply automatically on Add Candidate. Enable Lock defaults to keep your selections fixed.',
+        body: 'Save your usual client, source, product, and FLS under Profile → Desk defaults. Values pre-fill automatically when you add a candidate.',
       },
       {
-        title: 'Role-based defaults for your team',
-        body: 'Administrators can define defaults by role in Organization → Team. Personal desk defaults always take priority when set.',
+        title: 'Role-based team defaults',
+        body: 'Administrators can set defaults per role in Organization → Team. Personal defaults always override role defaults when present.',
       },
       {
-        title: 'Last-used field memory',
-        body: 'When no default is configured, Add Candidate remembers your most recent client, source, product, and FLS to speed up recurring work.',
+        title: 'Sticky last-used values',
+        body: 'If no default is set, Add Candidate remembers your most recent client, source, product, and FLS for the next entry.',
       },
       {
-        title: 'Status history on every candidate',
-        body: 'Open a candidate and use History to see who changed status, when, and from which stage to which — including earlier records where available.',
+        title: 'Candidate status history',
+        body: 'Use History on a candidate record to review who changed status, when, and from which stage to which.',
       },
       {
-        title: 'Dashboard stage metrics by entry date',
-        body: 'Stage cards (Interview, Offer, Turn Up, and similar) count candidates who entered that stage this month, not only those first added this month. Total Candidates remains all-time.',
+        title: 'Stage metrics by entry date',
+        body: 'Dashboard stage cards count candidates who entered that stage this month. Total Candidates remains all-time inventory.',
       },
     ],
     explore: [
       {
-        label: 'Open desk defaults',
+        label: 'Desk defaults',
         path: '/settings',
         hash: 'desk-defaults',
       },
       {
-        label: 'Take a tour — Profile & desk defaults',
+        label: 'Profile tour',
         path: '/settings',
         hash: 'desk-defaults',
         tourKey: 'skillnix_tour_profile_v2',
       },
       {
-        label: 'Take a tour — Dashboard',
+        label: 'Dashboard tour',
         path: '/dashboard',
         tourKey: 'skillnix_tour_dashboard_v1',
       },
       {
-        label: 'Organization → Team (role defaults)',
+        label: 'Team role defaults',
         path: '/organization?tab=team',
       },
       {
-        label: 'Take a tour — Organization',
+        label: 'Organization tour',
         path: '/organization',
         tourKey: 'skillnix_tour_organization_v1',
       },
