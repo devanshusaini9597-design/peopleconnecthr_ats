@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Menu, Search, ChevronDown, User, LogOut, Building2, CreditCard, Settings, Plug, Command, ChevronRight, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +14,7 @@ import { formatRoleLabel } from './organization/constants';
 import { usePresence } from '../context/PresenceContext';
 import {
   PRODUCT_UPDATES_STORAGE_KEY,
+  countUnseenProductUpdates,
   hasUnseenProductUpdates,
   latestProductUpdateId,
 } from '../config/productUpdates';
@@ -28,7 +29,7 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showWhatsNew, setShowWhatsNew] = useState(false);
-  const [hasNewUpdate, setHasNewUpdate] = useState(false);
+  const [unseenUpdateCount, setUnseenUpdateCount] = useState(0);
   const [profilePicture, setProfilePicture] = useState(user?.profilePicture || '');
   const [photoFailed, setPhotoFailed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -47,14 +48,14 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
 
   useEffect(() => {
     if (isFreelancer) {
-      setHasNewUpdate(false);
+      setUnseenUpdateCount(0);
       return;
     }
     try {
       const seen = localStorage.getItem(PRODUCT_UPDATES_STORAGE_KEY) || '';
-      const unseen = hasUnseenProductUpdates(seen);
-      setHasNewUpdate(unseen);
-      if (unseen) {
+      const count = countUnseenProductUpdates(seen);
+      setUnseenUpdateCount(count);
+      if (hasUnseenProductUpdates(seen)) {
         const autoKey = `${PRODUCT_UPDATES_STORAGE_KEY}_auto_${latestProductUpdateId()}`;
         if (!sessionStorage.getItem(autoKey)) {
           sessionStorage.setItem(autoKey, '1');
@@ -62,16 +63,16 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
         }
       }
     } catch {
-      setHasNewUpdate(false);
+      setUnseenUpdateCount(0);
     }
   }, [isFreelancer]);
 
-  const acknowledgeWhatsNew = (id) => {
+  const acknowledgeWhatsNew = useCallback((id) => {
     try {
       localStorage.setItem(PRODUCT_UPDATES_STORAGE_KEY, id || latestProductUpdateId());
     } catch { /* ignore */ }
-    setHasNewUpdate(false);
-  };
+    setUnseenUpdateCount(0);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -204,12 +205,14 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
               type="button"
               onClick={() => setShowWhatsNew(true)}
               className="relative p-2.5 rounded-xl hover:bg-stone-100 text-stone-600 hover:text-brand-700 transition-colors"
-              title="What's new"
-              aria-label="What's new in this update"
+              title={unseenUpdateCount > 0 ? `${unseenUpdateCount} product update${unseenUpdateCount === 1 ? '' : 's'}` : "What's new"}
+              aria-label={unseenUpdateCount > 0 ? `${unseenUpdateCount} unread product updates` : "What's new in this update"}
             >
               <Sparkles size={18} />
-              {hasNewUpdate ? (
-                <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-brand-500 ring-2 ring-white" />
+              {unseenUpdateCount > 0 ? (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[1.125rem] h-[1.125rem] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold leading-[1.125rem] text-center ring-2 ring-white shadow-sm">
+                  {unseenUpdateCount > 9 ? '9+' : unseenUpdateCount}
+                </span>
               ) : null}
             </button>
           )}

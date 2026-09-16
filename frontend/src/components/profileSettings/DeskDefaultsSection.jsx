@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Briefcase, Lock, Save, Loader2 } from 'lucide-react';
 import PremiumSelect from '../ui/PremiumSelect';
 import { authenticatedFetch } from '../../utils/fetchUtils';
-import { EMPTY_DESK_DEFAULTS } from '../../utils/deskDefaults';
+import { EMPTY_DESK_DEFAULTS, mergeEffectiveAfterPersonalSave } from '../../utils/deskDefaults';
 import useDeskDefaultOptions from '../../utils/useDeskDefaultOptions';
+import { useAuth } from '../../context/AuthContext';
 import { BASE } from './profileConstants';
 
 export default function DeskDefaultsSection({
@@ -13,6 +14,7 @@ export default function DeskDefaultsSection({
   updateUser,
   isFreelancer,
 }) {
+  const { user } = useAuth();
   const [form, setForm] = useState(() => ({ ...EMPTY_DESK_DEFAULTS, ...(deskDefaults || {}) }));
   const [saving, setSaving] = useState(false);
   const {
@@ -68,8 +70,17 @@ export default function DeskDefaultsSection({
         return;
       }
       const next = data.deskDefaults || form;
+      const effective = data.effectiveDeskDefaults
+        || mergeEffectiveAfterPersonalSave(next, user);
       onSaved?.(next);
-      updateUser?.({ deskDefaults: next });
+      updateUser?.({
+        deskDefaults: next,
+        effectiveDeskDefaults: effective,
+        deskLastUsed: data.deskLastUsed || user?.deskLastUsed,
+        roleDeskDefaults: data.roleDeskDefaults !== undefined
+          ? data.roleDeskDefaults
+          : user?.roleDeskDefaults,
+      });
       toast?.success('Desk defaults saved. New candidates will use these values.');
     } catch {
       toast?.error('Could not save desk defaults');
@@ -81,7 +92,7 @@ export default function DeskDefaultsSection({
   return (
     <div id="desk-defaults" className="card-ats-bordered overflow-hidden relative scroll-mt-24" data-tour="desk-defaults">
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-      <div className="px-5 sm:px-6 py-4 border-b border-stone-100 flex items-start justify-between gap-3 flex-wrap">
+      <div className="px-5 sm:px-6 py-4 border-b border-stone-100">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Briefcase size={16} className="text-brand-600" />
@@ -92,10 +103,6 @@ export default function DeskDefaultsSection({
             Locked fields are controlled by an admin.
           </p>
         </div>
-        <button type="button" onClick={handleSave} disabled={saving} className="btn-primary">
-          {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
-          {saving ? 'Saving…' : 'Save defaults'}
-        </button>
       </div>
 
       <div className="px-5 sm:px-6 py-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -190,6 +197,13 @@ export default function DeskDefaultsSection({
             placeholder="City / region (optional)"
           />
         </div>
+      </div>
+
+      <div className="px-5 sm:px-6 py-4 border-t border-stone-100 bg-stone-50/60 flex justify-end">
+        <button type="button" onClick={handleSave} disabled={saving} className="btn-primary">
+          {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+          {saving ? 'Saving…' : 'Save defaults'}
+        </button>
       </div>
     </div>
   );

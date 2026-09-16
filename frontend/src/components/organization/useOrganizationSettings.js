@@ -16,7 +16,13 @@ export default function useOrganizationSettings() {
   const { updateOrganization } = useAuth();
   const logoInputRef = useRef(null);
   const [tourOpen, setTourOpen] = usePageTour(ORG_TOUR_KEY);
-  const [activeTab, setActiveTab] = useState('general');
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      const tab = new URLSearchParams(window.location.search).get('tab');
+      if (tab && ['general', 'pipeline', 'team', 'careers'].includes(tab)) return tab;
+    } catch { /* ignore */ }
+    return 'general';
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [logoDragging, setLogoDragging] = useState(false);

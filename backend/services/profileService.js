@@ -268,7 +268,14 @@ async function getProfileStats(user) {
 async function updateDeskDefaults(userId, body = {}) {
   const user = await User.findById(userId);
   if (!user) throw httpError('User not found', 404);
-  const { sanitizeDeskDefaults, serializeDeskDefaults, canAdminSetDeskDefaults } = require('../utils/deskDefaults');
+  const {
+    sanitizeDeskDefaults,
+    serializeDeskDefaults,
+    serializeLastUsed,
+    canAdminSetDeskDefaults,
+    resolveEffectiveForUser,
+    sanitizeRoleDeskDefaultsMap,
+  } = require('../utils/deskDefaults');
   const asAdmin = canAdminSetDeskDefaults(user);
   user.deskDefaults = sanitizeDeskDefaults(body, {
     asAdmin,
@@ -276,7 +283,27 @@ async function updateDeskDefaults(userId, body = {}) {
   });
   user.markModified('deskDefaults');
   await user.save();
-  return { deskDefaults: serializeDeskDefaults(user.deskDefaults) };
+
+  let organization = null;
+  if (user.organizationId) {
+    organization = await Organization.findById(user.organizationId)
+      .select('atsSettings.roleDeskDefaults')
+      .lean();
+  }
+  const roleMap = sanitizeRoleDeskDefaultsMap(organization?.atsSettings?.roleDeskDefaults || {});
+  const deskDefaults = serializeDeskDefaults(user.deskDefaults);
+  const deskLastUsed = serializeLastUsed(user.deskLastUsed);
+  const effectiveDeskDefaults = resolveEffectiveForUser(
+    { role: user.role, deskDefaults: user.deskDefaults, deskLastUsed: user.deskLastUsed },
+    { atsSettings: { roleDeskDefaults: roleMap } }
+  );
+
+  return {
+    deskDefaults,
+    deskLastUsed,
+    roleDeskDefaults: roleMap[user.role] || null,
+    effectiveDeskDefaults,
+  };
 }
 
 module.exports = {

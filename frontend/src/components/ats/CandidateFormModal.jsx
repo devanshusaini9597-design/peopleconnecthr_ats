@@ -19,6 +19,7 @@ import { authenticatedFetch } from '../../utils/fetchUtils';
 import { searchPicklistOptions, PICKLIST_MIN_SEARCH } from '../../utils/orgListFetch';
 import useModalLayer from '../../hooks/useModalLayer';
 import { canEditCandidateSpoc } from '../../utils/spocIdentity';
+import { resolveFormDeskDefaults } from '../../utils/deskDefaults';
 import { useNavigate } from 'react-router-dom';
 
 const LIST_META = {
@@ -88,15 +89,16 @@ export default function CandidateFormModal(props) {
   const formScrollRef = useRef(null);
   const { isTop } = useModalLayer(showModal);
   const [showStatusHistory, setShowStatusHistory] = useState(false);
+  const deskDefaults = resolveFormDeskDefaults(user);
   const flsLocked = Boolean(
     !editId
-    && (user?.effectiveDeskDefaults?.locked?.fls || user?.deskDefaults?.locked?.fls)
-    && (user?.effectiveDeskDefaults?.fls || user?.deskDefaults?.fls)
+    && deskDefaults?.locked?.fls
+    && deskDefaults?.fls
   );
   const showDeskNudge = Boolean(
     !editId
     && !isFreelancer
-    && !(user?.effectiveDeskDefaults?.fls || user?.deskDefaults?.fls)
+    && !(deskDefaults?.fls || deskDefaults?.client || deskDefaults?.source)
   );
 
   useEffect(() => {

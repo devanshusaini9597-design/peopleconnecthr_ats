@@ -14,12 +14,12 @@ import { useAuth } from '../context/AuthContext';
 import { DASH_TOUR_KEY, DASH_TOUR_STEPS, FREELANCER_DASH_TOUR_KEY, FREELANCER_DASH_TOUR_STEPS } from './dashboard/dashboardConstants';
 import { DashboardKpis, DashboardMainGrid, DashboardLowerGrid } from './dashboard/DashboardPanels';
 import FreelancerDashboard from './dashboard/FreelancerDashboard';
-import DashboardPeriodBar from './dashboard/DashboardPeriodBar';
 import useAnnouncementNavUpdates from '../hooks/useAnnouncementNavUpdates';
 import useJobNavUpdates from '../hooks/useJobNavUpdates';
 import { appendAnalyticsParams } from '../utils/analyticsScope';
 import { DATE_RANGE_LABELS } from './analytics/constants';
 import { AnalyticsInlineLoader, AnalyticsPanelOverlay } from './analytics/AnalyticsPanelLoader';
+import { consumeForcedTour, START_TOUR_EVENT } from '../utils/productTourTrigger';
 
 const AUTO_REFRESH_MS = 45_000;
 
@@ -31,7 +31,7 @@ const DashboardPage = () => {
   const userName = user?.name || '';
   const displayName = userName || (userEmail.includes('@') ? userEmail.split('@')[0] : userEmail);
   const isFreelancer = user?.role === 'freelancer';
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const unreadAnnouncements = useAnnouncementNavUpdates();
   const newJobsCount = useJobNavUpdates();
 
@@ -39,29 +39,6 @@ const DashboardPage = () => {
   const customFrom = searchParams.get('from') || '';
   const customTo = searchParams.get('to') || '';
   const periodReady = dateRange !== 'custom' || (customFrom && customTo);
-
-  const setDateRange = (value) => {
-    const next = new URLSearchParams(searchParams);
-    if (!value || value === 'all') next.delete('period');
-    else next.set('period', value);
-    if (value !== 'custom') {
-      next.delete('from');
-      next.delete('to');
-    }
-    setSearchParams(next, { replace: true });
-  };
-  const setCustomFrom = (value) => {
-    const next = new URLSearchParams(searchParams);
-    if (value) next.set('from', value);
-    else next.delete('from');
-    setSearchParams(next, { replace: true });
-  };
-  const setCustomTo = (value) => {
-    const next = new URLSearchParams(searchParams);
-    if (value) next.set('to', value);
-    else next.delete('to');
-    setSearchParams(next, { replace: true });
-  };
 
   const periodLabel = dateRange === 'custom' && customFrom && customTo
     ? `${new Date(customFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} – ${new Date(customTo).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
@@ -168,6 +145,22 @@ const DashboardPage = () => {
     return undefined;
   }, [loading, isFreelancer]);
 
+  useEffect(() => {
+    const tourKey = isFreelancer ? FREELANCER_DASH_TOUR_KEY : DASH_TOUR_KEY;
+    let forceTimer;
+    if (consumeForcedTour(tourKey)) {
+      forceTimer = setTimeout(() => setTourOpen(true), 500);
+    }
+    const onStart = (e) => {
+      if (e?.detail?.tourKey === tourKey) setTourOpen(true);
+    };
+    window.addEventListener(START_TOUR_EVENT, onStart);
+    return () => {
+      if (forceTimer) clearTimeout(forceTimer);
+      window.removeEventListener(START_TOUR_EVENT, onStart);
+    };
+  }, [isFreelancer]);
+
   if (loading && !dashData) {
     return (
       <div className="page-shell-ats animate-page-enter">
@@ -273,26 +266,6 @@ const DashboardPage = () => {
           </span>
         </div>
       ) : null}
-
-      {!isFreelancer && (
-        <DashboardPeriodBar
-          userRole={user?.role}
-          dateRange={dateRange}
-          setDateRange={setDateRange}
-          customFrom={customFrom}
-          setCustomFrom={setCustomFrom}
-          customTo={customTo}
-          setCustomTo={setCustomTo}
-          periodLabel={uiPeriodLabel}
-          scope={d.scope}
-        />
-      )}
-
-      {!isFreelancer && dateRange === 'custom' && !periodReady && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-2.5 text-[13px] text-amber-800">
-          Select both start and end dates to load dashboard stats for your custom range.
-        </div>
-      )}
 
       {isFreelancer ? (
         <FreelancerDashboard />

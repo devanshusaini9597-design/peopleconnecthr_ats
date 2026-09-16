@@ -47,7 +47,7 @@ export const DASH_TOUR_STEPS = [
   {
     target: '[data-tour="dash-kpis"]',
     title: 'Key metrics',
-    body: 'All candidates is your full inventory. New this month is everyone added in the period (any stage). Stage cards count who entered that stage in the selected period (e.g. Turn Up in September), not when they were first added.',
+    body: 'All candidates is your full inventory. New this month is everyone added this month (any stage). Stage cards count who entered that stage this month (e.g. Turn Up in September), not when they were first added.',
     placement: 'bottom',
   },
   {

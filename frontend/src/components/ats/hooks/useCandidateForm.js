@@ -13,7 +13,7 @@ import {
   mergeResumeIntoForm,
 } from '../../../utils/resumeFormMerge';
 import { canEditCandidateSpoc, resolveEmployeeSpocLabel } from '../../../utils/spocIdentity';
-import { applyDeskDefaultsToForm } from '../../../utils/deskDefaults';
+import { applyDeskDefaultsToForm, resolveFormDeskDefaults } from '../../../utils/deskDefaults';
 
 export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, currentPage, setCurrentPage, API_URL } = {}) {
   const { user, updateUser } = useAuth();
@@ -72,9 +72,9 @@ export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, cur
     const names = teamNamesKey ? teamNamesKey.split('|').filter(Boolean) : [];
     if (user?.name) names.push(user.name);
     next.spoc = resolveEmployeeSpocLabel(user, names);
-    const defaults = user?.effectiveDeskDefaults || user?.deskDefaults;
+    const defaults = resolveFormDeskDefaults(user);
     return applyDeskDefaultsToForm(next, defaults);
-  }, [user?.role, user?.name, user?.email, user?.deskDefaults, user?.effectiveDeskDefaults, teamNamesKey]);
+  }, [user, teamNamesKey]);
 
   const openAddCandidate = useCallback(() => {
     setEditId(null);
@@ -709,13 +709,34 @@ const handleAddCandidate = async (e) => {
       return { value: v, label: v };
     });
   }, [masterNoticePeriods, isFreelancer]);
+  const formClientOptions = useMemo(() => {
+    const opts = masterClients.map((c) => {
+      const v = toBlock(c.name);
+      return { value: v, label: v };
+    });
+    const cur = toBlock(formData.client);
+    if (cur && !opts.some((o) => o.value === cur)) opts.unshift({ value: cur, label: cur });
+    return opts;
+  }, [masterClients, formData.client]);
+  const formSourceOptions = useMemo(() => {
+    const opts = masterSources.map((s) => {
+      const v = toBlock(s.name);
+      return { value: v, label: v };
+    });
+    const cur = toBlock(formData.source);
+    if (cur && !opts.some((o) => o.value === cur)) opts.unshift({ value: cur, label: cur });
+    return opts;
+  }, [masterSources, formData.source]);
   const formProductOptions = useMemo(() => {
     const names = masterProducts.map((x) => x.name).filter(Boolean);
-    return names.map((opt) => {
+    const opts = names.map((opt) => {
       const v = toBlock(opt);
       return { value: v, label: v };
     });
-  }, [masterProducts]);
+    const cur = toBlock(formData.product);
+    if (cur && !opts.some((o) => o.value === cur)) opts.unshift({ value: cur, label: cur });
+    return opts;
+  }, [masterProducts, formData.product]);
   const formFlsOptions = useMemo(() => [
     { value: '', label: 'SELECT' },
     { value: 'FLS', label: 'FLS' },
@@ -731,20 +752,6 @@ const handleAddCandidate = async (e) => {
       : defaults;
     return fromApi.map((s) => ({ value: s, label: s }));
   }, [statusOptions]);
-  const formClientOptions = useMemo(
-    () => masterClients.map((c) => {
-      const v = toBlock(c.name);
-      return { value: v, label: v };
-    }),
-    [masterClients],
-  );
-  const formSourceOptions = useMemo(
-    () => masterSources.map((s) => {
-      const v = toBlock(s.name);
-      return { value: v, label: v };
-    }),
-    [masterSources],
-  );
   const formCountryOptions = useMemo(() => (countryCodes || []).map((c) => {
     const iso = (c.iso || '').toUpperCase();
     return { value: iso || c.code, label: c.code, description: c.name || "", flagIso: iso || undefined, searchText: `${c.name || ""} ${iso} ${c.code || ""}` };

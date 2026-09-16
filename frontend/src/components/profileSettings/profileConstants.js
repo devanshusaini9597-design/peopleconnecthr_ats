@@ -5,13 +5,19 @@ export const PROFILE_TOUR_KEY = 'skillnix_tour_profile_v2';
 export const PROFILE_TOUR_STEPS = [
   {
     title: 'Your profile',
-    body: 'This page shows your account details. Edit name and phone, then change your password on the Password tab.',
+    body: 'Review your account details, security settings, and personal hiring preferences from this page.',
   },
   {
     target: '[data-tour="profile-tabs"]',
     title: 'Sections',
-    body: 'Profile is identity. Security updates your password and lets you sign out other devices.',
+    body: 'Profile covers identity. Security updates your password and lets you sign out other devices.',
     placement: 'bottom',
+  },
+  {
+    target: '[data-tour="desk-defaults"]',
+    title: 'Desk defaults',
+    body: 'Set your usual client, source, product, and FLS so Add Candidate opens ready to work. Lock defaults if you want these values to stay fixed.',
+    placement: 'top',
   },
 ];
 
