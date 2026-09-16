@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Sparkles,
@@ -13,7 +13,11 @@ import {
   Shield,
 } from 'lucide-react';
 import Modal from './ui/Modal';
-import { getLatestProductUpdate } from '../config/productUpdates';
+import {
+  PRODUCT_UPDATES_STORAGE_KEY,
+  getProductUpdatesWithSeenState,
+  latestProductUpdateId,
+} from '../config/productUpdates';
 import { requestProductTour } from '../utils/productTourTrigger';
 import { useAuth } from '../context/AuthContext';
 
@@ -21,31 +25,37 @@ const HIGHLIGHT_ICONS = [Briefcase, Users, History, BarChart3, Shield];
 
 /**
  * Enterprise release notes for company staff (not freelancers).
- * Content is filtered by role — owners see admin + everyone items.
+ * Unread updates stay highlighted until the user dismisses.
  */
 const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const role = user?.role || 'recruiter';
-  const latest = useMemo(() => getLatestProductUpdate(role), [role]);
 
-  useEffect(() => {
-    if (!open || !latest?.id) return;
-    onAcknowledge?.(latest.id);
-  }, [open, latest?.id, onAcknowledge]);
+  const seenId = useMemo(() => {
+    try {
+      return localStorage.getItem(PRODUCT_UPDATES_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  }, [open]);
 
-  const highlights = useMemo(() => {
-    return (latest?.highlights || []).map((h, i) => ({
-      title: typeof h === 'string' ? null : h.title,
-      body: typeof h === 'string' ? h : h.body,
-      audience: typeof h === 'string' ? 'all' : (h.audience || 'all'),
-      Icon: HIGHLIGHT_ICONS[i % HIGHLIGHT_ICONS.length],
-    }));
-  }, [latest]);
+  const updates = useMemo(
+    () => getProductUpdatesWithSeenState(role, seenId),
+    [role, seenId],
+  );
+  const latest = updates[0] || null;
+  const unreadCount = updates.filter((u) => u.unseen).length;
 
   if (!open || !latest) return null;
 
+  const dismiss = () => {
+    onAcknowledge?.(latestProductUpdateId(role));
+    onClose?.();
+  };
+
   const goExplore = (item) => {
+    onAcknowledge?.(latestProductUpdateId(role));
     onClose?.();
     if (item.tourKey) {
       requestProductTour(item.tourKey);
@@ -87,7 +97,7 @@ const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={dismiss}
       size="lg"
       zClass="z-[80]"
       icon={Sparkles}
@@ -95,7 +105,7 @@ const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
       description={latest.title}
       footer={
         <>
-          <button type="button" onClick={onClose} className="btn-secondary">
+          <button type="button" onClick={dismiss} className="btn-secondary">
             Dismiss
           </button>
           {primaryTour ? (
@@ -108,7 +118,7 @@ const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
               {primaryTour.tourKey ? 'Start guided tour' : primaryTour.label}
             </button>
           ) : (
-            <button type="button" onClick={onClose} className="btn-primary">
+            <button type="button" onClick={dismiss} className="btn-primary">
               Continue
             </button>
           )}
@@ -123,7 +133,46 @@ const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
           <span className="text-xs text-stone-500 font-medium tabular-nums">
             {latest.dateLabel || latest.date}
           </span>
+          {unreadCount > 0 ? (
+            <span className="inline-flex items-center rounded-md bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 text-[11px] font-semibold">
+              {unreadCount} unread
+            </span>
+          ) : null}
         </div>
+
+        {updates.length > 1 ? (
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+              Recent updates
+            </p>
+            <ul className="rounded-xl border border-stone-200 overflow-hidden divide-y divide-stone-100">
+              {updates.map((u) => (
+                <li
+                  key={u.id}
+                  className={`px-3.5 py-2.5 flex items-start justify-between gap-3 ${
+                    u.unseen ? 'bg-brand-50/70 border-l-2 border-l-brand-500' : 'bg-white'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <p className={`text-sm leading-snug ${u.unseen ? 'font-semibold text-stone-900' : 'font-medium text-stone-700'}`}>
+                      {u.title}
+                    </p>
+                    <p className="text-[11px] text-stone-500 mt-0.5 tabular-nums">{u.dateLabel}</p>
+                  </div>
+                  {u.unseen ? (
+                    <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wide text-brand-700 bg-white border border-brand-200 rounded-md px-1.5 py-0.5">
+                      New
+                    </span>
+                  ) : (
+                    <span className="flex-shrink-0 text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+                      Seen
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         {latest.summary ? (
           <p className="text-sm text-stone-600 leading-relaxed border-l-2 border-brand-400 pl-3">
@@ -136,11 +185,14 @@ const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
             What changed
           </p>
           <ol className="space-y-0 divide-y divide-stone-100 rounded-xl border border-stone-200 overflow-hidden bg-white">
-            {highlights.map((h, idx) => {
-              const Icon = h.Icon;
-              const isAdminOnly = h.audience === 'admin';
+            {(latest.highlights || []).map((h, idx) => {
+              const title = typeof h === 'string' ? null : h.title;
+              const body = typeof h === 'string' ? h : h.body;
+              const audience = typeof h === 'string' ? 'all' : (h.audience || 'all');
+              const Icon = HIGHLIGHT_ICONS[idx % HIGHLIGHT_ICONS.length];
+              const isAdminOnly = audience === 'admin';
               return (
-                <li key={h.title || h.body} className="flex gap-3 px-3.5 py-3.5 bg-white hover:bg-stone-50/80 transition-colors">
+                <li key={title || body} className="flex gap-3 px-3.5 py-3.5 bg-white hover:bg-stone-50/80 transition-colors">
                   <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-stone-100 text-brand-700 flex items-center justify-center mt-0.5">
                     <Icon size={15} strokeWidth={2.25} />
                   </div>
@@ -149,8 +201,8 @@ const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
                       <span className="text-[10px] font-bold text-stone-400 tabular-nums">
                         {String(idx + 1).padStart(2, '0')}
                       </span>
-                      {h.title ? (
-                        <p className="text-sm font-semibold text-stone-900">{h.title}</p>
+                      {title ? (
+                        <p className="text-sm font-semibold text-stone-900">{title}</p>
                       ) : null}
                       {isAdminOnly ? (
                         <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 text-amber-800 border border-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
@@ -159,8 +211,8 @@ const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
                         </span>
                       ) : null}
                     </div>
-                    <p className={`text-[13px] text-stone-600 leading-relaxed ${h.title ? 'mt-0.5' : ''}`}>
-                      {h.body}
+                    <p className={`text-[13px] text-stone-600 leading-relaxed ${title ? 'mt-0.5' : ''}`}>
+                      {body}
                     </p>
                   </div>
                 </li>

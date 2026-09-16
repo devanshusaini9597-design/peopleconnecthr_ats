@@ -5,6 +5,17 @@ import PremiumDatePicker from '../ui/PremiumDatePicker';
 import { useAuth } from '../../context/AuthContext';
 import { searchPicklistOptions, PICKLIST_MIN_SEARCH } from '../../utils/orgListFetch';
 
+const PERIOD_OPTIONS = [
+  { value: '', label: 'Any time' },
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'week', label: 'Last 7 days' },
+  { value: 'month', label: 'This month' },
+  { value: 'quarter', label: 'This quarter' },
+  { value: 'year', label: 'This year' },
+  { value: 'custom', label: 'Custom range' },
+];
+
 const SORT_OPTIONS = [
   { value: 'date', label: 'Date' },
   { value: 'name', label: 'Name' },
@@ -109,6 +120,9 @@ export default function CandidatesAdvancedFilters(props) {
     showAdvancedSearch, activeAdvFilterCount, clearAdvancedFilters, advancedSearchFilters,
     setAdvancedSearchFilters, positionFilterOptions, expOptions, ctcFilterOptions,
     sortField, setSortField, sortOrder, setSortOrder, setCurrentPage,
+    activityPeriod = '', setActivityPeriod,
+    activityFrom = '', setActivityFrom,
+    activityTo = '', setActivityTo,
   } = props;
 
   const { organization } = useAuth() || {};
@@ -207,6 +221,72 @@ export default function CandidatesAdvancedFilters(props) {
       ) : null}
 
       <div className="cand-filters-body">
+        <Section title="Date range">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-x-3 gap-y-2.5">
+            <Field label="Period">
+              <PremiumSelect
+                variant="list"
+                compact
+                value={activityPeriod || ''}
+                onChange={(v) => {
+                  const next = v || '';
+                  setActivityPeriod?.(next);
+                  if (next !== 'custom') {
+                    setActivityFrom?.('');
+                    setActivityTo?.('');
+                  }
+                  setCurrentPage?.(1);
+                }}
+                options={PERIOD_OPTIONS}
+                placeholder="Any time"
+                allowClear
+              />
+            </Field>
+            {activityPeriod === 'custom' ? (
+              <>
+                <Field label="From">
+                  <PremiumDatePicker
+                    value={activityFrom || ''}
+                    onChange={(v) => {
+                      setActivityFrom?.(v || '');
+                      setCurrentPage?.(1);
+                    }}
+                    placeholder="Start date"
+                    allowClear
+                  />
+                </Field>
+                <Field label="To">
+                  <PremiumDatePicker
+                    value={activityTo || ''}
+                    onChange={(v) => {
+                      setActivityTo?.(v || '');
+                      setCurrentPage?.(1);
+                    }}
+                    placeholder="End date"
+                    allowClear
+                  />
+                </Field>
+              </>
+            ) : (
+              <Field label="Exact entry date">
+                <PremiumDatePicker
+                  value={advancedSearchFilters.date}
+                  onChange={(v) => patchFilter('date', v)}
+                  placeholder="Optional single day"
+                  allowClear
+                />
+              </Field>
+            )}
+          </div>
+          {activityPeriod === 'custom' && (!activityFrom || !activityTo) ? (
+            <p className="mt-2 text-[11px] text-amber-700">Select both From and To dates to apply the custom range.</p>
+          ) : (
+            <p className="mt-2 text-[11px] text-stone-500">
+              Period filters by intake date. With a status filter active, it uses when candidates entered that stage.
+            </p>
+          )}
+        </Section>
+
         <Section title="Role & organisation">
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-x-3 gap-y-2.5">
             <Field label="Position">
@@ -264,14 +344,6 @@ export default function CandidatesAdvancedFilters(props) {
                 value={advancedSearchFilters.location || ''}
                 onChange={(e) => patchFilter('location', e.target.value)}
                 placeholder="City / state"
-              />
-            </Field>
-            <Field label="Entry date">
-              <PremiumDatePicker
-                value={advancedSearchFilters.date}
-                onChange={(v) => patchFilter('date', v)}
-                placeholder="Select date"
-                allowClear
               />
             </Field>
           </div>

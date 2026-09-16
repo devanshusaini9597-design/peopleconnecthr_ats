@@ -72,7 +72,11 @@ export function DashboardKpis({ d, navigate, isFreelancer, periodLabel, dateRang
             value={item.count || 0}
             caption={
             dataFresh
-              ? (dateRange === 'all' ? 'Currently in this stage' : 'Entered this stage this month')
+              ? (dateRange === 'all' ? 'Currently in this stage' : (
+                dateRange === 'month' || !dateRange
+                  ? 'Entered this stage this month'
+                  : 'Entered this stage in selected period'
+              ))
               : null
           }
             gradient={style.gradient}

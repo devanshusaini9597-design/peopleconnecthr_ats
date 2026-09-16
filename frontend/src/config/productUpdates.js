@@ -6,11 +6,10 @@
  *   'all'    — every company role
  *   'admin'  — owner, admin, hr_manager (owners always see everything)
  *   'employee' — non-admin hiring roles
- *
- * Optional explore: { label, path, hash?, tourKey?, audience? }
  */
 
 export const PRODUCT_UPDATES_STORAGE_KEY = 'skillnix_product_updates_seen_v1';
+export const PRODUCT_UPDATES_DAILY_KEY_PREFIX = 'skillnix_whats_new_day_';
 
 const ADMIN_AUDIENCE_ROLES = new Set(['owner', 'admin', 'hr_manager']);
 
@@ -26,6 +25,18 @@ export function formatProductUpdateDate(dateStr) {
     month: 'short',
     year: 'numeric',
   });
+}
+
+/** Local calendar date YYYY-MM-DD for “first login today” gating. */
+export function localCalendarDayKey(now = new Date()) {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export function productUpdatesDailyStorageKey(now = new Date()) {
+  return `${PRODUCT_UPDATES_DAILY_KEY_PREFIX}${localCalendarDayKey(now)}`;
 }
 
 export function isAdminAudienceRole(role) {
@@ -45,7 +56,7 @@ export function canSeeProductAudience(role, audience = 'all') {
 
 export const PRODUCT_UPDATES = [
   {
-    id: '2026-09-16-role-aware-notes',
+    id: '2026-09-16-daily-whats-new',
     date: '2026-09-16',
     title: 'Desk defaults, status history & stage metrics',
     summary:
@@ -145,16 +156,43 @@ export function getLatestProductUpdate(role) {
   return getVisibleProductUpdates(role)[0] || null;
 }
 
+/** True when this update is newer than the last one the user marked seen. */
+export function isProductUpdateUnseen(updateId, seenId) {
+  if (!updateId) return false;
+  if (!seenId) return true;
+  if (seenId === updateId) return false;
+  const seenIdx = PRODUCT_UPDATES.findIndex((u) => u.id === seenId);
+  const updateIdx = PRODUCT_UPDATES.findIndex((u) => u.id === updateId);
+  if (updateIdx < 0) return false;
+  if (seenIdx < 0) return true;
+  return updateIdx < seenIdx;
+}
+
+/** Visible updates with `unseen` flag for FB-style highlighting. */
+export function getProductUpdatesWithSeenState(role, seenId) {
+  return getVisibleProductUpdates(role).map((u) => ({
+    ...u,
+    unseen: isProductUpdateUnseen(u.id, seenId),
+  }));
+}
+
 /** Count of visible updates newer than the last one marked seen. */
 export function countUnseenProductUpdates(seenId, role) {
-  const visible = getVisibleProductUpdates(role);
-  if (!visible.length) return 0;
-  if (!seenId) return visible.length;
-  const idx = visible.findIndex((u) => u.id === seenId);
-  if (idx < 0) return visible.length;
-  return idx;
+  return getProductUpdatesWithSeenState(role, seenId).filter((u) => u.unseen).length;
 }
 
 export function hasUnseenProductUpdates(seenId, role) {
   return countUnseenProductUpdates(seenId, role) > 0;
+}
+
+/**
+ * Auto-open What's New on first app open of the calendar day when a release exists,
+ * or whenever there are unread updates (FB-style).
+ */
+export function shouldAutoOpenWhatsNew({ role, seenId, shownToday } = {}) {
+  const latest = getLatestProductUpdate(role);
+  if (!latest) return false;
+  if (hasUnseenProductUpdates(seenId, role)) return true;
+  if (!shownToday) return true;
+  return false;
 }

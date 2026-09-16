@@ -587,7 +587,14 @@ const ATS = forwardRef((props, ref) => {
         <CandidatesAdvancedFilters
           showAdvancedSearch={showAdvancedSearch}
           activeAdvFilterCount={activeAdvFilterCount}
-          clearAdvancedFilters={clearAdvancedFilters}
+          clearAdvancedFilters={() => {
+            clearAdvancedFilters();
+            const next = new URLSearchParams(searchParams);
+            next.delete('period');
+            next.delete('from');
+            next.delete('to');
+            setSearchParams(next, { replace: true });
+          }}
           advancedSearchFilters={advancedSearchFilters}
           setAdvancedSearchFilters={setAdvancedSearchFilters}
           positionFilterOptions={positionFilterOptions}
@@ -598,6 +605,41 @@ const ATS = forwardRef((props, ref) => {
           sortOrder={sortOrder}
           setSortOrder={setSortOrder}
           setCurrentPage={setCurrentPage}
+          activityPeriod={activityPeriod}
+          setActivityPeriod={(v) => {
+            setActivityPeriod(v);
+            const next = new URLSearchParams(searchParams);
+            if (!v || v === 'all') {
+              next.delete('period');
+              next.delete('from');
+              next.delete('to');
+            } else {
+              next.set('period', v);
+              if (v !== 'custom') {
+                next.delete('from');
+                next.delete('to');
+              }
+            }
+            setSearchParams(next, { replace: true });
+          }}
+          activityFrom={activityFrom}
+          setActivityFrom={(v) => {
+            setActivityFrom(v);
+            const next = new URLSearchParams(searchParams);
+            if (v) next.set('from', v);
+            else next.delete('from');
+            if (activityPeriod !== 'custom') next.set('period', 'custom');
+            setSearchParams(next, { replace: true });
+          }}
+          activityTo={activityTo}
+          setActivityTo={(v) => {
+            setActivityTo(v);
+            const next = new URLSearchParams(searchParams);
+            if (v) next.set('to', v);
+            else next.delete('to');
+            if (activityPeriod !== 'custom') next.set('period', 'custom');
+            setSearchParams(next, { replace: true });
+          }}
         />
 
         <CandidatesTable

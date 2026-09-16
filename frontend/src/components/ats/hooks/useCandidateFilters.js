@@ -34,6 +34,9 @@ export function useCandidateFilters(
 
   const clearAdvancedFilters = useCallback(() => {
     setAdvancedSearchFilters({ ...EMPTY_ADVANCED_FILTERS });
+    setActivityPeriod('');
+    setActivityFrom('');
+    setActivityTo('');
   }, []);
 
   const activeAdvFilterCount = Object.values(advancedSearchFilters).filter((v) => Boolean(String(v || '').trim())).length

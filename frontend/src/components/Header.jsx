@@ -15,8 +15,9 @@ import { usePresence } from '../context/PresenceContext';
 import {
   PRODUCT_UPDATES_STORAGE_KEY,
   countUnseenProductUpdates,
-  hasUnseenProductUpdates,
   latestProductUpdateId,
+  productUpdatesDailyStorageKey,
+  shouldAutoOpenWhatsNew,
 } from '../config/productUpdates';
 
 const Header = ({ setSidebarOpen, sidebarOpen }) => {
@@ -55,12 +56,11 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
       const seen = localStorage.getItem(PRODUCT_UPDATES_STORAGE_KEY) || '';
       const count = countUnseenProductUpdates(seen, userRole);
       setUnseenUpdateCount(count);
-      if (hasUnseenProductUpdates(seen, userRole)) {
-        const autoKey = `${PRODUCT_UPDATES_STORAGE_KEY}_auto_${latestProductUpdateId(userRole)}`;
-        if (!sessionStorage.getItem(autoKey)) {
-          sessionStorage.setItem(autoKey, '1');
-          setShowWhatsNew(true);
-        }
+
+      const dailyKey = productUpdatesDailyStorageKey();
+      const shownToday = Boolean(localStorage.getItem(dailyKey));
+      if (shouldAutoOpenWhatsNew({ role: userRole, seenId: seen, shownToday })) {
+        setShowWhatsNew(true);
       }
     } catch {
       setUnseenUpdateCount(0);
@@ -70,6 +70,7 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
   const acknowledgeWhatsNew = useCallback((id) => {
     try {
       localStorage.setItem(PRODUCT_UPDATES_STORAGE_KEY, id || latestProductUpdateId(userRole));
+      localStorage.setItem(productUpdatesDailyStorageKey(), '1');
     } catch { /* ignore */ }
     setUnseenUpdateCount(0);
   }, [userRole]);
