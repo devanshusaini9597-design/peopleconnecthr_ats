@@ -61,6 +61,7 @@ export default function useOrganizationSettings() {
   const [inviteReportsTo, setInviteReportsTo] = useState('');
   const [customRoleUpdatingId, setCustomRoleUpdatingId] = useState(null);
   const [reportsToUpdatingId, setReportsToUpdatingId] = useState(null);
+  const [deskDefaultsSaving, setDeskDefaultsSaving] = useState(false);
   /** Last invite share panel: { email, inviteUrl, emailSent, emailError, userId } */
   const [lastInviteShare, setLastInviteShare] = useState(null);
   const [resetTarget, setResetTarget] = useState(null);
@@ -538,6 +539,31 @@ export default function useOrganizationSettings() {
     }
   };
 
+  const handleSaveMemberDeskDefaults = async (memberId, payload) => {
+    if (!memberId) return false;
+    setDeskDefaultsSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/api/organization/members/${memberId}/desk-defaults`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload || {}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.message || 'Failed to save desk defaults');
+      }
+      toast.success('Desk defaults saved for teammate');
+      fetchMembers();
+      return true;
+    } catch (err) {
+      toast.error(err.message || 'Failed to save desk defaults');
+      return false;
+    } finally {
+      setDeskDefaultsSaving(false);
+    }
+  };
+
   const handleChangeMemberRole = async (memberId, role) => {
     if (!role) return;
     setRoleUpdatingId(memberId);
@@ -725,6 +751,8 @@ export default function useOrganizationSettings() {
     handleChangeMemberRole,
     handleChangeMemberCustomRole,
     handleChangeMemberReportsTo,
+    handleSaveMemberDeskDefaults,
+    deskDefaultsSaving,
     handleRemoveMember,
     resetTarget,
     setResetTarget,

@@ -97,6 +97,25 @@ const userSchema = new mongoose.Schema({
   loginOtpExpires: { type: Date, select: false, default: null },
   loginOtpAttempts: { type: Number, select: false, default: 0 },
   loginOtpSentAt: { type: Date, select: false, default: null },
+  /**
+   * ATS desk defaults for Add Candidate (enterprise).
+   * Admin can lock fields; employee can edit unlocked ones in Profile.
+   */
+  deskDefaults: {
+    fls: { type: String, default: '' },
+    client: { type: String, default: '' },
+    source: { type: String, default: '' },
+    product: { type: String, default: '' },
+    location: { type: String, default: '' },
+    locked: {
+      fls: { type: Boolean, default: false },
+      client: { type: Boolean, default: false },
+      source: { type: Boolean, default: false },
+      product: { type: Boolean, default: false },
+      location: { type: Boolean, default: false },
+    },
+    setupCompletedAt: { type: Date, default: null },
+  },
 }, { timestamps: true });
 
 // Indexes

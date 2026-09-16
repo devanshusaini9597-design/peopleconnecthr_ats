@@ -80,6 +80,15 @@ router.put('/change-password', verifyToken, async (req, res) => {
   }
 });
 
+router.put('/desk-defaults', verifyToken, async (req, res) => {
+  try {
+    const data = await svc.updateDeskDefaults(req.user.id, req.body || {});
+    res.json({ success: true, message: 'Desk defaults saved', ...data });
+  } catch (err) {
+    handle(res, err);
+  }
+});
+
 router.get('/stats', verifyToken, async (req, res) => {
   try {
     const stats = await svc.getProfileStats(req.user);

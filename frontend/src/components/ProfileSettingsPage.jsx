@@ -14,11 +14,14 @@ import AccountSection from './profileSettings/AccountSection';
 import IdentityHero from './profileSettings/IdentityHero';
 import ProfileModals from './profileSettings/ProfileModals';
 import SignedInDevices from './securitySettings/SignedInDevices';
+import DeskDefaultsSection from './profileSettings/DeskDefaultsSection';
+import { EMPTY_DESK_DEFAULTS } from '../utils/deskDefaults';
 import { useAuth } from '../context/AuthContext';
 import { formatRoleLabel } from './organization/constants';
 
 const blankProfile = () => ({
   name: '', email: '', phone: '', createdAt: null, lastLoginAt: null, isEmailVerified: false,
+  deskDefaults: { ...EMPTY_DESK_DEFAULTS },
 });
 
 const ProfileSettingsPage = () => {
@@ -73,6 +76,7 @@ const ProfileSettingsPage = () => {
     lastLoginAt: user.lastLoginAt || null,
     isEmailVerified: Boolean(user.isEmailVerified),
     role: user.role || '',
+    deskDefaults: user.deskDefaults || { ...EMPTY_DESK_DEFAULTS },
   });
 
   const fetchProfile = async () => {
@@ -92,6 +96,7 @@ const ProfileSettingsPage = () => {
           profilePicture: data.user.profilePicture || '',
           role: data.user.role,
           isEmailVerified: data.user.isEmailVerified,
+          deskDefaults: data.user.deskDefaults || EMPTY_DESK_DEFAULTS,
         });
       } else {
         toast.error(data.message || 'Failed to load profile');
@@ -377,19 +382,31 @@ const ProfileSettingsPage = () => {
       </div>
 
       {activeSection === 'profile' && (
-        <PersonalSection
-          isEditingProfile={isEditingProfile}
-          setIsEditingProfile={setIsEditingProfile}
-          profile={profile}
-          setProfile={setProfile}
-          hasProfileChanges={hasProfileChanges}
-          isSavingProfile={isSavingProfile}
-          handleCancelEditProfile={handleCancelEditProfile}
-          handleSaveProfile={handleSaveProfile}
-          isFreelancer={isFreelancer}
-          organizationName={organizationName}
-          userRole={userRole}
-        />
+        <div className="space-y-4">
+          <PersonalSection
+            isEditingProfile={isEditingProfile}
+            setIsEditingProfile={setIsEditingProfile}
+            profile={profile}
+            setProfile={setProfile}
+            hasProfileChanges={hasProfileChanges}
+            isSavingProfile={isSavingProfile}
+            handleCancelEditProfile={handleCancelEditProfile}
+            handleSaveProfile={handleSaveProfile}
+            isFreelancer={isFreelancer}
+            organizationName={organizationName}
+            userRole={userRole}
+          />
+          <DeskDefaultsSection
+            deskDefaults={profile.deskDefaults}
+            isFreelancer={isFreelancer}
+            toast={toast}
+            updateUser={updateUser}
+            onSaved={(next) => {
+              setProfile((p) => ({ ...p, deskDefaults: next }));
+              setOriginalProfile((p) => ({ ...p, deskDefaults: next }));
+            }}
+          />
+        </div>
       )}
 
       {activeSection === 'security' && (

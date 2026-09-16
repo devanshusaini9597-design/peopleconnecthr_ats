@@ -35,6 +35,8 @@ export default function OrgTeamTab({
   handleGetMemberInviteLink,
   inviteLinkLoadingId,
   setResetTarget,
+  handleSaveMemberDeskDefaults,
+  deskDefaultsSaving,
 }) {
   const share = lastInviteShare;
   const managerOptions = [
@@ -370,6 +372,8 @@ export default function OrgTeamTab({
         handleGetMemberInviteLink={handleGetMemberInviteLink}
         inviteLinkLoadingId={inviteLinkLoadingId}
         setResetTarget={setResetTarget}
+        handleSaveMemberDeskDefaults={handleSaveMemberDeskDefaults}
+        deskDefaultsSaving={deskDefaultsSaving}
       />
     </div>
   );

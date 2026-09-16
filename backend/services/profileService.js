@@ -52,6 +52,7 @@ async function getProfile(userId) {
 
   const { getEffectivePermissions } = require('../middleware/permissionMiddleware');
   const permissions = await getEffectivePermissions(user);
+  const { serializeDeskDefaults } = require('../utils/deskDefaults');
 
   return {
     user: {
@@ -69,6 +70,7 @@ async function getProfile(userId) {
       createdAt: user.createdAt,
       lastLoginAt: user.lastLoginAt,
       permissions,
+      deskDefaults: serializeDeskDefaults(user.deskDefaults),
     },
     organization,
     entitlements,
@@ -206,6 +208,20 @@ async function getProfileStats(user) {
   };
 }
 
+async function updateDeskDefaults(userId, body = {}) {
+  const user = await User.findById(userId);
+  if (!user) throw httpError('User not found', 404);
+  const { sanitizeDeskDefaults, serializeDeskDefaults, canAdminSetDeskDefaults } = require('../utils/deskDefaults');
+  const asAdmin = canAdminSetDeskDefaults(user);
+  user.deskDefaults = sanitizeDeskDefaults(body, {
+    asAdmin,
+    previous: user.deskDefaults,
+  });
+  user.markModified('deskDefaults');
+  await user.save();
+  return { deskDefaults: serializeDeskDefaults(user.deskDefaults) };
+}
+
 module.exports = {
   httpError,
   getProfile,
@@ -214,4 +230,5 @@ module.exports = {
   removeProfilePicture,
   changePassword,
   getProfileStats,
+  updateDeskDefaults,
 };

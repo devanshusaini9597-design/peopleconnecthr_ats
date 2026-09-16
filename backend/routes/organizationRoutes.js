@@ -171,6 +171,20 @@ router.put('/members/:userId/reports-to', requireAdmin, async (req, res) => {
   }
 });
 
+router.put('/members/:userId/desk-defaults', requireAdmin, async (req, res) => {
+  try {
+    const data = await org.updateMemberDeskDefaults(
+      req.user.organizationId,
+      req.user,
+      req.params.userId,
+      req.body || {}
+    );
+    res.json({ success: true, data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
 router.delete('/members/:userId', requireAdmin, async (req, res) => {
   try {
     const result = await org.removeMember(req.user.organizationId, req.user.id, req.params.userId);

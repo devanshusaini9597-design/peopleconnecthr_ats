@@ -128,6 +128,18 @@ async function createCandidate(req, res) {
             req.body.source = 'Freelance';
         }
 
+        // Enterprise desk defaults: fill empty FLS/client/source/etc from user profile
+        try {
+            const User = require('../../models/User');
+            const { applyDeskDefaultsToCandidate } = require('../../utils/deskDefaults');
+            const actor = await User.findById(req.user.id).select('deskDefaults').lean();
+            if (actor?.deskDefaults) {
+                Object.assign(req.body, applyDeskDefaultsToCandidate(req.body, actor.deskDefaults));
+            }
+        } catch (deskErr) {
+            logger.warn('[deskDefaults] create stamp skipped:', deskErr.message);
+        }
+
         const newCandidate = new Candidate(req.body);
         await newCandidate.save();
         await promoteNamesSafe(req.user.organizationId, req.user.id, newCandidate.product);

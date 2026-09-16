@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Users, Loader2, Trash2, Link2, KeyRound, Search,
+  Users, Loader2, Trash2, Link2, KeyRound, Search, Briefcase,
 } from 'lucide-react';
 import PremiumSelect from '../ui/PremiumSelect';
 import EmptyState from '../ui/EmptyState';
@@ -10,6 +10,7 @@ import { usePresence } from '../../context/PresenceContext';
 import { useAuth } from '../../context/AuthContext';
 import useTableDragScroll from '../../hooks/useTableDragScroll';
 import { MEMBER_ROLE_OPTIONS, ROLE_LABELS } from './constants';
+import MemberDeskDefaultsModal from './MemberDeskDefaultsModal';
 
 function formatPersonName(name, fallback = '') {
   const raw = String(name || '').trim();
@@ -49,11 +50,14 @@ export default function OrgTeamRoster({
   handleGetMemberInviteLink,
   inviteLinkLoadingId,
   setResetTarget,
+  handleSaveMemberDeskDefaults,
+  deskDefaultsSaving,
 }) {
   const { user } = useAuth();
   const { byId } = usePresence();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
+  const [deskTarget, setDeskTarget] = useState(null);
   const {
     tableScrollRef,
     onTableDragScrollStart,
@@ -64,6 +68,7 @@ export default function OrgTeamRoster({
   const canResetPasswords = ['owner', 'admin'].includes(user?.role);
   const selfId = String(user?.id || user?._id || '');
   const canAssignReports = ['owner', 'admin', 'hr_manager'].includes(user?.role);
+  const canEditDeskDefaults = ['owner', 'admin', 'hr_manager'].includes(user?.role);
   const showPack = customRoles.length > 0;
   const tableMinWidth = showPack ? 1180 : 980;
 
@@ -324,6 +329,17 @@ export default function OrgTeamRoster({
 
                     <td className="px-3 py-2.5 align-middle text-right whitespace-nowrap min-w-[132px] border border-stone-200 bg-white">
                       <div className="inline-flex items-center justify-end gap-1">
+                        {canEditDeskDefaults && m.role !== 'freelancer' && (
+                          <button
+                            type="button"
+                            className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-stone-200 bg-white text-stone-600 hover:border-brand-300 hover:text-brand-800 hover:bg-brand-50"
+                            title="Desk defaults (FLS, client…)"
+                            aria-label="Desk defaults"
+                            onClick={() => setDeskTarget(m)}
+                          >
+                            <Briefcase size={14} />
+                          </button>
+                        )}
                         {canResetThis && (
                           <button
                             type="button"
@@ -369,6 +385,17 @@ export default function OrgTeamRoster({
           </table>
         </div>
       )}
+
+      <MemberDeskDefaultsModal
+        open={Boolean(deskTarget)}
+        member={deskTarget}
+        saving={deskDefaultsSaving}
+        onClose={() => setDeskTarget(null)}
+        onSave={async (payload) => {
+          const ok = await handleSaveMemberDeskDefaults?.(deskTarget?._id, payload);
+          if (ok) setDeskTarget(null);
+        }}
+      />
     </div>
   );
 }

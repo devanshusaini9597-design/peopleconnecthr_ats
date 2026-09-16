@@ -707,6 +707,28 @@ async function mergePipelineStages(organizationId, sourceNames, newName) {
   return mergeStagesLinked(organizationId, sourceNames, newName);
 }
 
+async function updateMemberDeskDefaults(organizationId, actor, targetUserId, body = {}) {
+  const { canAdminSetDeskDefaults, sanitizeDeskDefaults, serializeDeskDefaults } = require('../utils/deskDefaults');
+  if (!canAdminSetDeskDefaults(actor)) {
+    throw httpError('Only owners, admins, and HR managers can set desk defaults for teammates', 403);
+  }
+  const user = await User.findOne({ _id: targetUserId, organizationId });
+  if (!user) throw httpError('User not found in organization', 404);
+
+  user.deskDefaults = sanitizeDeskDefaults(body, {
+    asAdmin: true,
+    previous: user.deskDefaults,
+  });
+  user.markModified('deskDefaults');
+  await user.save();
+  return {
+    userId: user._id,
+    name: user.name,
+    email: user.email,
+    deskDefaults: serializeDeskDefaults(user.deskDefaults),
+  };
+}
+
 module.exports = {
   getOrganization,
   updateOrganization,
@@ -719,6 +741,7 @@ module.exports = {
   getMemberInviteLink,
   updateMemberRole,
   updateMemberReportsTo,
+  updateMemberDeskDefaults,
   removeMember,
   resetMemberPassword,
   resendTemporaryPasswordEmail,

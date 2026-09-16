@@ -86,6 +86,7 @@ export default function CandidateFormModal(props) {
   const formScrollRef = useRef(null);
   const { isTop } = useModalLayer(showModal);
   const [showStatusHistory, setShowStatusHistory] = useState(false);
+  const flsLocked = Boolean(!editId && user?.deskDefaults?.locked?.fls && user?.deskDefaults?.fls);
 
   useEffect(() => {
     if (!showModal) setShowStatusHistory(false);
@@ -465,7 +466,16 @@ export default function CandidateFormModal(props) {
                       </ListField>
                       <div className="min-w-0">
                         <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">FLS / Non-FLS</label>
-                        <PremiumSelect variant="list" value={formData.fls || ''} onChange={(v) => setFormField('fls', v)} options={formFlsOptions} placeholder="Select" allowClear />
+                        {flsLocked ? (
+                          <>
+                            <div className="h-11 px-3 rounded-xl border border-stone-200 bg-stone-50 text-sm font-semibold text-stone-700 flex items-center">
+                              {String(formData.fls || '').replace(/[_-]+/g, ' ') || '—'}
+                            </div>
+                            <p className="text-[11px] text-stone-400 mt-1">Fixed from your desk defaults (set by admin).</p>
+                          </>
+                        ) : (
+                          <PremiumSelect variant="list" value={formData.fls || ''} onChange={(v) => setFormField('fls', v)} options={formFlsOptions} placeholder="Select" allowClear />
+                        )}
                       </div>
                       {isFreelancer ? (
                           <div className="min-w-0">

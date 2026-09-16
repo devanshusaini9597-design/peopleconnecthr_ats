@@ -87,6 +87,8 @@ export default function OrganizationSettingsPage() {
     handleChangeMemberRole,
     handleChangeMemberCustomRole,
     handleChangeMemberReportsTo,
+    handleSaveMemberDeskDefaults,
+    deskDefaultsSaving,
     handleRemoveMember,
     resetTarget,
     setResetTarget,
@@ -263,6 +265,8 @@ export default function OrganizationSettingsPage() {
               handleGetMemberInviteLink={handleGetMemberInviteLink}
               inviteLinkLoadingId={inviteLinkLoadingId}
               setResetTarget={setResetTarget}
+              handleSaveMemberDeskDefaults={handleSaveMemberDeskDefaults}
+              deskDefaultsSaving={deskDefaultsSaving}
             />
           )}
 

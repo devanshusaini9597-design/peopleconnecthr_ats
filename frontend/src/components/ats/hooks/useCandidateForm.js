@@ -13,6 +13,7 @@ import {
   mergeResumeIntoForm,
 } from '../../../utils/resumeFormMerge';
 import { canEditCandidateSpoc, resolveEmployeeSpocLabel } from '../../../utils/spocIdentity';
+import { applyDeskDefaultsToForm } from '../../../utils/deskDefaults';
 
 export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, currentPage, setCurrentPage, API_URL } = {}) {
   const { user } = useAuth();
@@ -71,8 +72,8 @@ export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, cur
     const names = teamNamesKey ? teamNamesKey.split('|').filter(Boolean) : [];
     if (user?.name) names.push(user.name);
     next.spoc = resolveEmployeeSpocLabel(user, names);
-    return next;
-  }, [user?.role, user?.name, user?.email, teamNamesKey]);
+    return applyDeskDefaultsToForm(next, user?.deskDefaults);
+  }, [user?.role, user?.name, user?.email, user?.deskDefaults, teamNamesKey]);
 
   const openAddCandidate = useCallback(() => {
     setEditId(null);
