@@ -71,6 +71,8 @@ const CandidateSchema = new mongoose.Schema({
     updatedAt: { type: Date, default: Date.now },
     updatedBy: { type: String, default: 'Recruiter' }
   }],
+  /** When the candidate entered their *current* status (enterprise stage-entry analytics). */
+  statusEnteredAt: { type: Date, index: true },
   hiredDate: { type: Date },
 
   // ── Metadata ───────────────────────────────────────────────────────
@@ -185,6 +187,8 @@ CandidateSchema.index({ organizationId: 1, createdAt: -1 });
 CandidateSchema.index({ organizationId: 1, position: 1 });
 CandidateSchema.index({ organizationId: 1, email: 1 }, { unique: true, partialFilterExpression: { organizationId: { $exists: true } } });
 CandidateSchema.index({ organizationId: 1, status: 1 });
+CandidateSchema.index({ organizationId: 1, status: 1, statusEnteredAt: -1 });
+CandidateSchema.index({ organizationId: 1, statusEnteredAt: -1 });
 CandidateSchema.index({ organizationId: 1, source: 1 });
 CandidateSchema.index({ organizationId: 1, spoc: 1, createdAt: -1 });
 CandidateSchema.index({ organizationId: 1, createdBy: 1, createdAt: -1 });
@@ -205,6 +209,19 @@ CandidateSchema.pre('save', function appliedAtHook(next) {
     const resolved = resolveAppliedAt(this);
     if (resolved) this.appliedAt = resolved;
   }
+  next();
+});
+
+// ── Pre-save: seed stage-entry fields on create only (never wipe history) ──
+CandidateSchema.pre('save', function statusEntrySeedHook(next) {
+  if (!this.isNew) return next();
+  try {
+    const { seedCreateStatusFields } = require('../utils/candidateStatusHistory');
+    seedCreateStatusFields(this, {
+      updatedBy: 'System',
+      remark: 'Candidate created',
+    });
+  } catch (_) { /* non-fatal */ }
   next();
 });
 

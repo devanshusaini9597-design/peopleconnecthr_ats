@@ -70,7 +70,11 @@ export function DashboardKpis({ d, navigate, isFreelancer, periodLabel, dateRang
             icon={style.icon}
             label={item.stage}
             value={item.count || 0}
-            caption={dataFresh ? label : null}
+            caption={
+            dataFresh
+              ? (dateRange === 'all' ? 'Currently in this stage' : 'Entered this stage in period')
+              : null
+          }
             gradient={style.gradient}
             loading={false}
             onClick={() => goAts({ status: String(item.stage).toUpperCase() })}

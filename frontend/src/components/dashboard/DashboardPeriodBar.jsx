@@ -32,8 +32,8 @@ export default function DashboardPeriodBar({
             <p className="text-[11px] text-stone-500 mt-1 leading-relaxed">
               Total Candidates is all-time.
               {scope === 'organization'
-                ? ' Stage cards follow the selected period.'
-                : ' Stage cards are your assigned candidates for the selected period.'}
+                ? ' New = added in the period. Stage cards = entered that stage in the period.'
+                : ' New = added in the period. Stage cards = your assigned candidates who entered that stage in the period.'}
               {isManager && (
                 <>
                   {' '}

@@ -544,7 +544,9 @@ const ATS = forwardRef((props, ref) => {
         {activityPeriod && activityPeriod !== 'all' ? (
           <div className="mx-4 sm:mx-5 mt-3 mb-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border border-brand-100 bg-brand-50/60 px-3.5 py-2.5">
             <p className="text-xs text-brand-900 min-w-0">
-              <span className="font-semibold">Period filter:</span>{' '}
+              <span className="font-semibold">
+                {statusFilter ? 'Stage-entry period:' : 'Intake period:'}
+              </span>{' '}
               <span className="tabular-nums">
                 {activityPeriod === 'custom' && activityFrom && activityTo
                   ? `${activityFrom} – ${activityTo}`
@@ -556,6 +558,11 @@ const ATS = forwardRef((props, ref) => {
                     quarter: 'This Quarter',
                     year: 'This Year',
                   }[activityPeriod] || activityPeriod)}
+              </span>
+              <span className="text-brand-800/80">
+                {statusFilter
+                  ? ' — candidates who entered this stage in the period'
+                  : ' — candidates added / applied in the period'}
               </span>
             </p>
             <button

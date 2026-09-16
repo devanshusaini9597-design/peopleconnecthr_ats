@@ -21,6 +21,7 @@ const {
   candidateListSortSpec,
   backfillAppliedAtForOrg,
 } = require('../../utils/candidateActivityDate');
+const { withStageEntryDateRange } = require('../../utils/candidateStatusHistory');
 
 /** Columns needed by ATS grid / client filters — exclude resumeText, embeddings, histories. */
 const CANDIDATE_LIST_SELECT = [
@@ -28,7 +29,7 @@ const CANDIDATE_LIST_SELECT = [
   'companyName', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'skills', 'product',
   'pan', 'status', 'client', 'spoc', 'source', 'feedback', 'remark', 'callBackDate', 'fls',
   'resume', 'tags', 'customFields', 'createdBy', 'sharedWith', 'organizationId',
-  'createdAt', 'updatedAt', 'appliedAt', 'hiredDate', 'legalHold', 'personId', 'talentPoolIds',
+  'createdAt', 'updatedAt', 'appliedAt', 'statusEnteredAt', 'hiredDate', 'legalHold', 'personId', 'talentPoolIds',
 ].join(' ');
 
 /** At most one orphan organizationId heal per org / 30 minutes (keeps list hot path fast). */
@@ -263,11 +264,15 @@ async function listCandidates(req, res) {
         if (spoc) andParts.push({ spoc: ciRegex(spoc) });
         if (client) andParts.push({ client: ciRegex(client) });
         if (dateNeedle) andParts.push({ date: ciRegex(dateNeedle) });
-        // Analytics drill-down: same activity-date window as dashboard KPIs
+        // Analytics drill-down:
+        // - period only (intake card) → appliedAt / createdAt
+        // - period + status (stage card) → when they entered that stage
         if (activityPeriod && activityPeriod !== 'all') {
           const activityFilter = buildDateFilter(activityPeriod, activityFrom, activityTo);
           if (activityFilter) {
-            andParts[0] = withActivityDateRange(andParts[0], activityFilter);
+            andParts[0] = status
+              ? withStageEntryDateRange(andParts[0], activityFilter)
+              : withActivityDateRange(andParts[0], activityFilter);
           }
         }
         if (freelanceOnly) andParts.push({ source: ciRegex('freelance') });

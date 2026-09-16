@@ -11,6 +11,10 @@ const {
 const { foldStatusCounts, pipelineList, statusMatchValues, canonCandidateStatus } = require('../utils/statusCanon');
 const { monthRanges, lastNDaysRange, DEFAULT_TZ, buildDateFilter, previousPeriodFilter, getDateRangeLabel, chartBucketConfig } = require('../utils/analyticsTime');
 const { withActivityDateRange, activityDateExpr, backfillAppliedAtForOrg } = require('../utils/candidateActivityDate');
+const {
+  buildCurrentStageEntryAgg,
+  backfillStatusEnteredAtForOrg,
+} = require('../utils/candidateStatusHistory');
 
 async function scopedFilter(req, res) {
   try {
@@ -201,7 +205,10 @@ exports.getDashboardStats = async (req, res) => {
     const scopeMeta = analyticsScopeMeta(req);
 
     if (req.user?.organizationId) {
-      setImmediate(() => backfillAppliedAtForOrg(req.user.organizationId, Candidate));
+      setImmediate(() => {
+        backfillAppliedAtForOrg(req.user.organizationId, Candidate).catch(() => {});
+        backfillStatusEnteredAtForOrg(req.user.organizationId, Candidate).catch(() => {});
+      });
     }
 
     const dateFilter = buildDateFilter(dateRange, customFrom, customTo, now, timeZone);
@@ -263,10 +270,7 @@ exports.getDashboardStats = async (req, res) => {
       Candidate.countDocuments(scopedWithDate),
       thisPeriodFallback,
       lastPeriodFallback,
-      Candidate.aggregate([
-        { $match: scopedWithDate },
-        { $group: { _id: '$status', count: { $sum: 1 } } },
-      ]),
+      Candidate.aggregate(buildCurrentStageEntryAgg(userFilter, dateFilter)),
       orgStagesPromise,
       Candidate.aggregate([
         { $match: { ...scopedWithDate, position: { $exists: true, $ne: '' } } },
@@ -377,6 +381,13 @@ exports.getDashboardStats = async (req, res) => {
       customTo: customTo || undefined,
       // ATS list view that matches these cards
       atsView: scopeMeta.scope === 'organization' ? 'all' : 'mine',
+      // Enterprise attribution: intake vs stage-entry
+      attribution: {
+        intake: 'appliedAt',
+        stages: 'statusEnteredAt',
+        stagesCaption: 'Entered this stage in the selected period',
+        intakeCaption: 'Added / applied in the selected period',
+      },
       totalCandidates,
       totalCandidatesAllTime,
       thisMonth: thisPeriodCount,

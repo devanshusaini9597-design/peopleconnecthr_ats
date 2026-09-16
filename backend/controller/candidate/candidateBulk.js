@@ -482,14 +482,53 @@ async function bulkUpdateCandidates(req, res) {
 
         let matchedCount = 0;
         let modifiedCount = 0;
+        const { statusChangeUpdate, statusesEqual } = require('../../utils/candidateStatusHistory');
+        const actorLabel = req.user?.name || req.user?.email || 'Recruiter';
+
         for (let i = 0; i < idList.length; i += CHUNK) {
             const chunk = idList.slice(i, i + CHUNK);
             const filter = { _id: { $in: chunk }, ...scope };
             const matched = await Candidate.countDocuments(filter);
             matchedCount += matched;
             if (matched === 0) continue;
-            const result = await Candidate.updateMany(filter, { $set });
-            modifiedCount += result.modifiedCount || 0;
+
+            if ('status' in $set) {
+                // Per-doc updates so we only append history when status actually changes.
+                const rows = await Candidate.find(filter).select('_id status').lean();
+                const ops = [];
+                for (const row of rows) {
+                    if (statusesEqual(row.status, $set.status)) {
+                        const { status: _s, ...rest } = $set;
+                        if (Object.keys(rest).length === 0) continue;
+                        ops.push({
+                            updateOne: { filter: { _id: row._id, ...scope }, update: { $set: rest } },
+                        });
+                        continue;
+                    }
+                    const change = statusChangeUpdate(row.status, $set.status, {
+                        updatedBy: actorLabel,
+                        remark: 'Bulk status update',
+                    });
+                    if (!change) continue;
+                    const { status: _s, ...rest } = $set;
+                    ops.push({
+                        updateOne: {
+                            filter: { _id: row._id, ...scope },
+                            update: {
+                                $set: { ...rest, ...change.$set },
+                                $push: change.$push,
+                            },
+                        },
+                    });
+                }
+                if (ops.length) {
+                    const result = await Candidate.bulkWrite(ops, { ordered: false });
+                    modifiedCount += result.modifiedCount || 0;
+                }
+            } else {
+                const result = await Candidate.updateMany(filter, { $set });
+                modifiedCount += result.modifiedCount || 0;
+            }
         }
 
         if (matchedCount === 0) {

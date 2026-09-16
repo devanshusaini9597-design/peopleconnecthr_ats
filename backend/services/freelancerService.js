@@ -1142,10 +1142,28 @@ async function updateSubmissionStatus(user, id, body) {
     const candId = submission.candidateId?._id || submission.candidateId;
     const nextCandStatus = candidateAtsStatus || STATUS_TO_CANDIDATE[status];
     if (candId && nextCandStatus) {
-      await Candidate.findOneAndUpdate(
-        { _id: candId, organizationId: user.organizationId },
-        { $set: { status: nextCandStatus } }
-      );
+      const { statusChangeUpdate, statusesEqual } = require('../utils/candidateStatusHistory');
+      const existing = await Candidate.findOne({
+        _id: candId,
+        organizationId: user.organizationId,
+      }).select('status').lean();
+      if (existing && !statusesEqual(existing.status, nextCandStatus)) {
+        const change = statusChangeUpdate(existing.status, nextCandStatus, {
+          updatedBy: user.name || user.email || 'Company',
+          remark: 'Freelance desk review',
+        });
+        if (change) {
+          await Candidate.findOneAndUpdate(
+            { _id: candId, organizationId: user.organizationId },
+            change
+          );
+        }
+      } else if (!existing) {
+        await Candidate.findOneAndUpdate(
+          { _id: candId, organizationId: user.organizationId },
+          { $set: { status: nextCandStatus } }
+        );
+      }
     }
   } catch (err) {
     logger.warn({ err }, 'Failed to sync freelance review into candidate status');

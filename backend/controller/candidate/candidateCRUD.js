@@ -382,7 +382,8 @@ async function updateCandidate(req, res) {
         });
 
         // Desk-scoped writes for recruiters; org-wide for owner/admin/manager.
-        const { createdBy, organizationId, _id, __v, ...safeBody } = req.body;
+        const { createdBy, organizationId, _id, __v, statusHistory, ...safeBody } = req.body;
+        // Data safety: never let clients replace/wipe statusHistory via $set.
         const scope = { _id: id, ...candidateWriteScope(req) };
 
         if (req.user.organizationId && (safeBody.email || safeBody.contact || safeBody.phone)) {
@@ -420,9 +421,30 @@ async function updateCandidate(req, res) {
         }
 
         const before = await Candidate.findOne(scope).select('status').lean();
+        const { statusChangeUpdate, statusesEqual } = require('../../utils/candidateStatusHistory');
+        let mongoUpdate = { $set: safeBody };
+
+        if (
+            safeBody.status !== undefined &&
+            before &&
+            !statusesEqual(before.status, safeBody.status)
+        ) {
+            const change = statusChangeUpdate(before.status, safeBody.status, {
+                updatedBy: req.user?.name || req.user?.email || 'Recruiter',
+                remark: 'Status Updated',
+            });
+            if (change) {
+                const { status: _ignoredStatus, ...restBody } = safeBody;
+                mongoUpdate = {
+                    $set: { ...restBody, ...change.$set },
+                    $push: change.$push,
+                };
+            }
+        }
+
         const updatedCandidate = await Candidate.findOneAndUpdate(
             scope,
-            { $set: safeBody },
+            mongoUpdate,
             { new: true, runValidators: true }
         );
         if (!updatedCandidate) return res.status(404).json({ success: false, message: "Candidate not found" });
