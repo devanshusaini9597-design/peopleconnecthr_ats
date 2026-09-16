@@ -17,13 +17,14 @@ const PERIOD_OPTIONS = [
 ];
 
 const SORT_OPTIONS = [
-  { value: 'date', label: 'Date' },
+  { value: 'date', label: 'Added date' },
+  { value: 'stageSince', label: 'Stage since' },
   { value: 'name', label: 'Name' },
   { value: 'email', label: 'Email' },
   { value: 'position', label: 'Position' },
   { value: 'location', label: 'Location' },
   { value: 'company', label: 'Company' },
-  { value: 'status', label: 'Status' },
+  { value: 'status', label: 'Current stage' },
   { value: 'spoc', label: 'SPOC' },
 ];
 
@@ -158,7 +159,7 @@ export default function CandidatesAdvancedFilters(props) {
     [advancedSearchFilters],
   );
 
-  const isDateSort = sortField === 'date';
+  const isDateSort = sortField === 'date' || sortField === 'stageSince';
   const ascLabel = isDateSort ? 'Oldest' : 'A–Z';
   const descLabel = isDateSort ? 'Newest' : 'Z–A';
 
@@ -282,7 +283,7 @@ export default function CandidatesAdvancedFilters(props) {
             <p className="mt-2 text-[11px] text-amber-700">Select both From and To dates to apply the custom range.</p>
           ) : (
             <p className="mt-2 text-[11px] text-stone-500">
-              Period filters by intake date. With a status filter active, it uses when candidates entered that stage.
+              Period alone = when added. Period + a stage/status filter = when they entered that stage (same as dashboard stage cards).
             </p>
           )}
         </Section>

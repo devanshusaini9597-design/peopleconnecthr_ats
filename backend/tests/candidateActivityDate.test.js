@@ -61,7 +61,12 @@ describe('candidateActivityDate', () => {
     });
   });
 
-  it('candidateListSortSpec name keeps secondary createdAt', () => {
-    expect(candidateListSortSpec('name', 'asc')).toEqual({ name: 1, createdAt: -1 });
+  it('candidateListSortSpec stageSince uses statusEnteredAt', () => {
+    expect(candidateListSortSpec('stageSince', 'desc')).toEqual({
+      statusEnteredAt: -1,
+      appliedAt: -1,
+      createdAt: -1,
+      _id: -1,
+    });
   });
 });

@@ -287,13 +287,19 @@ async function listCandidates(req, res) {
         // Heal entry dates BEFORE sorting so DATE column order is correct on this response
         // (not on a later refresh after a background backfill).
         const sortingByEntryDate = !String(sortField || 'date').trim()
-          || String(sortField).toLowerCase() === 'date';
+          || ['date', 'stagesince', 'statusenteredat', 'stage_since'].includes(String(sortField).toLowerCase());
         // Freelancer desks are small and private — skip org-wide appliedAt backfill.
         if (sortingByEntryDate && req.user?.organizationId && !isFreelancer(req.user)) {
           try {
             await backfillAppliedAtForOrg(req.user.organizationId, Candidate);
           } catch (bfErr) {
             logger.warn('⚠️ appliedAt backfill before list sort failed:', bfErr.message);
+          }
+          try {
+            const { backfillStatusEnteredAtForOrg } = require('../../utils/candidateStatusHistory');
+            await backfillStatusEnteredAtForOrg(req.user.organizationId, Candidate);
+          } catch (bfErr) {
+            logger.warn('⚠️ statusEnteredAt backfill before list sort failed:', bfErr.message);
           }
         }
         const safeLimit = shouldPaginate ? Math.min(Math.max(limit, 1), 200) : 0;

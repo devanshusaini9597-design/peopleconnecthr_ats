@@ -142,7 +142,42 @@ export function buildCandidateTableColumns(ctx) {
 
   const phoneColumn = { key: 'contact', label: 'Phone', className: 'w-auto', render: (candidate) => <span className="text-sm font-mono text-stone-600 whitespace-nowrap">{blindMode ? '••••••••' : (candidate.contact || '—')}</span> };
   const emailColumn = { key: 'email', label: 'Email', className: 'w-auto', render: (candidate) => <span className="text-sm text-stone-600 whitespace-nowrap">{blindMode ? '••••@••••' : (candidate.email || '—')}</span> };
-  const dateColumn = { key: 'date', label: 'Date', className: 'w-auto', render: (candidate) => <span className="text-sm text-stone-600 whitespace-nowrap">{candidate.date ? new Date(candidate.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span> };
+  const dateColumn = {
+    key: 'date',
+    label: 'Added',
+    className: 'w-auto',
+    render: (candidate) => {
+      const raw = candidate.appliedAt || candidate.date || candidate.createdAt;
+      const d = raw ? new Date(raw) : null;
+      const valid = d && !Number.isNaN(d.getTime());
+      return (
+        <span
+          className="text-sm text-stone-600 whitespace-nowrap tabular-nums"
+          title="Date this candidate was added / applied"
+        >
+          {valid ? d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+        </span>
+      );
+    },
+  };
+  const stageSinceColumn = {
+    key: 'stageSince',
+    label: 'Stage since',
+    className: 'w-auto',
+    render: (candidate) => {
+      const raw = candidate.statusEnteredAt || candidate.appliedAt || candidate.createdAt;
+      const d = raw ? new Date(raw) : null;
+      const valid = d && !Number.isNaN(d.getTime());
+      return (
+        <span
+          className="text-sm text-stone-600 whitespace-nowrap tabular-nums"
+          title="When they entered the current stage (used by dashboard stage KPIs)"
+        >
+          {valid ? d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+        </span>
+      );
+    },
+  };
   const resumeColumn = {
     key: 'resume',
     label: isFreelancer ? 'Resume *' : 'Resume',
@@ -252,13 +287,13 @@ export function buildCandidateTableColumns(ctx) {
     },
     {
       key: 'status',
-      label: 'Status',
+      label: 'Current stage',
       className: 'w-auto min-w-[130px]',
       render: (candidate) => (
         <div className="flex items-center gap-2 whitespace-nowrap">
           <span
             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold border whitespace-nowrap ${statusBadgeClass(candidate.status)}`}
-            title={isFreelancer ? 'Status is managed by the hiring team' : undefined}
+            title={isFreelancer ? 'Status is managed by the hiring team' : 'Current pipeline stage'}
           >
             {isFreelancer ? <Lock size={11} className="opacity-70 shrink-0" strokeWidth={2.5} /> : null}
             {formatStatusLabel(candidate.status)}
@@ -269,6 +304,7 @@ export function buildCandidateTableColumns(ctx) {
         </div>
       )
     },
+    stageSinceColumn,
     { key: 'client', label: 'Client', className: 'w-auto', render: (candidate) => <span className="text-sm text-stone-700 whitespace-nowrap">{candidate.client || '—'}</span> },
     {
       key: 'product',

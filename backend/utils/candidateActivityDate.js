@@ -121,8 +121,11 @@ function candidateListSortSpec(sortField, sortOrder) {
   if (field === 'company') return { companyName: dir, createdAt: -1 };
   if (field === 'status') return { status: dir, createdAt: -1 };
   if (field === 'spoc') return { spoc: dir, createdAt: -1 };
+  if (field === 'stagesince' || field === 'statusenteredat' || field === 'stage_since') {
+    return { statusEnteredAt: dir, appliedAt: dir, createdAt: dir, _id: dir };
+  }
   if (field === 'createdat' || field === 'created_at') return { createdAt: dir, _id: dir };
-  // date / default — entry date shown in the DATE column
+  // date / default — entry date shown in the Added column
   return { appliedAt: dir, createdAt: dir, _id: dir };
 }
 
