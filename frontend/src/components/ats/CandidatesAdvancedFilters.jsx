@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Filter, RotateCcw, ArrowUpAZ, ArrowDownAZ, X, Sparkles } from 'lucide-react';
+import { Filter, RotateCcw, ArrowUpAZ, ArrowDownAZ, X, Sparkles, Search, RefreshCw } from 'lucide-react';
 import PremiumSelect from '../ui/PremiumSelect';
 import PremiumDatePicker from '../ui/PremiumDatePicker';
 import { useAuth } from '../../context/AuthContext';
@@ -17,7 +17,7 @@ const PERIOD_OPTIONS = [
 ];
 
 const SORT_OPTIONS = [
-  { value: 'date', label: 'Added date' },
+  { value: 'date', label: 'Date' },
   { value: 'stageSince', label: 'Stage since' },
   { value: 'name', label: 'Name' },
   { value: 'email', label: 'Email' },
@@ -36,7 +36,6 @@ const FILTER_CHIPS = [
   { key: 'companyName', label: 'Company' },
   { key: 'client', label: 'Client' },
   { key: 'location', label: 'Location' },
-  { key: 'date', label: 'Date' },
   { key: 'expMin', label: 'Exp ≥' },
   { key: 'expMax', label: 'Exp ≤' },
   { key: 'ctcMin', label: 'CTC ≥' },
@@ -124,6 +123,10 @@ export default function CandidatesAdvancedFilters(props) {
     activityPeriod = '', setActivityPeriod,
     activityFrom = '', setActivityFrom,
     activityTo = '', setActivityTo,
+    applyAdvancedFilters,
+    filtersDirty = false,
+    isSearching = false,
+    onApplyError,
   } = props;
 
   const { organization } = useAuth() || {};
@@ -223,7 +226,7 @@ export default function CandidatesAdvancedFilters(props) {
 
       <div className="cand-filters-body">
         <Section title="Date range">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-x-3 gap-y-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-3 gap-y-2.5">
             <Field label="Period">
               <PremiumSelect
                 variant="list"
@@ -236,7 +239,6 @@ export default function CandidatesAdvancedFilters(props) {
                     setActivityFrom?.('');
                     setActivityTo?.('');
                   }
-                  setCurrentPage?.(1);
                 }}
                 options={PERIOD_OPTIONS}
                 placeholder="Any time"
@@ -248,10 +250,7 @@ export default function CandidatesAdvancedFilters(props) {
                 <Field label="From">
                   <PremiumDatePicker
                     value={activityFrom || ''}
-                    onChange={(v) => {
-                      setActivityFrom?.(v || '');
-                      setCurrentPage?.(1);
-                    }}
+                    onChange={(v) => setActivityFrom?.(v || '')}
                     placeholder="Start date"
                     allowClear
                   />
@@ -259,31 +258,19 @@ export default function CandidatesAdvancedFilters(props) {
                 <Field label="To">
                   <PremiumDatePicker
                     value={activityTo || ''}
-                    onChange={(v) => {
-                      setActivityTo?.(v || '');
-                      setCurrentPage?.(1);
-                    }}
+                    onChange={(v) => setActivityTo?.(v || '')}
                     placeholder="End date"
                     allowClear
                   />
                 </Field>
               </>
-            ) : (
-              <Field label="Exact entry date">
-                <PremiumDatePicker
-                  value={advancedSearchFilters.date}
-                  onChange={(v) => patchFilter('date', v)}
-                  placeholder="Optional single day"
-                  allowClear
-                />
-              </Field>
-            )}
+            ) : null}
           </div>
           {activityPeriod === 'custom' && (!activityFrom || !activityTo) ? (
-            <p className="mt-2 text-[11px] text-amber-700">Select both From and To dates to apply the custom range.</p>
+            <p className="mt-2 text-[11px] text-amber-700">Select both From and To, then click Search.</p>
           ) : (
             <p className="mt-2 text-[11px] text-stone-500">
-              Period alone = when added. Period + a stage/status filter = when they entered that stage (same as dashboard stage cards).
+              Period alone = when added. Add a stage/status filter to match when they entered that stage.
             </p>
           )}
         </Section>
@@ -391,7 +378,7 @@ export default function CandidatesAdvancedFilters(props) {
               variant="list"
               compact
               value={sortField}
-              onChange={(v) => { setSortField(v); setCurrentPage(1); }}
+              onChange={(v) => setSortField(v)}
               options={SORT_OPTIONS}
               placeholder="Field"
             />
@@ -399,7 +386,7 @@ export default function CandidatesAdvancedFilters(props) {
           <div className="cand-filters-sort-group" role="group" aria-label="Sort direction">
             <button
               type="button"
-              onClick={() => { setSortOrder('asc'); setCurrentPage(1); }}
+              onClick={() => setSortOrder('asc')}
               className={`cand-filters-sort-btn ${sortOrder === 'asc' ? 'is-active' : ''}`}
             >
               <ArrowUpAZ size={12} aria-hidden="true" />
@@ -407,7 +394,7 @@ export default function CandidatesAdvancedFilters(props) {
             </button>
             <button
               type="button"
-              onClick={() => { setSortOrder('desc'); setCurrentPage(1); }}
+              onClick={() => setSortOrder('desc')}
               className={`cand-filters-sort-btn ${sortOrder === 'desc' ? 'is-active' : ''}`}
             >
               <ArrowDownAZ size={12} aria-hidden="true" />
@@ -415,7 +402,34 @@ export default function CandidatesAdvancedFilters(props) {
             </button>
           </div>
         </div>
-        <p className="cand-filters-footer-hint">Live updates</p>
+        <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto">
+          {filtersDirty ? (
+            <span className="hidden sm:inline text-[11px] font-medium text-amber-700">Unsaved changes</span>
+          ) : null}
+          <button
+            type="button"
+            disabled={isSearching}
+            onClick={() => {
+              const result = applyAdvancedFilters?.();
+              if (result && result.ok === false) {
+                onApplyError?.(result.message || 'Could not apply filters');
+              }
+            }}
+            className="btn-primary min-w-[8.5rem] justify-center"
+          >
+            {isSearching ? (
+              <>
+                <RefreshCw size={14} className="animate-spin" aria-hidden="true" />
+                Searching…
+              </>
+            ) : (
+              <>
+                <Search size={14} aria-hidden="true" />
+                Search
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

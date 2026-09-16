@@ -144,7 +144,7 @@ export function buildCandidateTableColumns(ctx) {
   const emailColumn = { key: 'email', label: 'Email', className: 'w-auto', render: (candidate) => <span className="text-sm text-stone-600 whitespace-nowrap">{blindMode ? '••••@••••' : (candidate.email || '—')}</span> };
   const dateColumn = {
     key: 'date',
-    label: 'Added',
+    label: 'Date',
     className: 'w-auto',
     render: (candidate) => {
       const raw = candidate.appliedAt || candidate.date || candidate.createdAt;
@@ -153,7 +153,7 @@ export function buildCandidateTableColumns(ctx) {
       return (
         <span
           className="text-sm text-stone-600 whitespace-nowrap tabular-nums"
-          title="Date this candidate was added / applied"
+          title="Date added / applied"
         >
           {valid ? d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
         </span>
@@ -165,16 +165,28 @@ export function buildCandidateTableColumns(ctx) {
     label: 'Stage since',
     className: 'w-auto',
     render: (candidate) => {
-      const raw = candidate.statusEnteredAt || candidate.appliedAt || candidate.createdAt;
-      const d = raw ? new Date(raw) : null;
-      const valid = d && !Number.isNaN(d.getTime());
+      const addedRaw = candidate.appliedAt || candidate.date || candidate.createdAt;
+      const stageRaw = candidate.statusEnteredAt || addedRaw;
+      const added = addedRaw ? new Date(addedRaw) : null;
+      const stage = stageRaw ? new Date(stageRaw) : null;
+      const valid = stage && !Number.isNaN(stage.getTime());
+      const sameAsDate = Boolean(
+        valid
+        && added
+        && !Number.isNaN(added.getTime())
+        && added.toDateString() === stage.toDateString()
+      );
       return (
-        <span
-          className="text-sm text-stone-600 whitespace-nowrap tabular-nums"
-          title="When they entered the current stage (used by dashboard stage KPIs)"
-        >
-          {valid ? d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
-        </span>
+        <div className="whitespace-nowrap" title="When they entered the current stage (dashboard stage KPIs use this)">
+          <span className="text-sm text-stone-600 tabular-nums">
+            {valid ? stage.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+          </span>
+          {sameAsDate ? (
+            <span className="block text-[10px] font-medium text-stone-400 leading-tight">At intake</span>
+          ) : valid ? (
+            <span className="block text-[10px] font-medium text-brand-600/80 leading-tight">Stage changed</span>
+          ) : null}
+        </div>
       );
     },
   };

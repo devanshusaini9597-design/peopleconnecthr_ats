@@ -102,9 +102,13 @@ const ATS = forwardRef((props, ref) => {
     activityFrom, setActivityFrom,
     activityTo, setActivityTo,
     sortField, setSortField, sortOrder, setSortOrder,
-    currentPage, setCurrentPage, clearAdvancedFilters, activeAdvFilterCount,
+    currentPage, setCurrentPage, clearAdvancedFilters, applyAdvancedFilters,
+    syncActivityFromUrl, filtersDirty, activeAdvFilterCount, appliedFilters,
     listQueryOptions, filteredCandidates, visibleCandidates, totalFilteredPages, filteredCount,
   } = filters;
+  const appliedPeriod = appliedFilters?.activityPeriod || '';
+  const appliedFrom = appliedFilters?.activityFrom || '';
+  const appliedTo = appliedFilters?.activityTo || '';
   listQueryOptionsRef.current = listQueryOptions;
   const mandateLabel = String(searchParams.get('mandate') || '').trim();
 
@@ -222,9 +226,7 @@ const ATS = forwardRef((props, ref) => {
     const period = searchParams.get('period') || '';
     const from = searchParams.get('from') || '';
     const to = searchParams.get('to') || '';
-    setActivityPeriod(period);
-    setActivityFrom(from);
-    setActivityTo(to);
+    syncActivityFromUrl(period, from, to);
     // Freelancer mandate drill-down: ?ids=a,b,c shows only submitted candidates.
     if (isFreelancer) {
       const rawIds = String(searchParams.get('ids') || '').trim();
@@ -240,7 +242,7 @@ const ATS = forwardRef((props, ref) => {
       setIdFilter([]);
     }
     if (q || searchParams.get('ids')) setCurrentPage(1);
-  }, [searchParams, isFreelancer, setSearchQuery, setStatusFilter, setIdFilter, setActivityPeriod, setActivityFrom, setActivityTo, setCurrentPage]);
+  }, [searchParams, isFreelancer, setSearchQuery, setStatusFilter, setIdFilter, syncActivityFromUrl, setCurrentPage]);
 
   useEffect(() => {
     if (searchParams.get('add') !== '1') return;
@@ -541,15 +543,15 @@ const ATS = forwardRef((props, ref) => {
           </div>
         ) : null}
 
-        {activityPeriod && activityPeriod !== 'all' ? (
+        {appliedPeriod && appliedPeriod !== 'all' ? (
           <div className="mx-4 sm:mx-5 mt-3 mb-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border border-brand-100 bg-brand-50/60 px-3.5 py-2.5">
             <p className="text-xs text-brand-900 min-w-0">
               <span className="font-semibold">
                 {statusFilter ? 'Stage-entry period:' : 'Intake period:'}
               </span>{' '}
               <span className="tabular-nums">
-                {activityPeriod === 'custom' && activityFrom && activityTo
-                  ? `${activityFrom} – ${activityTo}`
+                {appliedPeriod === 'custom' && appliedFrom && appliedTo
+                  ? `${appliedFrom} – ${appliedTo}`
                   : ({
                     today: 'Today',
                     yesterday: 'Yesterday',
@@ -557,7 +559,7 @@ const ATS = forwardRef((props, ref) => {
                     month: 'This Month',
                     quarter: 'This Quarter',
                     year: 'This Year',
-                  }[activityPeriod] || activityPeriod)}
+                  }[appliedPeriod] || appliedPeriod)}
               </span>
               <span className="text-brand-800/80">
                 {statusFilter
@@ -569,9 +571,7 @@ const ATS = forwardRef((props, ref) => {
               type="button"
               className="text-xs font-semibold text-brand-700 hover:text-brand-900 flex-shrink-0 self-start sm:self-auto"
               onClick={() => {
-                setActivityPeriod('');
-                setActivityFrom('');
-                setActivityTo('');
+                clearAdvancedFilters();
                 const next = new URLSearchParams(searchParams);
                 next.delete('period');
                 next.delete('from');
@@ -587,6 +587,33 @@ const ATS = forwardRef((props, ref) => {
         <CandidatesAdvancedFilters
           showAdvancedSearch={showAdvancedSearch}
           activeAdvFilterCount={activeAdvFilterCount}
+          filtersDirty={filtersDirty}
+          isSearching={isLoadingInitial}
+          onApplyError={(msg) => toast.warning(msg)}
+          applyAdvancedFilters={() => {
+            const result = applyAdvancedFilters();
+            if (!result?.ok) return result;
+            const next = new URLSearchParams(searchParams);
+            const p = String(activityPeriod || '').trim();
+            if (!p || p === 'all') {
+              next.delete('period');
+              next.delete('from');
+              next.delete('to');
+            } else {
+              next.set('period', p);
+              if (p === 'custom') {
+                if (activityFrom) next.set('from', activityFrom);
+                else next.delete('from');
+                if (activityTo) next.set('to', activityTo);
+                else next.delete('to');
+              } else {
+                next.delete('from');
+                next.delete('to');
+              }
+            }
+            setSearchParams(next, { replace: true });
+            return result;
+          }}
           clearAdvancedFilters={() => {
             clearAdvancedFilters();
             const next = new URLSearchParams(searchParams);
@@ -606,41 +633,20 @@ const ATS = forwardRef((props, ref) => {
           setSortOrder={setSortOrder}
           setCurrentPage={setCurrentPage}
           activityPeriod={activityPeriod}
-          setActivityPeriod={(v) => {
-            setActivityPeriod(v);
-            const next = new URLSearchParams(searchParams);
-            if (!v || v === 'all') {
-              next.delete('period');
-              next.delete('from');
-              next.delete('to');
-            } else {
-              next.set('period', v);
-              if (v !== 'custom') {
-                next.delete('from');
-                next.delete('to');
-              }
-            }
-            setSearchParams(next, { replace: true });
-          }}
+          setActivityPeriod={setActivityPeriod}
           activityFrom={activityFrom}
-          setActivityFrom={(v) => {
-            setActivityFrom(v);
-            const next = new URLSearchParams(searchParams);
-            if (v) next.set('from', v);
-            else next.delete('from');
-            if (activityPeriod !== 'custom') next.set('period', 'custom');
-            setSearchParams(next, { replace: true });
-          }}
+          setActivityFrom={setActivityFrom}
           activityTo={activityTo}
-          setActivityTo={(v) => {
-            setActivityTo(v);
-            const next = new URLSearchParams(searchParams);
-            if (v) next.set('to', v);
-            else next.delete('to');
-            if (activityPeriod !== 'custom') next.set('period', 'custom');
-            setSearchParams(next, { replace: true });
-          }}
+          setActivityTo={setActivityTo}
         />
+
+        {isLoadingInitial ? (
+          <div className="mx-4 sm:mx-5 mt-3 mb-1 flex items-center gap-2.5 rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-xs text-stone-600 shadow-sm">
+            <RefreshCw size={14} className="animate-spin text-brand-600 flex-shrink-0" aria-hidden="true" />
+            <span className="font-semibold text-stone-800">Searching candidates…</span>
+            <span className="text-stone-500">Updating results for your filters</span>
+          </div>
+        ) : null}
 
         <CandidatesTable
           tableScrollRef={tableScrollRef}
