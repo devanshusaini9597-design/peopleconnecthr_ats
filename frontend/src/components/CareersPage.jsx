@@ -122,12 +122,26 @@ const CareersPage = () => {
       .map(([name, count]) => ({ name, count }));
   }, [jobs]);
 
-  const locationOptions = useMemo(() => [
-    { value: '', label: 'All locations' },
-    ...[...new Set(jobs.map((j) => j.location).filter(Boolean))]
-      .sort((a, b) => a.localeCompare(b))
-      .map((l) => ({ value: l, label: l })),
-  ], [jobs]);
+  const splitCities = (value) =>
+    String(value || '')
+      .split(/[,|/·•;]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+  const locationOptions = useMemo(() => {
+    const cities = new Set();
+    jobs.forEach((j) => {
+      // Always tokenize — jobs often store "DELHI, NOIDA" as one string (or array entry)
+      if (Array.isArray(j.locations)) {
+        j.locations.forEach((loc) => splitCities(loc).forEach((city) => cities.add(city)));
+      }
+      splitCities(j.location).forEach((city) => cities.add(city));
+    });
+    return [
+      { value: '', label: 'All locations' },
+      ...[...cities].sort((a, b) => a.localeCompare(b)).map((l) => ({ value: l, label: l })),
+    ];
+  }, [jobs]);
 
   const typeOptions = useMemo(() => [
     { value: '', label: 'All employment types' },
@@ -135,13 +149,22 @@ const CareersPage = () => {
       .map((t) => ({ value: t, label: employmentLabel(t) })),
   ], [jobs]);
 
+  const jobHasLocation = (job, city) => {
+    if (!city) return true;
+    const tokens = new Set([
+      ...(Array.isArray(job.locations) ? job.locations.flatMap(splitCities) : []),
+      ...splitCities(job.location),
+    ]);
+    return tokens.has(city);
+  };
+
   const filteredJobs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     let filtered = jobs.filter((job) => {
       const hay = `${job.title || ''} ${job.location || ''} ${job.department || ''} ${job.industry || ''} ${job.clientName || ''} ${job.jobCode || ''} ${(job.skills || []).join(' ')}`.toLowerCase();
       const matchesSearch = !q || hay.includes(q);
       const matchesCat = categoryFilter ? jobCategory(job) === categoryFilter : true;
-      const matchesLoc = locFilter ? job.location === locFilter : true;
+      const matchesLoc = jobHasLocation(job, locFilter);
       const matchesType = typeFilter ? job.employmentType === typeFilter : true;
       return matchesSearch && matchesCat && matchesLoc && matchesType;
     });
@@ -186,8 +209,8 @@ const CareersPage = () => {
   const brandStyle = { ['--careers-brand']: brand };
 
   const cardBorder = {
-    borderColor: `${brand}28`,
-    boxShadow: `0 1px 2px rgba(15,23,42,0.04), 0 0 0 1px ${brand}10`,
+    borderColor: 'rgb(214 211 209)',
+    boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 0 0 1px rgba(15,23,42,0.02)',
   };
 
   if (loading) {
@@ -447,35 +470,41 @@ const CareersPage = () => {
                 return (
                   <article
                     key={job._id}
-                    className="card-ats-bordered relative overflow-visible group p-4 sm:p-5 pt-5 transition-all duration-300 hover:-translate-y-0.5"
+                    className="relative overflow-hidden group p-4 sm:p-5 pt-5 min-w-0 rounded-2xl border border-stone-300/90 bg-white transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-stone-400/90 hover:shadow-[0_8px_24px_-8px_rgba(15,23,42,0.14),0_0_0_1px_rgba(15,23,42,0.04)]"
                     style={cardBorder}
                   >
                     {featured ? (
                       <span
-                        className="absolute -top-2.5 right-3 z-10 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide text-white shadow-lg animate-fade-in"
+                        className="absolute top-3 right-3 z-10 inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide text-white shadow-sm"
                         style={{
                           background: `linear-gradient(135deg, ${brand}, #0f766e)`,
-                          boxShadow: `0 8px 20px ${brand}55`,
                         }}
                       >
                         <Sparkles size={11} strokeWidth={2.5} /> Featured
                       </span>
                     ) : null}
                     <div
-                      className="absolute inset-y-0 left-0 w-1 rounded-l-2xl"
+                      className="absolute inset-y-0 left-0 w-[3px] rounded-l-2xl"
                       style={{
                         background: featured
                           ? `linear-gradient(180deg, ${brand}, #2dd4bf)`
                           : `linear-gradient(180deg, ${brand}cc, ${brand}55)`,
                       }}
                     />
+                    {/* Soft glow + shine sweep on hover */}
                     <div
-                      className="absolute inset-x-0 top-0 h-px opacity-80 rounded-t-2xl overflow-hidden"
-                      style={{ background: `linear-gradient(90deg, ${brand}55, transparent 70%)` }}
+                      className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+                      style={{
+                        background: `radial-gradient(500px circle at 85% 15%, ${brand}18, transparent 45%)`,
+                      }}
+                    />
+                    <div
+                      className="pointer-events-none absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out bg-gradient-to-r from-transparent via-white/40 to-transparent"
+                      aria-hidden
                     />
 
-                    <div className="pl-2 flex flex-col h-full min-h-[9.5rem]">
-                      <div className="flex items-start gap-3">
+                    <div className="relative pl-2.5 flex flex-col h-full min-h-[9.5rem] min-w-0">
+                      <div className="flex items-start gap-3 min-w-0">
                         <div
                           className="hidden sm:flex w-10 h-10 rounded-xl border items-center justify-center flex-shrink-0"
                           style={{
@@ -486,8 +515,8 @@ const CareersPage = () => {
                         >
                           <Briefcase size={17} />
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-1.5 mb-1.5 pr-16">
+                        <div className="min-w-0 flex-1 overflow-hidden">
+                          <div className={`flex flex-wrap items-center gap-1.5 mb-1.5 ${featured ? 'pr-20' : ''}`}>
                             <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md border bg-emerald-50 text-emerald-700 border-emerald-200">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Open
                             </span>
@@ -497,12 +526,12 @@ const CareersPage = () => {
                               </span>
                             ) : null}
                             {job.jobCode ? (
-                              <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-200 bg-stone-50 text-stone-600 tabular-nums tracking-wide">
+                              <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-200 bg-stone-50 text-stone-600 tabular-nums tracking-wide truncate max-w-[9rem]">
                                 {job.jobCode}
                               </span>
                             ) : null}
                           </div>
-                          <h3 className="text-[15px] sm:text-base font-bold text-stone-900 tracking-tight leading-snug uppercase">
+                          <h3 className="text-[15px] sm:text-base font-bold text-stone-900 tracking-tight leading-snug uppercase break-words">
                             <Link
                               to={`/careers/${orgSlug}/jobs/${job._id}`}
                               className="hover:underline underline-offset-2"
@@ -519,23 +548,23 @@ const CareersPage = () => {
                         </div>
                       </div>
 
-                      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-stone-600">
-                        <span className="inline-flex items-center gap-1 min-w-0">
+                      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px] text-stone-600 min-w-0">
+                        <span className="inline-flex items-center gap-1 min-w-0 max-w-full">
                           <MapPin size={12} className="text-stone-400 flex-shrink-0" />
                           <span className="truncate font-medium">{job.location || 'Location TBD'}</span>
                         </span>
-                        <span className="inline-flex items-center gap-1 min-w-0">
+                        <span className="inline-flex items-center gap-1 min-w-0 max-w-[11rem]">
                           <Clock size={12} className="text-stone-400 flex-shrink-0" />
                           <span className="truncate">{job.employmentType ? employmentLabel(job.employmentType) : 'Full-time'}</span>
                         </span>
                         {job.experience ? (
-                          <span className="inline-flex items-center gap-1 min-w-0">
+                          <span className="inline-flex items-center gap-1 min-w-0 max-w-[10rem]">
                             <Building2 size={12} className="text-stone-400 flex-shrink-0" />
                             <span className="truncate">{job.experience}</span>
                           </span>
                         ) : null}
                         {job.ctc ? (
-                          <span className="inline-flex items-center gap-1 min-w-0 font-semibold text-stone-800">
+                          <span className="inline-flex items-center gap-1 min-w-0 max-w-full font-semibold text-stone-800">
                             <IndianRupee size={12} className="text-stone-400 flex-shrink-0" />
                             <span className="truncate">{job.ctc}</span>
                           </span>
@@ -543,7 +572,7 @@ const CareersPage = () => {
                       </div>
 
                       {Array.isArray(job.skills) && job.skills.length > 0 ? (
-                        <div className="mt-2.5 flex flex-wrap gap-1.5">
+                        <div className="mt-2.5 flex flex-wrap gap-1.5 min-w-0">
                           {job.skills.slice(0, 4).map((skill) => (
                             <span
                               key={skill}
@@ -559,16 +588,21 @@ const CareersPage = () => {
                         </div>
                       ) : null}
 
-                      <div className="mt-auto pt-4 flex items-center justify-between gap-3 border-t border-stone-100/90">
-                        <span className="text-[11px] font-medium text-stone-400 truncate">
+                      <div className="mt-auto pt-4 flex items-center justify-between gap-3 border-t border-stone-100 min-w-0">
+                        <span className="text-[11px] font-medium text-stone-400 truncate min-w-0">
                           {formatPosted(job) ? `Posted ${formatPosted(job)}` : 'Open position'}
                         </span>
                         <Link
                           to={`/careers/${orgSlug}/jobs/${job._id}`}
-                          className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl text-[13px] font-bold text-white shadow-sm transition-transform group-hover:translate-x-0.5"
+                          className="relative overflow-hidden inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl text-[13px] font-bold text-white shadow-sm flex-shrink-0 transition-transform duration-300 group-hover:scale-[1.04]"
                           style={{ backgroundColor: brand }}
                         >
-                          Apply here <ArrowRight size={14} />
+                          <span
+                            className="pointer-events-none absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out bg-gradient-to-r from-transparent via-white/45 to-transparent"
+                            aria-hidden
+                          />
+                          <span className="relative">Apply here</span>
+                          <ArrowRight size={14} className="relative" />
                         </Link>
                       </div>
                     </div>

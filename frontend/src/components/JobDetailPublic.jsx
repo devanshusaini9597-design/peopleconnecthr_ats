@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, Briefcase, Clock, UploadCloud, CheckCircle, AlertCircle,
   Building, FileText, ChevronRight, ChevronLeft, User, IndianRupee, Send, Lock, X,
@@ -45,13 +45,20 @@ function appliedStorageKey(orgSlug, jobId) {
 }
 
 function splitJobLocations(job) {
-  const fromArr = Array.isArray(job?.locations)
-    ? job.locations.map((l) => String(l || '').trim()).filter(Boolean)
-    : [];
-  if (fromArr.length) return [...new Set(fromArr)];
-  const raw = String(job?.location || '').trim();
-  if (!raw) return [];
-  return [...new Set(raw.split(/[,|/]/).map((s) => s.trim()).filter(Boolean))];
+  const tokens = [];
+  const push = (raw) => {
+    String(raw || '')
+      .split(/[,|/·•;]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .forEach((t) => tokens.push(t));
+  };
+  if (Array.isArray(job?.locations) && job.locations.length) {
+    job.locations.forEach(push);
+  } else {
+    push(job?.location);
+  }
+  return [...new Set(tokens)];
 }
 
 function toOptions(list) {
@@ -66,6 +73,19 @@ function fieldClass(err, locked = false) {
         ? 'border-rose-400 bg-white focus:border-rose-500 focus:ring-2 focus:ring-rose-200'
         : 'border-stone-200 bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15'
   }`;
+}
+
+function isValidPersonName(name) {
+  const t = String(name || '').trim();
+  if (t.length < 2) return false;
+  if (/^\d+$/.test(t)) return false;
+  if ((t.match(/\d/g) || []).length > 2) return false;
+  // Letters (incl. unicode), spaces, apostrophe, hyphen, period
+  return /^[\p{L}\s.'’-]+$/u.test(t);
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(email || '').trim());
 }
 
 function FieldLabel({ children, required, hint }) {
@@ -132,6 +152,7 @@ function AlreadyAppliedPanel({ jobTitle, brand, orgSlug, onCloseModal }) {
 
 const JobDetailPublic = () => {
   const { orgSlug, jobId } = useParams();
+  const navigate = useNavigate();
   const [job, setJob] = useState(null);
   const [org, setOrg] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -157,6 +178,8 @@ const JobDetailPublic = () => {
   const [alreadyApplied, setAlreadyApplied] = useState(false);
   const [alreadyModalOpen, setAlreadyModalOpen] = useState(false);
   const [checkingEmail, setCheckingEmail] = useState(false);
+  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
+  const navLockRef = useRef(false);
 
   const brand = org?.brandColor || '#0d9488';
   const jobLocations = useMemo(() => splitJobLocations(job), [job]);
@@ -281,9 +304,45 @@ const JobDetailPublic = () => {
     });
   }, []);
 
+  const validateFieldLive = (name, value) => {
+    let msg = '';
+    if (name === 'name') {
+      const v = String(value || '').trim();
+      if (v && !isValidPersonName(v)) msg = 'Enter a valid name using letters only';
+    }
+    if (name === 'email') {
+      const v = String(value || '').trim();
+      if (v && !isValidEmail(v)) msg = 'Enter a valid email address';
+    }
+    if (name === 'phone') {
+      const digits = String(value || '').replace(/\D/g, '');
+      // Only flag incomplete numbers once the field has a full attempt (10) or is empty after typing
+      if (digits.length > 0 && digits.length !== 10) msg = 'Enter a valid 10-digit mobile number';
+    }
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      if (msg) next[name] = msg;
+      else delete next[name];
+      return next;
+    });
+  };
+
   const setField = (name, value) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
-    if (fieldErrors[name]) {
+    if (name === 'name' || name === 'email') {
+      validateFieldLive(name, value);
+    } else if (name === 'phone') {
+      // Clear error once a complete number is entered; otherwise wait for blur
+      const digits = String(value || '').replace(/\D/g, '');
+      if (digits.length === 10 || !digits) {
+        setFieldErrors((prev) => {
+          if (!prev.phone) return prev;
+          const next = { ...prev };
+          delete next.phone;
+          return next;
+        });
+      }
+    } else if (fieldErrors[name]) {
       setFieldErrors((prev) => {
         const next = { ...prev };
         delete next[name];
@@ -305,12 +364,14 @@ const JobDetailPublic = () => {
   const validateStep = (idx, { silent = false } = {}) => {
     const errs = {};
     if (idx === 0) {
-      if (!formData.name.trim()) errs.name = 'Full name is required';
+      const name = formData.name.trim();
+      if (!name) errs.name = 'Full name is required';
+      else if (!isValidPersonName(name)) errs.name = 'Enter a valid name using letters only';
       const email = formData.email.trim().toLowerCase();
       if (!email) errs.email = 'Email is required';
-      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) errs.email = 'Enter a valid email address';
+      else if (!isValidEmail(email)) errs.email = 'Enter a valid email address';
       const digits = String(formData.phone || '').replace(/\D/g, '');
-      if (!digits) errs.phone = 'Phone number is required';
+      if (!digits) errs.phone = 'Mobile number is required';
       else if (digits.length !== 10) errs.phone = 'Enter a valid 10-digit mobile number';
       if (multiLocation && !formData.location.trim()) errs.location = 'Select a location';
     }
@@ -341,14 +402,48 @@ const JobDetailPublic = () => {
     return Object.keys(errs).length === 0;
   };
 
+  const formIsDirty = useMemo(() => {
+    if (submitSuccess || alreadyApplied) return false;
+    if (step > 0 || resumeFile) return true;
+    return Object.entries(formData).some(([k, v]) => {
+      if (k === 'position' || k === 'location') return false;
+      return String(v || '').trim().length > 0;
+    });
+  }, [formData, step, resumeFile, submitSuccess, alreadyApplied]);
+
+  useEffect(() => {
+    const onBeforeUnload = (e) => {
+      if (!formIsDirty) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [formIsDirty]);
+
+  const requestLeaveCareers = (e) => {
+    if (!formIsDirty) return;
+    e.preventDefault();
+    setLeaveModalOpen(true);
+  };
+
+  const confirmLeaveCareers = () => {
+    setLeaveModalOpen(false);
+    navigate(`/careers/${orgSlug}`);
+  };
+
   const goNext = async () => {
+    if (navLockRef.current) return;
     if (!validateStep(step)) return;
     if (step === 0) {
       const dup = await checkAlreadyApplied(formData.email);
       if (dup) return;
     }
     setSubmitError('');
+    navLockRef.current = true;
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
+    // Prevent the same click / Enter from hitting Submit on the next step
+    window.setTimeout(() => { navLockRef.current = false; }, 500);
   };
 
   const goBack = () => {
@@ -376,15 +471,16 @@ const JobDetailPublic = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // Ignore accidental submit while advancing steps (button swap / Enter)
+    if (navLockRef.current) return;
     if (alreadyApplied) {
       setAlreadyModalOpen(true);
-      toast.warning('You have already applied for this job');
+      toast.warning('You have already applied for this role');
       return;
     }
-    if (step !== STEPS.length - 1) {
-      goNext();
-      return;
-    }
+    // Only the final step may submit — never auto-advance via form submit
+    if (step !== STEPS.length - 1) return;
+
     if (!validateStep(0, { silent: true })) {
       setStep(0);
       validateStep(0);
@@ -429,11 +525,11 @@ const JobDetailPublic = () => {
       if (!res.ok) {
         if (data.code === 'ALREADY_APPLIED' || /already applied/i.test(String(data.message || ''))) {
           markAlreadyApplied(formData.email);
-          toast.warning('You have already applied for this job');
+          toast.warning('You have already applied for this role');
           setAlreadyModalOpen(true);
           return;
         }
-        throw new Error(data.message || 'Application submission failed');
+        throw new Error(data.message || 'Application could not be submitted');
       }
       markAlreadyApplied(formData.email);
       setSubmitSuccess(true);
@@ -449,6 +545,7 @@ const JobDetailPublic = () => {
   const onFormKeyDown = (e) => {
     if (e.key !== 'Enter' || e.target?.tagName === 'TEXTAREA') return;
     e.preventDefault();
+    // Enter never submits — only advances until the final step
     if (step < STEPS.length - 1) goNext();
   };
 
@@ -493,8 +590,12 @@ const JobDetailPublic = () => {
       <PublicAnnouncementBanner orgSlug={orgSlug} />
       <header className="bg-white/95 backdrop-blur border-b border-stone-200/80 py-3.5 px-4 sm:px-6 shrink-0 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
-          <Link to={`/careers/${orgSlug}`} className="inline-flex items-center text-stone-600 hover:text-brand-700 transition-colors font-semibold text-sm">
-            <ArrowLeft className="h-4 w-4 mr-2" /> Careers
+          <Link
+            to={`/careers/${orgSlug}`}
+            onClick={requestLeaveCareers}
+            className="inline-flex items-center text-stone-600 hover:text-brand-700 transition-colors font-semibold text-sm"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" /> Back to careers
           </Link>
           <div className="flex items-center gap-2.5 min-w-0">
             {org?.logo ? (
@@ -643,6 +744,7 @@ const JobDetailPublic = () => {
                               className={fieldClass(fieldErrors.name)}
                               value={formData.name}
                               onChange={(e) => setField('name', e.target.value)}
+                              onBlur={(e) => validateFieldLive('name', e.target.value)}
                               autoComplete="name"
                               autoFocus
                             />
@@ -659,8 +761,10 @@ const JobDetailPublic = () => {
                               onChange={(e) => setField('email', e.target.value)}
                               onBlur={() => {
                                 const email = formData.email.trim();
-                                if (email && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+                                if (email && isValidEmail(email)) {
                                   checkAlreadyApplied(email);
+                                } else if (email) {
+                                  validateFieldLive('email', email);
                                 }
                               }}
                               autoComplete="email"
@@ -679,6 +783,7 @@ const JobDetailPublic = () => {
                               className={fieldClass(fieldErrors.phone)}
                               value={formData.phone}
                               onChange={(e) => setField('phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                              onBlur={(e) => validateFieldLive('phone', e.target.value)}
                               placeholder="10-digit mobile"
                               autoComplete="tel"
                             />
@@ -744,8 +849,8 @@ const JobDetailPublic = () => {
                             />
                             {fieldErrors.experience ? <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.experience}</p> : null}
                           </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div data-field="ctc">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
+                            <div data-field="ctc" className="min-w-0">
                               <FieldLabel required>Current CTC</FieldLabel>
                               <PremiumSelect
                                 variant="list"
@@ -759,7 +864,7 @@ const JobDetailPublic = () => {
                               />
                               {fieldErrors.ctc ? <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.ctc}</p> : null}
                             </div>
-                            <div data-field="expectedCtc">
+                            <div data-field="expectedCtc" className="min-w-0">
                               <FieldLabel required>Expected CTC</FieldLabel>
                               <PremiumSelect
                                 variant="list"
@@ -960,6 +1065,44 @@ const JobDetailPublic = () => {
               orgSlug={orgSlug}
               onCloseModal={() => setAlreadyModalOpen(false)}
             />
+          </div>
+        </div>
+      ) : null}
+
+      {leaveModalOpen ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-[2px]" role="dialog" aria-modal="true">
+          <div className="relative w-full max-w-md rounded-2xl border border-stone-200 bg-white shadow-2xl shadow-stone-900/20 p-6">
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setLeaveModalOpen(false)}
+              className="absolute right-3 top-3 h-8 w-8 inline-flex items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+            >
+              <X size={16} />
+            </button>
+            <div className="pr-6">
+              <h4 className="text-lg font-bold text-stone-900 mb-2">Leave this application?</h4>
+              <p className="text-sm text-stone-600 leading-relaxed mb-5">
+                You have unsaved information on this form. If you return to the careers page now,
+                your progress will be discarded and you will need to start again.
+              </p>
+              <div className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setLeaveModalOpen(false)}
+                  className="btn-secondary justify-center"
+                >
+                  Continue applying
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmLeaveCareers}
+                  className="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white bg-stone-800 hover:bg-stone-900"
+                >
+                  Leave and discard
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}
