@@ -378,6 +378,11 @@ router.post('/', verifyToken, requireRecruiterOrAbove, checkPlanLimit('jobs'), a
     if (!jobData.isTemplate && String(jobData.status || 'Open').toLowerCase() === 'open') {
       jobData.openedAt = new Date();
       jobData.seenBy = [];
+      // Open jobs are live on the public careers page
+      if (jobData.isPublished !== false) {
+        jobData.isPublished = true;
+        jobData.publishedAt = jobData.publishedAt || new Date();
+      }
     }
 
     const newJob = new Job(jobData);
@@ -460,6 +465,15 @@ router.put('/:id', verifyToken, requireRecruiterOrAbove, async (req, res) => {
     if (becomingOpen && !existing.isTemplate) {
       updates.openedAt = new Date();
       updates.seenBy = [];
+      // Mark Open ⇒ publish to careers so share links work immediately
+      updates.isPublished = true;
+      updates.publishedAt = new Date();
+      updates.closedAt = null;
+    }
+
+    if (updates.status === 'On Hold' || updates.status === 'Draft') {
+      // Keep record but remove from public careers
+      updates.isPublished = false;
     }
 
     const job = await Job.findOneAndUpdate(

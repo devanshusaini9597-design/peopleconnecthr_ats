@@ -3,13 +3,29 @@
  * Mounted at /api/careers (no auth). Single router export (no publicRouter).
  */
 const express = require('express');
+const path = require('path');
+const multer = require('multer');
 const router = express.Router();
 const svc = require('../services/careersService');
+const { multerFileFilter } = require('../utils/uploadAllowlist');
 
 function handle(res, error) {
   const status = error.statusCode || 500;
   return res.status(status).json({ success: false, message: error.message });
 }
+
+const applyUpload = multer({
+  storage: multer.diskStorage({
+    destination: 'uploads/',
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname) || '.pdf';
+      const uniqueName = `careers-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+      cb(null, uniqueName);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: multerFileFilter,
+});
 
 /**
  * GET /:orgSlug/jobs.xml
@@ -68,15 +84,28 @@ router.get('/:orgSlug/jobs/:jobId', async (req, res) => {
 
 /**
  * POST /:orgSlug/jobs/:jobId/apply
- * Submit application
+ * Submit application (multipart: resume + ATS-aligned fields)
  */
-router.post('/:orgSlug/jobs/:jobId/apply', async (req, res) => {
-  try {
-    const result = await svc.submitApplication(req.params.orgSlug, req.params.jobId, req.body);
-    res.json({ success: true, ...result });
-  } catch (error) {
-    handle(res, error);
-  }
+router.post('/:orgSlug/jobs/:jobId/apply', (req, res) => {
+  applyUpload.single('resume')(req, res, async (err) => {
+    if (err) {
+      const message = err.code === 'LIMIT_FILE_SIZE'
+        ? 'Resume must be 10MB or smaller.'
+        : (err.message || 'Invalid resume upload');
+      return res.status(400).json({ success: false, message });
+    }
+    try {
+      const result = await svc.submitApplication(
+        req.params.orgSlug,
+        req.params.jobId,
+        req.body || {},
+        req.file || null,
+      );
+      res.json({ success: true, ...result });
+    } catch (error) {
+      handle(res, error);
+    }
+  });
 });
 
 module.exports = router;

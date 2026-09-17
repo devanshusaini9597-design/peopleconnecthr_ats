@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Filter, RotateCcw, ArrowUpAZ, ArrowDownAZ, X, Sparkles, Search, RefreshCw } from 'lucide-react';
+import { Filter, RotateCcw, X, Sparkles, Search, RefreshCw } from 'lucide-react';
 import PremiumSelect from '../ui/PremiumSelect';
 import PremiumDatePicker from '../ui/PremiumDatePicker';
 import { useAuth } from '../../context/AuthContext';
@@ -14,18 +14,6 @@ const PERIOD_OPTIONS = [
   { value: 'quarter', label: 'This quarter' },
   { value: 'year', label: 'This year' },
   { value: 'custom', label: 'Custom range' },
-];
-
-const SORT_OPTIONS = [
-  { value: 'date', label: 'Date' },
-  { value: 'stageSince', label: 'Stage since' },
-  { value: 'name', label: 'Name' },
-  { value: 'email', label: 'Email' },
-  { value: 'position', label: 'Position' },
-  { value: 'location', label: 'Location' },
-  { value: 'company', label: 'Company' },
-  { value: 'status', label: 'Current stage' },
-  { value: 'spoc', label: 'SPOC' },
 ];
 
 const FILTER_CHIPS = [
@@ -119,7 +107,6 @@ export default function CandidatesAdvancedFilters(props) {
   const {
     showAdvancedSearch, activeAdvFilterCount, clearAdvancedFilters, advancedSearchFilters,
     setAdvancedSearchFilters, positionFilterOptions, expOptions, ctcFilterOptions,
-    sortField, setSortField, sortOrder, setSortOrder, setCurrentPage,
     activityPeriod = '', setActivityPeriod,
     activityFrom = '', setActivityFrom,
     activityTo = '', setActivityTo,
@@ -161,10 +148,6 @@ export default function CandidatesAdvancedFilters(props) {
     () => FILTER_CHIPS.filter(({ key }) => Boolean(String(advancedSearchFilters?.[key] || '').trim())),
     [advancedSearchFilters],
   );
-
-  const isDateSort = sortField === 'date' || sortField === 'stageSince';
-  const ascLabel = isDateSort ? 'Oldest' : 'A–Z';
-  const descLabel = isDateSort ? 'Newest' : 'Z–A';
 
   if (!showAdvancedSearch) return null;
 
@@ -268,11 +251,7 @@ export default function CandidatesAdvancedFilters(props) {
           </div>
           {activityPeriod === 'custom' && (!activityFrom || !activityTo) ? (
             <p className="mt-2 text-[11px] text-amber-700">Select both From and To, then click Search.</p>
-          ) : (
-            <p className="mt-2 text-[11px] text-stone-500">
-              Period alone = when added. Add a stage/status filter to match when they entered that stage.
-            </p>
-          )}
+          ) : null}
         </Section>
 
         <Section title="Role & organisation">
@@ -370,39 +349,8 @@ export default function CandidatesAdvancedFilters(props) {
         </Section>
       </div>
 
-      <div className="cand-filters-footer">
-        <span className="cand-filters-footer-label">Sort results</span>
-        <div className="flex flex-1 flex-col sm:flex-row items-stretch sm:items-center gap-2 min-w-0">
-          <div className="w-full sm:max-w-[220px] min-w-0">
-            <PremiumSelect
-              variant="list"
-              compact
-              value={sortField}
-              onChange={(v) => setSortField(v)}
-              options={SORT_OPTIONS}
-              placeholder="Field"
-            />
-          </div>
-          <div className="cand-filters-sort-group" role="group" aria-label="Sort direction">
-            <button
-              type="button"
-              onClick={() => setSortOrder('asc')}
-              className={`cand-filters-sort-btn ${sortOrder === 'asc' ? 'is-active' : ''}`}
-            >
-              <ArrowUpAZ size={12} aria-hidden="true" />
-              {ascLabel}
-            </button>
-            <button
-              type="button"
-              onClick={() => setSortOrder('desc')}
-              className={`cand-filters-sort-btn ${sortOrder === 'desc' ? 'is-active' : ''}`}
-            >
-              <ArrowDownAZ size={12} aria-hidden="true" />
-              {descLabel}
-            </button>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto">
+      <div className="cand-filters-footer justify-end">
+        <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto sm:ml-auto">
           {filtersDirty ? (
             <span className="hidden sm:inline text-[11px] font-medium text-amber-700">Unsaved changes</span>
           ) : null}

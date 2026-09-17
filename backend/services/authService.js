@@ -152,6 +152,8 @@ async function completeLogin(user, req) {
     payload: {
       message: 'Login Successful',
       user: {
+        id: String(user._id),
+        _id: String(user._id),
         name: user.name || '',
         email: user.email,
         phone: user.phone || '',

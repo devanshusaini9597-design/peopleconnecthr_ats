@@ -3,6 +3,7 @@ import { Search, Filter, Download, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import PremiumSelect from '../ui/PremiumSelect';
 import ColumnsPicker from '../ui/ColumnsPicker';
+import CandidatesSortMenu from './CandidatesSortMenu';
 import { CANDIDATE_SEARCH_SCOPES } from './atsConstants';
 
 export default function CandidatesSearchToolbar(props) {
@@ -19,6 +20,10 @@ export default function CandidatesSearchToolbar(props) {
     onSelectAllColumns,
     onClearAllColumns,
     onResetColumns,
+    sortField = 'date',
+    sortOrder = 'desc',
+    onSortChange,
+    isSearching = false,
   } = props;
 
   const scopeLabel = CANDIDATE_SEARCH_SCOPES.find((s) => s.value === searchScope)?.label || 'All fields';
@@ -93,6 +98,12 @@ export default function CandidatesSearchToolbar(props) {
                   </span>
                 )}
               </button>
+              <CandidatesSortMenu
+                sortField={sortField}
+                sortOrder={sortOrder}
+                disabled={isSearching}
+                onChange={(field, order) => onSortChange?.(field, order)}
+              />
               <ColumnsPicker
                 data-tour="cand-columns"
                 columns={columnOptions}

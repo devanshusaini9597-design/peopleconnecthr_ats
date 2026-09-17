@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Plus, MapPin, BookOpen, UserCheck, Briefcase, IndianRupee, Globe2, Loader2,
   Search, Pencil, Trash2, Filter, Building2,
-  BookmarkPlus, Check, Share2, Eye, Mail, Bell,
+  Check, Share2, Eye, Mail, Bell, Copy, ExternalLink,
 } from 'lucide-react';
 import JDLibraryModal from '../components/JDLibraryModal';
 import PageHeader from '../components/ui/PageHeader';
@@ -58,7 +58,16 @@ const Jobs = () => {
   const [teamMembers, setTeamMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [postTarget, setPostTarget] = useState(null);
-  const [postProvider, setPostProvider] = useState('indeed_feed');
+  const [postProvider, setPostProvider] = useState('linkedin');
+  const [shareTarget, setShareTarget] = useState(null);
+  const [sharePublishing, setSharePublishing] = useState(false);
+
+  const orgSlug = organization?.slug || '';
+
+  const careersApplyUrl = (job) => {
+    if (!orgSlug || !job?._id) return '';
+    return `${window.location.origin}/careers/${orgSlug}/jobs/${job._id}`;
+  };
 
   const managerOptions = useMemo(
     () => teamMembers.map((m) => ({
@@ -396,7 +405,74 @@ const Jobs = () => {
   const openPostModal = (job) => {
     setMenuOpenId(null);
     setPostTarget(job);
-    setPostProvider('indeed_feed');
+    setPostProvider('linkedin');
+  };
+
+  const ensureJobPublished = async (job) => {
+    if (job?.isPublished && String(job?.status || '').toLowerCase() === 'open') return job;
+    setSharePublishing(true);
+    try {
+      const res = await authenticatedFetch(`${API_URL}/${job._id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          isPublished: true,
+          status: 'Open',
+          publishedAt: new Date().toISOString(),
+        }),
+      });
+      if (isUnauthorized(res)) return handleUnauthorized();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Could not publish job to careers');
+      const updated = { ...job, ...data, isPublished: true, status: data.status || 'Open' };
+      setJobs((prev) => prev.map((j) => (j._id === job._id ? { ...j, ...updated } : j)));
+      toast.success('Job published to careers page');
+      return updated;
+    } finally {
+      setSharePublishing(false);
+    }
+  };
+
+  const openShareModal = async (job) => {
+    setMenuOpenId(null);
+    if (!orgSlug) {
+      toast.warning('Organization careers slug is missing. Set it under Organization settings.');
+      return;
+    }
+    // Auto-publish Open jobs that were never flagged for careers
+    if (String(job.status || '').toLowerCase() === 'open' && !job.isPublished) {
+      try {
+        const published = await ensureJobPublished(job);
+        setShareTarget(published);
+        return;
+      } catch (err) {
+        toast.error(err.message || 'Could not publish job');
+      }
+    }
+    setShareTarget(job);
+  };
+
+  const copyCareersLink = async (job) => {
+    const url = careersApplyUrl(job);
+    if (!url) {
+      toast.warning('Careers link unavailable');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Careers apply link copied');
+    } catch {
+      toast.error('Could not copy link');
+    }
+  };
+
+  const shareOnLinkedIn = (job) => {
+    const url = careersApplyUrl(job);
+    if (!url) {
+      toast.warning('Careers link unavailable');
+      return;
+    }
+    const shareUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(`${url}?src=linkedin`)}`;
+    window.open(shareUrl, '_blank', 'noopener,noreferrer,width=720,height=640');
   };
 
   const handlePostToJobBoard = async () => {
@@ -751,23 +827,13 @@ const Jobs = () => {
                       >
                         <Pencil size={14} strokeWidth={2} />
                       </button>
-                      {hasJobBoard && (
-                        <button
-                          type="button"
-                          onClick={() => openPostModal(job)}
-                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-teal-300 hover:text-teal-700 hover:bg-teal-50 transition-colors"
-                          title="Post to job board"
-                        >
-                          <Share2 size={14} strokeWidth={2} />
-                        </button>
-                      )}
                       <button
                         type="button"
-                        onClick={() => handleSaveAsTemplate(job)}
-                        className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-sky-300 hover:text-sky-700 hover:bg-sky-50 transition-colors"
-                        title="Save as template"
+                        onClick={() => openShareModal(job)}
+                        className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-teal-300 hover:text-teal-700 hover:bg-teal-50 transition-colors"
+                        title="Share & publish"
                       >
-                        <BookmarkPlus size={14} strokeWidth={2} />
+                        <Share2 size={14} strokeWidth={2} />
                       </button>
                       <div className="relative">
                         <JobCardActionsMenu
@@ -775,13 +841,9 @@ const Jobs = () => {
                           onToggle={() => setMenuOpenId(menuOpenId === job._id ? null : job._id)}
                           job={job}
                           status={status}
-                          hasJobBoard={hasJobBoard}
-                          posting={postingJobId === job._id}
-                          onView={() => { setMenuOpenId(null); openView(job); }}
                           onMarkOpen={() => { setMenuOpenId(null); handleStatusChange(job, 'Open'); }}
                           onHold={() => { setMenuOpenId(null); handleStatusChange(job, 'On Hold'); }}
                           onClose={() => { setMenuOpenId(null); handleStatusChange(job, 'Closed'); }}
-                          onPostBoard={() => { setMenuOpenId(null); openPostModal(job); }}
                           onSaveTemplate={() => { setMenuOpenId(null); handleSaveAsTemplate(job); }}
                           onDelete={() => {
                             setMenuOpenId(null);
@@ -834,6 +896,96 @@ const Jobs = () => {
       />
 
       <Modal
+        open={!!shareTarget}
+        onClose={() => !sharePublishing && setShareTarget(null)}
+        title="Share & apply link"
+        description={shareTarget ? `Let candidates apply to “${shareTarget.role || shareTarget.title}” themselves.` : ''}
+        size="md"
+        icon={Share2}
+        footer={
+          <>
+            <button type="button" className="btn-secondary" disabled={sharePublishing} onClick={() => setShareTarget(null)}>
+              Close
+            </button>
+            {shareTarget && !shareTarget.isPublished ? (
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={sharePublishing}
+                onClick={async () => {
+                  try {
+                    const published = await ensureJobPublished(shareTarget);
+                    setShareTarget(published);
+                  } catch (err) {
+                    toast.error(err.message || 'Could not publish job');
+                  }
+                }}
+              >
+                {sharePublishing ? <Loader2 size={16} className="animate-spin" /> : null}
+                {sharePublishing ? 'Publishing…' : 'Publish to careers'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={!orgSlug || !shareTarget?.isPublished}
+                onClick={() => shareOnLinkedIn(shareTarget)}
+              >
+                <ExternalLink size={15} /> Share on LinkedIn
+              </button>
+            )}
+          </>
+        }
+      >
+        {shareTarget ? (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-stone-200 bg-stone-50/80 px-3.5 py-3">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400">Apply link</p>
+                {shareTarget.isPublished ? (
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-md px-1.5 py-0.5">Live</span>
+                ) : (
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-100 rounded-md px-1.5 py-0.5">Not live</span>
+                )}
+              </div>
+              <p className="text-sm font-medium text-stone-800 break-all leading-relaxed">
+                {careersApplyUrl(shareTarget) || 'Careers slug unavailable'}
+              </p>
+              {!shareTarget.isPublished ? (
+                <p className="text-xs text-amber-700 mt-2">
+                  Publish this job to careers so candidates can open the apply page.
+                </p>
+              ) : null}
+              {!orgSlug ? (
+                <p className="text-xs text-rose-600 mt-2">Organization careers slug is missing.</p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className="btn-secondary w-full justify-center"
+              disabled={!orgSlug || sharePublishing}
+              onClick={() => copyCareersLink(shareTarget)}
+            >
+              <Copy size={15} /> Copy apply link
+            </button>
+            {hasJobBoard ? (
+              <button
+                type="button"
+                className="w-full text-left rounded-xl border border-teal-100 bg-teal-50/50 px-3.5 py-3 text-sm text-teal-900 hover:bg-teal-50 transition"
+                onClick={() => {
+                  setShareTarget(null);
+                  openPostModal(shareTarget);
+                }}
+              >
+                <span className="font-semibold">Post via LinkedIn Jobs API</span>
+                <span className="block text-xs text-teal-800/80 mt-0.5">Optional — requires LinkedIn credentials under Integrations.</span>
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
         open={!!postTarget}
         onClose={() => !postingJobId && setPostTarget(null)}
         title="Post to Job Board"
@@ -854,7 +1006,7 @@ const Jobs = () => {
       >
         <div className="space-y-3">
           <div className="rounded-xl border border-brand-100 bg-gradient-to-r from-brand-50/80 via-white to-teal-50/50 px-3.5 py-3 text-[13px] text-stone-600 leading-relaxed">
-            Choose a provider to publish this opening. You can remove it later from the same board settings.
+            Choose a provider to publish this opening. Applicants are directed to your public careers apply page.
           </div>
           <div>
             <label className="label-ats">Provider</label>

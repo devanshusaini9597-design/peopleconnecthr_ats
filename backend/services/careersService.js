@@ -1,11 +1,15 @@
 /**
  * Public careers-page domain logic (job feed, org page, apply).
  */
+const path = require('path');
+const fs = require('fs');
 const Organization = require('../models/Organization');
 const Job = require('../models/Job');
 const Candidate = require('../models/Candidate');
 const Application = require('../models/Application');
 const { planHasFeature } = require('../config/planFeatures');
+const { normalizeText } = require('../utils/textNormalize');
+const logger = require('../utils/logger');
 
 function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
@@ -17,13 +21,46 @@ function httpError(message, statusCode = 400, extra = {}) {
 const xmlEscape = (str = '') => String(str)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+function assertCareersLive(org) {
+  // Treat missing flag as enabled for backwards compatibility; only block when explicitly false.
+  if (org?.atsSettings && org.atsSettings.careersPageEnabled === false) {
+    throw httpError('Careers page is not currently accepting applications.', 403);
+  }
+}
+
+function parseCustomResponses(raw) {
+  if (!raw) return {};
+  if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function trimStr(v) {
+  return String(v ?? '').trim();
+}
+
+function fillIfEmpty(doc, key, value) {
+  const next = trimStr(value);
+  if (!next) return;
+  const cur = trimStr(doc[key]);
+  if (!cur) doc[key] = next;
+}
+
 /**
  * Indeed/Google-for-Jobs-compatible XML feed of published jobs.
  * Gated by 'integrations.jobBoard' (Enterprise).
  */
 async function getJobsXmlFeed(orgSlug) {
-  const org = await Organization.findOne({ slug: orgSlug }).select('name plan');
+  const org = await Organization.findOne({ slug: orgSlug }).select('name plan atsSettings');
   if (!org) throw httpError('Organization not found', 404);
+  assertCareersLive(org);
   if (!planHasFeature(org.plan, 'integrations.jobBoard')) {
     throw httpError('Job board feed is not available on this organization\'s current plan.', 403);
   }
@@ -67,16 +104,22 @@ async function resolveByDomain(domain) {
  */
 async function getCareersPage(orgSlug) {
   const org = await Organization.findOne({ slug: orgSlug })
-    .select('name logo plan settings.careersPageTitle settings.careersPageDescription atsSettings.brandColor atsSettings.whiteLabel atsSettings.pageBlocks');
+    .select('name logo slug plan settings.careersPageTitle settings.careersPageDescription atsSettings');
   if (!org) throw httpError('Organization not found', 404);
+  assertCareersLive(org);
 
-  const jobs = await Job.find({ organizationId: org._id, isPublished: true, status: 'Open' })
-    .select('title department location employmentType');
+  // Open = live on careers. Backfill isPublished for older Open jobs.
+  const jobs = await Job.find({ organizationId: org._id, status: 'Open' })
+    .select('title department location employmentType isPublished');
 
-  // White-Label Kit (Enterprise) — only honor the toggle if the org's
-  // *current* plan is actually entitled, never trust the stored flag
-  // alone (a downgraded org shouldn't keep the perk just because the
-  // field is still `true` in the database).
+  const unpublished = jobs.filter((j) => !j.isPublished).map((j) => j._id);
+  if (unpublished.length) {
+    await Job.updateMany(
+      { _id: { $in: unpublished } },
+      { $set: { isPublished: true, publishedAt: new Date() } },
+    );
+  }
+
   const whiteLabelActive = !!org.atsSettings?.whiteLabel?.enabled && planHasFeature(org.plan, 'whiteLabel');
   let pageBlocks = org.atsSettings?.pageBlocks || [];
   if (!planHasFeature(org.plan, 'careers.pageBuilder')) {
@@ -89,8 +132,9 @@ async function getCareersPage(orgSlug) {
     _id: org._id,
     name: org.name,
     logo: org.logo,
+    slug: org.slug,
     settings: org.settings,
-    brandColor: org.atsSettings?.brandColor || '#4F46E5',
+    brandColor: org.atsSettings?.brandColor || '#0d9488',
     whiteLabelActive,
     hidePoweredBy: whiteLabelActive && !!org.atsSettings?.whiteLabel?.hidePoweredBy,
     pageBlocks
@@ -105,10 +149,18 @@ async function getCareersPage(orgSlug) {
 async function getPublicJob(orgSlug, jobId) {
   const org = await Organization.findOne({ slug: orgSlug });
   if (!org) throw httpError('Organization not found', 404);
+  assertCareersLive(org);
 
-  const job = await Job.findOne({ _id: jobId, organizationId: org._id, isPublished: true, status: 'Open' })
-    .select('title department location description skills employmentType salaryRange ctc experience clientName grade industry');
+  // Open jobs are careers-eligible. Backfill isPublished for older Open jobs.
+  let job = await Job.findOne({ _id: jobId, organizationId: org._id, status: 'Open' })
+    .select('title department location description skills employmentType salaryRange ctc experience clientName grade industry isPublished publishedAt');
   if (!job) throw httpError('Job not found', 404);
+
+  if (!job.isPublished) {
+    job.isPublished = true;
+    job.publishedAt = job.publishedAt || new Date();
+    await job.save();
+  }
 
   let applicationForm = null;
   if (planHasFeature(org.plan, 'careers.formBuilder')) {
@@ -148,24 +200,69 @@ async function getPublicJob(orgSlug, jobId) {
   };
 }
 
+async function storeResumeFile(organizationId, file) {
+  if (!file) return '';
+  const documentStorage = require('./documentStorageService');
+  const filePath = (file.path && fs.existsSync(file.path))
+    ? file.path
+    : (fs.existsSync(path.join(process.cwd(), 'uploads', file.filename))
+      ? path.join(process.cwd(), 'uploads', file.filename)
+      : path.join(__dirname, '..', 'uploads', file.filename));
+
+  const uploaded = await documentStorage.uploadResume({
+    organizationId,
+    localFilePath: filePath,
+    originalName: file.originalname
+  });
+  if (uploaded && uploaded.key) {
+    logger.info('[Careers] Resume stored via', uploaded.storage, '—', uploaded.key);
+    return uploaded.key;
+  }
+  return `/uploads/${file.filename}`;
+}
+
 /**
- * Submit a public careers-page application.
+ * Submit a public careers-page application (ATS-aligned fields + resume file).
  */
-async function submitApplication(orgSlug, jobId, body = {}) {
+async function submitApplication(orgSlug, jobId, body = {}, file = null) {
   const org = await Organization.findOne({ slug: orgSlug });
   if (!org) throw httpError('Organization not found', 404);
+  assertCareersLive(org);
 
-  const job = await Job.findOne({ _id: jobId, organizationId: org._id, isPublished: true });
+  // Open jobs accept applications; backfill isPublished for older Open jobs
+  const job = await Job.findOne({ _id: jobId, organizationId: org._id, status: 'Open' });
   if (!job) throw httpError('Job not available', 404);
-
-  const { name, email, phone, resume, coverLetter, source, customResponses, firstName, lastName } = body;
-  const resolvedName = name || [firstName, lastName].filter(Boolean).join(' ').trim();
-  if (!resolvedName || !email) {
-    throw httpError('Name and email are required', 400);
+  if (!job.isPublished) {
+    job.isPublished = true;
+    job.publishedAt = job.publishedAt || new Date();
+    await job.save();
   }
 
-  // Validate required custom form fields when form builder is entitled
-  if (planHasFeature(org.plan, 'careers.formBuilder') && customResponses && typeof customResponses === 'object') {
+  const customResponses = parseCustomResponses(body.customResponses);
+  const name = trimStr(body.name || [body.firstName, body.lastName].filter(Boolean).join(' '));
+  const email = trimStr(body.email).toLowerCase();
+  const phone = trimStr(body.phone || body.contact);
+  const position = trimStr(body.position);
+  const companyName = trimStr(body.companyName || body.company);
+  const location = trimStr(body.location);
+  const experience = trimStr(body.experience);
+  const ctc = trimStr(body.ctc);
+  const expectedCtc = trimStr(body.expectedCtc);
+  const noticePeriod = trimStr(body.noticePeriod);
+  const source = trimStr(body.source) || 'Careers Page';
+  const coverLetter = trimStr(body.coverLetter || body.remark);
+  const remark = coverLetter;
+
+  if (!name) throw httpError('Full name is required', 400);
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw httpError('A valid email address is required', 400);
+  }
+  if (!phone) throw httpError('Phone number is required', 400);
+  if (!file && !trimStr(body.resume)) {
+    throw httpError('Resume / CV is required', 400);
+  }
+
+  if (planHasFeature(org.plan, 'careers.formBuilder')) {
     const JobApplicationForm = require('../models/JobApplicationForm');
     const form = await JobApplicationForm.findOne({
       organizationId: org._id,
@@ -175,6 +272,10 @@ async function submitApplication(orgSlug, jobId, body = {}) {
     if (form) {
       for (const field of form.fields || []) {
         if (!field.required) continue;
+        const rule = field.showWhen;
+        if (rule?.fieldKey) {
+          if (String(customResponses[rule.fieldKey] ?? '') !== String(rule.equals ?? '')) continue;
+        }
         const val = customResponses[field.key];
         if (val == null || String(val).trim() === '') {
           throw httpError(`${field.label} is required`, 400);
@@ -183,20 +284,82 @@ async function submitApplication(orgSlug, jobId, body = {}) {
     }
   }
 
-  let candidate = await Candidate.findOne({ email: String(email).toLowerCase().trim(), organizationId: org._id });
+  let resumeKey = trimStr(body.resume);
+  if (file) {
+    try {
+      resumeKey = await storeResumeFile(org._id, file);
+    } catch (err) {
+      logger.error({ err }, '[Careers] Resume upload failed');
+      throw httpError('Failed to store resume. Please try again.', 500);
+    }
+  }
+
+  const textFields = {
+    name: normalizeText(name),
+    position: position ? normalizeText(position) : '',
+    companyName: companyName ? normalizeText(companyName) : '',
+    location: location ? normalizeText(location) : '',
+    experience: experience ? normalizeText(experience) : '',
+    ctc: ctc ? normalizeText(ctc) : '',
+    expectedCtc: expectedCtc ? normalizeText(expectedCtc) : '',
+    noticePeriod: noticePeriod ? normalizeText(noticePeriod) : '',
+    source: source ? normalizeText(source) : 'CAREERS PAGE',
+    remark: remark ? normalizeText(remark) : '',
+  };
+
+  let candidate = await Candidate.findOne({ email, organizationId: org._id });
   if (!candidate) {
     candidate = new Candidate({
       organizationId: org._id,
-      name: resolvedName,
-      email: String(email).toLowerCase().trim(),
-      phone: phone || '',
-      contact: phone || '',
-      resume,
-      customFields: customResponses && typeof customResponses === 'object' ? customResponses : {}
+      name: textFields.name,
+      email,
+      phone,
+      contact: phone,
+      position: textFields.position || (job.title ? normalizeText(job.title) : ''),
+      companyName: textFields.companyName,
+      location: textFields.location || (job.location ? normalizeText(job.location) : ''),
+      experience: textFields.experience,
+      ctc: textFields.ctc || 'NA',
+      expectedCtc: textFields.expectedCtc,
+      noticePeriod: textFields.noticePeriod,
+      source: textFields.source,
+      remark: textFields.remark,
+      resume: resumeKey,
+      status: 'APPLIED',
+      statusEnteredAt: new Date(),
+      customFields: customResponses,
     });
+    if (!Array.isArray(candidate.statusHistory) || candidate.statusHistory.length === 0) {
+      candidate.statusHistory = [{
+        status: 'APPLIED',
+        remark: 'Applied via careers page',
+        updatedAt: new Date(),
+        updatedBy: 'Careers Page',
+      }];
+    }
     await candidate.save();
-  } else if (customResponses && typeof customResponses === 'object') {
-    candidate.customFields = { ...(candidate.customFields || {}), ...customResponses };
+  } else {
+    fillIfEmpty(candidate, 'name', textFields.name);
+    fillIfEmpty(candidate, 'phone', phone);
+    fillIfEmpty(candidate, 'contact', phone);
+    fillIfEmpty(candidate, 'position', textFields.position);
+    fillIfEmpty(candidate, 'companyName', textFields.companyName);
+    fillIfEmpty(candidate, 'location', textFields.location);
+    fillIfEmpty(candidate, 'experience', textFields.experience);
+    fillIfEmpty(candidate, 'ctc', textFields.ctc);
+    fillIfEmpty(candidate, 'expectedCtc', textFields.expectedCtc);
+    fillIfEmpty(candidate, 'noticePeriod', textFields.noticePeriod);
+    fillIfEmpty(candidate, 'source', textFields.source);
+    if (resumeKey && !trimStr(candidate.resume)) candidate.resume = resumeKey;
+    if (textFields.remark) {
+      const existingRemark = trimStr(candidate.remark);
+      candidate.remark = existingRemark
+        ? `${existingRemark}\n\n[Careers apply] ${textFields.remark}`
+        : textFields.remark;
+    }
+    if (Object.keys(customResponses).length) {
+      candidate.customFields = { ...(candidate.customFields || {}), ...customResponses };
+    }
     await candidate.save();
   }
 
@@ -209,12 +372,17 @@ async function submitApplication(orgSlug, jobId, body = {}) {
     candidateId: candidate._id,
     stage: 'Applied',
     source: source || 'Careers Page',
-    coverLetter,
-    stageHistory: [{ stage: 'Applied', changedAt: new Date() }]
+    coverLetter: coverLetter.slice(0, 5000),
+    notes: coverLetter.slice(0, 5000),
+    stageHistory: [{ stage: 'Applied', movedAt: new Date(), remark: 'Applied via careers page' }],
   });
   await application.save();
 
-  return { applicationId: application._id, message: 'Application submitted successfully' };
+  return {
+    applicationId: application._id,
+    candidateId: candidate._id,
+    message: 'Application submitted successfully',
+  };
 }
 
 module.exports = {

@@ -14,40 +14,46 @@ import {
 } from 'lucide-react';
 import Modal from './ui/Modal';
 import {
-  PRODUCT_UPDATES_STORAGE_KEY,
-  getProductUpdatesWithSeenState,
+  getLatestProductUpdate,
   latestProductUpdateId,
+  readSeenProductUpdateId,
+  isAdminAudienceRole,
+  isProductUpdateUnseen,
+  filterProductUpdateForRole,
 } from '../config/productUpdates';
 import { requestProductTour } from '../utils/productTourTrigger';
 import { useAuth } from '../context/AuthContext';
+import { formatRoleLabel } from './organization/constants';
 
 const HIGHLIGHT_ICONS = [Briefcase, Users, History, BarChart3, Shield];
 
 /**
- * Enterprise release notes for company staff (not freelancers).
- * Unread updates stay highlighted until the user dismisses.
+ * Single product release notes modal (not a dated changelog timeline).
+ * Content is filtered by role. Seen/unread state is per user account.
  */
 const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const role = user?.role || 'recruiter';
+  const userId = String(user?.id || user?._id || user?.email || '').trim();
+  const roleLabel = formatRoleLabel(role);
+  const showAdminCue = isAdminAudienceRole(role) || role === 'owner';
 
   const seenId = useMemo(() => {
-    try {
-      return localStorage.getItem(PRODUCT_UPDATES_STORAGE_KEY) || '';
-    } catch {
-      return '';
-    }
-  }, [open]);
+    if (!userId) return '';
+    return readSeenProductUpdateId(userId);
+  }, [open, userId]);
 
-  const updates = useMemo(
-    () => getProductUpdatesWithSeenState(role, seenId),
-    [role, seenId],
-  );
-  const latest = updates[0] || null;
-  const unreadCount = updates.filter((u) => u.unseen).length;
+  const release = useMemo(() => {
+    const latest = getLatestProductUpdate(role);
+    if (!latest) return null;
+    return {
+      ...filterProductUpdateForRole(latest, role),
+      unseen: isProductUpdateUnseen(latest.id, seenId),
+    };
+  }, [role, seenId]);
 
-  if (!open || !latest) return null;
+  if (!open || !release) return null;
 
   const dismiss = () => {
     onAcknowledge?.(latestProductUpdateId(role));
@@ -91,18 +97,18 @@ const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
     }
   };
 
-  const primaryTour = (latest.explore || []).find((e) => e.tourKey)
-    || (latest.explore || [])[0];
+  const primaryTour = (release.explore || []).find((e) => e.tourKey)
+    || (release.explore || [])[0];
 
   return (
     <Modal
       open={open}
       onClose={dismiss}
       size="lg"
-      zClass="z-[80]"
+      zClass="z-[90]"
       icon={Sparkles}
       title="What's new"
-      description={latest.title}
+      description={release.title}
       footer={
         <>
           <button type="button" onClick={dismiss} className="btn-secondary">
@@ -128,71 +134,37 @@ const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
       <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center rounded-md bg-brand-50 text-brand-800 border border-brand-100 px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase">
-            Release notes
+            Product release
           </span>
-          <span className="text-xs text-stone-500 font-medium tabular-nums">
-            {latest.dateLabel || latest.date}
+          <span className="inline-flex items-center rounded-md bg-stone-100 text-stone-600 border border-stone-200 px-2 py-0.5 text-[11px] font-semibold">
+            For {roleLabel}
           </span>
-          {unreadCount > 0 ? (
+          {release.unseen ? (
             <span className="inline-flex items-center rounded-md bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 text-[11px] font-semibold">
-              {unreadCount} unread
+              Unread
             </span>
           ) : null}
         </div>
 
-        {updates.length > 1 ? (
-          <div className="space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
-              Recent updates
-            </p>
-            <ul className="rounded-xl border border-stone-200 overflow-hidden divide-y divide-stone-100">
-              {updates.map((u) => (
-                <li
-                  key={u.id}
-                  className={`px-3.5 py-2.5 flex items-start justify-between gap-3 ${
-                    u.unseen ? 'bg-brand-50/70 border-l-2 border-l-brand-500' : 'bg-white'
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <p className={`text-sm leading-snug ${u.unseen ? 'font-semibold text-stone-900' : 'font-medium text-stone-700'}`}>
-                      {u.title}
-                    </p>
-                    <p className="text-[11px] text-stone-500 mt-0.5 tabular-nums">{u.dateLabel}</p>
-                  </div>
-                  {u.unseen ? (
-                    <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wide text-brand-700 bg-white border border-brand-200 rounded-md px-1.5 py-0.5">
-                      New
-                    </span>
-                  ) : (
-                    <span className="flex-shrink-0 text-[10px] font-semibold uppercase tracking-wide text-stone-400">
-                      Seen
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        {latest.summary ? (
+        {release.summary ? (
           <p className="text-sm text-stone-600 leading-relaxed border-l-2 border-brand-400 pl-3">
-            {latest.summary}
+            {release.summary}
           </p>
         ) : null}
 
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 mb-2.5">
-            What changed
+            What’s included
           </p>
           <ol className="space-y-0 divide-y divide-stone-100 rounded-xl border border-stone-200 overflow-hidden bg-white">
-            {(latest.highlights || []).map((h, idx) => {
+            {(release.highlights || []).map((h, idx) => {
               const title = typeof h === 'string' ? null : h.title;
               const body = typeof h === 'string' ? h : h.body;
               const audience = typeof h === 'string' ? 'all' : (h.audience || 'all');
               const Icon = HIGHLIGHT_ICONS[idx % HIGHLIGHT_ICONS.length];
-              const isAdminOnly = audience === 'admin';
+              const isAdminOnly = audience === 'admin' && showAdminCue;
               return (
-                <li key={title || body} className="flex gap-3 px-3.5 py-3.5 bg-white hover:bg-stone-50/80 transition-colors">
+                <li key={`${release.id}-${title || body}`} className="flex gap-3 px-3.5 py-3.5 bg-white hover:bg-stone-50/80 transition-colors">
                   <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-stone-100 text-brand-700 flex items-center justify-center mt-0.5">
                     <Icon size={15} strokeWidth={2.25} />
                   </div>
@@ -221,14 +193,14 @@ const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
           </ol>
         </div>
 
-        {Array.isArray(latest.explore) && latest.explore.length > 0 ? (
+        {Array.isArray(release.explore) && release.explore.length > 0 ? (
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 mb-2.5 flex items-center gap-1.5">
               <Compass size={12} className="text-brand-600" />
-              Explore & tours
+              Related actions
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {latest.explore.map((item) => {
+              {release.explore.map((item) => {
                 const isTour = Boolean(item.tourKey);
                 return (
                   <button
@@ -250,7 +222,7 @@ const WhatsNewModal = ({ open, onClose, onAcknowledge }) => {
                       </span>
                       <span className="block text-[11px] text-stone-500 mt-0.5">
                         {item.audience === 'admin'
-                          ? 'Admin setup'
+                          ? 'Administration'
                           : isTour
                             ? 'Guided walkthrough'
                             : 'Open in workspace'}

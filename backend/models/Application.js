@@ -27,6 +27,7 @@ const applicationSchema = new mongoose.Schema({
   appliedAt: { type: Date, default: Date.now },
   lastActivityAt: { type: Date, default: Date.now },
   notes: { type: String, default: '' },
+  coverLetter: { type: String, default: '' },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
 
   // ── Enterprise integrations (BYOK, see backend/adapters/) ────────────

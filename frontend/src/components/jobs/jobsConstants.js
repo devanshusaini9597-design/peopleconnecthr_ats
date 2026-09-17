@@ -48,6 +48,7 @@ export const FILTER_OPTIONS = [
 ];
 
 export const JOB_BOARD_OPTIONS = [
+  { value: 'linkedin', label: 'LinkedIn Jobs', description: 'Push via LinkedIn Jobs API' },
   { value: 'indeed_feed', label: 'Indeed feed', description: 'XML / feed sync' },
   { value: 'webhook', label: 'Webhook', description: 'POST to configured endpoint' },
 ];

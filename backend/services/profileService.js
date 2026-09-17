@@ -70,6 +70,8 @@ async function getProfile(userId) {
 
   return {
     user: {
+      id: String(user._id),
+      _id: String(user._id),
       name: user.name,
       email: user.email,
       phone: user.phone,
@@ -104,6 +106,8 @@ async function updateProfile(userId, { name, phone }) {
 
   return {
     user: {
+      id: String(user._id),
+      _id: String(user._id),
       name: user.name,
       email: user.email,
       phone: user.phone,

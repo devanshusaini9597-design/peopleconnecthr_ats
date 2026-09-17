@@ -12,6 +12,7 @@ const { requireFeature } = require('../middleware/featureMiddleware');
 const { requireOrganization, tenantScope } = require('../middleware/tenantMiddleware');
 const { getAdapter } = require('../adapters');
 const Job = require('../models/Job');
+const Organization = require('../models/Organization');
 const eventBus = require('../events/eventBus');
 const eventTypes = require('../events/eventTypes');
 
@@ -24,15 +25,47 @@ router.post('/jobs/:jobId/post', async (req, res) => {
 
     const adapter = await getAdapter(req.user.organizationId, 'job_board');
     if (!adapter) {
-      return res.status(400).json({ success: false, message: 'No active job board integration configured for this organization.' });
+      return res.status(400).json({
+        success: false,
+        message: 'No active job board integration configured. Add LinkedIn or another board under Organization → Integrations.',
+      });
     }
 
-    const result = await adapter.postJob(job);
+    const org = await Organization.findById(req.user.organizationId).select('slug name').lean();
+    const frontendBase = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+    const applyUrl = org?.slug && frontendBase
+      ? `${frontendBase}/careers/${org.slug}/jobs/${job._id}`
+      : '';
+
+    if (!applyUrl) {
+      return res.status(400).json({
+        success: false,
+        message: 'Careers apply URL could not be built. Ensure the organization has a careers slug and FRONTEND_URL is set.',
+      });
+    }
+
+    // Ensure job is discoverable on the public careers page before external posting.
+    if (!job.isPublished) {
+      job.isPublished = true;
+      if (!job.status || job.status === 'Draft') job.status = 'Open';
+      await job.save();
+    }
+
+    const jobPayload = {
+      ...job.toObject(),
+      title: job.title || job.role,
+      applyUrl,
+      description: job.description || job.summary || '',
+      location: job.location || 'Remote',
+      employmentType: job.employmentType || 'FULL_TIME',
+    };
+
+    const result = await adapter.postJob(jobPayload);
 
     job.jobBoardPostings.push({
       provider: req.body.provider || 'unknown',
       status: 'posted',
-      externalRef: result.externalId || result.jobId || '',
+      externalRef: result.externalId || result.jobId || result.linkedInId || '',
       postedBy: req.user.id
     });
     await job.save();
@@ -42,7 +75,7 @@ router.post('/jobs/:jobId/post', async (req, res) => {
       resourceType: 'Job', resourceId: job._id, action: 'job_board_posted'
     });
 
-    res.json({ success: true, data: result });
+    res.json({ success: true, data: { ...result, applyUrl } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

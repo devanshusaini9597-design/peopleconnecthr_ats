@@ -1,28 +1,65 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, MapPin, Briefcase, Clock, UploadCloud, CheckCircle, AlertCircle, Building, FileText, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
+import {
+  ArrowLeft, MapPin, Briefcase, Clock, UploadCloud, CheckCircle, AlertCircle,
+  Building, FileText, ChevronRight, ChevronLeft, User, IndianRupee, Send,
+} from 'lucide-react';
 import API_URL from '../config';
 import { employmentLabel } from './jobs/jobsConstants';
 import PublicAnnouncementBanner from './PublicAnnouncementBanner';
 import { resolveOrgLogoSrc } from '../utils/orgLogo';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
 
+const STEPS = [
+  { id: 'profile', label: 'Profile', icon: User },
+  { id: 'experience', label: 'Experience', icon: IndianRupee },
+  { id: 'application', label: 'Application', icon: Send },
+];
+
+const SOURCE_OPTIONS = [
+  { value: 'LinkedIn', label: 'LinkedIn' },
+  { value: 'Indeed', label: 'Indeed' },
+  { value: 'Company Website', label: 'Company website' },
+  { value: 'Referral', label: 'Referral' },
+  { value: 'Careers Page', label: 'Careers page' },
+  { value: 'Other', label: 'Other' },
+];
+
+const EMPTY_FORM = {
+  name: '',
+  email: '',
+  phone: '',
+  position: '',
+  companyName: '',
+  location: '',
+  experience: '',
+  ctc: '',
+  expectedCtc: '',
+  noticePeriod: '',
+  source: '',
+  coverLetter: '',
+};
+
+function fieldClass(err) {
+  return `w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm font-medium outline-none transition ${
+    err
+      ? 'border-rose-400 focus:border-rose-500 focus:ring-2 focus:ring-rose-200'
+      : 'border-stone-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15'
+  }`;
+}
+
 const JobDetailPublic = () => {
   const { orgSlug, jobId } = useParams();
+  const [searchParams] = useSearchParams();
   const [job, setJob] = useState(null);
   const [org, setOrg] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const formRef = useRef(null);
 
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    coverLetter: '',
-    source: ''
-  });
+  const [step, setStep] = useState(0);
+  const [formData, setFormData] = useState(EMPTY_FORM);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [customResponses, setCustomResponses] = useState({});
   const [applicationForm, setApplicationForm] = useState(null);
   const [resumeFile, setResumeFile] = useState(null);
@@ -30,16 +67,34 @@ const JobDetailPublic = () => {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
+  const brand = org?.brandColor || '#0d9488';
+
+  useEffect(() => {
+    const src = String(searchParams.get('src') || searchParams.get('source') || '').trim();
+    if (!src) return;
+    const mapped = SOURCE_OPTIONS.find(
+      (o) => o.value.toLowerCase() === src.toLowerCase() || o.label.toLowerCase() === src.toLowerCase(),
+    );
+    setFormData((prev) => ({
+      ...prev,
+      source: mapped?.value || (src.toLowerCase() === 'linkedin' ? 'LinkedIn' : prev.source),
+    }));
+  }, [searchParams]);
+
   useEffect(() => {
     const fetchJob = async () => {
       try {
         setLoading(true);
         const res = await fetch(`${API_URL}/api/careers/${orgSlug}/jobs/${jobId}`);
-        if (!res.ok) throw new Error('Job not found or no longer available');
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || 'Job not found or no longer available');
         setJob(data.job || data.data);
         setOrg(data.organization);
         setApplicationForm(data.applicationForm || null);
+        const title = data.job?.title || data.data?.title || '';
+        if (title) {
+          setFormData((prev) => (prev.position ? prev : { ...prev, position: title }));
+        }
       } catch (err) {
         setError(err.message);
       } finally {
@@ -49,343 +104,476 @@ const JobDetailPublic = () => {
     fetchJob();
   }, [orgSlug, jobId]);
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      if (file.size > 10 * 1024 * 1024) {
-        setSubmitError('File size exceeds 10MB limit.');
-        return;
-      }
-      setResumeFile(file);
-      setSubmitError('');
+  const setField = (name, value) => {
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (fieldErrors[name]) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
     }
   };
 
-  const handleDragOver = (e) => {
-    e.preventDefault();
+  const visibleCustomFields = useMemo(() => {
+    const fields = applicationForm?.fields || [];
+    return fields.filter((field) => {
+      const rule = field.showWhen;
+      if (!rule?.fieldKey) return true;
+      return String(customResponses[rule.fieldKey] ?? '') === String(rule.equals ?? '');
+    });
+  }, [applicationForm, customResponses]);
+
+  const validateStep = (idx) => {
+    const errs = {};
+    if (idx === 0) {
+      if (!formData.name.trim()) errs.name = 'Full name is required';
+      if (!formData.email.trim()) errs.email = 'Email is required';
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) errs.email = 'Enter a valid email';
+      if (!formData.phone.trim()) errs.phone = 'Phone number is required';
+    }
+    if (idx === 1) {
+      if (!resumeFile) errs.resume = 'Resume / CV is required';
+    }
+    if (idx === 2) {
+      for (const field of visibleCustomFields) {
+        if (!field.required) continue;
+        const val = customResponses[field.key];
+        if (val == null || String(val).trim() === '') {
+          errs[`custom_${field.key}`] = `${field.label} is required`;
+        }
+      }
+    }
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
   };
 
-  const handleDrop = (e) => {
-    e.preventDefault();
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const file = e.dataTransfer.files[0];
-      if (file.size > 10 * 1024 * 1024) {
-        setSubmitError('File size exceeds 10MB limit.');
-        return;
-      }
-      setResumeFile(file);
-      setSubmitError('');
+  const goNext = () => {
+    if (!validateStep(step)) return;
+    setStep((s) => Math.min(s + 1, STEPS.length - 1));
+  };
+
+  const goBack = () => setStep((s) => Math.max(s - 1, 0));
+
+  const pickResume = (file) => {
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setFieldErrors((prev) => ({ ...prev, resume: 'File size exceeds 10MB limit.' }));
+      return;
     }
+    setResumeFile(file);
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next.resume;
+      return next;
+    });
+    setSubmitError('');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!resumeFile) {
-      setSubmitError('Please upload your resume.');
+    if (!validateStep(0) || !validateStep(1) || !validateStep(2)) {
+      if (!validateStep(0)) setStep(0);
+      else if (!validateStep(1)) setStep(1);
+      else setStep(2);
       return;
     }
-    
+
     setIsSubmitting(true);
     setSubmitError('');
-    
     try {
-      const name = `${formData.firstName} ${formData.lastName}`.trim();
+      const fd = new FormData();
+      fd.append('name', formData.name.trim());
+      fd.append('email', formData.email.trim());
+      fd.append('phone', formData.phone.trim());
+      fd.append('position', formData.position.trim());
+      fd.append('companyName', formData.companyName.trim());
+      fd.append('location', formData.location.trim());
+      fd.append('experience', formData.experience.trim());
+      fd.append('ctc', formData.ctc.trim());
+      fd.append('expectedCtc', formData.expectedCtc.trim());
+      fd.append('noticePeriod', formData.noticePeriod.trim());
+      fd.append('source', formData.source || 'Careers Page');
+      fd.append('coverLetter', formData.coverLetter.trim());
+      fd.append('remark', formData.coverLetter.trim());
+      fd.append('customResponses', JSON.stringify(customResponses || {}));
+      if (resumeFile) fd.append('resume', resumeFile);
+
       const res = await fetch(`${API_URL}/api/careers/${orgSlug}/jobs/${jobId}/apply`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          email: formData.email,
-          phone: formData.phone,
-          coverLetter: formData.coverLetter,
-          source: formData.source || 'Careers Page',
-          customResponses,
-          resume: resumeFile?.name || ''
-        })
+        body: fd,
       });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.message || 'Application submission failed');
-      }
-
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Application submission failed');
       setSubmitSuccess(true);
     } catch (err) {
-      setSubmitError(err.message);
+      setSubmitError(err.message || 'Could not submit application');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const scrollToForm = () => {
-    formRef.current?.scrollIntoView({ behavior: 'smooth' });
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex justify-center pt-20">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      <div className="min-h-screen bg-stone-50 flex justify-center pt-24">
+        <div className="h-11 w-11 rounded-full border-2 border-stone-200 border-t-brand-600 animate-spin" />
       </div>
     );
   }
 
   if (error || !job) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center p-8 bg-white rounded-xl shadow-sm border border-gray-100 max-w-md w-full">
-          <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Job Not Found</h2>
-          <p className="text-gray-600 mb-6">{error || 'This position may have been filled or removed.'}</p>
-          <Link to={`/careers/${orgSlug}`} className="text-indigo-600 hover:text-indigo-800 font-medium">
-            &larr; Back to all jobs
+      <div className="min-h-screen flex items-center justify-center bg-stone-50 px-4">
+        <div className="text-center p-8 bg-white rounded-2xl shadow-sm border border-stone-200 max-w-md w-full">
+          <AlertCircle className="h-12 w-12 text-rose-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-stone-900 mb-2">Job not found</h2>
+          <p className="text-stone-600 mb-6">{error || 'This position may have been filled or removed.'}</p>
+          <Link to={`/careers/${orgSlug}`} className="text-brand-700 hover:text-brand-900 font-semibold">
+            ← Back to all jobs
           </Link>
         </div>
       </div>
     );
   }
 
+  const progress = ((step + 1) / STEPS.length) * 100;
+
   return (
-    <div className="min-h-screen bg-white font-sans text-gray-900 flex flex-col">
+    <div className="min-h-screen bg-stone-50 text-stone-900 flex flex-col">
       <PublicAnnouncementBanner orgSlug={orgSlug} />
-      {/* Header */}
-      <header className="bg-gray-50 border-b border-gray-200 py-6 px-4 sm:px-6 lg:px-8 shrink-0">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <Link to={`/careers/${orgSlug}`} className="flex items-center text-gray-600 hover:text-indigo-600 transition-colors font-medium text-sm">
-            <ArrowLeft className="h-4 w-4 mr-2" /> Back to careers
+      <header className="bg-white/90 backdrop-blur border-b border-stone-200 py-4 px-4 sm:px-6 shrink-0 sticky top-0 z-20">
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
+          <Link to={`/careers/${orgSlug}`} className="inline-flex items-center text-stone-600 hover:text-brand-700 transition-colors font-semibold text-sm">
+            <ArrowLeft className="h-4 w-4 mr-2" /> Careers
           </Link>
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center gap-2.5 min-w-0">
             {org?.logo ? (
-              <img src={resolveOrgLogoSrc(org.logo)} alt={org.name} className="h-8 w-auto object-contain" />
+              <img src={resolveOrgLogoSrc(org.logo)} alt={org.name || ''} className="h-8 w-auto object-contain" />
             ) : (
-              <span className="font-bold text-xl text-gray-800">{org?.name}</span>
+              <span className="font-bold text-lg text-stone-800 truncate">{org?.name}</span>
             )}
           </div>
         </div>
       </header>
 
       <main className="flex-grow">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 grid grid-cols-1 lg:grid-cols-3 gap-12">
-          
-          {/* Left Column: Job Details */}
-          <div className="lg:col-span-2 space-y-8">
-            <div>
-              <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight mb-4">{job.title}</h1>
-              
-              <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-8 pb-8 border-b border-gray-100">
-                {job.clientName && (
-                  <span className="flex items-center bg-gray-100 px-3 py-1 rounded-full"><Building className="h-4 w-4 mr-2" />{job.clientName}</span>
-                )}
-                {job.department && (
-                  <span className="flex items-center bg-gray-100 px-3 py-1 rounded-full"><Briefcase className="h-4 w-4 mr-2" />{job.department}</span>
-                )}
-                {job.location && (
-                  <span className="flex items-center bg-gray-100 px-3 py-1 rounded-full"><MapPin className="h-4 w-4 mr-2" />{job.location}</span>
-                )}
-                {job.employmentType && (
-                  <span className="flex items-center bg-gray-100 px-3 py-1 rounded-full"><Clock className="h-4 w-4 mr-2" />{employmentLabel(job.employmentType)}</span>
-                )}
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12 grid grid-cols-1 lg:grid-cols-5 gap-8 lg:gap-10">
+          <div className="lg:col-span-3 space-y-6">
+            <div
+              className="rounded-2xl border border-stone-200 bg-white p-6 sm:p-8 shadow-sm"
+              style={{ borderTopColor: brand, borderTopWidth: 3 }}
+            >
+              <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-2">Open role</p>
+              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-stone-900 mb-4">{job.title}</h1>
+              <div className="flex flex-wrap gap-2 text-sm text-stone-600 mb-6">
+                {job.clientName ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1"><Building className="h-3.5 w-3.5" />{job.clientName}</span>
+                ) : null}
+                {job.department ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1"><Briefcase className="h-3.5 w-3.5" />{job.department}</span>
+                ) : null}
+                {job.location ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1"><MapPin className="h-3.5 w-3.5" />{job.location}</span>
+                ) : null}
+                {job.employmentType ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1"><Clock className="h-3.5 w-3.5" />{employmentLabel(job.employmentType)}</span>
+                ) : null}
               </div>
-
-              <div className="prose prose-indigo max-w-none text-gray-700">
+              <div className="prose prose-stone max-w-none text-stone-700">
                 <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(job.description) }} />
               </div>
             </div>
 
-            {job.skills && job.skills.length > 0 && (
-              <div>
-                <h3 className="text-xl font-bold text-gray-900 mb-4">Required Skills</h3>
+            {Array.isArray(job.skills) && job.skills.length > 0 ? (
+              <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-bold text-stone-900 mb-3">Required skills</h3>
                 <div className="flex flex-wrap gap-2">
-                  {job.skills.map((skill, i) => (
-                    <span key={i} className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                  {job.skills.map((skill) => (
+                    <span key={skill} className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-brand-50 text-brand-800 border border-brand-100">
                       {skill}
                     </span>
                   ))}
                 </div>
               </div>
-            )}
-            
-            <div className="lg:hidden sticky bottom-4 z-10 pt-4">
-               <button onClick={scrollToForm} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition-transform active:scale-95">
-                 Apply for this position
-               </button>
+            ) : null}
+
+            <div className="lg:hidden sticky bottom-4 z-10">
+              <button
+                type="button"
+                onClick={scrollToForm}
+                className="w-full text-white font-bold py-3.5 px-8 rounded-xl shadow-lg"
+                style={{ backgroundColor: brand }}
+              >
+                Apply for this position
+              </button>
             </div>
           </div>
 
-          {/* Right Column: Application Form */}
-          <div className="lg:col-span-1" ref={formRef}>
-            <div className="bg-gray-50 rounded-2xl p-6 lg:p-8 border border-gray-200 lg:sticky lg:top-8">
-              <h3 className="text-2xl font-bold text-gray-900 mb-6">Apply Now</h3>
-              
-              {submitSuccess ? (
-                <div className="text-center py-8">
-                  <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-6">
-                    <CheckCircle className="h-10 w-10 text-green-600" />
-                  </div>
-                  <h4 className="text-xl font-bold text-gray-900 mb-2">Application Submitted!</h4>
-                  <p className="text-gray-600 mb-6">Thank you for applying. We will review your application and get back to you soon.</p>
-                  <Link to={`/careers/${orgSlug}`} className="text-indigo-600 font-medium hover:underline">
-                    Explore other roles
-                  </Link>
-                </div>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-5">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
-                      <input required type="text" name="firstName" value={formData.firstName} onChange={handleInputChange} className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white px-4 py-2 border" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
-                      <input required type="text" name="lastName" value={formData.lastName} onChange={handleInputChange} className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white px-4 py-2 border" />
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email Address *</label>
-                    <input required type="email" name="email" value={formData.email} onChange={handleInputChange} className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white px-4 py-2 border" />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-                    <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white px-4 py-2 border" />
-                  </div>
+          <div className="lg:col-span-2" ref={formRef}>
+            <div className="rounded-2xl border border-stone-200 bg-white shadow-lg shadow-stone-900/5 overflow-hidden lg:sticky lg:top-24">
+              <div className="h-1 bg-stone-100">
+                <div className="h-full transition-all duration-300" style={{ width: `${progress}%`, backgroundColor: brand }} />
+              </div>
+              <div className="p-5 sm:p-6">
+                <h3 className="text-xl font-bold text-stone-900 mb-1">Apply now</h3>
+                <p className="text-xs text-stone-500 mb-5">Complete each step. Your details are sent to the hiring team.</p>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Resume / CV *</label>
-                    <div 
-                      onDragOver={handleDragOver} 
-                      onDrop={handleDrop}
-                      className={`mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-xl transition-colors ${resumeFile ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 bg-white hover:border-indigo-400'}`}
-                    >
-                      <div className="space-y-1 text-center">
-                        {resumeFile ? (
-                          <FileText className="mx-auto h-10 w-10 text-indigo-500" />
-                        ) : (
-                          <UploadCloud className="mx-auto h-10 w-10 text-gray-400" />
-                        )}
-                        <div className="flex text-sm text-gray-600 justify-center">
-                          <label htmlFor="file-upload" className="relative cursor-pointer bg-transparent rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none">
-                            <span>{resumeFile ? 'Change file' : 'Upload a file'}</span>
-                            <input id="file-upload" name="file-upload" type="file" className="sr-only" accept=".pdf,.doc,.docx" onChange={handleFileChange} />
-                          </label>
-                          {!resumeFile && <p className="pl-1">or drag and drop</p>}
-                        </div>
-                        <p className="text-xs text-gray-500">
-                          {resumeFile ? resumeFile.name : 'PDF, DOC, DOCX up to 10MB'}
-                        </p>
-                      </div>
+                {submitSuccess ? (
+                  <div className="text-center py-6">
+                    <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-emerald-50 border border-emerald-100 mb-4">
+                      <CheckCircle className="h-8 w-8 text-emerald-600" />
                     </div>
+                    <h4 className="text-lg font-bold text-stone-900 mb-2">Application submitted</h4>
+                    <p className="text-sm text-stone-600 mb-5 leading-relaxed">
+                      Thank you. Your application for <span className="font-semibold">{job.title}</span> has been received and added to our ATS.
+                    </p>
+                    <Link to={`/careers/${orgSlug}`} className="text-brand-700 font-semibold hover:underline text-sm">
+                      Explore other roles
+                    </Link>
                   </div>
-
-                  {applicationForm?.fields?.length > 0 && (
-                    <div className="space-y-4 pt-2 border-t border-gray-200">
-                      <h4 className="text-sm font-semibold text-gray-900">{applicationForm.title || 'Additional questions'}</h4>
-                      {applicationForm.fields.map((field) => {
-                        const rule = field.showWhen;
-                        if (rule?.fieldKey) {
-                          const parentVal = customResponses[rule.fieldKey];
-                          if (String(parentVal ?? '') !== String(rule.equals ?? '')) return null;
-                        }
+                ) : (
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="flex gap-1.5 mb-2">
+                      {STEPS.map((s, i) => {
+                        const Icon = s.icon;
+                        const active = i === step;
+                        const done = i < step;
                         return (
-                        <div key={field.key}>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            {field.label}{field.required ? ' *' : ''}
-                          </label>
-                          {field.type === 'textarea' ? (
-                            <textarea
-                              required={field.required}
-                              rows={3}
-                              placeholder={field.placeholder}
-                              value={customResponses[field.key] || ''}
-                              onChange={(e) => setCustomResponses((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                              className="w-full rounded-lg border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 bg-white px-4 py-2 border"
-                            />
-                          ) : field.type === 'select' || field.type === 'yes_no' ? (
-                            <select
-                              required={field.required}
-                              value={customResponses[field.key] || ''}
-                              onChange={(e) => setCustomResponses((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                              className="w-full rounded-lg border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 bg-white px-4 py-2 border"
-                            >
-                              <option value="">Select…</option>
-                              {(field.type === 'yes_no' ? ['Yes', 'No'] : (field.options || [])).map((opt) => (
-                                <option key={opt} value={opt}>{opt}</option>
-                              ))}
-                            </select>
-                          ) : field.type === 'checkbox' ? (
-                            <label className="flex items-center gap-2 text-sm text-gray-700">
-                              <input
-                                type="checkbox"
-                                checked={!!customResponses[field.key]}
-                                onChange={(e) => setCustomResponses((prev) => ({ ...prev, [field.key]: e.target.checked ? 'Yes' : '' }))}
-                              />
-                              {field.placeholder || 'Yes'}
-                            </label>
-                          ) : (
-                            <input
-                              required={field.required}
-                              type={field.type === 'phone' ? 'tel' : field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'email' ? 'email' : field.type === 'url' ? 'url' : 'text'}
-                              placeholder={field.placeholder}
-                              value={customResponses[field.key] || ''}
-                              onChange={(e) => setCustomResponses((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                              className="w-full rounded-lg border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 bg-white px-4 py-2 border"
-                            />
-                          )}
-                        </div>
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => {
+                              if (i < step) setStep(i);
+                              else if (i > step) {
+                                let ok = true;
+                                for (let j = step; j < i; j += 1) {
+                                  if (!validateStep(j)) { ok = false; break; }
+                                }
+                                if (ok) setStep(i);
+                              }
+                            }}
+                            className={`flex-1 rounded-lg px-2 py-2 text-[10px] font-bold uppercase tracking-wide flex flex-col items-center gap-1 border transition ${
+                              active
+                                ? 'border-brand-500 bg-brand-50 text-brand-800'
+                                : done
+                                  ? 'border-stone-200 bg-stone-50 text-stone-700'
+                                  : 'border-stone-100 text-stone-400'
+                            }`}
+                          >
+                            <Icon size={14} />
+                            {s.label}
+                          </button>
                         );
                       })}
                     </div>
-                  )}
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Cover Letter (Optional)</label>
-                    <textarea name="coverLetter" rows={4} value={formData.coverLetter} onChange={handleInputChange} className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white px-4 py-2 border"></textarea>
-                  </div>
+                    {step === 0 ? (
+                      <div className="space-y-3.5 animate-fade-in">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Full name *</label>
+                          <input className={fieldClass(fieldErrors.name)} value={formData.name} onChange={(e) => setField('name', e.target.value)} autoComplete="name" />
+                          {fieldErrors.name ? <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.name}</p> : null}
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Email *</label>
+                          <input type="email" className={fieldClass(fieldErrors.email)} value={formData.email} onChange={(e) => setField('email', e.target.value)} autoComplete="email" />
+                          {fieldErrors.email ? <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.email}</p> : null}
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Phone *</label>
+                          <input type="tel" className={fieldClass(fieldErrors.phone)} value={formData.phone} onChange={(e) => setField('phone', e.target.value)} autoComplete="tel" />
+                          {fieldErrors.phone ? <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.phone}</p> : null}
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Current / target position</label>
+                          <input className={fieldClass()} value={formData.position} onChange={(e) => setField('position', e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Current company</label>
+                          <input className={fieldClass()} value={formData.companyName} onChange={(e) => setField('companyName', e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Location</label>
+                          <input className={fieldClass()} value={formData.location} onChange={(e) => setField('location', e.target.value)} placeholder="City / region" />
+                        </div>
+                      </div>
+                    ) : null}
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">How did you hear about us?</label>
-                    <select name="source" value={formData.source} onChange={handleInputChange} className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white px-4 py-2 border">
-                      <option value="">Select an option</option>
-                      <option value="LinkedIn">LinkedIn</option>
-                      <option value="Indeed">Indeed</option>
-                      <option value="Company Website">Company Website</option>
-                      <option value="Referral">Referral</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
+                    {step === 1 ? (
+                      <div className="space-y-3.5 animate-fade-in">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Experience (years)</label>
+                          <input className={fieldClass()} value={formData.experience} onChange={(e) => setField('experience', e.target.value)} placeholder="e.g. 5" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Current CTC</label>
+                            <input className={fieldClass()} value={formData.ctc} onChange={(e) => setField('ctc', e.target.value)} placeholder="e.g. 12 LPA" />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Expected CTC</label>
+                            <input className={fieldClass()} value={formData.expectedCtc} onChange={(e) => setField('expectedCtc', e.target.value)} placeholder="e.g. 15 LPA" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Notice period</label>
+                          <input className={fieldClass()} value={formData.noticePeriod} onChange={(e) => setField('noticePeriod', e.target.value)} placeholder="e.g. 30 days / Immediate" />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Resume / CV *</label>
+                          <div
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              pickResume(e.dataTransfer.files?.[0]);
+                            }}
+                            className={`mt-1 flex justify-center px-4 py-6 border-2 border-dashed rounded-xl transition-colors ${
+                              resumeFile ? 'border-brand-500 bg-brand-50/60' : fieldErrors.resume ? 'border-rose-300 bg-rose-50/40' : 'border-stone-200 bg-stone-50 hover:border-brand-400'
+                            }`}
+                          >
+                            <div className="space-y-1 text-center">
+                              {resumeFile ? <FileText className="mx-auto h-9 w-9 text-brand-600" /> : <UploadCloud className="mx-auto h-9 w-9 text-stone-400" />}
+                              <label className="relative cursor-pointer text-sm font-semibold text-brand-700">
+                                <span>{resumeFile ? 'Change file' : 'Upload a file'}</span>
+                                <input type="file" className="sr-only" accept=".pdf,.doc,.docx" onChange={(e) => pickResume(e.target.files?.[0])} />
+                              </label>
+                              <p className="text-[11px] text-stone-500">{resumeFile ? resumeFile.name : 'PDF, DOC, DOCX up to 10MB'}</p>
+                            </div>
+                          </div>
+                          {fieldErrors.resume ? <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.resume}</p> : null}
+                        </div>
+                      </div>
+                    ) : null}
 
-                  {submitError && (
-                    <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg flex items-start">
-                      <AlertCircle className="h-5 w-5 mr-2 shrink-0" />
-                      {submitError}
+                    {step === 2 ? (
+                      <div className="space-y-3.5 animate-fade-in">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">How did you hear about us?</label>
+                          <select className={fieldClass()} value={formData.source} onChange={(e) => setField('source', e.target.value)}>
+                            <option value="">Select an option</option>
+                            {SOURCE_OPTIONS.map((o) => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Cover note / remark</label>
+                          <textarea
+                            rows={4}
+                            className={fieldClass()}
+                            value={formData.coverLetter}
+                            onChange={(e) => setField('coverLetter', e.target.value)}
+                            placeholder="Optional message to the hiring team"
+                          />
+                        </div>
+
+                        {visibleCustomFields.length > 0 ? (
+                          <div className="space-y-3 pt-2 border-t border-stone-100">
+                            <h4 className="text-sm font-semibold text-stone-900">{applicationForm?.title || 'Additional questions'}</h4>
+                            {visibleCustomFields.map((field) => (
+                              <div key={field.key}>
+                                <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">
+                                  {field.label}{field.required ? ' *' : ''}
+                                </label>
+                                {field.type === 'textarea' ? (
+                                  <textarea
+                                    rows={3}
+                                    placeholder={field.placeholder}
+                                    value={customResponses[field.key] || ''}
+                                    onChange={(e) => setCustomResponses((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                                    className={fieldClass(fieldErrors[`custom_${field.key}`])}
+                                  />
+                                ) : field.type === 'select' || field.type === 'yes_no' ? (
+                                  <select
+                                    value={customResponses[field.key] || ''}
+                                    onChange={(e) => setCustomResponses((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                                    className={fieldClass(fieldErrors[`custom_${field.key}`])}
+                                  >
+                                    <option value="">Select…</option>
+                                    {(field.type === 'yes_no' ? ['Yes', 'No'] : (field.options || [])).map((opt) => (
+                                      <option key={opt} value={opt}>{opt}</option>
+                                    ))}
+                                  </select>
+                                ) : field.type === 'checkbox' ? (
+                                  <label className="flex items-center gap-2 text-sm text-stone-700">
+                                    <input
+                                      type="checkbox"
+                                      checked={!!customResponses[field.key]}
+                                      onChange={(e) => setCustomResponses((prev) => ({ ...prev, [field.key]: e.target.checked ? 'Yes' : '' }))}
+                                    />
+                                    {field.placeholder || 'Yes'}
+                                  </label>
+                                ) : (
+                                  <input
+                                    type={field.type === 'phone' ? 'tel' : field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'email' ? 'email' : field.type === 'url' ? 'url' : 'text'}
+                                    placeholder={field.placeholder}
+                                    value={customResponses[field.key] || ''}
+                                    onChange={(e) => setCustomResponses((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                                    className={fieldClass(fieldErrors[`custom_${field.key}`])}
+                                  />
+                                )}
+                                {fieldErrors[`custom_${field.key}`] ? (
+                                  <p className="text-[11px] text-rose-600 mt-1">{fieldErrors[`custom_${field.key}`]}</p>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {submitError ? (
+                      <div className="p-3 bg-rose-50 text-rose-700 text-sm rounded-xl flex items-start border border-rose-100">
+                        <AlertCircle className="h-4 w-4 mr-2 shrink-0 mt-0.5" />
+                        {submitError}
+                      </div>
+                    ) : null}
+
+                    <div className="flex gap-2 pt-1">
+                      {step > 0 ? (
+                        <button type="button" onClick={goBack} className="btn-secondary flex-1 justify-center">
+                          <ChevronLeft size={15} /> Back
+                        </button>
+                      ) : null}
+                      {step < STEPS.length - 1 ? (
+                        <button
+                          type="button"
+                          onClick={goNext}
+                          className="flex-1 inline-flex items-center justify-center gap-1 rounded-xl px-4 py-2.5 text-sm font-semibold text-white"
+                          style={{ backgroundColor: brand }}
+                        >
+                          Continue <ChevronRight size={15} />
+                        </button>
+                      ) : (
+                        <button
+                          type="submit"
+                          disabled={isSubmitting}
+                          className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-70"
+                          style={{ backgroundColor: brand }}
+                        >
+                          {isSubmitting ? 'Submitting…' : 'Submit application'}
+                        </button>
+                      )}
                     </div>
-                  )}
-
-                  <button 
-                    type="submit" 
-                    disabled={isSubmitting}
-                    className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {isSubmitting ? 'Submitting...' : 'Submit Application'}
-                  </button>
-                </form>
-              )}
+                  </form>
+                )}
+              </div>
             </div>
           </div>
-
         </div>
       </main>
-      
-      <footer className="bg-white border-t border-gray-200 py-6 mt-auto">
-        <div className="max-w-5xl mx-auto px-4 text-center text-sm text-gray-500">
-          Powered by <a href="/" className="font-semibold text-gray-900 hover:text-indigo-600">People Connect HR</a>
+
+      <footer className="bg-white border-t border-stone-200 py-5 mt-auto">
+        <div className="max-w-6xl mx-auto px-4 text-center text-sm text-stone-500">
+          {org?.hidePoweredBy ? (
+            <span>{org?.name}</span>
+          ) : (
+            <>Powered by <a href="/" className="font-semibold text-stone-800 hover:text-brand-700">People Connect HR</a></>
+          )}
         </div>
       </footer>
     </div>

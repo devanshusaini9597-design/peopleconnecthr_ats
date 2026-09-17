@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, forwardRef, useImperativeHandle, useCallback, useRef } from 'react';
-import { Briefcase, RefreshCw, Loader2 } from 'lucide-react';
+import { Briefcase, Loader2 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useParsing } from '../hooks/useParsing';
 import { authenticatedFetch } from '../utils/fetchUtils';
@@ -101,7 +101,7 @@ const ATS = forwardRef((props, ref) => {
     activityPeriod, setActivityPeriod,
     activityFrom, setActivityFrom,
     activityTo, setActivityTo,
-    sortField, setSortField, sortOrder, setSortOrder,
+    sortField, sortOrder, applySortChange,
     currentPage, setCurrentPage, clearAdvancedFilters, applyAdvancedFilters,
     syncActivityFromUrl, filtersDirty, activeAdvFilterCount, appliedFilters,
     listQueryOptions, filteredCandidates, visibleCandidates, totalFilteredPages, filteredCount,
@@ -514,6 +514,10 @@ const ATS = forwardRef((props, ref) => {
           onSelectAllColumns={selectAllColumns}
           onClearAllColumns={clearAllColumns}
           onResetColumns={resetColumns}
+          sortField={sortField}
+          sortOrder={sortOrder}
+          onSortChange={applySortChange}
+          isSearching={isLoadingInitial}
         />
 
         {isFreelancer && Array.isArray(idFilter) && idFilter.length > 0 ? (
@@ -627,11 +631,6 @@ const ATS = forwardRef((props, ref) => {
           positionFilterOptions={positionFilterOptions}
           expOptions={expOptions}
           ctcFilterOptions={ctcFilterOptions}
-          sortField={sortField}
-          setSortField={setSortField}
-          sortOrder={sortOrder}
-          setSortOrder={setSortOrder}
-          setCurrentPage={setCurrentPage}
           activityPeriod={activityPeriod}
           setActivityPeriod={setActivityPeriod}
           activityFrom={activityFrom}
@@ -639,14 +638,6 @@ const ATS = forwardRef((props, ref) => {
           activityTo={activityTo}
           setActivityTo={setActivityTo}
         />
-
-        {isLoadingInitial ? (
-          <div className="mx-4 sm:mx-5 mt-3 mb-1 flex items-center gap-2.5 rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-xs text-stone-600 shadow-sm">
-            <RefreshCw size={14} className="animate-spin text-brand-600 flex-shrink-0" aria-hidden="true" />
-            <span className="font-semibold text-stone-800">Searching candidates…</span>
-            <span className="text-stone-500">Updating results for your filters</span>
-          </div>
-        ) : null}
 
         <CandidatesTable
           tableScrollRef={tableScrollRef}

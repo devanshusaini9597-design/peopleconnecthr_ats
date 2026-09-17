@@ -1,15 +1,58 @@
 /**
- * Product release notes shown to company employees (not freelancers).
- * Add a new entry at the TOP when you ship. Bump `id` each release.
+ * Product release notes for company employees (not freelancers).
  *
- * audience on highlights / explore:
- *   'all'    — every company role
- *   'admin'  — owner, admin, hr_manager (owners always see everything)
+ * Keep ONE entry in PRODUCT_UPDATES per product release.
+ * Replace / bump `id` only when you intentionally ship release notes — do not
+ * add day-by-day mini releases. Role filtering uses `audience` on each item.
+ *
+ * audience:
+ *   'all'      — every company role
+ *   'admin'    — owner, admin, hr_manager (owners always see every item)
  *   'employee' — non-admin hiring roles
  */
 
 export const PRODUCT_UPDATES_STORAGE_KEY = 'skillnix_product_updates_seen_v1';
 export const PRODUCT_UPDATES_DAILY_KEY_PREFIX = 'skillnix_whats_new_day_';
+
+/** Stable per-user key segment so dismiss/seen never leak across accounts on one browser. */
+export function productUpdatesUserKey(userId) {
+  const raw = String(userId || '').trim();
+  return raw || 'anon';
+}
+
+/** Per-user: last release marked read. */
+export function productUpdatesSeenStorageKey(userId) {
+  return `${PRODUCT_UPDATES_STORAGE_KEY}__u_${productUpdatesUserKey(userId)}`;
+}
+
+/** Local calendar date YYYY-MM-DD for “first login today” gating. */
+export function localCalendarDayKey(now = new Date()) {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** Per-user + calendar day: daily auto-open gate. */
+export function productUpdatesDailyStorageKey(userId, now = new Date()) {
+  return `${PRODUCT_UPDATES_DAILY_KEY_PREFIX}${productUpdatesUserKey(userId)}_${localCalendarDayKey(now)}`;
+}
+
+export function readSeenProductUpdateId(userId) {
+  try {
+    return localStorage.getItem(productUpdatesSeenStorageKey(userId)) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function writeSeenProductUpdateId(userId, updateId) {
+  try {
+    localStorage.setItem(productUpdatesSeenStorageKey(userId), String(updateId || ''));
+  } catch {
+    /* ignore */
+  }
+}
 
 const ADMIN_AUDIENCE_ROLES = new Set(['owner', 'admin', 'hr_manager']);
 
@@ -27,18 +70,6 @@ export function formatProductUpdateDate(dateStr) {
   });
 }
 
-/** Local calendar date YYYY-MM-DD for “first login today” gating. */
-export function localCalendarDayKey(now = new Date()) {
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-export function productUpdatesDailyStorageKey(now = new Date()) {
-  return `${PRODUCT_UPDATES_DAILY_KEY_PREFIX}${localCalendarDayKey(now)}`;
-}
-
 export function isAdminAudienceRole(role) {
   return ADMIN_AUDIENCE_ROLES.has(String(role || ''));
 }
@@ -54,36 +85,60 @@ export function canSeeProductAudience(role, audience = 'all') {
   return true;
 }
 
+/**
+ * Single product release for the current ship.
+ * Replace this object (and bump `id`) only when release notes are intentionally published.
+ */
 export const PRODUCT_UPDATES = [
   {
-    id: '2026-09-16-daily-whats-new',
-    date: '2026-09-16',
-    title: 'Desk defaults, status history & stage metrics',
+    id: '2026-09-17-ats-product-release-v3',
+    date: '2026-09-17',
+    title: 'ATS workspace improvements',
     summary:
-      'This release speeds up Add Candidate with saved desk defaults, adds an auditable status timeline, and aligns dashboard stage KPIs with stage entry dates.',
+      'This release improves candidate intake, search, and stage tracking across the ATS workspace.',
     highlights: [
       {
         audience: 'all',
-        title: 'Personal desk defaults',
-        body: 'Save your usual client, source, product, and FLS under Profile → Desk defaults. Values pre-fill automatically when you add a candidate.',
+        title: 'Desk defaults for faster intake',
+        body: 'Save preferred client, source, product, and FLS under Profile → Desk defaults. Values pre-fill automatically when you add a candidate.',
       },
       {
         audience: 'admin',
         title: 'Role-based team defaults',
-        body: 'Set defaults per role in Organization → Team. Personal desk defaults always override role defaults when present.',
+        body: 'Set organisation defaults per role in Organisation → Team. A user’s personal desk defaults always take priority when configured.',
       },
       {
         audience: 'all',
-        title: 'Candidate status history',
-        body: 'Use History on a candidate record to review who changed status, when, and from which stage to which.',
+        title: 'Status history on each candidate',
+        body: 'Open History beside Status in Edit Candidate to review every stage change with date and user.',
       },
       {
         audience: 'all',
         title: 'Stage metrics by entry date',
-        body: 'Dashboard stage cards count candidates who entered that stage this month. Total Candidates remains all-time inventory.',
+        body: 'Dashboard stage cards count candidates who entered that stage in the selected period. Total Candidates remains full inventory.',
+      },
+      {
+        audience: 'all',
+        title: 'Candidate search experience',
+        body: 'Apply filters with Search. While results update, the table is locked and dimmed so records cannot be edited mid-refresh.',
+      },
+      {
+        audience: 'all',
+        title: 'Date sorting',
+        body: 'Use the sort icons in the Candidates toolbar to order by oldest or newest. Sorting applies immediately.',
+      },
+      {
+        audience: 'admin',
+        title: 'Role-aware product updates',
+        body: 'Release notes are delivered to each team member individually and filtered by role, so staff see only the changes that apply to their workspace.',
       },
     ],
     explore: [
+      {
+        audience: 'all',
+        label: 'Open Candidates',
+        path: '/candidates',
+      },
       {
         audience: 'all',
         label: 'Desk defaults',
@@ -92,14 +147,7 @@ export const PRODUCT_UPDATES = [
       },
       {
         audience: 'all',
-        label: 'Profile tour',
-        path: '/settings',
-        hash: 'desk-defaults',
-        tourKey: 'skillnix_tour_profile_v2',
-      },
-      {
-        audience: 'all',
-        label: 'Dashboard tour',
+        label: 'Dashboard overview',
         path: '/dashboard',
         tourKey: 'skillnix_tour_dashboard_v1',
       },
@@ -110,13 +158,13 @@ export const PRODUCT_UPDATES = [
       },
       {
         audience: 'admin',
-        label: 'Organization tour',
+        label: 'Organisation walkthrough',
         path: '/organization',
         tourKey: 'skillnix_tour_organization_v1',
       },
       {
         audience: 'all',
-        label: 'Reports & Analytics',
+        label: 'Reports & analytics',
         path: '/reports',
       },
     ],
@@ -128,6 +176,10 @@ function itemAudience(item) {
   return item?.audience || 'all';
 }
 
+/**
+ * Role-scoped release: only highlights/explore the user may see.
+ * Drops the entire release if nothing remains for that role.
+ */
 export function filterProductUpdateForRole(update, role) {
   if (!update) return null;
   const highlights = (update.highlights || []).filter((h) => canSeeProductAudience(role, itemAudience(h)));
@@ -168,7 +220,7 @@ export function isProductUpdateUnseen(updateId, seenId) {
   return updateIdx < seenIdx;
 }
 
-/** Visible updates with `unseen` flag for FB-style highlighting. */
+/** Visible updates with `unseen` flag for unread highlighting. */
 export function getProductUpdatesWithSeenState(role, seenId) {
   return getVisibleProductUpdates(role).map((u) => ({
     ...u,
@@ -186,13 +238,22 @@ export function hasUnseenProductUpdates(seenId, role) {
 }
 
 /**
- * Auto-open What's New on first app open of the calendar day when a release exists,
- * or whenever there are unread updates (FB-style).
+ * Auto-open What's New for unread releases on every user dashboard.
+ * Unread must never be blocked by a session flag (Strict Mode remounts used to
+ * leave only the header badge). Already-read daily reminder still uses session/day gates.
  */
-export function shouldAutoOpenWhatsNew({ role, seenId, shownToday } = {}) {
+export function shouldAutoOpenWhatsNew({ role, seenId, shownToday, shownThisSession } = {}) {
   const latest = getLatestProductUpdate(role);
   if (!latest) return false;
   if (hasUnseenProductUpdates(seenId, role)) return true;
+  if (shownThisSession) return false;
   if (!shownToday) return true;
   return false;
+}
+
+export function productUpdatesSessionAutoKey(userId, role) {
+  const uid = productUpdatesUserKey(userId);
+  const id = latestProductUpdateId(role) || 'none';
+  const day = localCalendarDayKey();
+  return `${PRODUCT_UPDATES_STORAGE_KEY}_auto_${uid}_${day}_${id}`;
 }

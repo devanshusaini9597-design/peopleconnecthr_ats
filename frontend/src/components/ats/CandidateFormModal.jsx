@@ -144,8 +144,8 @@ export default function CandidateFormModal(props) {
         >
           <div className="absolute inset-0 bg-stone-900/55 backdrop-blur-sm" aria-hidden="true" />
           <FocusLock
-            returnFocus={isTop && !quickList}
-            disabled={!isTop || !!quickList}
+            returnFocus={isTop && !quickList && !showStatusHistory}
+            disabled={!isTop || !!quickList || showStatusHistory}
             className="relative w-full min-w-0 max-w-full sm:max-w-[min(96vw,72rem)] lg:max-w-[min(96vw,80rem)] my-auto h-[100dvh] max-h-[100dvh] sm:h-auto sm:max-h-[min(96vh,920px)] flex flex-col"
           >
           <div
@@ -515,7 +515,11 @@ export default function CandidateFormModal(props) {
                               {editId ? (
                                 <button
                                   type="button"
-                                  onClick={() => setShowStatusHistory(true)}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setShowStatusHistory(true);
+                                  }}
                                   className="inline-flex items-center gap-1 text-[10px] font-semibold text-brand-700 hover:text-brand-900"
                                 >
                                   <History size={11} />
@@ -535,7 +539,11 @@ export default function CandidateFormModal(props) {
                             {editId ? (
                               <button
                                 type="button"
-                                onClick={() => setShowStatusHistory(true)}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setShowStatusHistory(true);
+                                }}
                                 className="inline-flex items-center gap-1 text-[10px] font-semibold text-brand-700 hover:text-brand-900"
                               >
                                 <History size={11} />
@@ -841,7 +849,9 @@ export default function CandidateFormModal(props) {
         )}
         {showStatusHistory && editId ? (
           <HistoryModal
+            candidateId={editId}
             candidate={{
+              _id: editId,
               name: formData.name,
               statusHistory: formData.statusHistory,
             }}

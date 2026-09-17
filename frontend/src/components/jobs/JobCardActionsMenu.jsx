@@ -1,10 +1,10 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Eye, Unlock, PauseCircle, Lock, Globe2, BookmarkPlus, Trash2, Loader2, MoreHorizontal,
+  Unlock, PauseCircle, Lock, BookmarkPlus, Trash2, MoreHorizontal,
 } from 'lucide-react';
 
-const MENU_W = 260;
+const MENU_W = 240;
 
 function clampMenuPos(btn) {
   const rect = btn.getBoundingClientRect();
@@ -12,39 +12,36 @@ function clampMenuPos(btn) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const width = Math.min(MENU_W, vw - pad * 2);
-  const estimatedH = Math.min(420, vh - pad * 2);
+  const estimatedH = Math.min(320, vh - pad * 2);
   let left = rect.right - width;
   if (left < pad) left = pad;
   if (left + width > vw - pad) left = vw - pad - width;
   const spaceBelow = vh - rect.bottom - pad;
   const spaceAbove = rect.top - pad;
-  const openDown = spaceBelow >= 220 || spaceBelow >= spaceAbove;
-  const maxH = Math.max(160, openDown ? spaceBelow : spaceAbove);
+  const openDown = spaceBelow >= 180 || spaceBelow >= spaceAbove;
+  const maxH = Math.max(140, openDown ? spaceBelow : spaceAbove);
   const top = openDown ? rect.bottom + 6 : Math.max(pad, rect.top - Math.min(estimatedH, maxH) - 6);
   return { top, left, width, maxH: Math.min(estimatedH, maxH) };
 }
 
 /**
- * Premium overflow menu — portaled so it is never clipped by page overflow.
+ * Compact overflow menu — status + template + delete only.
+ * View / Edit / Share live on the card toolbar.
  */
 export default function JobCardActionsMenu({
   open,
   onToggle,
   job,
   status,
-  hasJobBoard,
-  posting,
-  onView,
   onMarkOpen,
   onHold,
   onClose,
-  onPostBoard,
   onSaveTemplate,
   onDelete,
 }) {
   const btnRef = useRef(null);
   const menuRef = useRef(null);
-  const [pos, setPos] = useState({ top: 0, left: 0, width: MENU_W, maxH: 360 });
+  const [pos, setPos] = useState({ top: 0, left: 0, width: MENU_W, maxH: 280 });
 
   const place = () => {
     if (!btnRef.current) return;
@@ -94,20 +91,13 @@ export default function JobCardActionsMenu({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-3 py-2.5 border-b border-stone-100 bg-gradient-to-r from-stone-50/90 via-white to-teal-50/40 flex-shrink-0 min-w-0">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Job actions</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">More actions</p>
           <p className="text-[12px] font-semibold text-stone-800 break-words leading-snug mt-0.5">
             {job.role || job.title || 'Opening'}
           </p>
         </div>
 
         <div className="p-1.5 space-y-0.5 overflow-y-auto overflow-x-hidden min-h-0 flex-1 overscroll-contain">
-          <button type="button" role="menuitem" onClick={onView} className={itemClass}>
-            <span className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 border border-brand-100 inline-flex items-center justify-center flex-shrink-0">
-              <Eye size={14} strokeWidth={2} />
-            </span>
-            <span className="min-w-0 truncate">View job</span>
-          </button>
-
           {status !== 'Open' ? (
             <button type="button" role="menuitem" onClick={onMarkOpen} className={itemClass}>
               <span className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 inline-flex items-center justify-center flex-shrink-0">
@@ -135,22 +125,7 @@ export default function JobCardActionsMenu({
             </button>
           ) : null}
 
-          {hasJobBoard ? (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={onPostBoard}
-              disabled={posting}
-              className={`${itemClass} disabled:opacity-50`}
-            >
-              <span className="w-8 h-8 rounded-lg bg-teal-50 text-teal-700 border border-teal-100 inline-flex items-center justify-center flex-shrink-0">
-                {posting ? <Loader2 size={14} className="animate-spin" /> : <Globe2 size={14} strokeWidth={2} />}
-              </span>
-              <span className="min-w-0 truncate">Post to job board</span>
-            </button>
-          ) : null}
-
-          <button type="button" role="menuitem" onClick={onSaveTemplate} className={`${itemClass} sm:hidden`}>
+          <button type="button" role="menuitem" onClick={onSaveTemplate} className={itemClass}>
             <span className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 border border-sky-100 inline-flex items-center justify-center flex-shrink-0">
               <BookmarkPlus size={14} strokeWidth={2} />
             </span>

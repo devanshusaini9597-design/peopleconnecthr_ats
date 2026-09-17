@@ -13,17 +13,20 @@ import { useAuth } from '../context/AuthContext';
 import { formatRoleLabel } from './organization/constants';
 import { usePresence } from '../context/PresenceContext';
 import {
-  PRODUCT_UPDATES_STORAGE_KEY,
   countUnseenProductUpdates,
+  hasUnseenProductUpdates,
   latestProductUpdateId,
   productUpdatesDailyStorageKey,
+  productUpdatesSessionAutoKey,
+  readSeenProductUpdateId,
   shouldAutoOpenWhatsNew,
+  writeSeenProductUpdateId,
 } from '../config/productUpdates';
 
 const Header = ({ setSidebarOpen, sidebarOpen }) => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { user, organization, logout } = useAuth();
+  const { user, organization, logout, isLoading: authLoading } = useAuth();
   const { people } = usePresence();
   const self = people.find((p) => p.isYou);
   const selfOnline = self?.status !== 'offline';
@@ -42,38 +45,88 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
   const photoSrc = resolveAssetSrc(profilePicture || self?.profilePicture || user?.profilePicture || '');
   const showPhoto = Boolean(photoSrc) && !photoFailed;
   const userRole = user?.role || 'recruiter';
+  // Profile used to omit id — fall back to email so What's New still keys per person.
+  const userId = String(user?.id || user?._id || user?.email || '').trim();
   const roleLabel = formatRoleLabel(userRole);
   const orgName = organization?.name || '';
   const isAdmin = ['owner', 'admin'].includes(userRole);
   const isFreelancer = userRole === 'freelancer';
 
+  const refreshUnseenBadge = useCallback(() => {
+    if (isFreelancer || !user || !userId) {
+      setUnseenUpdateCount(0);
+      return 0;
+    }
+    try {
+      const seen = readSeenProductUpdateId(userId);
+      const count = countUnseenProductUpdates(seen, userRole);
+      setUnseenUpdateCount(count);
+      return count;
+    } catch {
+      setUnseenUpdateCount(0);
+      return 0;
+    }
+  }, [isFreelancer, user, userId, userRole]);
+
   useEffect(() => {
+    if (authLoading || !user || !userId) return;
     if (isFreelancer) {
       setUnseenUpdateCount(0);
       return;
     }
-    try {
-      const seen = localStorage.getItem(PRODUCT_UPDATES_STORAGE_KEY) || '';
-      const count = countUnseenProductUpdates(seen, userRole);
-      setUnseenUpdateCount(count);
 
-      const dailyKey = productUpdatesDailyStorageKey();
-      const shownToday = Boolean(localStorage.getItem(dailyKey));
-      if (shouldAutoOpenWhatsNew({ role: userRole, seenId: seen, shownToday })) {
-        setShowWhatsNew(true);
+    const timer = window.setTimeout(() => {
+      try {
+        const seen = readSeenProductUpdateId(userId);
+        const count = countUnseenProductUpdates(seen, userRole);
+        setUnseenUpdateCount(count);
+
+        const dailyKey = productUpdatesDailyStorageKey(userId);
+        const shownToday = Boolean(localStorage.getItem(dailyKey));
+        const sessionKey = productUpdatesSessionAutoKey(userId, userRole);
+        const shownThisSession = Boolean(sessionStorage.getItem(sessionKey));
+        const unread = hasUnseenProductUpdates(seen, userRole);
+
+        if (shouldAutoOpenWhatsNew({
+          role: userRole,
+          seenId: seen,
+          shownToday,
+          shownThisSession,
+        })) {
+          // For unread releases, do not stamp the session flag before dismiss —
+          // remounts must still auto-open on every dashboard until acknowledged.
+          // Session flag only gates the already-read daily reminder.
+          if (!unread) {
+            sessionStorage.setItem(sessionKey, '1');
+          }
+          setShowWhatsNew(true);
+        }
+      } catch {
+        setUnseenUpdateCount(0);
       }
-    } catch {
-      setUnseenUpdateCount(0);
-    }
-  }, [isFreelancer, userRole]);
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [authLoading, userId, isFreelancer, userRole]);
 
   const acknowledgeWhatsNew = useCallback((id) => {
+    if (!userId) {
+      setUnseenUpdateCount(0);
+      return;
+    }
     try {
-      localStorage.setItem(PRODUCT_UPDATES_STORAGE_KEY, id || latestProductUpdateId(userRole));
-      localStorage.setItem(productUpdatesDailyStorageKey(), '1');
+      writeSeenProductUpdateId(userId, id || latestProductUpdateId(userRole));
+      localStorage.setItem(productUpdatesDailyStorageKey(userId), '1');
+      sessionStorage.setItem(productUpdatesSessionAutoKey(userId, userRole), '1');
     } catch { /* ignore */ }
     setUnseenUpdateCount(0);
-  }, [userRole]);
+  }, [userId, userRole]);
+
+  // Keep badge in sync when modal closes without acknowledge edge-cases / storage clears
+  useEffect(() => {
+    if (showWhatsNew || authLoading || !user || isFreelancer) return;
+    refreshUnseenBadge();
+  }, [showWhatsNew, authLoading, user, isFreelancer, refreshUnseenBadge]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {

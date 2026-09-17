@@ -96,6 +96,19 @@ export function useCandidateFilters(
     return { ok: true };
   }, [advancedSearchFilters, activityPeriod, activityFrom, activityTo, sortField, sortOrder]);
 
+  /** Sort applies immediately — date only (oldest / newest). */
+  const applySortChange = useCallback((_field, order) => {
+    const nextOrder = String(order || 'desc').trim() === 'asc' ? 'asc' : 'desc';
+    setSortField('date');
+    setSortOrder(nextOrder);
+    setAppliedFilters((prev) => ({
+      ...prev,
+      sortField: 'date',
+      sortOrder: nextOrder,
+    }));
+    setCurrentPage(1);
+  }, []);
+
   const clearAdvancedFilters = useCallback(() => {
     const empty = snapshotFilters({
       advancedSearchFilters: { ...EMPTY_ADVANCED_FILTERS },
@@ -211,6 +224,7 @@ export function useCandidateFilters(
     activityTo, setActivityTo,
     sortField, setSortField,
     sortOrder, setSortOrder,
+    applySortChange,
     showOnlyCorrect, setShowOnlyCorrect,
     currentPage, setCurrentPage,
     clearAdvancedFilters,
