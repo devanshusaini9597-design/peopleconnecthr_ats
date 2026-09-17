@@ -140,9 +140,33 @@ describe('dataScope', () => {
     expect(jobListFilter(req).status).toBeUndefined();
   });
 
-  test('freelancer applications filtered by metadata.submittedBy', () => {
-    const filter = applicationListFilter(orgId, { id: freelancerId, role: 'freelancer' });
+  test('freelancer applications filtered by metadata.submittedBy', async () => {
+    const filter = await applicationListFilter(orgId, { id: freelancerId, role: 'freelancer' });
     expect(filter['metadata.submittedBy']).toBe(String(freelancerId));
+  });
+
+  test('leadership applications stay org-wide', async () => {
+    const filter = await applicationListFilter(orgId, {
+      id: recruiterId,
+      role: 'hr_manager',
+      email: 'manager@example.com',
+    });
+    expect(filter.organizationId).toEqual(orgId);
+    expect(filter.jobId).toBeUndefined();
+  });
+
+  test('recruiter applications scoped to creator/SPOC jobs', async () => {
+    const Job = require('../models/Job');
+    const distinctSpy = jest.fn().mockResolvedValue([new mongoose.Types.ObjectId()]);
+    const findSpy = jest.spyOn(Job, 'find').mockReturnValue({ distinct: distinctSpy });
+    const filter = await applicationListFilter(orgId, {
+      id: recruiterId,
+      role: 'hr_recruiter',
+      email: 'recruiter@example.com',
+    });
+    expect(findSpy).toHaveBeenCalled();
+    expect(filter.jobId.$in).toHaveLength(1);
+    findSpy.mockRestore();
   });
 
   test('withoutUnsharedFreelancerDesks is a no-op for freelancer', async () => {

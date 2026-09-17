@@ -439,11 +439,48 @@ function jobListFilter(req, { isTemplate } = {}) {
   };
 }
 
-/** Applications: freelancer sees only rows they submitted. */
-function applicationListFilter(organizationId, user, extra = {}) {
+/** Applications: leadership sees org-wide; others only jobs they created or SPOC; freelancer = own submissions. */
+async function applicationListFilter(organizationId, user, extra = {}) {
   const filter = { organizationId, ...extra };
   if (isFreelancer(user)) {
     filter['metadata.submittedBy'] = String(user.id || user._id);
+    return filter;
+  }
+  if (canViewOrgAnalytics(user)) {
+    return filter;
+  }
+
+  const Job = require('../models/Job');
+  const { userIdStr, userIdObj } = userIdParts(user);
+  const email = String(user?.email || '').trim().toLowerCase();
+  const orClauses = [];
+  if (userIdObj) {
+    orClauses.push({ createdBy: { $in: [userIdObj, userIdStr] } });
+    orClauses.push({ hiringManager: { $in: [userIdObj, userIdStr] } });
+  } else if (userIdStr) {
+    orClauses.push({ createdBy: userIdStr });
+    orClauses.push({ hiringManager: userIdStr });
+  }
+  if (email) {
+    orClauses.push({ hiringManagers: { $regex: new RegExp(`^\\s*${escapeRegex(email)}\\s*$`, 'i') } });
+  }
+
+  if (!orClauses.length) {
+    filter.jobId = { $in: [] };
+    return filter;
+  }
+
+  const scopedJobIds = await Job.find({
+    organizationId,
+    $or: orClauses,
+  }).distinct('_id');
+
+  if (extra.jobId != null && extra.jobId !== 'all') {
+    const requested = String(extra.jobId);
+    const allowed = scopedJobIds.some((id) => String(id) === requested);
+    filter.jobId = allowed ? extra.jobId : { $in: [] };
+  } else {
+    filter.jobId = { $in: scopedJobIds };
   }
   return filter;
 }

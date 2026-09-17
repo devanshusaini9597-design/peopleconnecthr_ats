@@ -23,7 +23,7 @@ async function listApplications(organizationId, query = {}, user) {
   if (isRejected !== undefined) extra.isRejected = isRejected === 'true' || isRejected === true;
   else extra.isRejected = { $ne: true };
 
-  const filter = applicationListFilter(organizationId, user, extra);
+  const filter = await applicationListFilter(organizationId, user, extra);
 
   return Application.find(filter)
     .skip((Number(page) - 1) * Number(limit))
@@ -36,7 +36,7 @@ async function getStats(organizationId, { jobId } = {}, user) {
   const extra = { isRejected: { $ne: true } };
   if (jobId && jobId !== 'all') extra.jobId = jobId;
   const filter = user
-    ? applicationListFilter(organizationId, user, extra)
+    ? await applicationListFilter(organizationId, user, extra)
     : { organizationId, ...extra };
 
   const applications = await Application.find(filter).select('stage createdAt hiredAt isHired').lean();
@@ -262,7 +262,7 @@ async function rejectApplication(user, applicationId, { reason, talentPoolIds } 
 
 async function getApplication(organizationId, applicationId, user) {
   const filter = user
-    ? applicationListFilter(organizationId, user, { _id: applicationId })
+    ? await applicationListFilter(organizationId, user, { _id: applicationId })
     : { _id: applicationId, organizationId };
   const application = await Application.findOne(filter).populate('candidateId jobId assignedTo');
   if (!application) throw httpError('Application not found', 404);

@@ -34,7 +34,7 @@ router.get('/', async (req, res) => {
       candidateScope = deskOrSharedWithMe(req.user, orgId);
     }
     const jobScope = jobListFilter(req);
-    const appScope = applicationListFilter(orgId, req.user);
+    const appScope = await applicationListFilter(orgId, req.user);
 
     const [candidates, jobs, applications] = await Promise.all([
       Candidate.find({

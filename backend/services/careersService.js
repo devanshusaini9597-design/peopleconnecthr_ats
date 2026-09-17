@@ -3,6 +3,8 @@
  */
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const Organization = require('../models/Organization');
 const Job = require('../models/Job');
 const Candidate = require('../models/Candidate');
@@ -11,12 +13,149 @@ const OrgListItem = require('../models/OrgListItem');
 const { planHasFeature } = require('../config/planFeatures');
 const { normalizeText } = require('../utils/textNormalize');
 const logger = require('../utils/logger');
+const { JWT_SECRET } = require('../middleware/authMiddleware');
+const { sendEmail } = require('./emailService');
+const {
+  wrapBrandedEmailHtml,
+  loadOrgEmailBrand,
+  escapeHtml,
+  otpCodeHtml,
+} = require('./emailBrandLayout');
 
 function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
   err.statusCode = statusCode;
   Object.assign(err, extra);
   return err;
+}
+
+const APPLY_OTP_TTL_MS = 10 * 60 * 1000;
+const APPLY_OTP_RESEND_MS = 45 * 1000;
+const APPLY_OTP_MAX_ATTEMPTS = 5;
+
+function normalizeEmail(email) {
+  return String(email || '').toLowerCase().trim();
+}
+
+function phoneDigitsOnly(raw) {
+  return String(raw || '').replace(/\D/g, '');
+}
+
+function generateApplyOtp() {
+  return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+}
+
+function hashApplyOtp(orgId, jobId, email, code) {
+  return crypto
+    .createHmac('sha256', JWT_SECRET)
+    .update(`careers_apply:${String(orgId)}:${String(jobId)}:${normalizeEmail(email)}:${String(code).trim()}`)
+    .digest('hex');
+}
+
+function applyOtpMatches(orgId, jobId, email, code, storedHash) {
+  if (!storedHash || !code) return false;
+  const expected = hashApplyOtp(orgId, jobId, email, code);
+  try {
+    const a = Buffer.from(expected, 'hex');
+    const b = Buffer.from(String(storedHash), 'hex');
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+function signApplyOtpToken(payload) {
+  return jwt.sign(
+    { ...payload, purpose: 'careers_apply_otp' },
+    JWT_SECRET,
+    { expiresIn: '15m' },
+  );
+}
+
+function signApplyVerifiedToken({ orgId, jobId, email }) {
+  return jwt.sign(
+    {
+      orgId: String(orgId),
+      jobId: String(jobId),
+      email: normalizeEmail(email),
+      purpose: 'careers_email_verified',
+    },
+    JWT_SECRET,
+    { expiresIn: '30m' },
+  );
+}
+
+function readApplyOtpToken(token) {
+  if (!token) throw httpError('Enter the code from your email to continue.', 400);
+  let decoded;
+  try {
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      throw httpError('This verification code expired. Send a new code to continue.', 401);
+    }
+    throw httpError('This verification session expired. Send a new code to continue.', 401);
+  }
+  if (decoded.purpose !== 'careers_apply_otp' || !decoded.email || !decoded.otpHash) {
+    throw httpError('Invalid verification session. Send a new code to continue.', 401);
+  }
+  return decoded;
+}
+
+function readApplyVerifiedToken(token, { orgId, jobId, email }) {
+  if (!token) {
+    throw httpError('Verify your email before submitting.', 400, { code: 'email_not_verified' });
+  }
+  let decoded;
+  try {
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch {
+    throw httpError('Your email verification expired. Send a new code to continue.', 401, {
+      code: 'email_not_verified',
+    });
+  }
+  if (decoded.purpose !== 'careers_email_verified' || !decoded.email) {
+    throw httpError('Verify your email before submitting.', 400, { code: 'email_not_verified' });
+  }
+  if (normalizeEmail(decoded.email) !== normalizeEmail(email)) {
+    throw httpError('Email does not match the verified address. Send a new code.', 400, {
+      code: 'email_not_verified',
+    });
+  }
+  if (String(decoded.orgId) !== String(orgId) || String(decoded.jobId) !== String(jobId)) {
+    throw httpError('Email verification does not match this job. Send a new code.', 400, {
+      code: 'email_not_verified',
+    });
+  }
+  return decoded;
+}
+
+function buildApplyOtpEmailHtml({ name, code, jobTitle, brand }) {
+  const first = escapeHtml((name || 'there').split(' ')[0] || 'there');
+  const role = escapeHtml(jobTitle || 'this role');
+  return wrapBrandedEmailHtml({
+    title: 'Verify your email to apply',
+    eyebrow: 'Application security',
+    orgName: brand.name,
+    logoUrl: brand.logoUrl,
+    brandColor: brand.brandColor,
+    wordmark: brand.wordmark,
+    senderName: brand.name,
+    senderEmail: brand.fromEmail,
+    websiteUrl: brand.websiteUrl,
+    supportEmail: brand.supportEmail,
+    socialLinks: brand.socialLinks,
+    bodyHtml: `
+      <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi ${first},</p>
+      <p style="margin:0 0 4px 0;color:#475569;line-height:1.7;">
+        Use this one-time code to confirm your email before applying for <strong>${role}</strong>.
+      </p>
+      ${otpCodeHtml(code, brand.brandColor)}
+      <p style="margin:16px 0 0 0;color:#64748b;font-size:13px;line-height:1.65;">
+        This code expires in 10 minutes. If you did not start an application, you can ignore this email.
+      </p>`,
+  });
 }
 
 const DEFAULT_CTC = [
@@ -210,7 +349,7 @@ async function getPublicJob(orgSlug, jobId) {
 
   // Open jobs are careers-eligible. Backfill isPublished for older Open jobs.
   let job = await Job.findOne({ _id: jobId, organizationId: org._id, status: 'Open' })
-    .select('title department location locations description skills employmentType salaryRange ctc experience clientName grade industry isPublished publishedAt');
+    .select('title department location locations description skills employmentType salaryRange ctc experience clientName grade industry isPublished publishedAt jobCode');
   if (!job) throw httpError('Job not found', 404);
 
   if (!job.isPublished) {
@@ -259,9 +398,10 @@ async function getPublicJob(orgSlug, jobId) {
 }
 
 /**
- * Public check: has this email already applied to this job?
+ * Public check: has this email or phone already applied to this job?
+ * Email+job is primary; phone+job is a secondary hard block.
  */
-async function checkAlreadyApplied(orgSlug, jobId, emailRaw) {
+async function checkAlreadyApplied(orgSlug, jobId, emailRaw, phoneRaw) {
   const org = await Organization.findOne({ slug: orgSlug });
   if (!org) throw httpError('Organization not found', 404);
   assertCareersLive(org);
@@ -269,23 +409,206 @@ async function checkAlreadyApplied(orgSlug, jobId, emailRaw) {
   const job = await Job.findOne({ _id: jobId, organizationId: org._id, status: 'Open' }).select('_id');
   if (!job) throw httpError('Job not found', 404);
 
-  const email = trimStr(emailRaw).toLowerCase();
-  if (!email) return { alreadyApplied: false };
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+  const email = normalizeEmail(emailRaw);
+  const phone = phoneDigitsOnly(phoneRaw);
+
+  if (email) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      throw httpError('Enter a valid email address', 400);
+    }
+    const candidate = await Candidate.findOne({ email, organizationId: org._id }).select('_id');
+    if (candidate) {
+      const app = await Application.findOne({ candidateId: candidate._id, jobId: job._id })
+        .select('createdAt stage source');
+      if (app) {
+        return {
+          alreadyApplied: true,
+          reason: 'email',
+          appliedAt: app.createdAt,
+          stage: app.stage || 'Applied',
+        };
+      }
+    }
+  }
+
+  if (phone && phone.length === 10) {
+    const phoneApp = await findApplicationByPhone(org._id, job._id, phone);
+    if (phoneApp) {
+      return {
+        alreadyApplied: true,
+        reason: 'phone',
+        appliedAt: phoneApp.createdAt,
+        stage: phoneApp.stage || 'Applied',
+      };
+    }
+  }
+
+  if (!email && !phone) return { alreadyApplied: false };
+  return { alreadyApplied: false };
+}
+
+async function findApplicationByPhone(organizationId, jobId, phoneDigits) {
+  if (!phoneDigits || phoneDigits.length !== 10) return null;
+  const candidates = await Candidate.find({
+    organizationId,
+    $or: [
+      { phone: phoneDigits },
+      { contact: phoneDigits },
+    ],
+  }).select('_id').lean();
+  if (!candidates.length) return null;
+  return Application.findOne({
+    candidateId: { $in: candidates.map((c) => c._id) },
+    jobId,
+  }).select('createdAt stage source');
+}
+
+/**
+ * Send 6-digit email OTP for careers apply (keyed by org + job + email).
+ */
+async function sendApplyOtp(orgSlug, jobId, { email: emailRaw, name, applyOtpToken } = {}) {
+  const org = await Organization.findOne({ slug: orgSlug });
+  if (!org) throw httpError('Organization not found', 404);
+  assertCareersLive(org);
+
+  const job = await Job.findOne({ _id: jobId, organizationId: org._id, status: 'Open' })
+    .select('_id title');
+  if (!job) throw httpError('Job not found', 404);
+
+  const email = normalizeEmail(emailRaw);
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
     throw httpError('Enter a valid email address', 400);
   }
 
-  const candidate = await Candidate.findOne({ email, organizationId: org._id }).select('_id');
-  if (!candidate) return { alreadyApplied: false };
+  // Rate-limit resend when an existing OTP session is provided
+  if (applyOtpToken) {
+    try {
+      const prev = readApplyOtpToken(applyOtpToken);
+      if (
+        normalizeEmail(prev.email) === email
+        && String(prev.orgId) === String(org._id)
+        && String(prev.jobId) === String(job._id)
+        && prev.otpSentAt
+        && Date.now() - Number(prev.otpSentAt) < APPLY_OTP_RESEND_MS
+      ) {
+        const waitSec = Math.ceil((APPLY_OTP_RESEND_MS - (Date.now() - Number(prev.otpSentAt))) / 1000);
+        throw httpError(`Please wait ${waitSec}s before requesting a new code.`, 429, {
+          code: 'otp_resend_cooldown',
+          retryAfterSec: waitSec,
+        });
+      }
+    } catch (err) {
+      if (err.code === 'otp_resend_cooldown' || err.statusCode === 429) throw err;
+      // Expired / invalid prior token — allow a fresh send
+    }
+  }
 
-  const app = await Application.findOne({ candidateId: candidate._id, jobId: job._id })
-    .select('createdAt stage source');
-  if (!app) return { alreadyApplied: false };
+  const dup = await checkAlreadyApplied(orgSlug, jobId, email);
+  if (dup.alreadyApplied) {
+    throw httpError('You have already applied for this job', 409, { code: 'ALREADY_APPLIED' });
+  }
+
+  const code = generateApplyOtp();
+  const nextToken = signApplyOtpToken({
+    orgId: String(org._id),
+    jobId: String(job._id),
+    email,
+    otpHash: hashApplyOtp(org._id, job._id, email, code),
+    otpSentAt: Date.now(),
+    attempts: 0,
+    name: trimStr(name).slice(0, 120),
+  });
+
+  const brand = await loadOrgEmailBrand(org._id);
+  const html = buildApplyOtpEmailHtml({
+    name: trimStr(name),
+    code,
+    jobTitle: job.title,
+    brand,
+  });
+  await sendEmail(
+    email,
+    `Your verification code for ${job.title || 'your application'}`,
+    html,
+    `Your verification code is ${code}. It expires in 10 minutes.`,
+    {
+      senderName: brand.name,
+      senderEmail: brand.fromEmail,
+      organizationId: org._id,
+    },
+  ).catch((err) => {
+    logger.error({ err: err.message, email }, 'Careers apply OTP email failed');
+    if (process.env.NODE_ENV === 'production') {
+      throw httpError(
+        'We could not send your verification code. Please try again in a moment.',
+        503,
+      );
+    }
+    if (err.message === 'EMAIL_NOT_CONFIGURED') {
+      logger.warn({ email, otp: code }, 'Dev-only careers apply OTP (email not configured)');
+    }
+  });
 
   return {
-    alreadyApplied: true,
-    appliedAt: app.createdAt,
-    stage: app.stage || 'Applied',
+    message: 'Verification code sent',
+    applyOtpToken: nextToken,
+    expiresInSec: Math.floor(APPLY_OTP_TTL_MS / 1000),
+    resendInSec: Math.floor(APPLY_OTP_RESEND_MS / 1000),
+  };
+}
+
+/**
+ * Verify careers apply OTP and return a short-lived email-verified token.
+ */
+async function verifyApplyOtp(orgSlug, jobId, { applyOtpToken, code } = {}) {
+  const org = await Organization.findOne({ slug: orgSlug });
+  if (!org) throw httpError('Organization not found', 404);
+  assertCareersLive(org);
+
+  const job = await Job.findOne({ _id: jobId, organizationId: org._id, status: 'Open' }).select('_id');
+  if (!job) throw httpError('Job not found', 404);
+
+  const decoded = readApplyOtpToken(applyOtpToken);
+  if (String(decoded.orgId) !== String(org._id) || String(decoded.jobId) !== String(job._id)) {
+    throw httpError('Invalid verification session. Send a new code to continue.', 401);
+  }
+
+  const attempts = Number(decoded.attempts || 0);
+  if (attempts >= APPLY_OTP_MAX_ATTEMPTS) {
+    throw httpError('Too many incorrect codes. Send a new code to continue.', 429, {
+      code: 'otp_locked',
+    });
+  }
+  if (decoded.otpSentAt && Date.now() - Number(decoded.otpSentAt) > APPLY_OTP_TTL_MS) {
+    throw httpError('This verification code expired. Send a new code to continue.', 401);
+  }
+  if (!applyOtpMatches(org._id, job._id, decoded.email, String(code || '').trim(), decoded.otpHash)) {
+    const nextToken = signApplyOtpToken({
+      orgId: decoded.orgId,
+      jobId: decoded.jobId,
+      email: decoded.email,
+      otpHash: decoded.otpHash,
+      otpSentAt: decoded.otpSentAt,
+      attempts: attempts + 1,
+      name: decoded.name || '',
+    });
+    throw httpError('Incorrect code. Try again.', 400, {
+      code: 'otp_invalid',
+      applyOtpToken: nextToken,
+      attemptsRemaining: APPLY_OTP_MAX_ATTEMPTS - attempts - 1,
+    });
+  }
+
+  const emailVerifiedToken = signApplyVerifiedToken({
+    orgId: org._id,
+    jobId: job._id,
+    email: decoded.email,
+  });
+
+  return {
+    message: 'Email verified',
+    emailVerifiedToken,
+    email: decoded.email,
   };
 }
 
@@ -329,7 +652,7 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null) {
 
   const customResponses = parseCustomResponses(body.customResponses);
   const name = trimStr(body.name || [body.firstName, body.lastName].filter(Boolean).join(' '));
-  const email = trimStr(body.email).toLowerCase();
+  const email = normalizeEmail(body.email);
   const phone = trimStr(body.phone || body.contact);
   const position = trimStr(body.position);
   const companyName = trimStr(body.companyName || body.company);
@@ -347,7 +670,9 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null) {
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
     throw httpError('Enter a valid email address', 400);
   }
-  const phoneDigits = phone.replace(/\D/g, '');
+  readApplyVerifiedToken(body.emailVerifiedToken, { orgId: org._id, jobId: job._id, email });
+
+  const phoneDigits = phoneDigitsOnly(phone);
   if (!phone || phoneDigits.length !== 10) {
     throw httpError('Enter a valid 10-digit mobile number', 400);
   }
@@ -359,13 +684,17 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null) {
     throw httpError('Resume / CV is required', 400);
   }
 
-  // Block duplicates before writing candidate / resume
+  // Block duplicates before writing candidate / resume (email+job, then phone+job)
   const existingCand = await Candidate.findOne({ email, organizationId: org._id }).select('_id');
   if (existingCand) {
     const existingApp = await Application.findOne({ candidateId: existingCand._id, jobId: job._id }).select('_id');
     if (existingApp) {
       throw httpError('You have already applied for this job', 409, { code: 'ALREADY_APPLIED' });
     }
+  }
+  const phoneDup = await findApplicationByPhone(org._id, job._id, phoneDigits);
+  if (phoneDup) {
+    throw httpError('You have already applied for this job', 409, { code: 'ALREADY_APPLIED' });
   }
 
   if (planHasFeature(org.plan, 'careers.formBuilder')) {
@@ -501,5 +830,7 @@ module.exports = {
   getCareersPage,
   getPublicJob,
   checkAlreadyApplied,
+  sendApplyOtp,
+  verifyApplyOtp,
   submitApplication,
 };

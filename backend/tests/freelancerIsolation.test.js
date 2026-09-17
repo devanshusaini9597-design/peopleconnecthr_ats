@@ -73,8 +73,8 @@ describe('freelancer isolation', () => {
     expect(other.organizationId).not.toEqual(orgA);
   });
 
-  it('application list is only rows they submitted', () => {
-    const filter = applicationListFilter(orgA, freelancer, {});
+  it('application list is only rows they submitted', async () => {
+    const filter = await applicationListFilter(orgA, freelancer, {});
     expect(filter.organizationId).toEqual(orgA);
     expect(filter['metadata.submittedBy']).toBe(String(freelancerId));
   });

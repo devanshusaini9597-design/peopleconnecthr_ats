@@ -87,8 +87,8 @@ router.get('/:orgSlug/jobs/:jobId', async (req, res) => {
 });
 
 /**
- * GET /:orgSlug/jobs/:jobId/application-status?email=
- * Check whether this email already applied (public, email required).
+ * GET /:orgSlug/jobs/:jobId/application-status?email=&phone=
+ * Check whether this email or phone already applied (public).
  */
 router.get('/:orgSlug/jobs/:jobId/application-status', async (req, res) => {
   try {
@@ -96,10 +96,44 @@ router.get('/:orgSlug/jobs/:jobId/application-status', async (req, res) => {
       req.params.orgSlug,
       req.params.jobId,
       req.query.email,
+      req.query.phone,
     );
     res.json({ success: true, ...data });
   } catch (error) {
     handle(res, error);
+  }
+});
+
+/**
+ * POST /:orgSlug/jobs/:jobId/apply/otp/send
+ * Send email OTP for public apply verification.
+ */
+router.post('/:orgSlug/jobs/:jobId/apply/otp/send', async (req, res) => {
+  try {
+    const data = await svc.sendApplyOtp(req.params.orgSlug, req.params.jobId, req.body || {});
+    res.json({ success: true, ...data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
+/**
+ * POST /:orgSlug/jobs/:jobId/apply/otp/verify
+ * Verify email OTP; returns emailVerifiedToken required on submit.
+ */
+router.post('/:orgSlug/jobs/:jobId/apply/otp/verify', async (req, res) => {
+  try {
+    const data = await svc.verifyApplyOtp(req.params.orgSlug, req.params.jobId, req.body || {});
+    res.json({ success: true, ...data });
+  } catch (error) {
+    const status = error.statusCode || 500;
+    return res.status(status).json({
+      success: false,
+      message: error.message,
+      ...(error.code ? { code: error.code } : {}),
+      ...(error.applyOtpToken ? { applyOtpToken: error.applyOtpToken } : {}),
+      ...(error.attemptsRemaining != null ? { attemptsRemaining: error.attemptsRemaining } : {}),
+    });
   }
 });
 
