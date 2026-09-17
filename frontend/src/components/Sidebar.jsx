@@ -52,6 +52,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
             if (item.onlyRoles && !item.onlyRoles.includes(userRole)) return false;
             if (item.platformOnly && !authUser?.isPlatformOperator) return false;
             if (item.hideForRoles && item.hideForRoles.includes(userRole)) return false;
+            if (item.externalCareers && !organization?.slug) return false;
             if (usePermissionPack) {
               const freelancerBypass = userRole === 'freelancer' && (
                 item.onlyRoles?.includes('freelancer') || item.freelancerAlways
@@ -72,10 +73,19 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
             }
             return true;
           }
-        )
+        ).map((item) => {
+          if (item.externalCareers && organization?.slug) {
+            return {
+              ...item,
+              path: `/careers/${organization.slug}`,
+              external: true,
+            };
+          }
+          return item;
+        })
       }))
       .filter((section) => section.items.length > 0)
-  ), [userRole, orgPlan, usePermissionPack, permissionSet, authUser?.isPlatformOperator]);
+  ), [userRole, orgPlan, usePermissionPack, permissionSet, authUser?.isPlatformOperator, organization?.slug]);
 
   const pathToGroup = useMemo(() => {
     const map = {};

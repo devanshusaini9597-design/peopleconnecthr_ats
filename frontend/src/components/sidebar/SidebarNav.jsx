@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, ExternalLink } from 'lucide-react';
 import { GROUP_STYLES } from './sidebarConstants';
 
 function unreadLabel(count) {
@@ -148,6 +148,23 @@ export default function SidebarNav({
                           Coming soon
                         </span>
                       </button>
+                    );
+                  }
+
+                  if (item.external) {
+                    return (
+                      <a
+                        key={item.path}
+                        href={item.path}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => onCloseMobile?.()}
+                        className="relative flex items-center gap-3 w-full px-3 py-2 rounded-xl text-sm font-medium text-stone-500 hover:bg-stone-800/40 hover:text-stone-200 transition-all duration-200"
+                      >
+                        <ItemIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="truncate flex-1 min-w-0">{itemLabel}</span>
+                        <ExternalLink className="w-3 h-3 flex-shrink-0 opacity-60" />
+                      </a>
                     );
                   }
 

@@ -45,6 +45,7 @@ import {
   Send,
   UserPlus,
   LifeBuoy,
+  Globe2,
 } from 'lucide-react';
 import { planHasFeature } from '../../config/planFeatures';
 
@@ -115,6 +116,7 @@ export const SECTIONS = [
       { labelKey: 'nav.items.myPipeline', label: 'Pipeline Board', path: '/my-pipeline', icon: Kanban, roles: ['freelancer'], onlyRoles: ['freelancer'], module: 'modules.pipeline' },
       { labelKey: 'nav.items.credits', label: 'Credits', path: '/credits', icon: CreditCard, roles: ['freelancer'], onlyRoles: ['freelancer'], comingSoon: true, disabled: true },
       { labelKey: 'nav.items.jobs', label: 'Jobs', path: '/jobs', icon: Briefcase, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer'], module: 'modules.jobs' },
+      { labelKey: 'nav.items.careersPage', label: 'Careers page', path: '/careers', icon: Globe2, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer'], module: 'modules.jobs', externalCareers: true },
       { labelKey: 'nav.items.freelanceReview', label: 'Freelance Review', path: '/freelance-review', icon: Send, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer'], module: 'modules.freelanceReview' },
       { labelKey: 'nav.items.supportDesk', label: 'Freelancer Support', path: '/support-desk', icon: LifeBuoy, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer'], module: 'modules.applications' },
       { labelKey: 'nav.items.applications', label: 'Applications', path: '/applications', icon: GitPullRequest, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer'], module: 'modules.applications' },

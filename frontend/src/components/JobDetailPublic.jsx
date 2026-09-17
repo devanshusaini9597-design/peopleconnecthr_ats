@@ -499,7 +499,7 @@ const JobDetailPublic = () => {
             >
               <div className="flex flex-wrap items-center gap-2 mb-3">
                 <span className="inline-flex items-center rounded-md bg-emerald-50 text-emerald-800 border border-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-                  Open role
+                  Now hiring
                 </span>
                 {job.industry ? (
                   <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wide">{job.industry}</span>
@@ -553,7 +553,7 @@ const JobDetailPublic = () => {
                 className="w-full text-white font-bold py-3.5 px-8 rounded-xl shadow-lg shadow-stone-900/15"
                 style={{ backgroundColor: alreadyApplied ? '#b45309' : brand }}
               >
-                {alreadyApplied ? 'Already applied' : 'Apply for this position'}
+                {alreadyApplied ? 'Already applied' : 'Apply for this role'}
               </button>
             </div>
           </div>
@@ -565,11 +565,11 @@ const JobDetailPublic = () => {
               </div>
               <div className="p-5 sm:p-6">
                 <div className="mb-5">
-                  <h3 className="text-xl font-bold text-stone-900 tracking-tight">Apply now</h3>
+                  <h3 className="text-xl font-bold text-stone-900 tracking-tight">Submit application</h3>
                   <p className="text-[13px] text-stone-500 mt-1 leading-relaxed">
                     {alreadyApplied
-                      ? 'This email already has an application on file for this role.'
-                      : `Step ${step + 1} of ${STEPS.length} — your application goes straight to the hiring team.`}
+                      ? 'An application for this role is already on file for this email.'
+                      : `Section ${step + 1} of ${STEPS.length}. Your details are shared with the recruiting team.`}
                   </p>
                 </div>
 
@@ -812,7 +812,7 @@ const JobDetailPublic = () => {
                               className={fieldClass()}
                               value={formData.coverLetter}
                               onChange={(e) => setField('coverLetter', e.target.value)}
-                              placeholder="Optional message to the hiring team"
+                              placeholder="Optional note for the recruiting team"
                               autoFocus
                             />
                           </div>

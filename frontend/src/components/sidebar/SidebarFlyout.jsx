@@ -2,6 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { ExternalLink } from 'lucide-react';
 import { GROUP_STYLES } from './sidebarConstants';
 
 export default function SidebarFlyout({
@@ -70,6 +71,28 @@ export default function SidebarFlyout({
                   Coming soon
                 </span>
               </button>
+            );
+          }
+
+          if (item.external) {
+            return (
+              <a
+                key={item.path}
+                href={item.path}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => {
+                  onCloseMobile();
+                  onCloseFlyout();
+                }}
+                className="flex items-center gap-3 mx-1.5 px-3 py-2.5 rounded-lg text-sm font-medium text-stone-300 hover:bg-stone-800 hover:text-white transition-colors duration-150 w-[calc(100%-0.75rem)]"
+              >
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 bg-stone-800 text-stone-400">
+                  <ItemIcon className="w-3.5 h-3.5" />
+                </div>
+                <span className="flex-1 min-w-0 truncate">{itemLabel}</span>
+                <ExternalLink className="w-3 h-3 flex-shrink-0 opacity-60" />
+              </a>
             );
           }
 
