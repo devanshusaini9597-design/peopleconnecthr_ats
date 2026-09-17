@@ -275,6 +275,37 @@ router.post('/mark-seen', verifyToken, async (req, res) => {
   }
 });
 
+/** Gmail-style: mark a single job as seen when the user opens it. */
+router.post('/:id/mark-seen', verifyToken, async (req, res) => {
+  try {
+    const jobId = req.params.id;
+    const query = { _id: jobId, ...jobListFilter(req), isTemplate: { $ne: true } };
+    let update = Job.findOneAndUpdate(
+      query,
+      { $addToSet: { seenBy: req.user.id } },
+      { new: true }
+    ).select('_id seenBy status');
+    if (req.user.organizationId && typeof update.setOptions === 'function') {
+      update = update.setOptions({ _tenantId: req.user.organizationId });
+    }
+    const job = await update;
+    if (!job) return res.status(404).json({ message: 'Job not found' });
+
+    await User.findByIdAndUpdate(req.user.id, {
+      $inc: { jobsUnseenCount: -1 },
+    });
+    // Floor at 0
+    await User.updateOne(
+      { _id: req.user.id, jobsUnseenCount: { $lt: 0 } },
+      { $set: { jobsUnseenCount: 0 } }
+    );
+
+    res.json({ success: true, jobId: String(job._id) });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 /** Recent open jobs for dashboard widget */
 /** Assign missing / de-duplicate job IDs within the signed-in organization */
 router.post('/heal-codes', verifyToken, requireRecruiterOrAbove, async (req, res) => {

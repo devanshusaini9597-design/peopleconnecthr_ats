@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, Pencil, Copy, Check } from 'lucide-react';
+import { Eye, Pencil, Copy, Check, Briefcase } from 'lucide-react';
 import Modal from '../ui/Modal';
 import JobJdPreview from './JobJdPreview';
 import { jobFromRecord } from './jobsConstants';
@@ -65,22 +65,28 @@ export default function JobViewModal({
       )}
     >
       {allowCopyJobId && jobCode ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 bg-teal-50/50 px-6 sm:px-8 py-3">
-          <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-teal-700/80">Job ID</p>
-            <p className="mt-0.5 font-mono text-[13px] font-semibold tabular-nums tracking-wide text-teal-900 truncate">
+        <div className="flex flex-wrap items-center gap-2 border-b border-stone-100 bg-gradient-to-r from-teal-50/80 via-white to-white px-6 sm:px-8 py-3">
+          <div className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-full border border-teal-200/90 bg-teal-50/80 pl-2.5 pr-1 py-0.5 text-teal-800">
+            <Briefcase size={11} className="shrink-0 text-teal-600" strokeWidth={2.25} />
+            <span
+              title={`Job ID ${jobCode}`}
+              className="min-w-0 truncate font-mono text-[11px] font-semibold tabular-nums tracking-wide leading-none"
+            >
               {jobCode}
-            </p>
+            </span>
+            <button
+              type="button"
+              onClick={copyJobId}
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-teal-700 transition-colors hover:bg-teal-100 hover:text-teal-900"
+              title={copied ? 'Copied' : 'Copy Job ID'}
+              aria-label={copied ? 'Job ID copied' : `Copy Job ID ${jobCode}`}
+            >
+              {copied
+                ? <Check size={12} strokeWidth={2.75} className="text-emerald-600" />
+                : <Copy size={12} strokeWidth={2.25} />}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={copyJobId}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-teal-200 bg-white text-teal-800 shadow-sm transition-colors hover:bg-teal-50"
-            title={copied ? 'Copied' : `Copy Job ID ${jobCode}`}
-            aria-label={copied ? 'Job ID copied' : `Copy Job ID ${jobCode}`}
-          >
-            {copied ? <Check size={15} className="text-emerald-600" /> : <Copy size={15} />}
-          </button>
+          <p className="text-[11px] text-stone-400 font-medium">Copy to share with your team</p>
         </div>
       ) : null}
       <JobJdPreview

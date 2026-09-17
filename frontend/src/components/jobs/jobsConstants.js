@@ -1,33 +1,27 @@
 import { INDIAN_CITIES } from '../../data/indianCities';
 
-export const JOBS_TOUR_KEY = 'skillnix_tour_jobs_v1';
+export const JOBS_TOUR_KEY = 'skillnix_tour_jobs_v2';
 export const JOBS_TOUR_STEPS = [
   {
     title: 'Job openings',
-    body: 'Create roles, filter by status, and reuse JD templates — without leaving this page.',
-  },
-  {
-    target: '[data-tour="jobs-tip"]',
-    title: 'Quick tip',
-    body: 'Use JD Library for templates, then Post New Job. Press ? anytime to reopen this tour.',
-    placement: 'bottom',
+    body: 'Create, filter, and manage requisitions from one place. New openings stay highlighted until you open them.',
   },
   {
     target: '[data-tour="jobs-actions"]',
     title: 'Create & templates',
-    body: 'Open the JD Library or post a new requisition from here.',
+    body: 'Open the JD Library to reuse starters or saved templates, or post a new requisition.',
     placement: 'bottom',
   },
   {
     target: '[data-tour="jobs-filters"]',
     title: 'Search & filters',
-    body: 'Search by role, location, or skills, and filter by Open, On Hold, or Closed.',
+    body: 'Search across all openings, then filter by status or Urgent. Pagination follows your filters.',
     placement: 'bottom',
   },
   {
     target: '[data-tour="jobs-list"]',
     title: 'Job cards',
-    body: 'Use the compact edit, share, and delete actions on each card. Status lives in the overflow menu.',
+    body: 'View, edit, or share from the toolbar. Overflow actions cover hold, close, urgent, templates, and delete.',
     placement: 'top',
   },
 ];
@@ -45,7 +39,10 @@ export const FILTER_OPTIONS = [
   { value: 'Open', label: 'Open' },
   { value: 'On Hold', label: 'On Hold' },
   { value: 'Closed', label: 'Closed' },
+  { value: 'Urgent', label: 'Urgent hiring' },
 ];
+
+export const JOBS_PAGE_SIZE = 12;
 
 export const JOB_BOARD_OPTIONS = [
   { value: 'linkedin', label: 'LinkedIn Jobs', description: 'Push via LinkedIn Jobs API' },

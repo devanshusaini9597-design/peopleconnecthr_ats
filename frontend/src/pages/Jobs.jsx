@@ -1,13 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  Plus, MapPin, BookOpen, UserCheck, Briefcase, IndianRupee, Globe2, Loader2,
-  Search, Pencil, Trash2, Filter, Building2,
-  Check, Share2, Eye, Mail, Bell, Copy, ExternalLink,
+  Plus, MapPin, BookOpen, UserCheck, Briefcase, IndianRupee, Loader2,
+  Search, Pencil, Filter, Building2, Share2, Eye, Copy, ExternalLink,
+  ChevronLeft, ChevronRight, AlertTriangle,
 } from 'lucide-react';
 import JDLibraryModal from '../components/JDLibraryModal';
-import PageHeader from '../components/ui/PageHeader';
 import EmptyState from '../components/ui/EmptyState';
 import Modal from '../components/ui/Modal';
 import PremiumSelect from '../components/ui/PremiumSelect';
@@ -20,7 +19,7 @@ import { useAuth } from '../context/AuthContext';
 import { planHasFeature } from '../config/planFeatures';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized, planLimitErrorMessage } from '../utils/fetchUtils';
 import {
-  JOBS_TOUR_KEY, JOBS_TOUR_STEPS, STATUS_OPTIONS, FILTER_OPTIONS,
+  JOBS_TOUR_KEY, JOBS_TOUR_STEPS, FILTER_OPTIONS, JOBS_PAGE_SIZE,
   JOB_BOARD_OPTIONS, STATUS_STYLES, DOT_STYLES, initialForm,
   jobFromRecord, composeJobDescriptionHtml, htmlToList, splitLocations,
 } from '../components/jobs/jobsConstants';
@@ -28,7 +27,7 @@ import JobFormModal from '../components/jobs/JobFormModal';
 import JobViewModal from '../components/jobs/JobViewModal';
 import JobCardActionsMenu from '../components/jobs/JobCardActionsMenu';
 import FreelanceSubmissionsPanel from '../components/FreelanceSubmissionsPanel';
-import { ensureJobsBadge, markJobsSeen } from '../hooks/useJobNavUpdates';
+import { ensureJobsBadge, markJobSeen } from '../hooks/useJobNavUpdates';
 
 const Jobs = () => {
   const { t } = useTranslation();
@@ -61,6 +60,7 @@ const Jobs = () => {
   const [postProvider, setPostProvider] = useState('linkedin');
   const [shareTarget, setShareTarget] = useState(null);
   const [sharePublishing, setSharePublishing] = useState(false);
+  const [page, setPage] = useState(1);
 
   const orgSlug = organization?.slug || '';
 
@@ -157,7 +157,6 @@ const Jobs = () => {
   };
 
   useEffect(() => { fetchJobs(); }, []);
-  useEffect(() => { markJobsSeen(); }, []);
 
   useEffect(() => {
     if (!menuOpenId) return undefined;
@@ -165,6 +164,27 @@ const Jobs = () => {
     window.addEventListener('click', close);
     return () => window.removeEventListener('click', close);
   }, [menuOpenId]);
+
+  const userIdStr = String(userId || '');
+
+  const isJobUnread = useCallback((job) => {
+    if (!userIdStr || !job) return false;
+    if (String(job.status || '') !== 'Open') return false;
+    const seen = Array.isArray(job.seenBy) ? job.seenBy : [];
+    return !seen.some((id) => String(id) === userIdStr);
+  }, [userIdStr]);
+
+  const markJobOpened = useCallback((job) => {
+    if (!job?._id) return;
+    const id = String(job._id);
+    setJobs((prev) => prev.map((j) => {
+      if (String(j._id) !== id) return j;
+      const seen = Array.isArray(j.seenBy) ? j.seenBy : [];
+      if (seen.some((s) => String(s) === userIdStr)) return j;
+      return { ...j, seenBy: [...seen, userIdStr] };
+    }));
+    markJobSeen(id);
+  }, [userIdStr]);
 
   const filteredJobs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -177,10 +197,18 @@ const Jobs = () => {
         String(job.industry || '').toLowerCase().includes(q) ||
         String(job.grade || '').toLowerCase().includes(q) ||
         (job.skills || []).some((s) => String(s).toLowerCase().includes(q));
-      const matchesStatus = statusFilter === 'All' || job.status === statusFilter;
+      const isUrgent = String(job.priority || '').toLowerCase() === 'urgent';
+      const matchesStatus = statusFilter === 'All'
+        || (statusFilter === 'Urgent' ? isUrgent : job.status === statusFilter);
       return matchesSearch && matchesStatus;
     });
   }, [jobs, searchQuery, statusFilter]);
+
+  useEffect(() => { setPage(1); }, [searchQuery, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredJobs.length / JOBS_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageJobs = filteredJobs.slice((currentPage - 1) * JOBS_PAGE_SIZE, currentPage * JOBS_PAGE_SIZE);
 
   const counts = useMemo(() => ({
     all: jobs.length,
@@ -188,7 +216,9 @@ const Jobs = () => {
     open: jobs.filter((j) => j.status === 'Open').length,
     hold: jobs.filter((j) => j.status === 'On Hold').length,
     closed: jobs.filter((j) => j.status === 'Closed').length,
-  }), [jobs]);
+    urgent: jobs.filter((j) => String(j.priority || '').toLowerCase() === 'urgent').length,
+    unread: jobs.filter((j) => isJobUnread(j)).length,
+  }), [jobs, isJobUnread]);
 
   const openCreate = () => {
     setEditingJob(null);
@@ -201,6 +231,7 @@ const Jobs = () => {
   const openView = (job) => {
     setViewingJob(job);
     setMenuOpenId(null);
+    markJobOpened(job);
   };
 
   const openEdit = (job) => {
@@ -382,6 +413,26 @@ const Jobs = () => {
     }
   };
 
+  const handleToggleUrgent = async (job) => {
+    setMenuOpenId(null);
+    const next = String(job.priority || '').toLowerCase() === 'urgent' ? 'medium' : 'urgent';
+    try {
+      const res = await authenticatedFetch(`${API_URL}/${job._id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ priority: next }),
+      });
+      if (isUnauthorized(res)) return handleUnauthorized();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Could not update priority');
+      }
+      setJobs((prev) => prev.map((j) => (j._id === job._id ? { ...j, priority: next } : j)));
+      toast.success(next === 'urgent' ? 'Marked as urgent hiring' : 'Urgent flag cleared');
+    } catch (error) {
+      toast.error(error.message || 'Could not update priority');
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -554,52 +605,42 @@ const Jobs = () => {
 
   return (
     <div className="page-shell-ats animate-page-enter">
-      <PageHeader
-        icon={Briefcase}
-        title={t('pages.jobs.title')}
-        subtitle={t('pages.jobs.subtitle')}
-        gradientTitle
-      >
-        <div data-tour="jobs-actions" className="flex flex-1 sm:flex-none items-center gap-2 w-full sm:w-auto">
-          <button type="button" onClick={() => setShowLibrary(true)} className="btn-secondary flex-1 sm:flex-none">
-            <BookOpen size={16} />
-            <span className="whitespace-nowrap">JD Library</span>
-          </button>
-          <button type="button" onClick={openCreate} className="btn-primary flex-1 sm:flex-none">
-            <Plus size={16} />
-            <span className="whitespace-nowrap">Post New Job</span>
-          </button>
+      {/* Header card */}
+      <div data-tour="jobs-actions" className="card-ats-bordered relative overflow-hidden p-5 sm:p-6">
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="min-w-0 flex items-start gap-3">
+            <span className="h-11 w-11 rounded-xl bg-brand-50 text-brand-700 border border-brand-100 inline-flex items-center justify-center flex-shrink-0">
+              <Briefcase size={20} strokeWidth={2} />
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl sm:text-2xl font-bold text-stone-900 tracking-tight">{t('pages.jobs.title')}</h1>
+                {counts.unread > 0 ? (
+                  <span className="inline-flex items-center rounded-md bg-rose-50 border border-rose-100 text-rose-700 px-2 py-0.5 text-[11px] font-bold tabular-nums">
+                    {counts.unread} new
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-sm text-stone-500 mt-0.5 leading-relaxed">{t('pages.jobs.subtitle')}</p>
+            </div>
+          </div>
+          <div className="flex flex-1 sm:flex-none items-center gap-2 w-full sm:w-auto">
+            <button type="button" onClick={() => setShowLibrary(true)} className="btn-secondary flex-1 sm:flex-none">
+              <BookOpen size={16} />
+              <span className="whitespace-nowrap">JD Library</span>
+            </button>
+            <button type="button" onClick={openCreate} className="btn-primary flex-1 sm:flex-none">
+              <Plus size={16} />
+              <span className="whitespace-nowrap">Post new job</span>
+            </button>
+          </div>
         </div>
-      </PageHeader>
+      </div>
 
       {showFreelancePanel && <FreelanceSubmissionsPanel />}
 
-      <div className="rounded-xl border border-brand-200/60 bg-gradient-to-r from-brand-50/70 via-white to-teal-50/40 px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed flex flex-wrap items-center gap-x-4 gap-y-1">
-        <span>
-          <span className="font-semibold text-stone-800">Sidebar</span> badge for new openings
-        </span>
-        <span className="hidden sm:inline text-stone-300">·</span>
-        <span className="inline-flex items-center gap-1">
-          <Mail size={13} className="text-brand-600" />
-          <span className="font-semibold text-stone-800">Email</span> team when you post (optional)
-        </span>
-        <span className="hidden sm:inline text-stone-300">·</span>
-        <span className="inline-flex items-center gap-1">
-          <Bell size={13} className="text-brand-600" />
-          <span className="font-semibold text-stone-800">In-app</span> alerts in notification bell
-        </span>
-        <span className="hidden sm:inline text-stone-300">·</span>
-        <span>
-          <span className="font-semibold text-stone-800">Dashboard</span> shows recent openings
-        </span>
-      </div>
-
-      <div data-tour="jobs-tip" className="rounded-xl border border-brand-200/60 bg-gradient-to-r from-brand-50/70 via-white to-teal-50/40 px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed">
-        Search and filter openings, reuse JD templates, and manage status from each card.
-        Press <span className="font-semibold text-stone-800">?</span> for a tour.
-      </div>
-
-      {/* Filters — one enterprise panel */}
+      {/* Filters */}
       <div data-tour="jobs-filters" className="card-ats-bordered p-4 sm:p-5 relative overflow-hidden">
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
         <div className="flex items-center gap-2 mb-4">
@@ -608,7 +649,7 @@ const Jobs = () => {
           </span>
           <div>
             <p className="text-xs font-bold text-stone-800">Search & filters</p>
-            <p className="text-[11px] text-stone-400">Find roles by title, client, location, skills, or status</p>
+            <p className="text-[11px] text-stone-400">Results include every page — search and filter first, then browse pages</p>
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
@@ -620,7 +661,7 @@ const Jobs = () => {
                 type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search title, client, location, skills…"
+                placeholder="Search title, client, location, job ID, skills…"
                 className="input-ats input-ats-icon"
               />
             </div>
@@ -643,6 +684,7 @@ const Jobs = () => {
             { key: 'Open', label: 'Open', count: counts.open },
             { key: 'On Hold', label: 'On Hold', count: counts.hold },
             { key: 'Closed', label: 'Closed', count: counts.closed },
+            { key: 'Urgent', label: 'Urgent', count: counts.urgent },
           ].map((s) => (
             <button
               key={s.key}
@@ -650,12 +692,15 @@ const Jobs = () => {
               onClick={() => setStatusFilter(s.key)}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                 statusFilter === s.key
-                  ? 'bg-brand-50 text-brand-800 border-brand-200'
+                  ? s.key === 'Urgent'
+                    ? 'bg-red-50 text-red-800 border-red-200'
+                    : 'bg-brand-50 text-brand-800 border-brand-200'
                   : 'bg-white text-stone-600 border-stone-200 hover:border-stone-300 hover:bg-stone-50'
               }`}
             >
+              {s.key === 'Urgent' ? <AlertTriangle size={11} /> : null}
               {s.label}
-              <span className={`tabular-nums ${statusFilter === s.key ? 'text-brand-600' : 'text-stone-400'}`}>{s.count}</span>
+              <span className={`tabular-nums ${statusFilter === s.key ? (s.key === 'Urgent' ? 'text-red-600' : 'text-brand-600') : 'text-stone-400'}`}>{s.count}</span>
             </button>
           ))}
           {(searchQuery || statusFilter !== 'All') && (
@@ -671,14 +716,12 @@ const Jobs = () => {
       </div>
 
       {loading ? (
-        <div data-tour="jobs-list" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
+        <div data-tour="jobs-list" className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="card-ats-bordered p-6 space-y-4">
-              <div className="h-10 w-10 rounded-xl skeleton-ats" />
+            <div key={i} className="rounded-2xl border border-stone-300/90 bg-white p-5 space-y-3">
               <div className="h-5 w-2/3 skeleton-ats rounded-lg" />
               <div className="h-4 w-full skeleton-ats rounded-lg" />
               <div className="h-4 w-4/5 skeleton-ats rounded-lg" />
-              <div className="h-16 skeleton-ats rounded-xl" />
             </div>
           ))}
         </div>
@@ -688,10 +731,10 @@ const Jobs = () => {
             icon={Briefcase}
             tone="brand"
             message="No job openings yet"
-            subMessage="Post your first role to start receiving applications."
+            subMessage="Post your first requisition to start receiving applications."
             action={
               <button type="button" onClick={openCreate} className="btn-primary">
-                <Plus size={16} /> Post New Job
+                <Plus size={16} /> Post new job
               </button>
             }
           />
@@ -702,7 +745,7 @@ const Jobs = () => {
             icon={Search}
             tone="amber"
             message="No matching jobs"
-            subMessage="Try adjusting your search or status filter."
+            subMessage="Try adjusting your search or filter. Search covers every page of results."
             action={
               <button
                 type="button"
@@ -715,140 +758,151 @@ const Jobs = () => {
           />
         </div>
       ) : (
-        <div data-tour="jobs-list" className="space-y-3">
-          {filteredJobs.map((job) => {
-            const title = job.role || job.title || 'Untitled role';
-            const status = job.status || 'Open';
-            return (
-              <article
-                key={job._id}
-                className="card-ats-bordered relative overflow-visible group px-4 sm:px-5 py-3.5 sm:py-4 transition-shadow duration-200 hover:shadow-md"
-              >
-                <div className="absolute inset-y-0 left-0 w-1 rounded-l-2xl bg-gradient-to-b from-brand-500 via-teal-400 to-brand-600 opacity-90" />
+        <>
+          <div data-tour="jobs-list" className="space-y-3">
+            {pageJobs.map((job) => {
+              const title = job.role || job.title || 'Untitled role';
+              const status = job.status || 'Open';
+              const urgent = String(job.priority || '').toLowerCase() === 'urgent';
+              const unread = isJobUnread(job);
+              return (
+                <article
+                  key={job._id}
+                  className={[
+                    'relative overflow-hidden group px-4 sm:px-5 py-3.5 sm:py-4 rounded-2xl border transition-all duration-200',
+                    unread
+                      ? 'border-brand-300/80 bg-brand-50/40 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_0_0_1px_rgba(13,148,136,0.08)]'
+                      : 'border-stone-300/90 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-stone-400/90 hover:shadow-[0_8px_24px_-8px_rgba(15,23,42,0.12)]',
+                  ].join(' ')}
+                >
+                  <div
+                    className={`absolute inset-y-0 left-0 w-[3px] rounded-l-2xl ${
+                      urgent
+                        ? 'bg-gradient-to-b from-red-500 to-rose-400'
+                        : unread
+                          ? 'bg-gradient-to-b from-brand-600 to-teal-400'
+                          : 'bg-gradient-to-b from-brand-500 via-teal-400 to-brand-600 opacity-80'
+                    }`}
+                  />
 
-                <div className="pl-2 sm:pl-3 flex flex-col gap-3">
-                  <div className="flex flex-col sm:flex-row sm:items-start gap-3 min-w-0">
-                    <div className="hidden sm:flex w-10 h-10 rounded-lg bg-stone-100 border border-stone-200/80 items-center justify-center flex-shrink-0">
-                      <Briefcase className="w-4.5 h-4.5 text-brand-700" size={18} />
-                    </div>
+                  <div className="pl-2.5 sm:pl-3 flex flex-col gap-3">
+                    <div className="flex flex-col sm:flex-row sm:items-start gap-3 min-w-0">
+                      <div className="hidden sm:flex w-10 h-10 rounded-xl bg-stone-100 border border-stone-200/80 items-center justify-center flex-shrink-0">
+                        <Briefcase className="text-brand-700" size={18} />
+                      </div>
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2 gap-y-1.5">
-                        <h3 className="text-[15px] sm:text-base font-bold text-stone-900 tracking-tight leading-snug uppercase">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2 gap-y-1.5">
+                          <h3 className={`text-[15px] sm:text-base tracking-tight leading-snug uppercase ${unread ? 'font-extrabold text-stone-950' : 'font-bold text-stone-900'}`}>
+                            <button
+                              type="button"
+                              onClick={() => openView(job)}
+                              className="text-left hover:text-brand-700 transition-colors"
+                            >
+                              {title}
+                            </button>
+                          </h3>
+                          {unread ? (
+                            <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-brand-600 text-white">
+                              New
+                            </span>
+                          ) : null}
+                          {urgent ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md border border-red-200 bg-red-50 text-red-700">
+                              <AlertTriangle size={10} /> Urgent
+                            </span>
+                          ) : null}
+                          {job.jobCode && (
+                            <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-200 bg-stone-50 text-stone-600 tabular-nums tracking-wide">
+                              {job.jobCode}
+                            </span>
+                          )}
+                          <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md border whitespace-nowrap ${STATUS_STYLES[status] || STATUS_STYLES.Open}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${DOT_STYLES[status] || DOT_STYLES.Open}`} />
+                            {status}
+                          </span>
+                        </div>
+                        {(job.clientName || job.grade) && (
+                          <p className="mt-0.5 text-[12px] text-stone-500 truncate">
+                            {[job.clientName, job.grade ? `Grade ${job.grade}` : ''].filter(Boolean).join(' · ')}
+                          </p>
+                        )}
+
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] sm:text-[13px] text-stone-600">
+                          <span className="inline-flex items-center gap-1 min-w-0">
+                            <MapPin size={13} className="text-stone-400 flex-shrink-0" />
+                            <span className="truncate font-medium">{job.location || 'Location TBD'}</span>
+                          </span>
+                          <span className="inline-flex items-center gap-1 min-w-0">
+                            <Building2 size={13} className="text-stone-400 flex-shrink-0" />
+                            <span className="truncate">{job.experience || 'Exp TBD'}</span>
+                          </span>
+                          <span className="inline-flex items-center gap-1 min-w-0 font-semibold text-stone-800">
+                            <IndianRupee size={13} className="text-stone-400 flex-shrink-0" />
+                            <span className="truncate">{job.ctc || 'CTC TBD'}</span>
+                          </span>
+                        </div>
+
+                        {(job.skills?.length > 0 || job.hiringManagers?.length > 0) && (
+                          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                            {(job.skills || []).slice(0, 5).map((skill) => (
+                              <span key={skill} className="inline-flex max-w-[14rem] truncate px-2 py-0.5 rounded-md text-[10px] font-semibold bg-brand-50 text-brand-800 border border-brand-100">
+                                {skill}
+                              </span>
+                            ))}
+                            {(job.skills || []).length > 5 && (
+                              <span className="text-[10px] font-semibold text-stone-500">+{job.skills.length - 5}</span>
+                            )}
+                            {job.hiringManagers?.length > 0 && (
+                              <>
+                                <span className="text-stone-300 mx-0.5" aria-hidden="true">|</span>
+                                {job.hiringManagers.slice(0, 3).map((email, idx) => (
+                                  <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-stone-100 text-stone-700 border border-stone-200">
+                                    <UserCheck size={10} /> {String(email).split('@')[0]}
+                                  </span>
+                                ))}
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-shrink-0 self-end sm:self-start">
+                        <button
+                          type="button"
+                          onClick={() => openView(job)}
+                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-colors shadow-sm"
+                          title="View job"
+                        >
+                          <Eye size={14} strokeWidth={2} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openEdit(job)}
+                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-colors shadow-sm"
+                          title="Edit job"
+                        >
+                          <Pencil size={14} strokeWidth={2} />
+                        </button>
+                        {status === 'Draft' || status === 'On Hold' ? (
                           <button
                             type="button"
-                            onClick={() => openView(job)}
-                            className="text-left hover:text-brand-700 hover:underline decoration-brand-200 underline-offset-2"
+                            onClick={() => handleStatusChange(job, 'Open')}
+                            className="h-8 px-2.5 inline-flex items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition-colors text-[11px] font-bold uppercase tracking-wide shadow-sm"
+                            title="Publish & open — live on careers"
                           >
-                            {title}
+                            Publish
                           </button>
-                        </h3>
-                        {job.jobCode && (
-                          <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-200 bg-stone-50 text-stone-600 tabular-nums tracking-wide">
-                            {job.jobCode}
-                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => openShareModal(job)}
+                            className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-teal-300 hover:text-teal-700 hover:bg-teal-50 transition-colors shadow-sm"
+                            title="Share apply link"
+                          >
+                            <Share2 size={14} strokeWidth={2} />
+                          </button>
                         )}
-                        <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md border whitespace-nowrap ${STATUS_STYLES[status] || STATUS_STYLES.Open}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${DOT_STYLES[status] || DOT_STYLES.Open}`} />
-                          {status}
-                        </span>
-                      </div>
-                      {(job.clientName || job.grade) && (
-                        <p className="mt-0.5 text-[12px] text-stone-500 truncate">
-                          {[job.clientName, job.grade ? `Grade ${job.grade}` : ''].filter(Boolean).join(' · ')}
-                        </p>
-                      )}
-
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] sm:text-[13px] text-stone-600">
-                        <span className="inline-flex items-center gap-1 min-w-0">
-                          <MapPin size={13} className="text-stone-400 flex-shrink-0" />
-                          <span className="truncate font-medium">{job.location || 'Location TBD'}</span>
-                        </span>
-                        <span className="text-stone-300 hidden sm:inline" aria-hidden="true">·</span>
-                        <span className="inline-flex items-center gap-1 min-w-0">
-                          <Building2 size={13} className="text-stone-400 flex-shrink-0" />
-                          <span className="truncate">{job.experience || 'Exp TBD'}</span>
-                        </span>
-                        <span className="text-stone-300 hidden sm:inline" aria-hidden="true">·</span>
-                        <span className="inline-flex items-center gap-1 min-w-0 font-semibold text-stone-800">
-                          <IndianRupee size={13} className="text-stone-400 flex-shrink-0" />
-                          <span className="truncate">{job.ctc || 'CTC TBD'}</span>
-                        </span>
-                      </div>
-
-                      {(job.skills?.length > 0 || job.hiringManagers?.length > 0) && (
-                        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                          {(job.skills || []).slice(0, 5).map((skill) => (
-                            <span key={skill} className="inline-flex max-w-[14rem] truncate px-2 py-0.5 rounded-md text-[10px] font-semibold bg-brand-50 text-brand-800 border border-brand-100">
-                              {skill}
-                            </span>
-                          ))}
-                          {(job.skills || []).length > 5 && (
-                            <span className="text-[10px] font-semibold text-stone-500">+{job.skills.length - 5}</span>
-                          )}
-                          {job.hiringManagers?.length > 0 && (
-                            <>
-                              <span className="text-stone-300 mx-0.5" aria-hidden="true">|</span>
-                              {job.hiringManagers.slice(0, 3).map((email, idx) => (
-                                <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-stone-100 text-stone-700 border border-stone-200">
-                                  <UserCheck size={10} /> {String(email).split('@')[0]}
-                                </span>
-                              ))}
-                              {job.hiringManagers.length > 3 && (
-                                <span className="text-[10px] font-semibold text-stone-500">+{job.hiringManagers.length - 3}</span>
-                              )}
-                            </>
-                          )}
-                          {!job.hiringManagers?.length && (
-                            <>
-                              <span className="text-stone-300 mx-0.5" aria-hidden="true">|</span>
-                              <span className="text-[11px] text-stone-400 italic">No managers assigned</span>
-                            </>
-                          )}
-                        </div>
-                      )}
-                      {!job.skills?.length && !job.hiringManagers?.length && (
-                        <p className="mt-2 text-[11px] text-stone-400 italic">No skills or managers assigned</p>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1 flex-shrink-0 self-end sm:self-start">
-                      <button
-                        type="button"
-                        onClick={() => openView(job)}
-                        className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-colors"
-                        title="View job"
-                      >
-                        <Eye size={14} strokeWidth={2} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openEdit(job)}
-                        className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-colors"
-                        title="Edit job"
-                      >
-                        <Pencil size={14} strokeWidth={2} />
-                      </button>
-                      {status === 'Draft' || status === 'On Hold' ? (
-                        <button
-                          type="button"
-                          onClick={() => handleStatusChange(job, 'Open')}
-                          className="h-8 px-2.5 inline-flex items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition-colors text-[11px] font-bold uppercase tracking-wide"
-                          title="Publish & open — live on careers"
-                        >
-                          Publish
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => openShareModal(job)}
-                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-teal-300 hover:text-teal-700 hover:bg-teal-50 transition-colors"
-                          title="Share apply link"
-                        >
-                          <Share2 size={14} strokeWidth={2} />
-                        </button>
-                      )}
-                      <div className="relative">
                         <JobCardActionsMenu
                           open={menuOpenId === job._id}
                           onToggle={() => setMenuOpenId(menuOpenId === job._id ? null : job._id)}
@@ -857,6 +911,7 @@ const Jobs = () => {
                           onMarkOpen={() => { setMenuOpenId(null); handleStatusChange(job, 'Open'); }}
                           onHold={() => { setMenuOpenId(null); handleStatusChange(job, 'On Hold'); }}
                           onClose={() => { setMenuOpenId(null); handleStatusChange(job, 'Closed'); }}
+                          onToggleUrgent={() => handleToggleUrgent(job)}
                           onSaveTemplate={() => { setMenuOpenId(null); handleSaveAsTemplate(job); }}
                           onDelete={() => {
                             setMenuOpenId(null);
@@ -866,11 +921,64 @@ const Jobs = () => {
                       </div>
                     </div>
                   </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
+                </article>
+              );
+            })}
+          </div>
+
+          {totalPages > 1 ? (
+            <div className="card-ats-bordered px-4 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <p className="text-sm text-stone-500">
+                Showing{' '}
+                <span className="font-semibold text-stone-800">
+                  {(currentPage - 1) * JOBS_PAGE_SIZE + 1}–{Math.min(currentPage * JOBS_PAGE_SIZE, filteredJobs.length)}
+                </span>
+                {' '}of <span className="font-semibold text-stone-800">{filteredJobs.length}</span>
+              </p>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={currentPage <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  className="h-9 px-3 inline-flex items-center gap-1 rounded-xl border border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <ChevronLeft size={16} /> Prev
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((n) => n === 1 || n === totalPages || Math.abs(n - currentPage) <= 1)
+                  .reduce((acc, n, idx, arr) => {
+                    if (idx > 0 && n - arr[idx - 1] > 1) acc.push('…');
+                    acc.push(n);
+                    return acc;
+                  }, [])
+                  .map((n, idx) => (
+                    n === '…' ? (
+                      <span key={`e-${idx}`} className="px-1 text-stone-400 text-sm">…</span>
+                    ) : (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setPage(n)}
+                        className={`h-9 min-w-[2.25rem] px-2 rounded-xl text-sm font-bold border transition ${
+                          n === currentPage ? 'bg-brand-600 text-white border-transparent shadow-sm' : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    )
+                  ))}
+                <button
+                  type="button"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  className="h-9 px-3 inline-flex items-center gap-1 rounded-xl border border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  Next <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </>
       )}
 
       <TourHelpFab onClick={() => setTourOpen(true)} label="Take a tour" title="Take a tour of Jobs" />
@@ -896,11 +1004,14 @@ const Jobs = () => {
           toggleManager={toggleManager}
           managerOptions={managerOptions}
           loadingMembers={loadingMembers}
+          draftStorageKey={`pch_job_draft_${orgId || 'org'}_${userId || 'user'}_${editingJob?._id || 'new'}`}
         />
 
       <JobViewModal
         open={!!viewingJob}
         job={viewingJob}
+        allowCopyJobId
+        onCopiedJobId={(code) => toast.success(`Job ID copied · ${code}`)}
         onClose={() => setViewingJob(null)}
         onEdit={(job) => {
           setViewingJob(null);

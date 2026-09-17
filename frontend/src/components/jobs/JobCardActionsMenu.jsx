@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Unlock, PauseCircle, Lock, BookmarkPlus, Trash2, MoreHorizontal, ChevronRight,
+  AlertTriangle, Sparkles,
 } from 'lucide-react';
 
 const MENU_W = 268;
@@ -12,7 +13,7 @@ function clampMenuPos(btn) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const width = Math.min(MENU_W, vw - pad * 2);
-  const estimatedH = Math.min(360, vh - pad * 2);
+  const estimatedH = Math.min(400, vh - pad * 2);
   let left = rect.right - width;
   if (left < pad) left = pad;
   if (left + width > vw - pad) left = vw - pad - width;
@@ -67,7 +68,7 @@ function ActionRow({ onClick, icon: Icon, iconClass, label, hint, danger = false
 }
 
 /**
- * Compact overflow menu — status + template + delete only.
+ * Compact overflow menu — status + urgent + template + delete.
  * View / Edit / Share live on the card toolbar.
  */
 export default function JobCardActionsMenu({
@@ -80,10 +81,12 @@ export default function JobCardActionsMenu({
   onClose,
   onSaveTemplate,
   onDelete,
+  onToggleUrgent,
 }) {
   const btnRef = useRef(null);
   const menuRef = useRef(null);
   const [pos, setPos] = useState({ top: 0, left: 0, width: MENU_W, maxH: 280 });
+  const isUrgent = String(job?.priority || '').toLowerCase() === 'urgent';
 
   const place = () => {
     if (!btnRef.current) return;
@@ -180,6 +183,16 @@ export default function JobCardActionsMenu({
               iconClass="bg-stone-100 text-stone-600 border-stone-200"
               label="Close job"
               hint="Stop accepting candidates"
+            />
+          ) : null}
+
+          {typeof onToggleUrgent === 'function' ? (
+            <ActionRow
+              onClick={onToggleUrgent}
+              icon={isUrgent ? Sparkles : AlertTriangle}
+              iconClass={isUrgent ? 'bg-stone-100 text-stone-600 border-stone-200' : 'bg-red-50 text-red-600 border-red-100'}
+              label={isUrgent ? 'Clear urgent' : 'Mark as urgent'}
+              hint={isUrgent ? 'Remove urgent hiring flag' : 'Highlight as urgent hiring'}
             />
           ) : null}
 

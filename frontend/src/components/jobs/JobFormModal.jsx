@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Loader2, BookOpen, Briefcase, UserCheck, Check, Plus, Users, Pencil, Eye,
   Settings2, Building2, IndianRupee, MapPin, Layers, Clock3, StickyNote, Search, Upload, Mail,
-  AlertTriangle,
+  AlertTriangle, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import PremiumSelect from '../ui/PremiumSelect';
@@ -78,6 +78,13 @@ const LIST = {
 const fieldClass =
   'w-full min-w-0 max-w-full px-3 py-2.5 rounded-lg border border-stone-200 bg-white text-sm font-medium outline-none uppercase box-border focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15';
 
+const FORM_STEPS = [
+  { id: 'basics', label: 'Basics' },
+  { id: 'description', label: 'Description' },
+  { id: 'team', label: 'Hiring team' },
+  { id: 'review', label: 'Review' },
+];
+
 export default function JobFormModal({
   open,
   onClose,
@@ -91,9 +98,12 @@ export default function JobFormModal({
   toggleManager,
   managerOptions = [],
   loadingMembers = false,
+  draftStorageKey = '',
 }) {
   const toast = useToast();
   const [tab, setTab] = useState('edit');
+  const [step, setStep] = useState(0);
+  const [draftSavedAt, setDraftSavedAt] = useState(null);
   const [quickList, setQuickList] = useState(null);
   const [masterLoading, setMasterLoading] = useState(false);
   const [activeSection, setActiveSection] = useState('');
@@ -117,6 +127,59 @@ export default function JobFormModal({
 
   const patch = (partial) => setFormData((prev) => ({ ...prev, ...partial }));
   const block = (value) => String(value || '').toUpperCase();
+
+  useEffect(() => {
+    if (!open) return;
+    setStep(0);
+    setTab('edit');
+    setDraftSavedAt(null);
+    if (!draftStorageKey || editingJob) return;
+    try {
+      const raw = localStorage.getItem(draftStorageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.formData && typeof parsed.formData === 'object') {
+        setFormData((prev) => ({ ...prev, ...parsed.formData }));
+        if (parsed.skillsInput != null) setSkillsInput(String(parsed.skillsInput));
+        setDraftSavedAt(parsed.savedAt || null);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [open, draftStorageKey, editingJob?._id]);
+
+  useEffect(() => {
+    if (!open || !draftStorageKey || saving) return undefined;
+    const t = window.setTimeout(() => {
+      try {
+        const savedAt = new Date().toISOString();
+        localStorage.setItem(draftStorageKey, JSON.stringify({
+          formData,
+          skillsInput,
+          savedAt,
+        }));
+        setDraftSavedAt(savedAt);
+      } catch {
+        /* ignore */
+      }
+    }, 900);
+    return () => window.clearTimeout(t);
+  }, [open, draftStorageKey, formData, skillsInput, saving]);
+
+  const clearLocalDraft = () => {
+    if (!draftStorageKey) return;
+    try { localStorage.removeItem(draftStorageKey); } catch { /* ignore */ }
+    setDraftSavedAt(null);
+  };
+
+  const wrapSubmit = (e, opts) => {
+    const result = onSubmit(e, opts);
+    if (!opts?.asDraft) {
+      // Publish / save changes — clear local draft on success path handled by parent close
+      window.setTimeout(() => clearLocalDraft(), 400);
+    }
+    return result;
+  };
 
   const loadList = useCallback(async (key, starters) => {
     let items = [];
@@ -288,11 +351,13 @@ export default function JobFormModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={editingJob ? 'EDIT JOB REQUISITION' : 'CREATE JOB REQUISITION'}
+      title={editingJob ? 'Edit job requisition' : 'Post a new job'}
       description={
         editingJob
-          ? (formData.jobCode ? `JOB ID ${formData.jobCode}` : 'JOB ID is assigned when you save.')
-          : (nextJobCode ? `Next ID: ${nextJobCode}` : 'Job ID is assigned automatically when you save.')
+          ? (formData.jobCode ? `Job ID ${formData.jobCode}` : 'Job ID is assigned when you save.')
+          : (nextJobCode
+            ? `Next ID: ${nextJobCode}${draftSavedAt ? ' · Draft autosaved' : ''}`
+            : `Step ${step + 1} of ${FORM_STEPS.length}${draftSavedAt ? ' · Draft autosaved' : ''}`)
       }
       size="full"
       icon={Briefcase}
@@ -305,33 +370,55 @@ export default function JobFormModal({
           <button type="button" onClick={onClose} className="btn-secondary" disabled={saving}>
             Cancel
           </button>
+          {step > 0 ? (
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={saving}
+              onClick={() => setStep((s) => Math.max(0, s - 1))}
+            >
+              <ChevronLeft size={15} /> Back
+            </button>
+          ) : null}
           <button
             type="button"
             className="btn-secondary"
             disabled={saving}
-            onClick={() => onSubmit({ preventDefault() {} }, { asDraft: true })}
+            onClick={() => wrapSubmit({ preventDefault() {} }, { asDraft: true })}
             title="Keep internal — not visible on careers until you publish"
           >
             {saving ? <Loader2 size={16} className="animate-spin" /> : null}
             Save draft
           </button>
-          <button
-            type="submit"
-            form="job-form"
-            className="btn-primary"
-            disabled={saving}
-            title="Open the role and publish it to your careers page"
-          >
-            {saving ? <Loader2 size={16} className="animate-spin" /> : editingJob ? <Check size={16} /> : <Plus size={16} />}
-            {saving
-              ? 'Saving…'
-              : editingJob
-                ? (String(formData.status || '').toLowerCase() === 'draft' ? 'Publish job' : 'Save changes')
-                : 'Publish job'}
-          </button>
+          {step < FORM_STEPS.length - 1 ? (
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={saving}
+              onClick={() => { setStep((s) => Math.min(FORM_STEPS.length - 1, s + 1)); setTab('edit'); }}
+            >
+              Continue <ChevronRight size={15} />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              form="job-form"
+              className="btn-primary"
+              disabled={saving}
+              title="Open the role and publish it to your careers page"
+            >
+              {saving ? <Loader2 size={16} className="animate-spin" /> : editingJob ? <Check size={16} /> : <Plus size={16} />}
+              {saving
+                ? 'Saving…'
+                : editingJob
+                  ? (String(formData.status || '').toLowerCase() === 'draft' ? 'Publish job' : 'Save changes')
+                  : 'Publish job'}
+            </button>
+          )}
         </>
       }
     >
+      {/* Mobile: form / preview toggle */}
       <div className="flex lg:hidden h-[38px] items-center rounded-none border-b border-stone-200 bg-stone-50 p-1 gap-1 flex-shrink-0">
         {[
           { id: 'edit', label: 'Edit', icon: Pencil },
@@ -354,9 +441,42 @@ export default function JobFormModal({
         <form
           id="job-form"
           ref={formRef}
-          onSubmit={(e) => onSubmit(e, { asDraft: false })}
+          onSubmit={(e) => wrapSubmit(e, { asDraft: false })}
           className={`min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain px-4 sm:px-5 py-4 space-y-4 ${tab === 'preview' ? 'hidden lg:block' : ''}`}
         >
+          {/* Step progress */}
+          <div className="rounded-xl border border-stone-200/90 bg-gradient-to-r from-stone-50 via-white to-brand-50/40 p-3">
+            <div className="flex items-center justify-between gap-2 mb-2.5">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-stone-500">
+                Step {step + 1} of {FORM_STEPS.length}
+              </p>
+              {draftSavedAt ? (
+                <p className="text-[10px] font-medium text-emerald-700">Draft autosaved</p>
+              ) : (
+                <p className="text-[10px] font-medium text-stone-400">Autosave on</p>
+              )}
+            </div>
+            <div className="grid grid-cols-4 gap-1.5">
+              {FORM_STEPS.map((s, i) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setStep(i)}
+                  className={`rounded-lg px-1.5 py-2 text-[10px] font-bold uppercase tracking-wide border transition ${
+                    i === step
+                      ? 'border-brand-500 bg-brand-50 text-brand-800'
+                      : i < step
+                        ? 'border-stone-200 bg-white text-stone-700'
+                        : 'border-stone-100 text-stone-400'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className={step === 0 ? '' : 'hidden'}>
           <section className="rounded-xl border border-stone-200/90 bg-white p-4 space-y-3.5">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 min-w-0">
@@ -364,8 +484,8 @@ export default function JobFormModal({
                   <Briefcase size={13} />
                 </span>
                 <div>
-                  <p className="text-xs font-bold text-stone-800 uppercase tracking-wide">Role header</p>
-                  <p className="text-[11px] text-stone-400">Same picklists as Candidates · use Manage to add or edit values</p>
+                  <p className="text-xs font-bold text-stone-800 uppercase tracking-wide">Role & details</p>
+                  <p className="text-[11px] text-stone-400">Title, client, location, CTC, and urgent hiring</p>
                 </div>
               </div>
               <span className="text-[10px] font-bold tracking-widest text-brand-700 bg-brand-50 border border-brand-100 rounded-md px-2 py-1 tabular-nums">
@@ -658,7 +778,9 @@ export default function JobFormModal({
               </div>
             </div>
           </section>
+          </div>
 
+          <div className={step === 1 ? '' : 'hidden'}>
           <section className="rounded-xl border border-stone-200/90 bg-white p-4 space-y-3.5">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2 min-w-0">
@@ -740,7 +862,9 @@ export default function JobFormModal({
               />
             </div>
           </section>
+          </div>
 
+          <div className={step === 2 ? '' : 'hidden'}>
           <section className="rounded-xl border border-stone-200/90 bg-white p-4">
             <div className="flex items-center gap-2 mb-3">
               <span className="h-7 w-7 rounded-lg bg-teal-50 text-teal-700 border border-teal-100 inline-flex items-center justify-center">
@@ -827,7 +951,9 @@ export default function JobFormModal({
               </p>
             )}
           </section>
+          </div>
 
+          <div className={step === 3 ? 'space-y-4' : 'hidden'}>
           <section className="rounded-xl border border-stone-200/90 bg-white p-4 space-y-3.5">
             <div className="flex items-center gap-2">
               <span className="h-7 w-7 rounded-lg bg-amber-50 text-amber-700 border border-amber-100 inline-flex items-center justify-center">
@@ -907,12 +1033,17 @@ export default function JobFormModal({
               </label>
             </section>
           ) : null}
+          </div>
         </form>
 
         <div
           ref={previewRef}
           className={`${tab === 'edit' ? 'hidden lg:block' : ''} min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain px-4 sm:px-5 py-4 border-t lg:border-t-0 lg:border-l border-stone-200 bg-stone-50/60`}
         >
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-stone-500">Live preview</p>
+            <span className="text-[10px] font-medium text-stone-400">Updates as you type</span>
+          </div>
           <JobJdPreview form={{ ...formData, skills }} activeSection={activeSection} />
         </div>
       </div>

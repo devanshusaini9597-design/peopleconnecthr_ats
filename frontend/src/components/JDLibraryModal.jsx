@@ -66,7 +66,10 @@ const JDLibraryModal = ({ isOpen, onClose, onSelectTemplate }) => {
         t.experience,
         t.location,
         t.ctc,
+        t.industry,
+        t.grade,
         t.description,
+        t.summary,
         ...(t.skills || []),
       ]
         .filter(Boolean)
@@ -181,11 +184,11 @@ const JDLibraryModal = ({ isOpen, onClose, onSelectTemplate }) => {
       <Modal
         open={isOpen}
         onClose={closeAll}
-        title={view === 'list' ? 'JD Library' : view === 'edit' ? 'Edit Template' : 'Create Template'}
+        title={view === 'list' ? 'Job templates' : view === 'edit' ? 'Edit template' : 'Create template'}
         description={
           view === 'list'
-            ? 'Use a starter or your saved templates to pre-fill a job — or create your own.'
-            : 'Saved templates can be reused anytime when posting a new job.'
+            ? 'Start from a starter or reuse a saved template for your next requisition.'
+            : 'Templates prefill the job form — review fields before publishing.'
         }
         size="lg"
         footer={

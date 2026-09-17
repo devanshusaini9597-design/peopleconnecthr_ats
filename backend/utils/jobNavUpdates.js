@@ -75,13 +75,11 @@ function postedByOrAtClause(seenAt) {
 }
 
 /**
- * Open jobs this user has not seen yet.
- * Cutoff is last Jobs visit; if they have never opened Jobs, last 14 days.
+ * Open jobs this user has not seen yet (Gmail-style).
+ * Lookback is last 14 days — cleared only when the user opens each job.
  */
-function unseenOpenJobsFilter(organizationId, userId, jobsLastSeenAt) {
-  const since = jobsLastSeenAt
-    ? new Date(jobsLastSeenAt)
-    : new Date(Date.now() - RECENT_UNSEEN_MS);
+function unseenOpenJobsFilter(organizationId, userId, _jobsLastSeenAt) {
+  const since = new Date(Date.now() - RECENT_UNSEEN_MS);
 
   return {
     ...organizationIdFilter(organizationId),

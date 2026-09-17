@@ -217,8 +217,8 @@
       "tourTitle": "Take a tour of Interviews"
     },
   "jobs": {
-    "title": "Job Openings",
-    "subtitle": "Create and manage open roles for your hiring pipeline.",
+    "title": "Jobs",
+    "subtitle": "Create and manage requisitions for your hiring pipeline.",
     "empty": "No job openings yet",
     "noMatch": "No matching jobs",
     "postToBoard": "Post to Job Board",

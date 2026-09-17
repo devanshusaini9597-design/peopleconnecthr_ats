@@ -17,7 +17,7 @@ import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils
 import { useToast } from './Toast';
 import { formatRoleLabel } from './organization/constants';
 import { useAuth } from '../context/AuthContext';
-import { markJobsSeen } from '../hooks/useJobNavUpdates';
+import { markJobSeen } from '../hooks/useJobNavUpdates';
 import { splitLocations } from './jobs/jobsConstants';
 import JobViewModal from './jobs/JobViewModal';
 import ContactActionButtons from './ui/ContactActionButtons';
@@ -427,7 +427,6 @@ export default function MandatesPage() {
   }, [toast]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { markJobsSeen(); }, []);
 
   useEffect(() => {
     const id = window.setInterval(() => load({ silent: true }), AUTO_REFRESH_MS);
@@ -991,7 +990,10 @@ export default function MandatesPage() {
                   serial={pageStart + index + 1}
                   count={submittedForJob(job._id)}
                   recency={recencyTag(job, latestMandateId)}
-                  onView={() => setViewingJob(job)}
+                  onView={() => {
+                    setViewingJob(job);
+                    if (job?._id) markJobSeen(job._id);
+                  }}
                   onSubmit={() => openSubmit(job)}
                   onOpenSubmitted={() => openSubmittedCandidates(job)}
                   onCopied={(code) => toast.success(`Job ID copied · ${code}`)}

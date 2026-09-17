@@ -4,23 +4,22 @@ import { authenticatedFetch } from '../utils/fetchUtils';
 import { useAuth } from '../context/AuthContext';
 
 /**
- * Jobs sidebar badge — same as Announcements:
- * poll the server count. Jobs page calls markJobsSeen() once on mount.
- * Posting while already on Jobs does not clear the badge.
+ * Jobs sidebar badge (Gmail-style):
+ * count stays until each job is opened. markJobSeen(id) clears one;
+ * markJobsSeen() bulk-clears (legacy / mandates optional).
  */
 const POLL_MS = 5_000;
 
 let holdMinUntil = 0;
 let holdMinCount = 0;
-let jobsVisitSeenAt = null;
 
+/** @deprecated Prefer markJobSeen for Gmail-style unread. Kept for Mandates bulk clear if needed. */
 export function markJobsSeen() {
-  if (!jobsVisitSeenAt) jobsVisitSeenAt = new Date().toISOString();
   holdMinUntil = 0;
   holdMinCount = 0;
   authenticatedFetch('/api/jobs/mark-seen', {
     method: 'POST',
-    body: JSON.stringify({ seenAt: jobsVisitSeenAt }),
+    body: JSON.stringify({ seenAt: new Date().toISOString() }),
   })
     .then((res) => {
       if (res.ok) window.dispatchEvent(new CustomEvent('jobs:changed'));
@@ -28,8 +27,24 @@ export function markJobsSeen() {
     .catch(() => {});
 }
 
+/** Mark a single job opened — updates seenBy and refreshes sidebar count. */
+export function markJobSeen(jobId) {
+  if (!jobId) return Promise.resolve();
+  return authenticatedFetch(`/api/jobs/${jobId}/mark-seen`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  })
+    .then((res) => {
+      if (res.ok) {
+        window.dispatchEvent(new CustomEvent('jobs:changed'));
+        window.dispatchEvent(new CustomEvent('jobs:job-seen', { detail: { jobId: String(jobId) } }));
+      }
+    })
+    .catch(() => {});
+}
+
 export function resetJobsSeenVisit() {
-  jobsVisitSeenAt = null;
+  /* no-op — visit stamp no longer used for Gmail-style unread */
 }
 
 /** Optimistic bump after posting (server count is the source of truth). */
@@ -55,7 +70,6 @@ export default function useJobNavUpdates() {
     || location.pathname === '/mandates'
     || location.pathname.startsWith('/mandates/');
 
-  // New visit timestamp the next time Jobs is opened (do not mark-seen here).
   useEffect(() => {
     if (!onJobs) resetJobsSeenVisit();
   }, [onJobs]);
@@ -101,6 +115,7 @@ export default function useJobNavUpdates() {
     window.addEventListener('focus', onVis);
     window.addEventListener('jobs:changed', onRefresh);
     window.addEventListener('jobs:nav-badge', onBump);
+    window.addEventListener('jobs:job-seen', onRefresh);
     window.addEventListener('notifications:refresh', onRefresh);
     return () => {
       window.clearInterval(id);
@@ -108,6 +123,7 @@ export default function useJobNavUpdates() {
       window.removeEventListener('focus', onVis);
       window.removeEventListener('jobs:changed', onRefresh);
       window.removeEventListener('jobs:nav-badge', onBump);
+      window.removeEventListener('jobs:job-seen', onRefresh);
       window.removeEventListener('notifications:refresh', onRefresh);
     };
   }, [refresh, enabled]);
