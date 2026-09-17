@@ -3,7 +3,6 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, Briefcase, Clock, UploadCloud, CheckCircle, AlertCircle,
   Building, FileText, ChevronRight, ChevronLeft, User, IndianRupee, Send, Lock, X,
-  Copy, Check,
 } from 'lucide-react';
 import API_URL from '../config';
 import { employmentLabel } from './jobs/jobsConstants';
@@ -195,7 +194,6 @@ const JobDetailPublic = () => {
   const [otpError, setOtpError] = useState('');
   const [otpResendAt, setOtpResendAt] = useState(0);
   const [otpTick, setOtpTick] = useState(0);
-  const [jobIdCopied, setJobIdCopied] = useState(false);
 
   const brand = org?.brandColor || '#0d9488';
   const jobLocations = useMemo(() => splitJobLocations(job), [job]);
@@ -422,17 +420,6 @@ const JobDetailPublic = () => {
       setOtpVerifying(false);
     }
   }, [formData.email, otpCode, applyOtpToken, orgSlug, jobId]);
-
-  const copyJobId = useCallback(async () => {
-    if (!displayJobCode) return;
-    try {
-      await navigator.clipboard?.writeText(displayJobCode);
-      setJobIdCopied(true);
-      window.setTimeout(() => setJobIdCopied(false), 1500);
-    } catch {
-      /* ignore */
-    }
-  }, [displayJobCode]);
 
   const focusFirstError = useCallback((errs) => {
     requestAnimationFrame(() => {
@@ -790,6 +777,15 @@ const JobDetailPublic = () => {
                 <span className="inline-flex items-center rounded-md bg-emerald-50 text-emerald-800 border border-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
                   Now hiring
                 </span>
+                {displayJobCode ? (
+                  <span
+                    className="inline-flex items-center rounded-md border border-stone-200 bg-stone-50 text-stone-700 px-2 py-0.5 text-[10px] font-bold tracking-wide"
+                    title="Job ID"
+                  >
+                    <span className="text-stone-400 font-semibold mr-1 normal-case tracking-normal">Job ID</span>
+                    <span className="tabular-nums font-mono">{displayJobCode}</span>
+                  </span>
+                ) : null}
                 {job.industry ? (
                   <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wide">{job.industry}</span>
                 ) : null}
@@ -916,6 +912,27 @@ const JobDetailPublic = () => {
                     <div ref={formBodyRef} className="min-h-[280px]">
                       {step === 0 ? (
                         <div className="space-y-3.5 animate-fade-in">
+                          {displayJobCode ? (
+                            <div>
+                              <FieldLabel hint="(from job)">Job ID</FieldLabel>
+                              <div className="relative">
+                                <input
+                                  className={`${fieldClass(false, true)} font-mono tracking-wide`}
+                                  value={displayJobCode}
+                                  disabled
+                                  readOnly
+                                />
+                                <Lock size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                              </div>
+                            </div>
+                          ) : null}
+                          <div>
+                            <FieldLabel hint="(from job)">Job title</FieldLabel>
+                            <div className="relative">
+                              <input className={fieldClass(false, true)} value={formData.position || job.title} disabled readOnly />
+                              <Lock size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                            </div>
+                          </div>
                           <div>
                             <FieldLabel required>Full name</FieldLabel>
                             <input
@@ -932,104 +949,99 @@ const JobDetailPublic = () => {
                           </div>
                           <div>
                             <FieldLabel required>Email</FieldLabel>
-                            <input
-                              data-field="email"
-                              type="email"
-                              aria-invalid={!!fieldErrors.email}
-                              className={fieldClass(fieldErrors.email)}
-                              value={formData.email}
-                              onChange={(e) => setField('email', e.target.value)}
-                              onBlur={() => {
-                                const email = formData.email.trim();
-                                if (email && isValidEmail(email)) {
-                                  checkAlreadyApplied(email, formData.phone);
-                                } else if (email) {
-                                  validateFieldLive('email', email);
-                                }
-                              }}
-                              autoComplete="email"
-                              disabled={emailVerified}
-                            />
-                            {fieldErrors.email ? <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.email}</p> : null}
-                            {checkingEmail ? <p className="text-[11px] text-stone-400 mt-1">Checking application status…</p> : null}
-                            <div data-field="otp" className="mt-2.5 rounded-xl border border-stone-200 bg-stone-50/80 p-3 space-y-2.5">
+                            <div className="relative">
+                              <input
+                                data-field="email"
+                                type="email"
+                                aria-invalid={!!fieldErrors.email}
+                                className={`${fieldClass(fieldErrors.email)} ${emailVerified ? 'pr-28' : 'pr-[5.25rem]'}`}
+                                value={formData.email}
+                                onChange={(e) => setField('email', e.target.value)}
+                                onBlur={() => {
+                                  const email = formData.email.trim();
+                                  if (email && isValidEmail(email)) {
+                                    checkAlreadyApplied(email, formData.phone);
+                                  } else if (email) {
+                                    validateFieldLive('email', email);
+                                  }
+                                }}
+                                autoComplete="email"
+                                disabled={emailVerified}
+                              />
                               {emailVerified ? (
-                                <div className="flex items-center gap-2 text-sm text-emerald-700 font-medium">
-                                  <CheckCircle size={16} className="shrink-0" />
-                                  Email verified
-                                  <button
-                                    type="button"
-                                    className="ml-auto text-[11px] font-semibold text-stone-500 hover:text-stone-800"
-                                    onClick={clearEmailVerification}
-                                  >
-                                    Change email
-                                  </button>
-                                </div>
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 pointer-events-none">
+                                  <CheckCircle size={14} strokeWidth={2.25} />
+                                  Verified
+                                </span>
                               ) : (
-                                <>
-                                  <p className="text-[11px] text-stone-500 leading-relaxed">
-                                    We will send a 6-digit code to confirm this email before you continue.
-                                    You can apply to other roles with this email; you cannot apply twice to the same job.
-                                  </p>
-                                  {!otpSent ? (
-                                    <button
-                                      type="button"
-                                      onClick={sendEmailOtp}
-                                      disabled={otpSending || checkingEmail}
-                                      className="w-full inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
-                                      style={{ backgroundColor: brand }}
-                                    >
-                                      {otpSending ? 'Sending…' : 'Send verification code'}
-                                    </button>
-                                  ) : (
-                                    <div className="space-y-2">
-                                      <div className="flex gap-2">
-                                        <input
-                                          type="text"
-                                          inputMode="numeric"
-                                          maxLength={6}
-                                          placeholder="6-digit code"
-                                          aria-invalid={!!otpError || !!fieldErrors.otp}
-                                          className={`${fieldClass(otpError || fieldErrors.otp)} font-mono tracking-[0.2em] text-center`}
-                                          value={otpCode}
-                                          onChange={(e) => {
-                                            setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
-                                            setOtpError('');
-                                          }}
-                                          autoComplete="one-time-code"
-                                        />
-                                        <button
-                                          type="button"
-                                          onClick={verifyEmailOtp}
-                                          disabled={otpVerifying || otpCode.length !== 6}
-                                          className="shrink-0 inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
-                                          style={{ backgroundColor: brand }}
-                                        >
-                                          {otpVerifying ? 'Checking…' : 'Verify'}
-                                        </button>
-                                      </div>
-                                      <div className="flex items-center justify-between gap-2">
-                                        <button
-                                          type="button"
-                                          onClick={sendEmailOtp}
-                                          disabled={otpSending || otpResendWaitSec > 0}
-                                          className="text-[11px] font-semibold text-stone-600 hover:text-stone-900 disabled:opacity-50"
-                                        >
-                                          {otpResendWaitSec > 0
-                                            ? `Resend in ${otpResendWaitSec}s`
-                                            : otpSending
-                                              ? 'Sending…'
-                                              : 'Resend code'}
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )}
-                                  {otpError || fieldErrors.otp ? (
-                                    <p className="text-[11px] text-rose-600">{otpError || fieldErrors.otp}</p>
-                                  ) : null}
-                                </>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const ok = await sendEmailOtp();
+                                    if (ok) setOtpSent(true);
+                                  }}
+                                  disabled={otpSending || checkingEmail || !isValidEmail(formData.email.trim())}
+                                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50"
+                                  style={{ backgroundColor: brand }}
+                                >
+                                  {otpSending ? '…' : otpSent ? 'Resend' : 'Verify'}
+                                </button>
                               )}
                             </div>
+                            {fieldErrors.email ? <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.email}</p> : null}
+                            {checkingEmail ? <p className="text-[11px] text-stone-400 mt-1">Checking application status…</p> : null}
+                            {emailVerified ? (
+                              <button
+                                type="button"
+                                className="mt-1 text-[11px] font-semibold text-stone-500 hover:text-stone-800"
+                                onClick={clearEmailVerification}
+                              >
+                                Change email
+                              </button>
+                            ) : null}
+                            {otpSent && !emailVerified ? (
+                              <div data-field="otp" className="mt-2 space-y-1.5">
+                                <FieldLabel required>Verification code</FieldLabel>
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    maxLength={6}
+                                    placeholder="6-digit code"
+                                    aria-invalid={!!otpError || !!fieldErrors.otp}
+                                    className={`${fieldClass(otpError || fieldErrors.otp)} font-mono tracking-[0.2em] text-center`}
+                                    value={otpCode}
+                                    onChange={(e) => {
+                                      setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                                      setOtpError('');
+                                    }}
+                                    autoComplete="one-time-code"
+                                    autoFocus
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={verifyEmailOtp}
+                                    disabled={otpVerifying || otpCode.length !== 6}
+                                    className="shrink-0 inline-flex items-center justify-center rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white disabled:opacity-60"
+                                    style={{ backgroundColor: brand }}
+                                  >
+                                    {otpVerifying ? '…' : 'Confirm'}
+                                  </button>
+                                </div>
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-[11px] text-stone-400">Code sent to your email · expires in 10 min</p>
+                                  {otpResendWaitSec > 0 ? (
+                                    <span className="text-[11px] text-stone-400">Resend in {otpResendWaitSec}s</span>
+                                  ) : null}
+                                </div>
+                                {otpError || fieldErrors.otp ? (
+                                  <p className="text-[11px] text-rose-600">{otpError || fieldErrors.otp}</p>
+                                ) : null}
+                              </div>
+                            ) : null}
+                            {!otpSent && !emailVerified && fieldErrors.otp ? (
+                              <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.otp}</p>
+                            ) : null}
                           </div>
                           <div>
                             <FieldLabel required>Phone</FieldLabel>
@@ -1054,38 +1066,6 @@ const JobDetailPublic = () => {
                             />
                             {fieldErrors.phone ? <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.phone}</p> : null}
                           </div>
-                          <div>
-                            <FieldLabel hint="(from job)">Job title</FieldLabel>
-                            <div className="relative">
-                              <input className={fieldClass(false, true)} value={formData.position || job.title} disabled readOnly />
-                              <Lock size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400" />
-                            </div>
-                          </div>
-                          {displayJobCode ? (
-                            <div>
-                              <FieldLabel hint="(from job)">Job ID</FieldLabel>
-                              <div className="relative">
-                                <input
-                                  className={`${fieldClass(false, true)} font-mono tracking-wide pr-16`}
-                                  value={displayJobCode}
-                                  disabled
-                                  readOnly
-                                />
-                                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={copyJobId}
-                                    className="h-7 w-7 inline-flex items-center justify-center rounded-md text-stone-500 hover:bg-stone-200/70 hover:text-stone-800"
-                                    title="Copy Job ID"
-                                    aria-label="Copy Job ID"
-                                  >
-                                    {jobIdCopied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
-                                  </button>
-                                  <Lock size={13} className="text-stone-400" />
-                                </div>
-                              </div>
-                            </div>
-                          ) : null}
                           <div>
                             <FieldLabel>Current company</FieldLabel>
                             <input
