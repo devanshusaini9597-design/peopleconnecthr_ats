@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useParams, Link, useSearchParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, Briefcase, Clock, UploadCloud, CheckCircle, AlertCircle,
-  Building, FileText, ChevronRight, ChevronLeft, User, IndianRupee, Send, Lock,
+  Building, FileText, ChevronRight, ChevronLeft, User, IndianRupee, Send, Lock, X,
 } from 'lucide-react';
 import API_URL from '../config';
 import { employmentLabel } from './jobs/jobsConstants';
@@ -10,6 +10,10 @@ import PublicAnnouncementBanner from './PublicAnnouncementBanner';
 import PremiumSelect from './ui/PremiumSelect';
 import { resolveOrgLogoSrc } from '../utils/orgLogo';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
+import { toast } from './Toast';
+import {
+  DEFAULT_CTC_BANDS, DEFAULT_EXPECTED_CTC, DEFAULT_NOTICE_PERIODS,
+} from '../utils/ctcRanges';
 
 const STEPS = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -17,13 +21,9 @@ const STEPS = [
   { id: 'application', label: 'Application', icon: Send },
 ];
 
-const SOURCE_OPTIONS = [
-  { value: 'LinkedIn', label: 'LinkedIn' },
-  { value: 'Indeed', label: 'Indeed' },
-  { value: 'Company Website', label: 'Company website' },
-  { value: 'Referral', label: 'Referral' },
-  { value: 'Careers Page', label: 'Careers page' },
-  { value: 'Other', label: 'Other' },
+const FALLBACK_EXPERIENCE = [
+  'FRESHER',
+  ...Array.from({ length: 30 }, (_, i) => String(i + 1)),
 ];
 
 const EMPTY_FORM = {
@@ -37,9 +37,12 @@ const EMPTY_FORM = {
   ctc: '',
   expectedCtc: '',
   noticePeriod: '',
-  source: '',
   coverLetter: '',
 };
+
+function appliedStorageKey(orgSlug, jobId) {
+  return `pch_careers_applied_${orgSlug}_${jobId}`;
+}
 
 function splitJobLocations(job) {
   const fromArr = Array.isArray(job?.locations)
@@ -49,6 +52,10 @@ function splitJobLocations(job) {
   const raw = String(job?.location || '').trim();
   if (!raw) return [];
   return [...new Set(raw.split(/[,|/]/).map((s) => s.trim()).filter(Boolean))];
+}
+
+function toOptions(list) {
+  return (list || []).filter(Boolean).map((v) => ({ value: String(v), label: String(v) }));
 }
 
 function fieldClass(err, locked = false) {
@@ -71,9 +78,60 @@ function FieldLabel({ children, required, hint }) {
   );
 }
 
+function SuccessPanel({ jobTitle, brand, orgSlug }) {
+  return (
+    <div className="text-center py-6 px-1">
+      <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-emerald-50 border border-emerald-100 mb-4">
+        <CheckCircle className="h-8 w-8 text-emerald-600" />
+      </div>
+      <h4 className="text-lg font-bold text-stone-900 mb-2">Application submitted</h4>
+      <p className="text-sm text-stone-600 mb-5 leading-relaxed">
+        Thank you. Your application for <span className="font-semibold text-stone-800">{jobTitle}</span> has been
+        received and added to our ATS.
+      </p>
+      <Link
+        to={`/careers/${orgSlug}`}
+        className="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white"
+        style={{ backgroundColor: brand }}
+      >
+        Browse other roles
+      </Link>
+    </div>
+  );
+}
+
+function AlreadyAppliedPanel({ jobTitle, brand, orgSlug, onCloseModal }) {
+  return (
+    <div className="text-center py-6 px-1">
+      <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-amber-50 border border-amber-100 mb-4">
+        <AlertCircle className="h-8 w-8 text-amber-600" />
+      </div>
+      <h4 className="text-lg font-bold text-stone-900 mb-2">Already applied</h4>
+      <p className="text-sm text-stone-600 mb-5 leading-relaxed">
+        You have already submitted an application for{' '}
+        <span className="font-semibold text-stone-800">{jobTitle}</span>. Our hiring team has your details —
+        no need to apply again.
+      </p>
+      <div className="flex flex-col gap-2">
+        <Link
+          to={`/careers/${orgSlug}`}
+          className="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white"
+          style={{ backgroundColor: brand }}
+        >
+          Browse other roles
+        </Link>
+        {onCloseModal ? (
+          <button type="button" onClick={onCloseModal} className="btn-secondary justify-center">
+            Close
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 const JobDetailPublic = () => {
   const { orgSlug, jobId } = useParams();
-  const [searchParams] = useSearchParams();
   const [job, setJob] = useState(null);
   const [org, setOrg] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -86,26 +144,40 @@ const JobDetailPublic = () => {
   const [fieldErrors, setFieldErrors] = useState({});
   const [customResponses, setCustomResponses] = useState({});
   const [applicationForm, setApplicationForm] = useState(null);
+  const [fieldOptions, setFieldOptions] = useState({
+    experience: FALLBACK_EXPERIENCE,
+    ctc: DEFAULT_CTC_BANDS,
+    expectedCtc: DEFAULT_EXPECTED_CTC,
+    noticePeriod: DEFAULT_NOTICE_PERIODS,
+  });
   const [resumeFile, setResumeFile] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [alreadyApplied, setAlreadyApplied] = useState(false);
+  const [alreadyModalOpen, setAlreadyModalOpen] = useState(false);
+  const [checkingEmail, setCheckingEmail] = useState(false);
 
   const brand = org?.brandColor || '#0d9488';
   const jobLocations = useMemo(() => splitJobLocations(job), [job]);
   const multiLocation = jobLocations.length > 1;
 
+  const experienceOptions = useMemo(() => toOptions(fieldOptions.experience), [fieldOptions.experience]);
+  const ctcOptions = useMemo(() => toOptions(fieldOptions.ctc), [fieldOptions.ctc]);
+  const expectedCtcOptions = useMemo(() => toOptions(fieldOptions.expectedCtc), [fieldOptions.expectedCtc]);
+  const noticeOptions = useMemo(() => toOptions(fieldOptions.noticePeriod), [fieldOptions.noticePeriod]);
+
   useEffect(() => {
-    const src = String(searchParams.get('src') || searchParams.get('source') || '').trim();
-    if (!src) return;
-    const mapped = SOURCE_OPTIONS.find(
-      (o) => o.value.toLowerCase() === src.toLowerCase() || o.label.toLowerCase() === src.toLowerCase(),
-    );
-    setFormData((prev) => ({
-      ...prev,
-      source: mapped?.value || (src.toLowerCase() === 'linkedin' ? 'LinkedIn' : prev.source),
-    }));
-  }, [searchParams]);
+    try {
+      const raw = localStorage.getItem(appliedStorageKey(orgSlug, jobId));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.email) setAlreadyApplied(true);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [orgSlug, jobId]);
 
   useEffect(() => {
     const fetchJob = async () => {
@@ -118,6 +190,14 @@ const JobDetailPublic = () => {
         setJob(nextJob);
         setOrg(data.organization);
         setApplicationForm(data.applicationForm || null);
+        if (data.fieldOptions) {
+          setFieldOptions({
+            experience: data.fieldOptions.experience?.length ? data.fieldOptions.experience : FALLBACK_EXPERIENCE,
+            ctc: data.fieldOptions.ctc?.length ? data.fieldOptions.ctc : DEFAULT_CTC_BANDS,
+            expectedCtc: data.fieldOptions.expectedCtc?.length ? data.fieldOptions.expectedCtc : DEFAULT_EXPECTED_CTC,
+            noticePeriod: data.fieldOptions.noticePeriod?.length ? data.fieldOptions.noticePeriod : DEFAULT_NOTICE_PERIODS,
+          });
+        }
         const title = nextJob?.title || '';
         const locs = splitJobLocations(nextJob);
         setFormData((prev) => ({
@@ -134,6 +214,41 @@ const JobDetailPublic = () => {
     fetchJob();
   }, [orgSlug, jobId]);
 
+  const markAlreadyApplied = useCallback((email) => {
+    setAlreadyApplied(true);
+    try {
+      localStorage.setItem(
+        appliedStorageKey(orgSlug, jobId),
+        JSON.stringify({ email: String(email || '').toLowerCase(), at: Date.now() }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [orgSlug, jobId]);
+
+  const checkAlreadyApplied = useCallback(async (email) => {
+    const normalized = String(email || '').trim().toLowerCase();
+    if (!normalized || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(normalized)) return false;
+    setCheckingEmail(true);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/careers/${orgSlug}/jobs/${jobId}/application-status?email=${encodeURIComponent(normalized)}`,
+      );
+      const data = await res.json().catch(() => ({}));
+      if (data.alreadyApplied) {
+        markAlreadyApplied(normalized);
+        toast.warning('You have already applied for this job');
+        setAlreadyModalOpen(true);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      setCheckingEmail(false);
+    }
+  }, [orgSlug, jobId, markAlreadyApplied]);
+
   const focusFirstError = useCallback((errs) => {
     requestAnimationFrame(() => {
       const root = formBodyRef.current;
@@ -142,7 +257,7 @@ const JobDetailPublic = () => {
       if (!firstKey) return;
       const el = root.querySelector(`[data-field="${firstKey}"]`)
         || root.querySelector('[aria-invalid="true"]')
-        || root.querySelector('input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button[data-field]');
+        || root.querySelector('input:not([disabled]), textarea:not([disabled]), button[data-field]');
       if (el && typeof el.focus === 'function') {
         el.focus({ preventScroll: false });
         el.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
@@ -175,9 +290,12 @@ const JobDetailPublic = () => {
     const errs = {};
     if (idx === 0) {
       if (!formData.name.trim()) errs.name = 'Full name is required';
-      if (!formData.email.trim()) errs.email = 'Email is required';
-      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) errs.email = 'Enter a valid email';
-      if (!formData.phone.trim()) errs.phone = 'Phone number is required';
+      const email = formData.email.trim().toLowerCase();
+      if (!email) errs.email = 'Email is required';
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) errs.email = 'Enter a valid email address';
+      const digits = String(formData.phone || '').replace(/\D/g, '');
+      if (!digits) errs.phone = 'Phone number is required';
+      else if (digits.length !== 10) errs.phone = 'Enter a valid 10-digit mobile number';
       if (multiLocation && !formData.location.trim()) errs.location = 'Select a location';
     }
     if (idx === 1) {
@@ -188,7 +306,6 @@ const JobDetailPublic = () => {
       if (!resumeFile) errs.resume = 'Resume / CV is required';
     }
     if (idx === 2) {
-      if (!formData.source.trim()) errs.source = 'Please tell us how you heard about us';
       for (const field of visibleCustomFields) {
         if (!field.required) continue;
         const val = customResponses[field.key];
@@ -199,13 +316,21 @@ const JobDetailPublic = () => {
     }
     if (!silent) {
       setFieldErrors(errs);
-      if (Object.keys(errs).length) focusFirstError(errs);
+      if (Object.keys(errs).length) {
+        focusFirstError(errs);
+        const firstMsg = errs[Object.keys(errs)[0]];
+        if (firstMsg) toast.warning(firstMsg);
+      }
     }
     return Object.keys(errs).length === 0;
   };
 
-  const goNext = () => {
+  const goNext = async () => {
     if (!validateStep(step)) return;
+    if (step === 0) {
+      const dup = await checkAlreadyApplied(formData.email);
+      if (dup) return;
+    }
     setSubmitError('');
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   };
@@ -221,6 +346,7 @@ const JobDetailPublic = () => {
       const errs = { resume: 'File size exceeds 10MB limit.' };
       setFieldErrors((prev) => ({ ...prev, ...errs }));
       focusFirstError(errs);
+      toast.warning(errs.resume);
       return;
     }
     setResumeFile(file);
@@ -234,7 +360,11 @@ const JobDetailPublic = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // Never submit from earlier steps (Enter / accidental submit)
+    if (alreadyApplied) {
+      setAlreadyModalOpen(true);
+      toast.warning('You have already applied for this job');
+      return;
+    }
     if (step !== STEPS.length - 1) {
       goNext();
       return;
@@ -251,13 +381,17 @@ const JobDetailPublic = () => {
     }
     if (!validateStep(2)) return;
 
+    const dup = await checkAlreadyApplied(formData.email);
+    if (dup) return;
+
     setIsSubmitting(true);
     setSubmitError('');
     try {
+      const phoneDigits = String(formData.phone || '').replace(/\D/g, '');
       const fd = new FormData();
       fd.append('name', formData.name.trim());
-      fd.append('email', formData.email.trim());
-      fd.append('phone', formData.phone.trim());
+      fd.append('email', formData.email.trim().toLowerCase());
+      fd.append('phone', phoneDigits);
       fd.append('position', (formData.position || job?.title || '').trim());
       fd.append('companyName', formData.companyName.trim());
       fd.append('location', formData.location.trim());
@@ -265,7 +399,7 @@ const JobDetailPublic = () => {
       fd.append('ctc', formData.ctc.trim());
       fd.append('expectedCtc', formData.expectedCtc.trim());
       fd.append('noticePeriod', formData.noticePeriod.trim());
-      fd.append('source', formData.source || 'Careers Page');
+      fd.append('source', 'Careers Page');
       fd.append('coverLetter', formData.coverLetter.trim());
       fd.append('remark', formData.coverLetter.trim());
       fd.append('customResponses', JSON.stringify(customResponses || {}));
@@ -276,10 +410,21 @@ const JobDetailPublic = () => {
         body: fd,
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || 'Application submission failed');
+      if (!res.ok) {
+        if (data.code === 'ALREADY_APPLIED' || /already applied/i.test(String(data.message || ''))) {
+          markAlreadyApplied(formData.email);
+          toast.warning('You have already applied for this job');
+          setAlreadyModalOpen(true);
+          return;
+        }
+        throw new Error(data.message || 'Application submission failed');
+      }
+      markAlreadyApplied(formData.email);
       setSubmitSuccess(true);
+      toast.success('Application submitted successfully');
     } catch (err) {
       setSubmitError(err.message || 'Could not submit application');
+      toast.error(err.message || 'Could not submit application');
     } finally {
       setIsSubmitting(false);
     }
@@ -292,6 +437,11 @@ const JobDetailPublic = () => {
   };
 
   const scrollToForm = () => {
+    if (alreadyApplied) {
+      setAlreadyModalOpen(true);
+      toast.warning('You have already applied for this job');
+      return;
+    }
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -401,9 +551,9 @@ const JobDetailPublic = () => {
                 type="button"
                 onClick={scrollToForm}
                 className="w-full text-white font-bold py-3.5 px-8 rounded-xl shadow-lg shadow-stone-900/15"
-                style={{ backgroundColor: brand }}
+                style={{ backgroundColor: alreadyApplied ? '#b45309' : brand }}
               >
-                Apply for this position
+                {alreadyApplied ? 'Already applied' : 'Apply for this position'}
               </button>
             </div>
           </div>
@@ -411,29 +561,22 @@ const JobDetailPublic = () => {
           <div className="lg:col-span-5" ref={formRef}>
             <div className="rounded-2xl border border-stone-200/90 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.06)] overflow-hidden lg:sticky lg:top-24">
               <div className="h-1 bg-stone-100">
-                <div className="h-full transition-all duration-300 ease-out" style={{ width: `${progress}%`, backgroundColor: brand }} />
+                <div className="h-full transition-all duration-300 ease-out" style={{ width: `${alreadyApplied || submitSuccess ? 100 : progress}%`, backgroundColor: brand }} />
               </div>
               <div className="p-5 sm:p-6">
                 <div className="mb-5">
                   <h3 className="text-xl font-bold text-stone-900 tracking-tight">Apply now</h3>
                   <p className="text-[13px] text-stone-500 mt-1 leading-relaxed">
-                    Step {step + 1} of {STEPS.length} — your application goes straight to the hiring team.
+                    {alreadyApplied
+                      ? 'This email already has an application on file for this role.'
+                      : `Step ${step + 1} of ${STEPS.length} — your application goes straight to the hiring team.`}
                   </p>
                 </div>
 
                 {submitSuccess ? (
-                  <div className="text-center py-8">
-                    <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-emerald-50 border border-emerald-100 mb-4">
-                      <CheckCircle className="h-8 w-8 text-emerald-600" />
-                    </div>
-                    <h4 className="text-lg font-bold text-stone-900 mb-2">Application submitted</h4>
-                    <p className="text-sm text-stone-600 mb-5 leading-relaxed">
-                      Thank you. Your application for <span className="font-semibold">{job.title}</span> has been received.
-                    </p>
-                    <Link to={`/careers/${orgSlug}`} className="text-brand-700 font-semibold hover:underline text-sm">
-                      Explore other roles
-                    </Link>
-                  </div>
+                  <SuccessPanel jobTitle={job.title} brand={brand} orgSlug={orgSlug} />
+                ) : alreadyApplied ? (
+                  <AlreadyAppliedPanel jobTitle={job.title} brand={brand} orgSlug={orgSlug} />
                 ) : (
                   <form onSubmit={handleSubmit} onKeyDown={onFormKeyDown} className="space-y-4" noValidate>
                     <div className="grid grid-cols-3 gap-1.5 mb-1">
@@ -445,14 +588,17 @@ const JobDetailPublic = () => {
                           <button
                             key={s.id}
                             type="button"
-                            onClick={() => {
+                            onClick={async () => {
                               if (i < step) setStep(i);
                               else if (i > step) {
-                                let ok = true;
                                 for (let j = step; j < i; j += 1) {
-                                  if (!validateStep(j)) { ok = false; break; }
+                                  if (!validateStep(j)) return;
+                                  if (j === 0) {
+                                    const dup = await checkAlreadyApplied(formData.email);
+                                    if (dup) return;
+                                  }
                                 }
-                                if (ok) setStep(i);
+                                setStep(i);
                               }
                             }}
                             className={`rounded-xl px-2 py-2.5 text-[10px] font-bold uppercase tracking-wide flex flex-col items-center gap-1 border transition ${
@@ -495,19 +641,29 @@ const JobDetailPublic = () => {
                               className={fieldClass(fieldErrors.email)}
                               value={formData.email}
                               onChange={(e) => setField('email', e.target.value)}
+                              onBlur={() => {
+                                const email = formData.email.trim();
+                                if (email && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+                                  checkAlreadyApplied(email);
+                                }
+                              }}
                               autoComplete="email"
                             />
                             {fieldErrors.email ? <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.email}</p> : null}
+                            {checkingEmail ? <p className="text-[11px] text-stone-400 mt-1">Checking application status…</p> : null}
                           </div>
                           <div>
                             <FieldLabel required>Phone</FieldLabel>
                             <input
                               data-field="phone"
                               type="tel"
+                              inputMode="numeric"
+                              maxLength={10}
                               aria-invalid={!!fieldErrors.phone}
                               className={fieldClass(fieldErrors.phone)}
                               value={formData.phone}
-                              onChange={(e) => setField('phone', e.target.value)}
+                              onChange={(e) => setField('phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                              placeholder="10-digit mobile"
                               autoComplete="tel"
                             />
                             {fieldErrors.phone ? <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.phone}</p> : null}
@@ -515,12 +671,7 @@ const JobDetailPublic = () => {
                           <div>
                             <FieldLabel hint="(from job)">Job title</FieldLabel>
                             <div className="relative">
-                              <input
-                                className={fieldClass(false, true)}
-                                value={formData.position || job.title}
-                                disabled
-                                readOnly
-                              />
+                              <input className={fieldClass(false, true)} value={formData.position || job.title} disabled readOnly />
                               <Lock size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400" />
                             </div>
                           </div>
@@ -552,12 +703,7 @@ const JobDetailPublic = () => {
                               </div>
                             ) : (
                               <div className="relative">
-                                <input
-                                  className={fieldClass(false, true)}
-                                  value={formData.location || job.location || ''}
-                                  disabled
-                                  readOnly
-                                />
+                                <input className={fieldClass(false, true)} value={formData.location || job.location || ''} disabled readOnly />
                                 <Lock size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400" />
                               </div>
                             )}
@@ -568,54 +714,61 @@ const JobDetailPublic = () => {
 
                       {step === 1 ? (
                         <div className="space-y-3.5 animate-fade-in">
-                          <div>
-                            <FieldLabel required>Experience (years)</FieldLabel>
-                            <input
-                              data-field="experience"
-                              aria-invalid={!!fieldErrors.experience}
-                              className={fieldClass(fieldErrors.experience)}
+                          <div data-field="experience">
+                            <FieldLabel required>Experience</FieldLabel>
+                            <PremiumSelect
+                              variant="list"
+                              searchable
+                              searchPlaceholder="Filter…"
                               value={formData.experience}
-                              onChange={(e) => setField('experience', e.target.value)}
-                              placeholder="e.g. 5"
-                              autoFocus
+                              onChange={(v) => setField('experience', v)}
+                              options={experienceOptions}
+                              placeholder="Select experience"
+                              error={!!fieldErrors.experience}
                             />
                             {fieldErrors.experience ? <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.experience}</p> : null}
                           </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div data-field="ctc">
                               <FieldLabel required>Current CTC</FieldLabel>
-                              <input
-                                data-field="ctc"
-                                aria-invalid={!!fieldErrors.ctc}
-                                className={fieldClass(fieldErrors.ctc)}
+                              <PremiumSelect
+                                variant="list"
+                                searchable
+                                searchPlaceholder="Search CTC…"
                                 value={formData.ctc}
-                                onChange={(e) => setField('ctc', e.target.value)}
-                                placeholder="e.g. 12 LPA"
+                                onChange={(v) => setField('ctc', v)}
+                                options={ctcOptions}
+                                placeholder="Select current CTC"
+                                error={!!fieldErrors.ctc}
                               />
                               {fieldErrors.ctc ? <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.ctc}</p> : null}
                             </div>
-                            <div>
+                            <div data-field="expectedCtc">
                               <FieldLabel required>Expected CTC</FieldLabel>
-                              <input
-                                data-field="expectedCtc"
-                                aria-invalid={!!fieldErrors.expectedCtc}
-                                className={fieldClass(fieldErrors.expectedCtc)}
+                              <PremiumSelect
+                                variant="list"
+                                searchable
+                                searchPlaceholder="Search CTC…"
                                 value={formData.expectedCtc}
-                                onChange={(e) => setField('expectedCtc', e.target.value)}
-                                placeholder="e.g. 15 LPA"
+                                onChange={(v) => setField('expectedCtc', v)}
+                                options={expectedCtcOptions}
+                                placeholder="Select expected CTC"
+                                error={!!fieldErrors.expectedCtc}
                               />
                               {fieldErrors.expectedCtc ? <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.expectedCtc}</p> : null}
                             </div>
                           </div>
-                          <div>
+                          <div data-field="noticePeriod">
                             <FieldLabel required>Notice period</FieldLabel>
-                            <input
-                              data-field="noticePeriod"
-                              aria-invalid={!!fieldErrors.noticePeriod}
-                              className={fieldClass(fieldErrors.noticePeriod)}
+                            <PremiumSelect
+                              variant="list"
+                              searchable
+                              searchPlaceholder="Search…"
                               value={formData.noticePeriod}
-                              onChange={(e) => setField('noticePeriod', e.target.value)}
-                              placeholder="e.g. 30 days / Immediate"
+                              onChange={(v) => setField('noticePeriod', v)}
+                              options={noticeOptions}
+                              placeholder="Select notice period"
+                              error={!!fieldErrors.noticePeriod}
                             />
                             {fieldErrors.noticePeriod ? <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.noticePeriod}</p> : null}
                           </div>
@@ -652,27 +805,15 @@ const JobDetailPublic = () => {
 
                       {step === 2 ? (
                         <div className="space-y-3.5 animate-fade-in">
-                          <div data-field="source">
-                            <FieldLabel required>How did you hear about us?</FieldLabel>
-                            <PremiumSelect
-                              variant="list"
-                              value={formData.source}
-                              onChange={(v) => setField('source', v)}
-                              options={SOURCE_OPTIONS}
-                              placeholder="Select an option"
-                              error={!!fieldErrors.source}
-                              allowClear
-                            />
-                            {fieldErrors.source ? <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.source}</p> : null}
-                          </div>
                           <div>
                             <FieldLabel>Cover note</FieldLabel>
                             <textarea
-                              rows={4}
+                              rows={5}
                               className={fieldClass()}
                               value={formData.coverLetter}
                               onChange={(e) => setField('coverLetter', e.target.value)}
                               placeholder="Optional message to the hiring team"
+                              autoFocus
                             />
                           </div>
 
@@ -785,6 +926,27 @@ const JobDetailPublic = () => {
           )}
         </div>
       </footer>
+
+      {alreadyModalOpen ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-[2px]" role="dialog" aria-modal="true">
+          <div className="relative w-full max-w-md rounded-2xl border border-stone-200 bg-white shadow-2xl shadow-stone-900/20 p-6">
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setAlreadyModalOpen(false)}
+              className="absolute right-3 top-3 h-8 w-8 inline-flex items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+            >
+              <X size={16} />
+            </button>
+            <AlreadyAppliedPanel
+              jobTitle={job.title}
+              brand={brand}
+              orgSlug={orgSlug}
+              onCloseModal={() => setAlreadyModalOpen(false)}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

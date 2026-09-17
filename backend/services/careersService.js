@@ -7,6 +7,7 @@ const Organization = require('../models/Organization');
 const Job = require('../models/Job');
 const Candidate = require('../models/Candidate');
 const Application = require('../models/Application');
+const OrgListItem = require('../models/OrgListItem');
 const { planHasFeature } = require('../config/planFeatures');
 const { normalizeText } = require('../utils/textNormalize');
 const logger = require('../utils/logger');
@@ -16,6 +17,54 @@ function httpError(message, statusCode = 400, extra = {}) {
   err.statusCode = statusCode;
   Object.assign(err, extra);
   return err;
+}
+
+const DEFAULT_CTC = [
+  '0-50K', '50K-1L', '1L-2L', '2L-3L', '3L-4L', '4L-5L', '5L-6L', '6L-7L', '7L-8L', '8L-9L', '9L-10L',
+  '10L-12L', '12L-15L', '15L-18L', '18L-20L', '20L-25L', '25L-30L', '30L-40L', '40L-50L',
+  '50L-75L', '75L-1CR', 'ABOVE 1CR',
+  'NEGOTIABLE', 'CONFIDENTIAL', 'NOT DISCLOSED',
+];
+const DEFAULT_NOTICE = [
+  'IMMEDIATE', '15 DAYS', '30 DAYS', '45 DAYS', '60 DAYS', '90 DAYS', 'SERVING NOTICE',
+];
+const DEFAULT_EXPERIENCE = [
+  'FRESHER',
+  ...Array.from({ length: 30 }, (_, i) => String(i + 1)),
+];
+
+async function loadCareersFieldOptions(organizationId) {
+  const rows = await OrgListItem.find({
+    organizationId,
+    listKey: { $in: ['ctc', 'notice', 'experience'] },
+    isActive: true,
+  }).sort({ sortOrder: 1, name: 1 }).lean();
+
+  const ctc = [];
+  const notice = [];
+  const experience = [];
+  for (const row of rows) {
+    const name = normalizeText(row.name || '');
+    if (!name) continue;
+    if (row.listKey === 'ctc') ctc.push(name);
+    else if (row.listKey === 'notice') notice.push(name);
+    else if (row.listKey === 'experience') experience.push(name);
+  }
+
+  const ctcBands = ctc.length ? ctc : DEFAULT_CTC;
+  const noticeBands = notice.length ? notice : DEFAULT_NOTICE;
+  // Prefer org experience catalog when maintained; else ATS year bands
+  const experienceBands = experience.length ? experience : DEFAULT_EXPERIENCE;
+  const expectedCtc = ctcBands.includes('AS PER COMPANY NORMS')
+    ? ctcBands
+    : ['AS PER COMPANY NORMS', ...ctcBands];
+
+  return {
+    experience: experienceBands,
+    ctc: ctcBands,
+    expectedCtc,
+    noticePeriod: noticeBands,
+  };
 }
 
 const xmlEscape = (str = '') => String(str)
@@ -201,7 +250,39 @@ async function getPublicJob(orgSlug, jobId) {
       brandColor: org.atsSettings?.brandColor || '#0d9488',
       slug: org.slug
     },
-    applicationForm
+    applicationForm,
+    fieldOptions: await loadCareersFieldOptions(org._id),
+  };
+}
+
+/**
+ * Public check: has this email already applied to this job?
+ */
+async function checkAlreadyApplied(orgSlug, jobId, emailRaw) {
+  const org = await Organization.findOne({ slug: orgSlug });
+  if (!org) throw httpError('Organization not found', 404);
+  assertCareersLive(org);
+
+  const job = await Job.findOne({ _id: jobId, organizationId: org._id, status: 'Open' }).select('_id');
+  if (!job) throw httpError('Job not found', 404);
+
+  const email = trimStr(emailRaw).toLowerCase();
+  if (!email) return { alreadyApplied: false };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    throw httpError('Enter a valid email address', 400);
+  }
+
+  const candidate = await Candidate.findOne({ email, organizationId: org._id }).select('_id');
+  if (!candidate) return { alreadyApplied: false };
+
+  const app = await Application.findOne({ candidateId: candidate._id, jobId: job._id })
+    .select('createdAt stage source');
+  if (!app) return { alreadyApplied: false };
+
+  return {
+    alreadyApplied: true,
+    appliedAt: app.createdAt,
+    stage: app.stage || 'Applied',
   };
 }
 
@@ -254,17 +335,34 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null) {
   const ctc = trimStr(body.ctc);
   const expectedCtc = trimStr(body.expectedCtc);
   const noticePeriod = trimStr(body.noticePeriod);
-  const source = trimStr(body.source) || 'Careers Page';
+  // Always careers page — never collect source on the public form
+  const source = 'Careers Page';
   const coverLetter = trimStr(body.coverLetter || body.remark);
   const remark = coverLetter;
 
   if (!name) throw httpError('Full name is required', 400);
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw httpError('A valid email address is required', 400);
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    throw httpError('Enter a valid email address', 400);
   }
-  if (!phone) throw httpError('Phone number is required', 400);
+  const phoneDigits = phone.replace(/\D/g, '');
+  if (!phone || phoneDigits.length !== 10) {
+    throw httpError('Enter a valid 10-digit mobile number', 400);
+  }
+  if (!experience) throw httpError('Experience is required', 400);
+  if (!ctc) throw httpError('Current CTC is required', 400);
+  if (!expectedCtc) throw httpError('Expected CTC is required', 400);
+  if (!noticePeriod) throw httpError('Notice period is required', 400);
   if (!file && !trimStr(body.resume)) {
     throw httpError('Resume / CV is required', 400);
+  }
+
+  // Block duplicates before writing candidate / resume
+  const existingCand = await Candidate.findOne({ email, organizationId: org._id }).select('_id');
+  if (existingCand) {
+    const existingApp = await Application.findOne({ candidateId: existingCand._id, jobId: job._id }).select('_id');
+    if (existingApp) {
+      throw httpError('You have already applied for this job', 409, { code: 'ALREADY_APPLIED' });
+    }
   }
 
   if (planHasFeature(org.plan, 'careers.formBuilder')) {
@@ -308,18 +406,20 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null) {
     ctc: ctc ? normalizeText(ctc) : '',
     expectedCtc: expectedCtc ? normalizeText(expectedCtc) : '',
     noticePeriod: noticePeriod ? normalizeText(noticePeriod) : '',
-    source: source ? normalizeText(source) : 'CAREERS PAGE',
+    source: normalizeText(source),
     remark: remark ? normalizeText(remark) : '',
   };
 
-  let candidate = await Candidate.findOne({ email, organizationId: org._id });
+  let candidate = existingCand
+    ? await Candidate.findById(existingCand._id)
+    : null;
   if (!candidate) {
     candidate = new Candidate({
       organizationId: org._id,
       name: textFields.name,
       email,
-      phone,
-      contact: phone,
+      phone: phoneDigits,
+      contact: phoneDigits,
       position: textFields.position || (job.title ? normalizeText(job.title) : ''),
       companyName: textFields.companyName,
       location: textFields.location || (job.location ? normalizeText(job.location) : ''),
@@ -345,8 +445,8 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null) {
     await candidate.save();
   } else {
     fillIfEmpty(candidate, 'name', textFields.name);
-    fillIfEmpty(candidate, 'phone', phone);
-    fillIfEmpty(candidate, 'contact', phone);
+    fillIfEmpty(candidate, 'phone', phoneDigits);
+    fillIfEmpty(candidate, 'contact', phoneDigits);
     fillIfEmpty(candidate, 'position', textFields.position);
     fillIfEmpty(candidate, 'companyName', textFields.companyName);
     fillIfEmpty(candidate, 'location', textFields.location);
@@ -369,14 +469,16 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null) {
   }
 
   const existingApp = await Application.findOne({ candidateId: candidate._id, jobId: job._id });
-  if (existingApp) throw httpError('You have already applied for this job', 400);
+  if (existingApp) {
+    throw httpError('You have already applied for this job', 409, { code: 'ALREADY_APPLIED' });
+  }
 
   const application = new Application({
     organizationId: org._id,
     jobId: job._id,
     candidateId: candidate._id,
     stage: 'Applied',
-    source: source || 'Careers Page',
+    source: 'Careers Page',
     coverLetter: coverLetter.slice(0, 5000),
     notes: coverLetter.slice(0, 5000),
     stageHistory: [{ stage: 'Applied', movedAt: new Date(), remark: 'Applied via careers page' }],
@@ -395,5 +497,6 @@ module.exports = {
   resolveByDomain,
   getCareersPage,
   getPublicJob,
+  checkAlreadyApplied,
   submitApplication,
 };

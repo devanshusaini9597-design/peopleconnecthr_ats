@@ -11,7 +11,11 @@ const { multerFileFilter } = require('../utils/uploadAllowlist');
 
 function handle(res, error) {
   const status = error.statusCode || 500;
-  return res.status(status).json({ success: false, message: error.message });
+  return res.status(status).json({
+    success: false,
+    message: error.message,
+    ...(error.code ? { code: error.code } : {}),
+  });
 }
 
 const applyUpload = multer({
@@ -77,6 +81,23 @@ router.get('/:orgSlug/jobs/:jobId', async (req, res) => {
   try {
     const result = await svc.getPublicJob(req.params.orgSlug, req.params.jobId);
     res.json({ success: true, ...result });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
+/**
+ * GET /:orgSlug/jobs/:jobId/application-status?email=
+ * Check whether this email already applied (public, email required).
+ */
+router.get('/:orgSlug/jobs/:jobId/application-status', async (req, res) => {
+  try {
+    const data = await svc.checkAlreadyApplied(
+      req.params.orgSlug,
+      req.params.jobId,
+      req.query.email,
+    );
+    res.json({ success: true, ...data });
   } catch (error) {
     handle(res, error);
   }
