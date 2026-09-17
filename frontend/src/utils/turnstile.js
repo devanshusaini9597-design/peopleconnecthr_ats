@@ -1,5 +1,5 @@
 /**
- * Load Cloudflare Turnstile and execute a challenge token.
+ * Load Cloudflare Turnstile and obtain a challenge token (Managed-friendly).
  */
 let scriptPromise = null;
 
@@ -65,65 +65,129 @@ export async function fetchTurnstileConfig(apiUrl) {
 }
 
 /**
- * Execute Turnstile and return a token, or '' when CAPTCHA is not enabled.
- * Widget mode (managed / non-interactive / invisible) is set in the Cloudflare dashboard.
+ * Show a visible Managed Turnstile challenge and return the token.
+ * (Invisible/off-screen execute fails when Cloudflare requires interaction.)
  */
 export async function getTurnstileToken(apiUrl) {
   const cfg = await fetchTurnstileConfig(apiUrl);
   if (!cfg.enabled) return '';
 
   const turnstile = await loadTurnstileScript();
+
   return new Promise((resolve, reject) => {
-    const host = document.createElement('div');
-    host.setAttribute('aria-hidden', 'true');
-    host.style.cssText = 'position:fixed;left:0;bottom:0;z-index:2147483646;';
-    document.body.appendChild(host);
     let widgetId = null;
     let settled = false;
+
+    const overlay = document.createElement('div');
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Security check');
+    overlay.style.cssText = [
+      'position:fixed',
+      'inset:0',
+      'z-index:2147483646',
+      'background:rgba(28,25,23,0.45)',
+      'display:flex',
+      'align-items:center',
+      'justify-content:center',
+      'padding:16px',
+    ].join(';');
+
+    const card = document.createElement('div');
+    card.style.cssText = [
+      'background:#fff',
+      'border-radius:16px',
+      'padding:20px',
+      'width:min(380px,100%)',
+      'box-shadow:0 24px 60px rgba(0,0,0,0.25)',
+      'font-family:ui-sans-serif,system-ui,sans-serif',
+    ].join(';');
+
+    const title = document.createElement('p');
+    title.textContent = 'Security check';
+    title.style.cssText = 'margin:0 0 6px;font-size:15px;font-weight:700;color:#1c1917;';
+
+    const hint = document.createElement('p');
+    hint.textContent = 'Complete the check below to send your verification code.';
+    hint.style.cssText = 'margin:0 0 14px;font-size:13px;line-height:1.4;color:#78716c;';
+
+    const host = document.createElement('div');
+    host.style.cssText = 'min-height:65px;display:flex;justify-content:center;';
+
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = 'Cancel';
+    cancel.style.cssText = [
+      'margin-top:14px',
+      'width:100%',
+      'border:1px solid #e7e5e4',
+      'background:#fff',
+      'border-radius:10px',
+      'padding:10px 12px',
+      'font-size:13px',
+      'font-weight:600',
+      'color:#44403c',
+      'cursor:pointer',
+    ].join(';');
+
+    card.appendChild(title);
+    card.appendChild(hint);
+    card.appendChild(host);
+    card.appendChild(cancel);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
 
     const cleanup = () => {
       try {
         if (widgetId != null && turnstile?.remove) turnstile.remove(widgetId);
       } catch { /* ignore */ }
-      try { host.remove(); } catch { /* ignore */ }
+      try { overlay.remove(); } catch { /* ignore */ }
     };
 
     const done = (fn, value) => {
       if (settled) return;
       settled = true;
+      window.clearTimeout(timer);
       cleanup();
       fn(value);
     };
 
     const timer = window.setTimeout(() => {
       done(reject, new Error('Security check timed out. Please try again.'));
-    }, 45000);
+    }, 90000);
+
+    cancel.addEventListener('click', () => {
+      done(reject, new Error('Security check cancelled.'));
+    });
 
     try {
       widgetId = turnstile.render(host, {
         sitekey: cfg.siteKey,
-        appearance: 'interaction-only',
-        execution: 'execute',
+        theme: 'light',
+        size: 'flexible',
         callback: (token) => {
-          window.clearTimeout(timer);
           done(resolve, token || '');
         },
-        'error-callback': () => {
-          window.clearTimeout(timer);
-          done(reject, new Error('Security check failed. Please refresh and try again.'));
+        'error-callback': (code) => {
+          const codeStr = code != null ? String(code) : '';
+          done(
+            reject,
+            new Error(
+              codeStr
+                ? `Security check failed (${codeStr}). Please refresh and try again.`
+                : 'Security check failed. Please refresh and try again.',
+            ),
+          );
+          return true;
         },
         'expired-callback': () => {
-          window.clearTimeout(timer);
           done(reject, new Error('Security check expired. Please try again.'));
         },
         'timeout-callback': () => {
-          window.clearTimeout(timer);
           done(reject, new Error('Security check timed out. Please try again.'));
         },
       });
-      turnstile.execute(widgetId);
     } catch (err) {
-      window.clearTimeout(timer);
       done(reject, err instanceof Error ? err : new Error('Security check failed. Please try again.'));
     }
   });
