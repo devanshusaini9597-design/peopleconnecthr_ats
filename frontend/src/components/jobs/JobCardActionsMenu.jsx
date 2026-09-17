@@ -103,7 +103,9 @@ export default function JobCardActionsMenu({
               <span className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 inline-flex items-center justify-center flex-shrink-0">
                 <Unlock size={14} strokeWidth={2} />
               </span>
-              <span className="min-w-0 truncate">Mark Open</span>
+              <span className="min-w-0 truncate">
+                {status === 'Draft' ? 'Publish & open' : 'Mark Open'}
+              </span>
             </button>
           ) : null}
 

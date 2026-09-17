@@ -323,12 +323,12 @@ const Jobs = () => {
         setSkillsInput('');
         toast.success(
           asDraft
-            ? 'Saved as draft — you can edit it anytime'
+            ? 'Draft saved — publish when ready so candidates can apply'
             : editingJob
-              ? (payload.notifyEmail ? 'Job is live — notifying the hiring team' : 'Job updated')
+              ? (payload.notifyEmail ? 'Job published — notifying the hiring team' : 'Job published to careers')
               : payload.notifyEmail
-                ? 'Job posted — notifying the hiring team by email'
-                : 'Job created'
+                ? 'Job published — notifying the hiring team by email'
+                : 'Job published to careers'
         );
         fetchJobs();
         const openedNow = !asDraft && String(payload.status || 'Open').toLowerCase() === 'open';
@@ -438,14 +438,16 @@ const Jobs = () => {
       toast.warning('Organization careers slug is missing. Set it under Organization settings.');
       return;
     }
-    // Auto-publish Open jobs that were never flagged for careers
-    if (String(job.status || '').toLowerCase() === 'open' && !job.isPublished) {
+    const status = String(job.status || '').toLowerCase();
+    // Draft / On Hold / unpublished Open → publish first (enterprise: share only when live)
+    if (status !== 'open' || !job.isPublished) {
       try {
         const published = await ensureJobPublished(job);
         setShareTarget(published);
         return;
       } catch (err) {
         toast.error(err.message || 'Could not publish job');
+        return;
       }
     }
     setShareTarget(job);
@@ -827,14 +829,25 @@ const Jobs = () => {
                       >
                         <Pencil size={14} strokeWidth={2} />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => openShareModal(job)}
-                        className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-teal-300 hover:text-teal-700 hover:bg-teal-50 transition-colors"
-                        title="Share & publish"
-                      >
-                        <Share2 size={14} strokeWidth={2} />
-                      </button>
+                      {status === 'Draft' || status === 'On Hold' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleStatusChange(job, 'Open')}
+                          className="h-8 px-2.5 inline-flex items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition-colors text-[11px] font-bold uppercase tracking-wide"
+                          title="Publish & open — live on careers"
+                        >
+                          Publish
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => openShareModal(job)}
+                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-teal-300 hover:text-teal-700 hover:bg-teal-50 transition-colors"
+                          title="Share apply link"
+                        >
+                          <Share2 size={14} strokeWidth={2} />
+                        </button>
+                      )}
                       <div className="relative">
                         <JobCardActionsMenu
                           open={menuOpenId === job._id}

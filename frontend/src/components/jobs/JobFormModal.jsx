@@ -310,13 +310,24 @@ export default function JobFormModal({
             className="btn-secondary"
             disabled={saving}
             onClick={() => onSubmit({ preventDefault() {} }, { asDraft: true })}
+            title="Keep internal — not visible on careers until you publish"
           >
             {saving ? <Loader2 size={16} className="animate-spin" /> : null}
-            Save as draft
+            Save draft
           </button>
-          <button type="submit" form="job-form" className="btn-primary" disabled={saving}>
+          <button
+            type="submit"
+            form="job-form"
+            className="btn-primary"
+            disabled={saving}
+            title="Open the role and publish it to your careers page"
+          >
             {saving ? <Loader2 size={16} className="animate-spin" /> : editingJob ? <Check size={16} /> : <Plus size={16} />}
-            {saving ? 'Saving…' : editingJob ? 'Save changes' : 'Create & post job'}
+            {saving
+              ? 'Saving…'
+              : editingJob
+                ? (String(formData.status || '').toLowerCase() === 'draft' ? 'Publish job' : 'Save changes')
+                : 'Publish job'}
           </button>
         </>
       }

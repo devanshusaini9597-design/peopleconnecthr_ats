@@ -118,6 +118,11 @@ async function getCareersPage(orgSlug) {
       { _id: { $in: unpublished } },
       { $set: { isPublished: true, publishedAt: new Date() } },
     );
+    jobs.forEach((j) => {
+      if (!j.isPublished) {
+        j.isPublished = true;
+      }
+    });
   }
 
   const whiteLabelActive = !!org.atsSettings?.whiteLabel?.enabled && planHasFeature(org.plan, 'whiteLabel');
@@ -153,7 +158,7 @@ async function getPublicJob(orgSlug, jobId) {
 
   // Open jobs are careers-eligible. Backfill isPublished for older Open jobs.
   let job = await Job.findOne({ _id: jobId, organizationId: org._id, status: 'Open' })
-    .select('title department location description skills employmentType salaryRange ctc experience clientName grade industry isPublished publishedAt');
+    .select('title department location locations description skills employmentType salaryRange ctc experience clientName grade industry isPublished publishedAt');
   if (!job) throw httpError('Job not found', 404);
 
   if (!job.isPublished) {
