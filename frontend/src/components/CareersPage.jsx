@@ -533,7 +533,7 @@ const CareersPage = () => {
                           </div>
                           <h3 className="text-[15px] sm:text-base font-bold text-stone-900 tracking-tight leading-snug uppercase break-words">
                             <Link
-                              to={`/careers/${orgSlug}/jobs/${job._id}`}
+                              to={`/careers/${orgSlug}/jobs/${job.publicId || job.id || job.jobCode}`}
                               className="hover:underline underline-offset-2"
                               style={{ textDecorationColor: `${brand}40` }}
                               onMouseEnter={(e) => { e.currentTarget.style.color = brand; }}
@@ -593,7 +593,7 @@ const CareersPage = () => {
                           {formatPosted(job) ? `Posted ${formatPosted(job)}` : 'Open position'}
                         </span>
                         <Link
-                          to={`/careers/${orgSlug}/jobs/${job._id}`}
+                          to={`/careers/${orgSlug}/jobs/${job.publicId || job.id || job.jobCode}`}
                           className="relative overflow-hidden inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl text-[13px] font-bold text-white shadow-sm flex-shrink-0 transition-transform duration-300 group-hover:scale-[1.04]"
                           style={{ backgroundColor: brand }}
                         >

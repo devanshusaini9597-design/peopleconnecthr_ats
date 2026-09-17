@@ -24,6 +24,11 @@ const {
   infoPanelHtml,
   publicSiteBase,
 } = require('./emailBrandLayout');
+const {
+  findPublicOpenJob,
+  ensurePublicId,
+  careersJobPathSegment,
+} = require('./jobPublicIdService');
 
 function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
@@ -241,8 +246,11 @@ function publicSalaryRange(salaryRange) {
 function toPublicJobDoc(job) {
   const raw = job && typeof job.toObject === 'function' ? job.toObject() : { ...(job || {}) };
   const salaryRange = publicSalaryRange(raw.salaryRange);
+  const publicId = String(raw.publicId || '').trim().toLowerCase() || null;
   return {
-    _id: raw._id,
+    // Link key for careers URLs — never expose Mongo ObjectId on public pages.
+    id: publicId || careersJobPathSegment(raw),
+    publicId,
     title: raw.title,
     department: raw.department,
     location: raw.location,
@@ -320,21 +328,28 @@ async function getJobsXmlFeed(orgSlug) {
   }
 
   const jobs = await Job.find({ ...publicOpenJobFilter(org._id), isPublished: true })
-    .select('title department location employmentType description skills salaryRange updatedAt jobCode');
+    .select('title department location employmentType description skills salaryRange updatedAt jobCode publicId');
+
+  for (const job of jobs) {
+    await ensurePublicId(job);
+  }
 
   const baseUrl = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
-  const items = jobs.map((job) => `
+  const items = jobs.map((job) => {
+    const pathId = careersJobPathSegment(job);
+    return `
   <job>
     <title><![CDATA[${job.title}]]></title>
     <date>${(job.updatedAt || new Date()).toUTCString()}</date>
-    <referencenumber>${job._id}</referencenumber>
-    <url><![CDATA[${baseUrl}/careers/${orgSlug}/jobs/${job._id}]]></url>
+    <referencenumber>${job.jobCode || pathId}</referencenumber>
+    <url><![CDATA[${baseUrl}/careers/${orgSlug}/jobs/${pathId}]]></url>
     <company><![CDATA[${xmlEscape(org.name)}]]></company>
     <city><![CDATA[${xmlEscape(job.location)}]]></city>
     <description><![CDATA[${job.description || ''}]]></description>
     <jobtype>${xmlEscape(job.employmentType || 'full_time')}</jobtype>
     ${job.salaryRange?.displayPublicly && job.salaryRange?.min ? `<salary>${job.salaryRange.min}-${job.salaryRange.max || job.salaryRange.min} ${job.salaryRange.currency || 'INR'}</salary>` : ''}
-  </job>`).join('');
+  </job>`;
+  }).join('');
 
   return `<?xml version="1.0" encoding="UTF-8"?>\n<source>\n  <publisher>${xmlEscape(org.name)}</publisher>${items}\n</source>`;
 }
@@ -363,9 +378,12 @@ async function getCareersPage(orgSlug) {
   assertCareersLive(org);
 
   const jobs = await Job.find(publicOpenJobFilter(org._id))
-    .select('title department location locations employmentType isPublished priority skills createdAt openedAt publishedAt industry experience clientName jobCode grade updatedAt')
-    .sort({ priority: -1, openedAt: -1, createdAt: -1 })
-    .lean();
+    .select('title department location locations employmentType isPublished priority skills createdAt openedAt publishedAt industry experience clientName jobCode grade updatedAt publicId')
+    .sort({ priority: -1, openedAt: -1, createdAt: -1 });
+
+  for (const job of jobs) {
+    await ensurePublicId(job);
+  }
 
   const whiteLabelActive = !!org.atsSettings?.whiteLabel?.enabled && planHasFeature(org.plan, 'whiteLabel');
   let pageBlocks = org.atsSettings?.pageBlocks || [];
@@ -399,10 +417,11 @@ async function getPublicJob(orgSlug, jobId) {
   if (!org) throw httpError('Organization not found', 404);
   assertCareersLive(org);
 
-  const job = await Job.findOne({
-    ...publicOpenJobFilter(org._id),
-    _id: jobId,
-  }).select('title department location locations description skills employmentType salaryRange experience clientName grade industry isPublished publishedAt jobCode');
+  const job = await findPublicOpenJob(
+    org._id,
+    jobId,
+    'title department location locations description skills employmentType salaryRange experience clientName grade industry isPublished publishedAt jobCode publicId'
+  );
   if (!job) throw httpError('Job not found', 404);
 
   let applicationForm = null;
@@ -456,7 +475,7 @@ async function checkAlreadyApplied(orgSlug, jobId, emailRaw, phoneRaw, rateKey =
   if (!org) throw httpError('Organization not found', 404);
   assertCareersLive(org);
 
-  const job = await Job.findOne({ ...publicOpenJobFilter(org._id), _id: jobId }).select('_id');
+  const job = await findPublicOpenJob(org._id, jobId, '_id publicId');
   if (!job) throw httpError('Job not found', 404);
 
   const email = normalizeEmail(emailRaw);
@@ -511,8 +530,7 @@ async function sendApplyOtp(orgSlug, jobId, { email: emailRaw, name, applyOtpTok
   if (!org) throw httpError('Organization not found', 404);
   assertCareersLive(org);
 
-  const job = await Job.findOne({ ...publicOpenJobFilter(org._id), _id: jobId })
-    .select('_id title');
+  const job = await findPublicOpenJob(org._id, jobId, '_id title publicId');
   if (!job) throw httpError('Job not found', 404);
 
   const email = normalizeEmail(emailRaw);
@@ -608,7 +626,7 @@ async function verifyApplyOtp(orgSlug, jobId, { applyOtpToken, code } = {}, rate
   if (!org) throw httpError('Organization not found', 404);
   assertCareersLive(org);
 
-  const job = await Job.findOne({ ...publicOpenJobFilter(org._id), _id: jobId }).select('_id');
+  const job = await findPublicOpenJob(org._id, jobId, '_id publicId');
   if (!job) throw httpError('Job not found', 404);
 
   const decoded = readApplyOtpToken(applyOtpToken);
@@ -694,10 +712,14 @@ async function resolveJobSpocEmails(job) {
   return [...emails];
 }
 
-function careersJobUrl(orgSlug, jobId) {
+function careersJobUrl(orgSlug, jobOrId) {
   const base = (publicSiteBase() || process.env.FRONTEND_URL || '').replace(/\/$/, '');
-  if (!base) return '';
-  return `${base}/careers/${orgSlug}/jobs/${jobId}`;
+  if (!base || !orgSlug) return '';
+  const segment = typeof jobOrId === 'object' && jobOrId
+    ? careersJobPathSegment(jobOrId)
+    : String(jobOrId || '');
+  if (!segment) return '';
+  return `${base}/careers/${orgSlug}/jobs/${segment}`;
 }
 
 async function notifyCareersApplyEmails({
@@ -711,7 +733,7 @@ async function notifyCareersApplyEmails({
   const jobTitle = job.title || 'the role';
   const jobCode = trimStr(job.jobCode);
   const candidateName = candidate.name || 'Candidate';
-  const applyUrl = careersJobUrl(orgSlug, job._id);
+  const applyUrl = careersJobUrl(orgSlug, job);
   const appsUrl = (publicSiteBase() || process.env.FRONTEND_URL || '').replace(/\/$/, '')
     ? `${(publicSiteBase() || process.env.FRONTEND_URL || '').replace(/\/$/, '')}/applications`
     : '';
@@ -816,7 +838,7 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null, rateKey
   if (!org) throw httpError('Organization not found', 404);
   assertCareersLive(org);
 
-  const job = await Job.findOne({ ...publicOpenJobFilter(org._id), _id: jobId });
+  const job = await findPublicOpenJob(org._id, jobId);
   if (!job) throw httpError('Job not available', 404);
 
   const customResponses = parseCustomResponses(body.customResponses);

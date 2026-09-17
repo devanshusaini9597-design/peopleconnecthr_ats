@@ -280,6 +280,10 @@ const JobDetailPublic = () => {
           position: title || prev.position,
           location: locs.length === 1 ? locs[0] : (locs.includes(prev.location) ? prev.location : ''),
         }));
+        const canonical = nextJob?.publicId || nextJob?.id;
+        if (canonical && String(jobId) !== String(canonical)) {
+          navigate(`/careers/${orgSlug}/jobs/${canonical}`, { replace: true });
+        }
       } catch (err) {
         setError(err.message);
       } finally {

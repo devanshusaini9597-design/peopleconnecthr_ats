@@ -32,6 +32,7 @@ const {
   healOrganizationJobCodes,
   orgJobCodePrefix,
 } = require('../services/jobCodeService');
+const { allocatePublicId, ensurePublicId } = require('../services/jobPublicIdService');
 
 const router = express.Router();
 const jdUpload = multer({
@@ -209,6 +210,11 @@ router.get('/', verifyToken, async (req, res) => {
     const jobs = await Job.find(query).setOptions(
       req.user.organizationId ? { _tenantId: req.user.organizationId } : {}
     ).populate('hiringManager', staffFields).populate('createdBy', staffFields).sort({ createdAt: -1 });
+    for (const job of jobs) {
+      if (!job.isTemplate && !job.publicId) {
+        await ensurePublicId(job);
+      }
+    }
     res.json(jobs);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -420,8 +426,10 @@ router.post('/', verifyToken, requireRecruiterOrAbove, checkPlanLimit('jobs'), a
         useCustom ? req.body.jobCode : '',
         { forceAuto: !useCustom }
       );
+      jobData.publicId = await allocatePublicId();
     } else {
       delete jobData.jobCode;
+      delete jobData.publicId;
     }
 
     if (!jobData.isTemplate && String(jobData.status || 'Open').toLowerCase() === 'open') {
@@ -549,6 +557,9 @@ router.put('/:id', verifyToken, requireRecruiterOrAbove, async (req, res) => {
     if (!job.jobCode && !job.isTemplate) {
       job.jobCode = await allocateJobCode(job.organizationId);
       await job.save();
+    }
+    if (!job.publicId && !job.isTemplate) {
+      await ensurePublicId(job);
     }
     res.json(job);
   } catch (err) {

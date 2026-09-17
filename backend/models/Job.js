@@ -27,6 +27,8 @@ const jobSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true },   // Renamed from 'role'
   role: { type: String, trim: true },                      // Kept for backward compat
   jobCode: { type: String, trim: true, uppercase: true },
+  /** Short opaque token for public careers URLs (not the Mongo _id). */
+  publicId: { type: String, trim: true, lowercase: true },
   department: { type: String, default: '', trim: true },
   location: { type: String, required: true, trim: true },
   locations: [{ type: String, trim: true }],
@@ -138,6 +140,7 @@ jobSchema.pre('save', function(next) {
 
 // ── Indexes ──────────────────────────────────────────────────────────
 jobSchema.index({ organizationId: 1, jobCode: 1 }, { unique: true, sparse: true });
+jobSchema.index({ publicId: 1 }, { unique: true, sparse: true });
 jobSchema.index({ organizationId: 1, status: 1 });
 jobSchema.index({ organizationId: 1, createdAt: -1 });
 jobSchema.index({ organizationId: 1, isPublished: 1, status: 1 }); // Careers page query

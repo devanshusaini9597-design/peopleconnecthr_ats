@@ -64,8 +64,10 @@ const Jobs = () => {
   const orgSlug = organization?.slug || '';
 
   const careersApplyUrl = (job) => {
-    if (!orgSlug || !job?._id) return '';
-    return `${window.location.origin}/careers/${orgSlug}/jobs/${job._id}`;
+    if (!orgSlug || !job) return '';
+    const key = job.publicId || job.jobCode || job._id;
+    if (!key) return '';
+    return `${window.location.origin}/careers/${orgSlug}/jobs/${key}`;
   };
 
   const managerOptions = useMemo(

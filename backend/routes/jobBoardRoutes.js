@@ -15,6 +15,7 @@ const Job = require('../models/Job');
 const Organization = require('../models/Organization');
 const eventBus = require('../events/eventBus');
 const eventTypes = require('../events/eventTypes');
+const { ensurePublicId, careersJobPathSegment } = require('../services/jobPublicIdService');
 
 router.use(verifyToken, requireOrganization, tenantScope, requireRecruiterOrAbove, requireFeature('integrations.jobBoard'));
 
@@ -33,8 +34,9 @@ router.post('/jobs/:jobId/post', async (req, res) => {
 
     const org = await Organization.findById(req.user.organizationId).select('slug name').lean();
     const frontendBase = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+    await ensurePublicId(job);
     const applyUrl = org?.slug && frontendBase
-      ? `${frontendBase}/careers/${org.slug}/jobs/${job._id}`
+      ? `${frontendBase}/careers/${org.slug}/jobs/${careersJobPathSegment(job)}`
       : '';
 
     if (!applyUrl) {
