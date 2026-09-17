@@ -100,21 +100,25 @@ function FieldLabel({ children, required, hint }) {
 
 function SuccessPanel({ jobTitle, brand, orgSlug }) {
   return (
-    <div className="text-center py-6 px-1">
-      <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-emerald-50 border border-emerald-100 mb-4">
-        <CheckCircle className="h-8 w-8 text-emerald-600" />
+    <div className="text-center py-5 px-1">
+      <div
+        className="mx-auto flex items-center justify-center h-16 w-16 rounded-2xl mb-4 shadow-sm"
+        style={{ backgroundColor: `${brand}14`, border: `1px solid ${brand}30` }}
+      >
+        <CheckCircle className="h-8 w-8" style={{ color: brand }} strokeWidth={2} />
       </div>
-      <h4 className="text-lg font-bold text-stone-900 mb-2">Application submitted</h4>
-      <p className="text-sm text-stone-600 mb-5 leading-relaxed">
-        Thank you. Your application for <span className="font-semibold text-stone-800">{jobTitle}</span> has been
-        received and added to our ATS.
+      <h4 className="text-lg font-bold text-stone-900 mb-1.5 tracking-tight">Application received</h4>
+      <p className="text-sm text-stone-600 mb-5 leading-relaxed max-w-[22rem] mx-auto">
+        Thank you for applying to{' '}
+        <span className="font-semibold text-stone-800">{jobTitle}</span>. Our recruiting team will review
+        your profile and contact you if there is a match.
       </p>
       <Link
         to={`/careers/${orgSlug}`}
-        className="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white"
+        className="inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-sm"
         style={{ backgroundColor: brand }}
       >
-        Browse other roles
+        Browse other openings
       </Link>
     </div>
   );
@@ -122,23 +126,23 @@ function SuccessPanel({ jobTitle, brand, orgSlug }) {
 
 function AlreadyAppliedPanel({ jobTitle, brand, orgSlug, onCloseModal }) {
   return (
-    <div className="text-center py-6 px-1">
-      <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-amber-50 border border-amber-100 mb-4">
-        <AlertCircle className="h-8 w-8 text-amber-600" />
+    <div className="text-center py-5 px-1">
+      <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-2xl bg-amber-50 border border-amber-100 mb-4 shadow-sm">
+        <AlertCircle className="h-8 w-8 text-amber-600" strokeWidth={2} />
       </div>
-      <h4 className="text-lg font-bold text-stone-900 mb-2">Already applied</h4>
-      <p className="text-sm text-stone-600 mb-5 leading-relaxed">
-        You have already submitted an application for{' '}
-        <span className="font-semibold text-stone-800">{jobTitle}</span>. Our hiring team has your details —
-        no need to apply again.
+      <h4 className="text-lg font-bold text-stone-900 mb-1.5 tracking-tight">Application already received</h4>
+      <p className="text-sm text-stone-600 mb-5 leading-relaxed max-w-[22rem] mx-auto">
+        We already have an application on file for{' '}
+        <span className="font-semibold text-stone-800">{jobTitle}</span> with this email. There is no need
+        to submit again — our team has your details.
       </p>
       <div className="flex flex-col gap-2">
         <Link
           to={`/careers/${orgSlug}`}
-          className="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white"
+          className="inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-sm"
           style={{ backgroundColor: brand }}
         >
-          Browse other roles
+          Browse other openings
         </Link>
         {onCloseModal ? (
           <button type="button" onClick={onCloseModal} className="btn-secondary justify-center">
@@ -682,11 +686,15 @@ const JobDetailPublic = () => {
               </div>
               <div className="p-5 sm:p-6">
                 <div className="mb-5">
-                  <h3 className="text-xl font-bold text-stone-900 tracking-tight">Submit application</h3>
+                  <h3 className="text-xl font-bold text-stone-900 tracking-tight">
+                    {submitSuccess ? 'Application received' : alreadyApplied ? 'Already applied' : 'Submit application'}
+                  </h3>
                   <p className="text-[13px] text-stone-500 mt-1 leading-relaxed">
-                    {alreadyApplied
-                      ? 'An application for this role is already on file for this email.'
-                      : `Section ${step + 1} of ${STEPS.length}. Your details are shared with the recruiting team.`}
+                    {submitSuccess
+                      ? 'Your details have been shared with the recruiting team.'
+                      : alreadyApplied
+                        ? 'An application for this role is already on file for this email.'
+                        : `Section ${step + 1} of ${STEPS.length}. Complete each section to finish your application.`}
                   </p>
                 </div>
 
