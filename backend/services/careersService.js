@@ -159,7 +159,7 @@ async function getCareersPage(orgSlug) {
 
   // Open = live on careers. Backfill isPublished for older Open jobs.
   const jobs = await Job.find({ organizationId: org._id, status: 'Open' })
-    .select('title department location locations employmentType isPublished priority skills createdAt openedAt publishedAt industry experience clientName updatedAt')
+    .select('title department location locations employmentType isPublished priority skills createdAt openedAt publishedAt industry experience clientName ctc jobCode grade updatedAt')
     .sort({ priority: -1, openedAt: -1, createdAt: -1 });
 
   const unpublished = jobs.filter((j) => !j.isPublished).map((j) => j._id);

@@ -1,17 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
-  Search, MapPin, Briefcase, Clock, Building, ArrowRight, AlertTriangle,
-  ChevronLeft, ChevronRight, Sparkles,
+  Search, MapPin, Briefcase, Clock, Building2, ArrowRight, AlertTriangle,
+  ChevronLeft, ChevronRight, Filter, IndianRupee, Sparkles,
 } from 'lucide-react';
 import API_URL from '../config';
 import { employmentLabel } from './jobs/jobsConstants';
 import CareersChatbotWidget from './CareersChatbotWidget';
 import PublicAnnouncementBanner from './PublicAnnouncementBanner';
+import PremiumSelect from './ui/PremiumSelect';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
 import { resolveOrgLogoSrc } from '../utils/orgLogo';
 
-const PAGE_SIZE = 9;
+const PAGE_SIZE = 10;
 
 function priorityRank(p) {
   const key = String(p || '').toLowerCase();
@@ -35,15 +36,15 @@ function formatPosted(job) {
   }
 }
 
-function titleCaseWords(str) {
-  const s = String(str || '').trim();
-  if (!s) return '';
-  // Keep short ALL-CAPS acronyms (BAM, AVP) but soften long all-caps titles
-  if (s === s.toUpperCase() && s.length > 4 && !/^[A-Z]{2,6}$/.test(s)) {
-    return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
-  }
-  return s;
+function displayTitle(str) {
+  return String(str || '').trim() || 'Untitled role';
 }
+
+const SORT_OPTIONS = [
+  { value: 'featured', label: 'Featured (urgent first)' },
+  { value: 'newest', label: 'Newest first' },
+  { value: 'title', label: 'Title A–Z' },
+];
 
 const CareersPage = () => {
   const { orgSlug } = useParams();
@@ -89,16 +90,37 @@ const CareersPage = () => {
     || `Careers at ${orgData?.name || 'our company'}`;
   const pageDesc = orgData?.careersPageDescription
     || orgData?.settings?.careersPageDescription
-    || 'Explore open roles and apply directly. Your application reaches our hiring team.';
+    || 'Search open roles, filter by location or type, and apply in a few steps.';
 
-  const departments = useMemo(() => [...new Set(jobs.map((j) => j.department).filter(Boolean))], [jobs]);
-  const locations = useMemo(() => [...new Set(jobs.map((j) => j.location).filter(Boolean))], [jobs]);
-  const types = useMemo(() => [...new Set(jobs.map((j) => j.employmentType).filter(Boolean))], [jobs]);
+  const urgentCount = useMemo(
+    () => jobs.filter((j) => String(j.priority || '').toLowerCase() === 'urgent').length,
+    [jobs],
+  );
+
+  const departmentOptions = useMemo(() => [
+    { value: '', label: 'All departments' },
+    ...[...new Set(jobs.map((j) => j.department).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b))
+      .map((d) => ({ value: d, label: d })),
+  ], [jobs]);
+
+  const locationOptions = useMemo(() => [
+    { value: '', label: 'All locations' },
+    ...[...new Set(jobs.map((j) => j.location).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b))
+      .map((l) => ({ value: l, label: l })),
+  ], [jobs]);
+
+  const typeOptions = useMemo(() => [
+    { value: '', label: 'All job types' },
+    ...[...new Set(jobs.map((j) => j.employmentType).filter(Boolean))]
+      .map((t) => ({ value: t, label: employmentLabel(t) })),
+  ], [jobs]);
 
   const filteredJobs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     let filtered = jobs.filter((job) => {
-      const hay = `${job.title || ''} ${job.location || ''} ${job.department || ''} ${job.industry || ''} ${(job.skills || []).join(' ')}`.toLowerCase();
+      const hay = `${job.title || ''} ${job.location || ''} ${job.department || ''} ${job.industry || ''} ${job.clientName || ''} ${(job.skills || []).join(' ')}`.toLowerCase();
       const matchesSearch = !q || hay.includes(q);
       const matchesDept = deptFilter ? job.department === deptFilter : true;
       const matchesLoc = locFilter ? job.location === locFilter : true;
@@ -108,11 +130,10 @@ const CareersPage = () => {
 
     filtered = [...filtered];
     if (sortBy === 'title') {
-      filtered.sort((a, b) => titleCaseWords(a.title).localeCompare(titleCaseWords(b.title)));
+      filtered.sort((a, b) => displayTitle(a.title).localeCompare(displayTitle(b.title)));
     } else if (sortBy === 'newest') {
       filtered.sort((a, b) => new Date(postedDate(b) || 0) - new Date(postedDate(a) || 0));
     } else {
-      // featured: urgent first, then newest
       filtered.sort((a, b) => {
         const pr = priorityRank(a.priority) - priorityRank(b.priority);
         if (pr !== 0) return pr;
@@ -125,24 +146,30 @@ const CareersPage = () => {
   const totalPages = Math.max(1, Math.ceil(filteredJobs.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const pageJobs = filteredJobs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const hasFilters = !!(searchQuery || deptFilter || locFilter || typeFilter);
+  const pageBlocks = orgData?.pageBlocks || [];
 
-  const selectClass =
-    'bg-white border border-stone-200 text-stone-700 py-2 px-3 rounded-xl shadow-sm focus:outline-none focus:ring-2 text-sm font-medium min-w-[9.5rem]';
+  const clearFilters = () => {
+    setSearchQuery('');
+    setDeptFilter('');
+    setLocFilter('');
+    setTypeFilter('');
+  };
+
+  const brandStyle = {
+    ['--careers-brand']: brand,
+    ['--color-brand-500']: brand,
+    ['--color-brand-600']: brand,
+    ['--color-brand-700']: brand,
+  };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f6f7f9]">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
-          <div className="animate-pulse flex flex-col items-center space-y-4 mb-12">
-            <div className="h-16 w-40 bg-stone-200 rounded-xl" />
-            <div className="h-8 w-72 bg-stone-200 rounded" />
-            <div className="h-4 w-96 max-w-full bg-stone-200 rounded" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="bg-white p-6 rounded-2xl border border-stone-200 animate-pulse h-52" />
-            ))}
-          </div>
+      <div className="min-h-screen bg-[#f4f5f7]" style={brandStyle}>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10 space-y-4 animate-page-enter">
+          <div className="h-28 rounded-2xl skeleton-ats" />
+          <div className="h-40 rounded-2xl skeleton-ats" />
+          {[1, 2, 3].map((i) => <div key={i} className="h-24 rounded-2xl skeleton-ats" />)}
         </div>
       </div>
     );
@@ -150,40 +177,38 @@ const CareersPage = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f6f7f9] px-4">
-        <div className="text-center p-8 bg-white rounded-2xl shadow-sm border border-stone-200 max-w-md w-full">
-          <Building className="h-12 w-12 text-stone-300 mx-auto mb-4" />
+      <div className="min-h-screen flex items-center justify-center bg-[#f4f5f7] px-4" style={brandStyle}>
+        <div className="card-ats-bordered p-8 text-center max-w-md w-full relative overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-1" style={{ background: `linear-gradient(90deg, ${brand}, #2dd4bf)` }} />
+          <Building2 className="h-12 w-12 text-stone-300 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-stone-900 mb-2">Page not found</h2>
           <p className="text-stone-600 mb-6">{error}</p>
-          <Link to="/" className="font-semibold hover:underline" style={{ color: brand }}>
-            ← Return home
-          </Link>
+          <Link to="/" className="font-semibold" style={{ color: brand }}>← Return home</Link>
         </div>
       </div>
     );
   }
-
-  const pageBlocks = orgData?.pageBlocks || [];
 
   const renderBlock = (block, idx) => {
     if (!block?.type) return null;
     switch (block.type) {
       case 'hero':
         return (
-          <div key={idx} className="text-center py-8 px-4 rounded-2xl mb-8 border border-stone-200/80" style={{ backgroundColor: `${brand}12` }}>
-            <h2 className="text-2xl font-bold text-stone-900">{block.title || 'We are hiring'}</h2>
-            {block.subtitle ? <p className="text-stone-600 mt-2 max-w-xl mx-auto">{block.subtitle}</p> : null}
+          <div key={idx} className="card-ats-bordered p-6 text-center mb-4 relative overflow-hidden">
+            <div className="absolute inset-x-0 top-0 h-1" style={{ background: `linear-gradient(90deg, ${brand}, #2dd4bf)` }} />
+            <h2 className="text-xl font-bold text-stone-900">{block.title || 'We are hiring'}</h2>
+            {block.subtitle ? <p className="text-stone-500 mt-2 text-sm">{block.subtitle}</p> : null}
           </div>
         );
       case 'text':
         return (
-          <div key={idx} className="prose prose-stone max-w-3xl mx-auto mb-8" dangerouslySetInnerHTML={{ __html: sanitizeHtml(block.content || '') }} />
+          <div key={idx} className="prose prose-stone max-w-none mb-4 text-sm" dangerouslySetInnerHTML={{ __html: sanitizeHtml(block.content || '') }} />
         );
       case 'testimonials':
         return (
-          <div key={idx} className="grid md:grid-cols-2 gap-4 mb-8 max-w-4xl mx-auto">
+          <div key={idx} className="grid md:grid-cols-2 gap-3 mb-4">
             {(block.items || []).map((item, i) => (
-              <blockquote key={i} className="p-5 bg-white rounded-xl border border-stone-200 text-stone-600 italic">
+              <blockquote key={i} className="card-ats-bordered p-4 text-sm text-stone-600 italic">
                 &ldquo;{item.quote}&rdquo; — <span className="font-semibold not-italic text-stone-800">{item.author}</span>
               </blockquote>
             ))}
@@ -195,241 +220,328 @@ const CareersPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f6f7f9] text-stone-900 flex flex-col">
+    <div className="min-h-screen bg-[#f4f5f7] text-stone-900 flex flex-col" style={brandStyle}>
       <PublicAnnouncementBanner orgSlug={orgSlug} />
 
-      {/* Org-branded hero */}
-      <header className="relative overflow-hidden border-b border-stone-200/80 bg-white flex-shrink-0">
-        <div
-          className="absolute inset-0 opacity-[0.07] pointer-events-none"
-          style={{
-            background: `radial-gradient(ellipse 80% 60% at 50% -10%, ${brand}, transparent 70%)`,
-          }}
-        />
-        <div className="absolute top-0 inset-x-0 h-1" style={{ backgroundColor: brand }} />
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-10 sm:py-14 text-center">
-          {logoSrc ? (
-            <img src={logoSrc} alt={orgData?.name || 'Organization'} className="h-14 sm:h-16 w-auto mx-auto mb-6 object-contain" />
-          ) : (
-            <div
-              className="h-14 w-14 rounded-2xl flex items-center justify-center mx-auto mb-6 text-white shadow-sm"
-              style={{ backgroundColor: brand }}
-            >
-              <Building className="h-7 w-7" />
+      {/* Sticky org bar */}
+      <div className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-stone-200/80">
+        <div className="h-0.5 w-full" style={{ background: `linear-gradient(90deg, ${brand}, #2dd4bf, ${brand})` }} />
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            {logoSrc ? (
+              <img src={logoSrc} alt={orgData?.name || ''} className="h-9 w-auto object-contain max-w-[9rem]" />
+            ) : (
+              <div
+                className="h-9 w-9 rounded-xl flex items-center justify-center text-white shadow-sm"
+                style={{ backgroundColor: brand }}
+              >
+                <Briefcase size={16} />
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400">Careers</p>
+              <p className="text-sm font-bold text-stone-900 truncate">{orgData?.name}</p>
             </div>
-          )}
-          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-stone-400 mb-2">
-            {orgData?.name || 'Careers'}
-          </p>
-          <h1 className="text-3xl sm:text-4xl lg:text-[2.6rem] font-bold tracking-tight text-stone-900 mb-3 leading-tight">
-            {pageTitle}
-          </h1>
-          <p className="text-[15px] sm:text-base text-stone-500 max-w-2xl mx-auto mb-8 leading-relaxed">
-            {pageDesc}
-          </p>
-
-          <div
-            className="relative max-w-2xl mx-auto flex items-center rounded-2xl overflow-hidden border border-stone-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] focus-within:ring-2"
-            style={{ ['--tw-ring-color']: `${brand}40` }}
+          </div>
+          <span
+            className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-bold"
+            style={{ borderColor: `${brand}40`, backgroundColor: `${brand}12`, color: brand }}
           >
-            <div className="pl-4 text-stone-400">
-              <Search className="h-5 w-5" />
+            <Sparkles size={12} /> {jobs.length} open
+          </span>
+        </div>
+      </div>
+
+      <main className="flex-grow w-full max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-4 animate-page-enter">
+        {/* Hero — mirrors PageHeader density */}
+        <div className="card-ats-bordered relative overflow-hidden p-5 sm:p-6">
+          <div
+            className="absolute -top-24 -right-16 h-56 w-56 rounded-full blur-3xl opacity-30 pointer-events-none"
+            style={{ backgroundColor: brand }}
+          />
+          <div
+            className="absolute -bottom-20 -left-10 h-40 w-40 rounded-full blur-3xl opacity-20 pointer-events-none"
+            style={{ backgroundColor: '#2dd4bf' }}
+          />
+          <div className="absolute inset-x-0 top-0 h-1" style={{ background: `linear-gradient(90deg, ${brand}, #2dd4bf, ${brand})` }} />
+
+          <div className="relative flex flex-col sm:flex-row sm:items-start gap-4">
+            <div
+              className="icon-box-ats shrink-0 !w-12 !h-12"
+              style={{ backgroundColor: `${brand}15`, borderColor: `${brand}30`, color: brand }}
+            >
+              <Briefcase strokeWidth={2.25} />
             </div>
-            <input
-              type="search"
-              placeholder="Search by title, location, or skill…"
-              className="w-full py-3.5 px-3 outline-none text-stone-800 bg-transparent text-sm font-medium"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+            <div className="min-w-0 flex-1">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900" style={{ letterSpacing: '-0.025em' }}>
+                {pageTitle}
+              </h1>
+              <p className="mt-1.5 text-sm sm:text-[15px] font-medium text-stone-500 leading-relaxed max-w-2xl">
+                {pageDesc}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 px-2.5 py-1 text-[11px] font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Open roles · {jobs.length}
+                </span>
+                {urgentCount > 0 ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 px-2.5 py-1 text-[11px] font-bold">
+                    <AlertTriangle size={11} /> Urgent hiring · {urgentCount}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {pageBlocks.length > 0 ? (
+          <section>{pageBlocks.map((block, idx) => renderBlock(block, idx))}</section>
+        ) : null}
+
+        {/* Filters — same enterprise panel as Jobs */}
+        <div className="card-ats-bordered p-4 sm:p-5 relative overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-1" style={{ background: `linear-gradient(90deg, ${brand}, #2dd4bf, ${brand})` }} />
+          <div className="flex items-center gap-2 mb-4">
+            <span
+              className="h-7 w-7 rounded-lg inline-flex items-center justify-center border"
+              style={{ backgroundColor: `${brand}12`, color: brand, borderColor: `${brand}25` }}
+            >
+              <Filter size={13} strokeWidth={2} />
+            </span>
+            <div>
+              <p className="text-xs font-bold text-stone-800">Search & filters</p>
+              <p className="text-[11px] text-stone-400">Find roles by title, location, department, or type</p>
+            </div>
           </div>
 
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-[12px] font-semibold text-stone-500">
-            <span
-              className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1"
-              style={{ borderColor: `${brand}35`, backgroundColor: `${brand}10`, color: brand }}
-            >
-              <Sparkles size={12} /> {jobs.length} open {jobs.length === 1 ? 'role' : 'roles'}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 sm:gap-4">
+            <div className="sm:col-span-2 lg:col-span-5 min-w-0">
+              <label className="label-ats">Search</label>
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none z-[1]" />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search title, client, location, skills…"
+                  className="input-ats input-ats-icon"
+                />
+              </div>
+            </div>
+            <div className="lg:col-span-2 min-w-0">
+              <label className="label-ats">Department</label>
+              <PremiumSelect
+                variant="list"
+                value={deptFilter}
+                onChange={setDeptFilter}
+                options={departmentOptions}
+                placeholder="All departments"
+                searchable={departmentOptions.length > 8}
+              />
+            </div>
+            <div className="lg:col-span-2 min-w-0">
+              <label className="label-ats">Location</label>
+              <PremiumSelect
+                variant="list"
+                value={locFilter}
+                onChange={setLocFilter}
+                options={locationOptions}
+                placeholder="All locations"
+                searchable={locationOptions.length > 8}
+              />
+            </div>
+            <div className="lg:col-span-3 min-w-0">
+              <label className="label-ats">Job type</label>
+              <PremiumSelect
+                variant="list"
+                value={typeFilter}
+                onChange={setTypeFilter}
+                options={typeOptions}
+                placeholder="All job types"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-stone-100">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-stone-400 mr-1">Sort</span>
+            <div className="min-w-[12rem] max-w-xs flex-1 sm:flex-none">
+              <PremiumSelect
+                variant="list"
+                compact
+                value={sortBy}
+                onChange={setSortBy}
+                options={SORT_OPTIONS}
+                placeholder="Sort"
+              />
+            </div>
+            <span className="text-[12px] text-stone-500 ml-auto tabular-nums">
+              <span className="font-semibold text-stone-800">{filteredJobs.length}</span> matching
             </span>
-            {jobs.some((j) => String(j.priority || '').toLowerCase() === 'urgent') ? (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 px-2.5 py-1">
-                <AlertTriangle size={12} /> Urgent hiring live
-              </span>
+            {hasFilters ? (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-xs font-semibold text-stone-500 hover:opacity-80"
+                style={{ color: brand }}
+              >
+                Clear
+              </button>
             ) : null}
           </div>
         </div>
-      </header>
 
-      <main className="flex-grow max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10 w-full">
-        {pageBlocks.length > 0 ? (
-          <section className="mb-8">
-            {pageBlocks.map((block, idx) => renderBlock(block, idx))}
-          </section>
-        ) : null}
-
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
-          <div className="flex flex-wrap gap-2">
-            <select
-              className={selectClass}
-              style={{ accentColor: brand }}
-              value={deptFilter}
-              onChange={(e) => setDeptFilter(e.target.value)}
-            >
-              <option value="">All departments</option>
-              {departments.map((d) => <option key={d} value={d}>{d}</option>)}
-            </select>
-            <select
-              className={selectClass}
-              value={locFilter}
-              onChange={(e) => setLocFilter(e.target.value)}
-            >
-              <option value="">All locations</option>
-              {locations.map((l) => <option key={l} value={l}>{l}</option>)}
-            </select>
-            <select
-              className={selectClass}
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-            >
-              <option value="">All job types</option>
-              {types.map((t) => <option key={t} value={t}>{employmentLabel(t)}</option>)}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <span className="text-xs font-semibold text-stone-400 uppercase tracking-wide">Sort</span>
-            <select
-              className={selectClass}
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-            >
-              <option value="featured">Featured (urgent first)</option>
-              <option value="newest">Newest first</option>
-              <option value="title">Title A–Z</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-sm text-stone-500">
-            Showing{' '}
-            <span className="font-semibold text-stone-800">
-              {filteredJobs.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}
-              –
-              {Math.min(currentPage * PAGE_SIZE, filteredJobs.length)}
-            </span>
-            {' '}of <span className="font-semibold text-stone-800">{filteredJobs.length}</span>
-          </p>
-        </div>
-
+        {/* Job list — Jobs/Mandates card pattern */}
         {pageJobs.length > 0 ? (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {pageJobs.map((job) => {
-                const urgent = String(job.priority || '').toLowerCase() === 'urgent';
-                return (
-                  <article
-                    key={job._id}
-                    className="group relative bg-white rounded-2xl border border-stone-200/90 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:shadow-[0_8px_24px_rgba(15,23,42,0.08)] hover:border-stone-300 transition-all duration-200 flex flex-col overflow-hidden"
-                  >
-                    <div className="h-1 w-full" style={{ backgroundColor: urgent ? '#e11d48' : brand }} />
-                    <div className="p-5 sm:p-6 flex flex-col flex-1">
-                      <div className="flex flex-wrap gap-1.5 mb-3">
-                        <span className="inline-flex items-center rounded-md bg-emerald-50 text-emerald-800 border border-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-                          Open
-                        </span>
-                        {urgent ? (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-                            <AlertTriangle size={10} strokeWidth={2.5} /> Urgent hiring
-                          </span>
-                        ) : null}
-                        {job.industry ? (
-                          <span className="inline-flex items-center rounded-md bg-stone-50 text-stone-600 border border-stone-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider truncate max-w-[10rem]">
-                            {job.industry}
-                          </span>
-                        ) : null}
+          <div className="space-y-3">
+            {pageJobs.map((job) => {
+              const urgent = String(job.priority || '').toLowerCase() === 'urgent';
+              const title = displayTitle(job.title);
+              return (
+                <article
+                  key={job._id}
+                  className="card-ats-bordered relative overflow-visible group px-4 sm:px-5 py-3.5 sm:py-4 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5"
+                >
+                  <div
+                    className="absolute inset-y-0 left-0 w-1 rounded-l-2xl opacity-90"
+                    style={{
+                      background: urgent
+                        ? 'linear-gradient(180deg, #e11d48, #fb7185)'
+                        : `linear-gradient(180deg, ${brand}, #2dd4bf, ${brand})`,
+                    }}
+                  />
+
+                  <div className="pl-2 sm:pl-3 flex flex-col gap-3">
+                    <div className="flex flex-col sm:flex-row sm:items-start gap-3 min-w-0">
+                      <div
+                        className="hidden sm:flex w-10 h-10 rounded-lg border items-center justify-center flex-shrink-0 transition-colors"
+                        style={{
+                          backgroundColor: urgent ? '#fff1f2' : `${brand}12`,
+                          borderColor: urgent ? '#fecdd3' : `${brand}28`,
+                          color: urgent ? '#be123c' : brand,
+                        }}
+                      >
+                        <Briefcase size={18} />
                       </div>
 
-                      <h3 className="text-lg font-bold text-stone-900 leading-snug tracking-tight mb-3 group-hover:opacity-90">
-                        {titleCaseWords(job.title)}
-                      </h3>
-
-                      <div className="space-y-1.5 mb-4 flex-grow text-[13px] text-stone-600">
-                        {job.department ? (
-                          <div className="flex items-start gap-2">
-                            <Briefcase className="h-3.5 w-3.5 mt-0.5 text-stone-400 shrink-0" />
-                            <span>{job.department}</span>
-                          </div>
-                        ) : null}
-                        {job.location ? (
-                          <div className="flex items-start gap-2">
-                            <MapPin className="h-3.5 w-3.5 mt-0.5 text-stone-400 shrink-0" />
-                            <span className="line-clamp-2">{job.location}</span>
-                          </div>
-                        ) : null}
-                        {job.employmentType ? (
-                          <div className="flex items-start gap-2">
-                            <Clock className="h-3.5 w-3.5 mt-0.5 text-stone-400 shrink-0" />
-                            <span>{employmentLabel(job.employmentType)}</span>
-                          </div>
-                        ) : null}
-                        {job.clientName ? (
-                          <div className="flex items-start gap-2">
-                            <Building className="h-3.5 w-3.5 mt-0.5 text-stone-400 shrink-0" />
-                            <span>{job.clientName}</span>
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {Array.isArray(job.skills) && job.skills.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5 mb-4">
-                          {job.skills.slice(0, 3).map((skill) => (
-                            <span
-                              key={skill}
-                              className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border"
-                              style={{ backgroundColor: `${brand}12`, color: brand, borderColor: `${brand}28` }}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2 gap-y-1.5">
+                          <h3 className="text-[15px] sm:text-base font-bold text-stone-900 tracking-tight leading-snug uppercase">
+                            <Link
+                              to={`/careers/${orgSlug}/jobs/${job._id}`}
+                              className="text-left hover:underline decoration-brand-200 underline-offset-2"
+                              style={{ ['--tw-decoration-color']: `${brand}55` }}
+                              onMouseEnter={(e) => { e.currentTarget.style.color = brand; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.color = ''; }}
                             >
-                              {skill}
+                              {title}
+                            </Link>
+                          </h3>
+                          {job.jobCode ? (
+                            <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-200 bg-stone-50 text-stone-600 tabular-nums tracking-wide">
+                              {job.jobCode}
                             </span>
-                          ))}
-                          {job.skills.length > 3 ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-stone-50 text-stone-500 border border-stone-200">
-                              +{job.skills.length - 3}
+                          ) : null}
+                          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md border whitespace-nowrap bg-emerald-50 text-emerald-700 border-emerald-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            Open
+                          </span>
+                          {urgent ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md border whitespace-nowrap bg-rose-50 text-rose-700 border-rose-200">
+                              <AlertTriangle size={10} strokeWidth={2.5} /> Urgent hiring
+                            </span>
+                          ) : null}
+                          {job.industry ? (
+                            <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-200 bg-white text-stone-500 uppercase tracking-wide truncate max-w-[10rem]">
+                              {job.industry}
                             </span>
                           ) : null}
                         </div>
-                      ) : null}
 
-                      <div className="mt-auto flex items-center justify-between pt-4 border-t border-stone-100 gap-3">
-                        <span className="text-[11px] font-medium text-stone-400 truncate">
-                          {formatPosted(job) ? `Posted ${formatPosted(job)}` : 'Open role'}
+                        {(job.clientName || job.grade) ? (
+                          <p className="mt-0.5 text-[12px] text-stone-500 truncate">
+                            {[job.clientName, job.grade ? `Grade ${job.grade}` : ''].filter(Boolean).join(' · ')}
+                          </p>
+                        ) : null}
+
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] sm:text-[13px] text-stone-600">
+                          <span className="inline-flex items-center gap-1 min-w-0">
+                            <MapPin size={13} className="text-stone-400 flex-shrink-0" />
+                            <span className="truncate font-medium">{job.location || 'Location TBD'}</span>
+                          </span>
+                          <span className="text-stone-300 hidden sm:inline" aria-hidden="true">·</span>
+                          <span className="inline-flex items-center gap-1 min-w-0">
+                            <Clock size={13} className="text-stone-400 flex-shrink-0" />
+                            <span className="truncate">{job.employmentType ? employmentLabel(job.employmentType) : 'Type TBD'}</span>
+                          </span>
+                          <span className="text-stone-300 hidden sm:inline" aria-hidden="true">·</span>
+                          <span className="inline-flex items-center gap-1 min-w-0">
+                            <Building2 size={13} className="text-stone-400 flex-shrink-0" />
+                            <span className="truncate">{job.experience || 'Exp TBD'}</span>
+                          </span>
+                          {job.ctc ? (
+                            <>
+                              <span className="text-stone-300 hidden sm:inline" aria-hidden="true">·</span>
+                              <span className="inline-flex items-center gap-1 min-w-0 font-semibold text-stone-800">
+                                <IndianRupee size={13} className="text-stone-400 flex-shrink-0" />
+                                <span className="truncate">{job.ctc}</span>
+                              </span>
+                            </>
+                          ) : null}
+                        </div>
+
+                        {Array.isArray(job.skills) && job.skills.length > 0 ? (
+                          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                            {job.skills.slice(0, 5).map((skill) => (
+                              <span
+                                key={skill}
+                                className="inline-flex max-w-[14rem] truncate px-2 py-0.5 rounded-md text-[10px] font-semibold border"
+                                style={{ backgroundColor: `${brand}12`, color: brand, borderColor: `${brand}28` }}
+                              >
+                                {skill}
+                              </span>
+                            ))}
+                            {job.skills.length > 5 ? (
+                              <span className="text-[10px] font-semibold text-stone-500">+{job.skills.length - 5}</span>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-start">
+                        <span className="hidden md:inline text-[11px] font-medium text-stone-400 whitespace-nowrap">
+                          {formatPosted(job) ? `Posted ${formatPosted(job)}` : ''}
                         </span>
                         <Link
                           to={`/careers/${orgSlug}/jobs/${job._id}`}
-                          className="inline-flex items-center gap-1 text-sm font-bold shrink-0 transition-transform group-hover:translate-x-0.5"
-                          style={{ color: brand }}
+                          className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl text-[13px] font-bold text-white shadow-sm transition-transform group-hover:translate-x-0.5"
+                          style={{ backgroundColor: brand }}
                         >
-                          View & apply <ArrowRight className="h-4 w-4" />
+                          Apply <ArrowRight size={14} />
                         </Link>
                       </div>
                     </div>
-                  </article>
-                );
-              })}
-            </div>
+                  </div>
+                </article>
+              );
+            })}
 
             {totalPages > 1 ? (
-              <nav className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4" aria-label="Job list pagination">
+              <div className="card-ats-bordered px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 relative overflow-hidden">
+                <div className="absolute inset-x-0 top-0 h-0.5" style={{ background: `linear-gradient(90deg, ${brand}66, transparent)` }} />
                 <p className="text-sm text-stone-500">
-                  Page <span className="font-semibold text-stone-800">{currentPage}</span> of{' '}
-                  <span className="font-semibold text-stone-800">{totalPages}</span>
+                  Showing{' '}
+                  <span className="font-semibold text-stone-800">
+                    {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filteredJobs.length)}
+                  </span>
+                  {' '}of <span className="font-semibold text-stone-800">{filteredJobs.length}</span>
+                  <span className="text-stone-300 mx-2">·</span>
+                  Page <span className="font-semibold text-stone-800">{currentPage}</span> / {totalPages}
                 </p>
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     disabled={currentPage <= 1}
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    className="h-9 px-3 inline-flex items-center gap-1 rounded-xl border border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-40 disabled:pointer-events-none"
+                    className="h-9 px-3 inline-flex items-center gap-1 rounded-xl border border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-40 disabled:pointer-events-none transition"
                   >
                     <ChevronLeft size={15} /> Prev
                   </button>
@@ -463,55 +575,42 @@ const CareersPage = () => {
                     type="button"
                     disabled={currentPage >= totalPages}
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    className="h-9 px-3 inline-flex items-center gap-1 rounded-xl border border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-40 disabled:pointer-events-none"
+                    className="h-9 px-3 inline-flex items-center gap-1 rounded-xl border border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-40 disabled:pointer-events-none transition"
                   >
                     Next <ChevronRight size={15} />
                   </button>
                 </div>
-              </nav>
+              </div>
             ) : null}
-          </>
+          </div>
         ) : (
-          <div className="text-center py-16 bg-white rounded-2xl border border-stone-200 shadow-sm">
-            <div className="mx-auto h-16 w-16 bg-stone-50 rounded-full flex items-center justify-center mb-4 border border-stone-100">
-              <Search className="h-7 w-7 text-stone-300" />
+          <div className="card-ats-bordered p-10 text-center relative overflow-hidden">
+            <div className="absolute inset-x-0 top-0 h-1" style={{ background: `linear-gradient(90deg, ${brand}, #2dd4bf)` }} />
+            <div className="mx-auto h-14 w-14 rounded-2xl bg-stone-50 border border-stone-200 flex items-center justify-center mb-4">
+              <Search className="h-6 w-6 text-stone-300" />
             </div>
-            <h3 className="text-lg font-bold text-stone-900 mb-1">No open positions found</h3>
-            <p className="text-stone-500 text-sm mb-4">Try adjusting filters or search, or check back later.</p>
-            {(searchQuery || deptFilter || locFilter || typeFilter) ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchQuery('');
-                  setDeptFilter('');
-                  setLocFilter('');
-                  setTypeFilter('');
-                }}
-                className="font-semibold text-sm hover:underline"
-                style={{ color: brand }}
-              >
-                Clear all filters
+            <h3 className="text-lg font-bold text-stone-900 mb-1">No matching roles</h3>
+            <p className="text-sm text-stone-500 mb-4">Try adjusting your search or filters.</p>
+            {hasFilters ? (
+              <button type="button" onClick={clearFilters} className="btn-secondary">
+                Clear filters
               </button>
             ) : null}
           </div>
         )}
       </main>
 
-      {!orgData?.hidePoweredBy ? (
-        <footer className="bg-white border-t border-stone-200 py-6 flex-shrink-0">
-          <div className="max-w-6xl mx-auto px-4 text-center text-sm text-stone-500">
-            © {orgData?.name}
-            <span className="mx-2 text-stone-300">·</span>
-            Powered by <a href="/" className="font-semibold text-stone-800 hover:opacity-80">People Connect HR</a>
-          </div>
-        </footer>
-      ) : (
-        <footer className="bg-white border-t border-stone-200 py-5 flex-shrink-0">
-          <div className="max-w-6xl mx-auto px-4 text-center text-sm text-stone-500">
-            © {orgData?.name}
-          </div>
-        </footer>
-      )}
+      <footer className="mt-auto border-t border-stone-200 bg-white py-5">
+        <div className="max-w-5xl mx-auto px-4 text-center text-sm text-stone-500">
+          © {orgData?.name}
+          {!orgData?.hidePoweredBy ? (
+            <>
+              <span className="mx-2 text-stone-300">·</span>
+              Powered by <a href="/" className="font-semibold text-stone-800 hover:opacity-80">People Connect HR</a>
+            </>
+          ) : null}
+        </div>
+      </footer>
 
       <CareersChatbotWidget orgSlug={orgSlug} />
     </div>
