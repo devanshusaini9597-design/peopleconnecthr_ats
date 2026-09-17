@@ -159,7 +159,8 @@ async function getCareersPage(orgSlug) {
 
   // Open = live on careers. Backfill isPublished for older Open jobs.
   const jobs = await Job.find({ organizationId: org._id, status: 'Open' })
-    .select('title department location employmentType isPublished');
+    .select('title department location locations employmentType isPublished priority skills createdAt openedAt publishedAt industry experience clientName updatedAt')
+    .sort({ priority: -1, openedAt: -1, createdAt: -1 });
 
   const unpublished = jobs.filter((j) => !j.isPublished).map((j) => j._id);
   if (unpublished.length) {
@@ -188,6 +189,8 @@ async function getCareersPage(orgSlug) {
     logo: org.logo,
     slug: org.slug,
     settings: org.settings,
+    careersPageTitle: org.settings?.careersPageTitle || '',
+    careersPageDescription: org.settings?.careersPageDescription || '',
     brandColor: org.atsSettings?.brandColor || '#0d9488',
     whiteLabelActive,
     hidePoweredBy: whiteLabelActive && !!org.atsSettings?.whiteLabel?.hidePoweredBy,
