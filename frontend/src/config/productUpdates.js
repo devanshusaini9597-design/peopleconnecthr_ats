@@ -91,53 +91,69 @@ export function canSeeProductAudience(role, audience = 'all') {
  */
 export const PRODUCT_UPDATES = [
   {
-    id: '2026-09-17-ats-product-release-v3',
+    id: '2026-09-17-jobs-careers-release-v4',
     date: '2026-09-17',
-    title: 'ATS workspace improvements',
+    title: 'Jobs & careers hiring upgrade',
     summary:
-      'This release improves candidate intake, search, and stage tracking across the ATS workspace.',
+      'Post openings faster, track new jobs like unread mail, and give candidates a cleaner careers apply experience.',
     highlights: [
       {
         audience: 'all',
-        title: 'Desk defaults for faster intake',
-        body: 'Save preferred client, source, product, and FLS under Profile → Desk defaults. Values pre-fill automatically when you add a candidate.',
+        title: 'Paste client JD into Post job',
+        body: 'When a client shares a job on WhatsApp or email, paste the text in Post new job and use Extract & fill. Fields and the live preview update automatically — you can still edit everything by hand.',
+      },
+      {
+        audience: 'all',
+        title: 'Jobs page refresh',
+        body: 'Clearer job cards, status filters, Urgent hiring tab, and pagination that follows your search across every page of results.',
+      },
+      {
+        audience: 'all',
+        title: 'Unread openings (Gmail-style)',
+        body: 'New Open jobs stay highlighted with a New badge and a sidebar count until you open that job. The badge does not clear just by visiting the Jobs list.',
+      },
+      {
+        audience: 'all',
+        title: 'Mark urgent without full edit',
+        body: 'Use More actions on a job card to mark or clear Urgent hiring instantly — no need to open the full editor.',
+      },
+      {
+        audience: 'all',
+        title: 'Job templates library',
+        body: 'Starters now match common BFSI and insurance roles, alongside your saved templates, in a cleaner Job templates modal.',
+      },
+      {
+        audience: 'all',
+        title: 'Freelance Review stays dedicated',
+        body: 'Freelance handoffs no longer sit on the Jobs page. Use Freelance Review in the sidebar for submissions and status updates.',
+      },
+      {
+        audience: 'all',
+        title: 'Public careers apply experience',
+        body: 'Location filters use individual cities, apply steps no longer auto-submit, and candidates get clearer validation and leave warnings.',
       },
       {
         audience: 'admin',
-        title: 'Role-based team defaults',
-        body: 'Set organisation defaults per role in Organisation → Team. A user’s personal desk defaults always take priority when configured.',
-      },
-      {
-        audience: 'all',
-        title: 'Status history on each candidate',
-        body: 'Open History beside Status in Edit Candidate to review every stage change with date and user.',
-      },
-      {
-        audience: 'all',
-        title: 'Stage metrics by entry date',
-        body: 'Dashboard stage cards count candidates who entered that stage in the selected period. Total Candidates remains full inventory.',
-      },
-      {
-        audience: 'all',
-        title: 'Candidate search experience',
-        body: 'Apply filters with Search. While results update, the table is locked and dimmed so records cannot be edited mid-refresh.',
-      },
-      {
-        audience: 'all',
-        title: 'Date sorting',
-        body: 'Use the sort icons in the Candidates toolbar to order by oldest or newest. Sorting applies immediately.',
+        title: 'Careers publish & share',
+        body: 'Publish drafts to your careers page from Jobs, then copy the apply link or share on LinkedIn. Organisation careers branding continues under Company Brand / Careers settings.',
       },
       {
         audience: 'admin',
-        title: 'Role-aware product updates',
-        body: 'Release notes are delivered to each team member individually and filtered by role, so staff see only the changes that apply to their workspace.',
+        title: 'Role-aware What’s New',
+        body: 'Each teammate sees release notes filtered for their role. Owners see the full set; hiring staff see recruiter-facing changes.',
       },
     ],
     explore: [
       {
         audience: 'all',
-        label: 'Open Candidates',
-        path: '/candidates',
+        label: 'Open Jobs',
+        path: '/jobs',
+        tourKey: 'skillnix_tour_jobs_v2',
+      },
+      {
+        audience: 'all',
+        label: 'Freelance Review',
+        path: '/freelance-review',
       },
       {
         audience: 'all',
@@ -146,26 +162,21 @@ export const PRODUCT_UPDATES = [
         hash: 'desk-defaults',
       },
       {
-        audience: 'all',
-        label: 'Dashboard overview',
-        path: '/dashboard',
-        tourKey: 'skillnix_tour_dashboard_v1',
+        audience: 'admin',
+        label: 'Company brand',
+        path: '/company-brand',
       },
       {
         audience: 'admin',
-        label: 'Team role defaults',
-        path: '/organization?tab=team',
-      },
-      {
-        audience: 'admin',
-        label: 'Organisation walkthrough',
+        label: 'Organisation settings',
         path: '/organization',
         tourKey: 'skillnix_tour_organization_v1',
       },
       {
         audience: 'all',
-        label: 'Reports & analytics',
-        path: '/reports',
+        label: 'Dashboard overview',
+        path: '/dashboard',
+        tourKey: 'skillnix_tour_dashboard_v1',
       },
     ],
   },
