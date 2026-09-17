@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Plus, MapPin, BookOpen, UserCheck, Briefcase, IndianRupee, Loader2,
   Search, Pencil, Filter, Building2, Share2, Eye, Copy, ExternalLink,
-  ChevronLeft, ChevronRight, AlertTriangle,
+  ChevronLeft, ChevronRight, AlertTriangle, Globe2, Trash2,
 } from 'lucide-react';
 import JDLibraryModal from '../components/JDLibraryModal';
 import EmptyState from '../components/ui/EmptyState';
