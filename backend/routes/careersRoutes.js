@@ -86,6 +86,11 @@ router.get('/:orgSlug/jobs/:jobId', async (req, res) => {
   }
 });
 
+function clientRateKey(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
 /**
  * GET /:orgSlug/jobs/:jobId/application-status?email=&phone=
  * Check whether this email or phone already applied (public).
@@ -97,6 +102,7 @@ router.get('/:orgSlug/jobs/:jobId/application-status', async (req, res) => {
       req.params.jobId,
       req.query.email,
       req.query.phone,
+      clientRateKey(req),
     );
     res.json({ success: true, ...data });
   } catch (error) {
@@ -110,7 +116,12 @@ router.get('/:orgSlug/jobs/:jobId/application-status', async (req, res) => {
  */
 router.post('/:orgSlug/jobs/:jobId/apply/otp/send', async (req, res) => {
   try {
-    const data = await svc.sendApplyOtp(req.params.orgSlug, req.params.jobId, req.body || {});
+    const data = await svc.sendApplyOtp(
+      req.params.orgSlug,
+      req.params.jobId,
+      req.body || {},
+      clientRateKey(req),
+    );
     res.json({ success: true, ...data });
   } catch (error) {
     handle(res, error);
@@ -123,7 +134,12 @@ router.post('/:orgSlug/jobs/:jobId/apply/otp/send', async (req, res) => {
  */
 router.post('/:orgSlug/jobs/:jobId/apply/otp/verify', async (req, res) => {
   try {
-    const data = await svc.verifyApplyOtp(req.params.orgSlug, req.params.jobId, req.body || {});
+    const data = await svc.verifyApplyOtp(
+      req.params.orgSlug,
+      req.params.jobId,
+      req.body || {},
+      clientRateKey(req),
+    );
     res.json({ success: true, ...data });
   } catch (error) {
     const status = error.statusCode || 500;
@@ -155,6 +171,7 @@ router.post('/:orgSlug/jobs/:jobId/apply', (req, res) => {
         req.params.jobId,
         req.body || {},
         req.file || null,
+        clientRateKey(req),
       );
       res.json({ success: true, ...result });
     } catch (error) {

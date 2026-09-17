@@ -20,6 +20,9 @@ const {
   loadOrgEmailBrand,
   escapeHtml,
   otpCodeHtml,
+  brandButtonHtml,
+  infoPanelHtml,
+  publicSiteBase,
 } = require('./emailBrandLayout');
 
 function httpError(message, statusCode = 400, extra = {}) {
@@ -216,6 +219,69 @@ function assertCareersLive(org) {
   }
 }
 
+/** Open jobs appear on careers; never mutate records from a public GET. */
+function publicOpenJobFilter(organizationId) {
+  return {
+    organizationId,
+    status: 'Open',
+    isPublished: { $ne: false },
+  };
+}
+
+function publicSalaryRange(salaryRange) {
+  if (!salaryRange || !salaryRange.displayPublicly) return undefined;
+  return {
+    min: salaryRange.min,
+    max: salaryRange.max,
+    currency: salaryRange.currency || 'INR',
+    displayPublicly: true,
+  };
+}
+
+function toPublicJobDoc(job) {
+  const raw = job && typeof job.toObject === 'function' ? job.toObject() : { ...(job || {}) };
+  const salaryRange = publicSalaryRange(raw.salaryRange);
+  return {
+    _id: raw._id,
+    title: raw.title,
+    department: raw.department,
+    location: raw.location,
+    locations: raw.locations,
+    employmentType: raw.employmentType,
+    description: raw.description,
+    skills: raw.skills,
+    experience: raw.experience,
+    clientName: raw.clientName,
+    grade: raw.grade,
+    industry: raw.industry,
+    jobCode: raw.jobCode,
+    isPublished: raw.isPublished !== false,
+    publishedAt: raw.publishedAt,
+    priority: raw.priority,
+    createdAt: raw.createdAt,
+    openedAt: raw.openedAt,
+    updatedAt: raw.updatedAt,
+    ...(salaryRange ? { salaryRange } : {}),
+  };
+}
+
+const publicHitBuckets = new Map();
+
+function assertPublicRateLimit(bucketKey, { limit = 30, windowMs = 60 * 1000 } = {}) {
+  const now = Date.now();
+  let entry = publicHitBuckets.get(bucketKey);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + windowMs };
+    publicHitBuckets.set(bucketKey, entry);
+  }
+  entry.count += 1;
+  if (entry.count > limit) {
+    throw httpError('Too many requests. Please wait a moment and try again.', 429, {
+      code: 'rate_limited',
+    });
+  }
+}
+
 function parseCustomResponses(raw) {
   if (!raw) return {};
   if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
@@ -253,8 +319,8 @@ async function getJobsXmlFeed(orgSlug) {
     throw httpError('Job board feed is not available on this organization\'s current plan.', 403);
   }
 
-  const jobs = await Job.find({ organizationId: org._id, isPublished: true, status: 'Open' })
-    .select('title department location employmentType description skills salaryRange updatedAt');
+  const jobs = await Job.find({ ...publicOpenJobFilter(org._id), isPublished: true })
+    .select('title department location employmentType description skills salaryRange updatedAt jobCode');
 
   const baseUrl = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
   const items = jobs.map((job) => `
@@ -292,27 +358,14 @@ async function resolveByDomain(domain) {
  */
 async function getCareersPage(orgSlug) {
   const org = await Organization.findOne({ slug: orgSlug })
-    .select('name logo slug plan settings.careersPageTitle settings.careersPageDescription atsSettings');
+    .select('name logo slug plan settings.careersPageTitle settings.careersPageDescription atsSettings.brandColor atsSettings.whiteLabel atsSettings.pageBlocks atsSettings.careersPageEnabled');
   if (!org) throw httpError('Organization not found', 404);
   assertCareersLive(org);
 
-  // Open = live on careers. Backfill isPublished for older Open jobs.
-  const jobs = await Job.find({ organizationId: org._id, status: 'Open' })
-    .select('title department location locations employmentType isPublished priority skills createdAt openedAt publishedAt industry experience clientName ctc jobCode grade updatedAt')
-    .sort({ priority: -1, openedAt: -1, createdAt: -1 });
-
-  const unpublished = jobs.filter((j) => !j.isPublished).map((j) => j._id);
-  if (unpublished.length) {
-    await Job.updateMany(
-      { _id: { $in: unpublished } },
-      { $set: { isPublished: true, publishedAt: new Date() } },
-    );
-    jobs.forEach((j) => {
-      if (!j.isPublished) {
-        j.isPublished = true;
-      }
-    });
-  }
+  const jobs = await Job.find(publicOpenJobFilter(org._id))
+    .select('title department location locations employmentType isPublished priority skills createdAt openedAt publishedAt industry experience clientName jobCode grade updatedAt')
+    .sort({ priority: -1, openedAt: -1, createdAt: -1 })
+    .lean();
 
   const whiteLabelActive = !!org.atsSettings?.whiteLabel?.enabled && planHasFeature(org.plan, 'whiteLabel');
   let pageBlocks = org.atsSettings?.pageBlocks || [];
@@ -323,40 +376,34 @@ async function getCareersPage(orgSlug) {
     pageBlocks = pageBlocks.filter((b) => !enterpriseTypes.includes(b.type));
   }
   const organization = {
-    _id: org._id,
     name: org.name,
     logo: org.logo,
     slug: org.slug,
-    settings: org.settings,
     careersPageTitle: org.settings?.careersPageTitle || '',
     careersPageDescription: org.settings?.careersPageDescription || '',
     brandColor: org.atsSettings?.brandColor || '#0d9488',
     whiteLabelActive,
     hidePoweredBy: whiteLabelActive && !!org.atsSettings?.whiteLabel?.hidePoweredBy,
-    pageBlocks
+    pageBlocks,
   };
 
-  return { organization, jobs };
+  return { organization, jobs: jobs.map(toPublicJobDoc) };
 }
 
 /**
  * Job detail for public view (includes optional application form).
  */
 async function getPublicJob(orgSlug, jobId) {
-  const org = await Organization.findOne({ slug: orgSlug });
+  const org = await Organization.findOne({ slug: orgSlug })
+    .select('name logo slug plan atsSettings.brandColor atsSettings.careersPageEnabled');
   if (!org) throw httpError('Organization not found', 404);
   assertCareersLive(org);
 
-  // Open jobs are careers-eligible. Backfill isPublished for older Open jobs.
-  let job = await Job.findOne({ _id: jobId, organizationId: org._id, status: 'Open' })
-    .select('title department location locations description skills employmentType salaryRange ctc experience clientName grade industry isPublished publishedAt jobCode');
+  const job = await Job.findOne({
+    ...publicOpenJobFilter(org._id),
+    _id: jobId,
+  }).select('title department location locations description skills employmentType salaryRange experience clientName grade industry isPublished publishedAt jobCode');
   if (!job) throw httpError('Job not found', 404);
-
-  if (!job.isPublished) {
-    job.isPublished = true;
-    job.publishedAt = job.publishedAt || new Date();
-    await job.save();
-  }
 
   let applicationForm = null;
   if (planHasFeature(org.plan, 'careers.formBuilder')) {
@@ -383,14 +430,15 @@ async function getPublicJob(orgSlug, jobId) {
     }
   }
 
+  const publicJob = toPublicJobDoc(job);
   return {
-    data: job,
-    job,
+    data: publicJob,
+    job: publicJob,
     organization: {
       name: org.name,
       logo: org.logo,
       brandColor: org.atsSettings?.brandColor || '#0d9488',
-      slug: org.slug
+      slug: org.slug,
     },
     applicationForm,
     fieldOptions: await loadCareersFieldOptions(org._id),
@@ -401,12 +449,14 @@ async function getPublicJob(orgSlug, jobId) {
  * Public check: has this email or phone already applied to this job?
  * Email+job is primary; phone+job is a secondary hard block.
  */
-async function checkAlreadyApplied(orgSlug, jobId, emailRaw, phoneRaw) {
-  const org = await Organization.findOne({ slug: orgSlug });
+async function checkAlreadyApplied(orgSlug, jobId, emailRaw, phoneRaw, rateKey = '') {
+  if (rateKey) assertPublicRateLimit(`status:${rateKey}`, { limit: 40, windowMs: 60 * 1000 });
+
+  const org = await Organization.findOne({ slug: orgSlug }).select('_id atsSettings.careersPageEnabled');
   if (!org) throw httpError('Organization not found', 404);
   assertCareersLive(org);
 
-  const job = await Job.findOne({ _id: jobId, organizationId: org._id, status: 'Open' }).select('_id');
+  const job = await Job.findOne({ ...publicOpenJobFilter(org._id), _id: jobId }).select('_id');
   if (!job) throw httpError('Job not found', 404);
 
   const email = normalizeEmail(emailRaw);
@@ -418,32 +468,16 @@ async function checkAlreadyApplied(orgSlug, jobId, emailRaw, phoneRaw) {
     }
     const candidate = await Candidate.findOne({ email, organizationId: org._id }).select('_id');
     if (candidate) {
-      const app = await Application.findOne({ candidateId: candidate._id, jobId: job._id })
-        .select('createdAt stage source');
-      if (app) {
-        return {
-          alreadyApplied: true,
-          reason: 'email',
-          appliedAt: app.createdAt,
-          stage: app.stage || 'Applied',
-        };
-      }
+      const app = await Application.findOne({ candidateId: candidate._id, jobId: job._id }).select('_id');
+      if (app) return { alreadyApplied: true, reason: 'email' };
     }
   }
 
   if (phone && phone.length === 10) {
     const phoneApp = await findApplicationByPhone(org._id, job._id, phone);
-    if (phoneApp) {
-      return {
-        alreadyApplied: true,
-        reason: 'phone',
-        appliedAt: phoneApp.createdAt,
-        stage: phoneApp.stage || 'Applied',
-      };
-    }
+    if (phoneApp) return { alreadyApplied: true, reason: 'phone' };
   }
 
-  if (!email && !phone) return { alreadyApplied: false };
   return { alreadyApplied: false };
 }
 
@@ -466,12 +500,15 @@ async function findApplicationByPhone(organizationId, jobId, phoneDigits) {
 /**
  * Send 6-digit email OTP for careers apply (keyed by org + job + email).
  */
-async function sendApplyOtp(orgSlug, jobId, { email: emailRaw, name, applyOtpToken } = {}) {
-  const org = await Organization.findOne({ slug: orgSlug });
+async function sendApplyOtp(orgSlug, jobId, { email: emailRaw, name, applyOtpToken } = {}, rateKey = '') {
+  if (rateKey) assertPublicRateLimit(`otp:${rateKey}`, { limit: 12, windowMs: 60 * 1000 });
+
+  const org = await Organization.findOne({ slug: orgSlug })
+    .select('_id name atsSettings.careersPageEnabled');
   if (!org) throw httpError('Organization not found', 404);
   assertCareersLive(org);
 
-  const job = await Job.findOne({ _id: jobId, organizationId: org._id, status: 'Open' })
+  const job = await Job.findOne({ ...publicOpenJobFilter(org._id), _id: jobId })
     .select('_id title');
   if (!job) throw httpError('Job not found', 404);
 
@@ -560,12 +597,15 @@ async function sendApplyOtp(orgSlug, jobId, { email: emailRaw, name, applyOtpTok
 /**
  * Verify careers apply OTP and return a short-lived email-verified token.
  */
-async function verifyApplyOtp(orgSlug, jobId, { applyOtpToken, code } = {}) {
-  const org = await Organization.findOne({ slug: orgSlug });
+async function verifyApplyOtp(orgSlug, jobId, { applyOtpToken, code } = {}, rateKey = '') {
+  if (rateKey) assertPublicRateLimit(`otp-verify:${rateKey}`, { limit: 30, windowMs: 60 * 1000 });
+
+  const org = await Organization.findOne({ slug: orgSlug })
+    .select('_id atsSettings.careersPageEnabled');
   if (!org) throw httpError('Organization not found', 404);
   assertCareersLive(org);
 
-  const job = await Job.findOne({ _id: jobId, organizationId: org._id, status: 'Open' }).select('_id');
+  const job = await Job.findOne({ ...publicOpenJobFilter(org._id), _id: jobId }).select('_id');
   if (!job) throw httpError('Job not found', 404);
 
   const decoded = readApplyOtpToken(applyOtpToken);
@@ -633,22 +673,148 @@ async function storeResumeFile(organizationId, file) {
   return `/uploads/${file.filename}`;
 }
 
+async function resolveJobSpocEmails(job) {
+  const User = require('../models/User');
+  const emails = new Set();
+  for (const raw of job.hiringManagers || []) {
+    const email = normalizeEmail(raw);
+    if (email && email.includes('@')) emails.add(email);
+  }
+  const ids = [job.hiringManager, job.createdBy].filter(Boolean);
+  if (ids.length) {
+    const users = await User.find({ _id: { $in: ids } }).select('email').lean();
+    for (const user of users) {
+      const email = normalizeEmail(user.email);
+      if (email) emails.add(email);
+    }
+  }
+  return [...emails];
+}
+
+function careersJobUrl(orgSlug, jobId) {
+  const base = (publicSiteBase() || process.env.FRONTEND_URL || '').replace(/\/$/, '');
+  if (!base) return '';
+  return `${base}/careers/${orgSlug}/jobs/${jobId}`;
+}
+
+async function notifyCareersApplyEmails({
+  org,
+  orgSlug,
+  job,
+  candidate,
+  application,
+}) {
+  const brand = await loadOrgEmailBrand(org._id);
+  const jobTitle = job.title || 'the role';
+  const jobCode = trimStr(job.jobCode);
+  const candidateName = candidate.name || 'Candidate';
+  const applyUrl = careersJobUrl(orgSlug, job._id);
+  const appsUrl = (publicSiteBase() || process.env.FRONTEND_URL || '').replace(/\/$/, '')
+    ? `${(publicSiteBase() || process.env.FRONTEND_URL || '').replace(/\/$/, '')}/applications`
+    : '';
+
+  const candidateHtml = wrapBrandedEmailHtml({
+    title: 'Application received',
+    eyebrow: 'Careers',
+    orgName: brand.name,
+    logoUrl: brand.logoUrl,
+    brandColor: brand.brandColor,
+    wordmark: brand.wordmark,
+    senderName: brand.name,
+    senderEmail: brand.fromEmail,
+    websiteUrl: brand.websiteUrl,
+    supportEmail: brand.supportEmail,
+    socialLinks: brand.socialLinks,
+    bodyHtml: `
+      <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi ${escapeHtml((candidateName || 'there').split(' ')[0])},</p>
+      <p style="margin:0 0 12px 0;color:#475569;line-height:1.7;">
+        Thank you for applying for <strong>${escapeHtml(jobTitle)}</strong>${jobCode ? ` (${escapeHtml(jobCode)})` : ''} at ${escapeHtml(org.name || brand.name)}.
+      </p>
+      <p style="margin:0 0 12px 0;color:#475569;line-height:1.7;">
+        Our recruiting team has received your application and will review your profile. If there is a match, they will contact you on this email.
+      </p>
+      ${infoPanelHtml([
+        { label: 'Role', value: jobTitle },
+        ...(jobCode ? [{ label: 'Job ID', value: jobCode }] : []),
+        { label: 'Status', value: 'Application received' },
+      ], brand.brandColor)}
+      ${applyUrl ? `<div style="text-align:center;">${brandButtonHtml({ href: applyUrl, label: 'View role', brandColor: brand.brandColor })}</div>` : ''}`,
+  });
+
+  await sendEmail(
+    candidate.email,
+    `We received your application – ${jobTitle} | ${org.name || brand.name}`,
+    candidateHtml,
+    `Thank you for applying for ${jobTitle}. Our team will review your profile.`,
+    {
+      senderName: brand.name,
+      senderEmail: brand.fromEmail,
+      organizationId: org._id,
+    },
+  ).catch((err) => {
+    logger.warn({ err: err.message, email: candidate.email }, 'Careers candidate confirmation email failed');
+  });
+
+  const spocEmails = await resolveJobSpocEmails(job);
+  if (!spocEmails.length) return;
+
+  const spocHtml = wrapBrandedEmailHtml({
+    title: 'New careers application',
+    eyebrow: 'Hiring alert',
+    orgName: brand.name,
+    logoUrl: brand.logoUrl,
+    brandColor: brand.brandColor,
+    wordmark: brand.wordmark,
+    senderName: brand.name,
+    senderEmail: brand.fromEmail,
+    websiteUrl: brand.websiteUrl,
+    supportEmail: brand.supportEmail,
+    socialLinks: brand.socialLinks,
+    bodyHtml: `
+      <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">New application received</p>
+      <p style="margin:0 0 12px 0;color:#475569;line-height:1.7;">
+        <strong>${escapeHtml(candidateName)}</strong> applied for <strong>${escapeHtml(jobTitle)}</strong>${jobCode ? ` (${escapeHtml(jobCode)})` : ''} via the careers page.
+      </p>
+      ${infoPanelHtml([
+        { label: 'Candidate', value: candidateName },
+        { label: 'Email', value: candidate.email },
+        { label: 'Phone', value: candidate.phone || candidate.contact || '—' },
+        { label: 'Experience', value: candidate.experience || '—' },
+        { label: 'Current CTC', value: candidate.ctc || '—' },
+        { label: 'Expected CTC', value: candidate.expectedCtc || '—' },
+        { label: 'Notice', value: candidate.noticePeriod || '—' },
+        ...(jobCode ? [{ label: 'Job ID', value: jobCode }] : []),
+      ], brand.brandColor)}
+      ${appsUrl ? `<div style="text-align:center;">${brandButtonHtml({ href: appsUrl, label: 'Open applications', brandColor: brand.brandColor })}</div>` : ''}`,
+  });
+
+  await Promise.all(spocEmails.map((to) => sendEmail(
+    to,
+    `New application: ${candidateName} → ${jobTitle}`,
+    spocHtml,
+    `${candidateName} (${candidate.email}) applied for ${jobTitle} via careers.`,
+    {
+      senderName: brand.name,
+      senderEmail: brand.fromEmail,
+      organizationId: org._id,
+    },
+  ).catch((err) => {
+    logger.warn({ err: err.message, to }, 'Careers SPOC notify email failed');
+  })));
+}
+
 /**
  * Submit a public careers-page application (ATS-aligned fields + resume file).
  */
-async function submitApplication(orgSlug, jobId, body = {}, file = null) {
+async function submitApplication(orgSlug, jobId, body = {}, file = null, rateKey = '') {
+  if (rateKey) assertPublicRateLimit(`apply:${rateKey}`, { limit: 10, windowMs: 60 * 1000 });
+
   const org = await Organization.findOne({ slug: orgSlug });
   if (!org) throw httpError('Organization not found', 404);
   assertCareersLive(org);
 
-  // Open jobs accept applications; backfill isPublished for older Open jobs
-  const job = await Job.findOne({ _id: jobId, organizationId: org._id, status: 'Open' });
+  const job = await Job.findOne({ ...publicOpenJobFilter(org._id), _id: jobId });
   if (!job) throw httpError('Job not available', 404);
-  if (!job.isPublished) {
-    job.isPublished = true;
-    job.publishedAt = job.publishedAt || new Date();
-    await job.save();
-  }
 
   const customResponses = parseCustomResponses(body.customResponses);
   const name = trimStr(body.name || [body.firstName, body.lastName].filter(Boolean).join(' '));
@@ -816,6 +982,30 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null) {
     stageHistory: [{ stage: 'Applied', movedAt: new Date(), remark: 'Applied via careers page' }],
   });
   await application.save();
+
+  try {
+    const eventBus = require('../events/eventBus');
+    const eventTypes = require('../events/eventTypes');
+    eventBus.emit(eventTypes.APPLICATION_CREATED, {
+      organizationId: org._id,
+      applicationId: application._id,
+      jobId: job._id,
+      candidateId: candidate._id,
+      source: 'Careers Page',
+    });
+  } catch (err) {
+    logger.warn({ err: err.message }, 'Careers APPLICATION_CREATED emit failed');
+  }
+
+  notifyCareersApplyEmails({
+    org,
+    orgSlug,
+    job,
+    candidate,
+    application,
+  }).catch((err) => {
+    logger.warn({ err: err.message }, 'Careers apply notification emails failed');
+  });
 
   return {
     applicationId: application._id,

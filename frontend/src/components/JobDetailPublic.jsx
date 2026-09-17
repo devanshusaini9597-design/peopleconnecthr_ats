@@ -551,6 +551,39 @@ const JobDetailPublic = () => {
     });
   }, [formData, step, resumeFile, submitSuccess, alreadyApplied]);
 
+  const step0Ready = useMemo(() => {
+    const name = formData.name.trim();
+    const email = formData.email.trim().toLowerCase();
+    const digits = String(formData.phone || '').replace(/\D/g, '');
+    if (!name || !isValidPersonName(name)) return false;
+    if (!email || !isValidEmail(email)) return false;
+    if (digits.length !== 10) return false;
+    if (multiLocation && !formData.location.trim()) return false;
+    if (!emailVerified) return false;
+    return true;
+  }, [formData, multiLocation, emailVerified]);
+
+  const step1Ready = useMemo(() => (
+    Boolean(
+      formData.experience.trim()
+      && formData.ctc.trim()
+      && formData.expectedCtc.trim()
+      && formData.noticePeriod.trim()
+      && resumeFile,
+    )
+  ), [formData.experience, formData.ctc, formData.expectedCtc, formData.noticePeriod, resumeFile]);
+
+  const step2Ready = useMemo(() => {
+    for (const field of visibleCustomFields) {
+      if (!field.required) continue;
+      const val = customResponses[field.key];
+      if (val == null || String(val).trim() === '') return false;
+    }
+    return true;
+  }, [visibleCustomFields, customResponses]);
+
+  const canAdvance = step === 0 ? step0Ready : step === 1 ? step1Ready : step2Ready;
+
   useEffect(() => {
     const onBeforeUnload = (e) => {
       if (!formIsDirty) return;
@@ -1284,7 +1317,7 @@ const JobDetailPublic = () => {
                         <button
                           type="button"
                           onClick={goNext}
-                          disabled={step === 0 && !emailVerified}
+                          disabled={!canAdvance}
                           className="flex-1 inline-flex items-center justify-center gap-1 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
                           style={{ backgroundColor: brand }}
                         >
@@ -1293,7 +1326,7 @@ const JobDetailPublic = () => {
                       ) : (
                         <button
                           type="submit"
-                          disabled={isSubmitting}
+                          disabled={isSubmitting || !step2Ready || !emailVerified}
                           className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-70 shadow-sm"
                           style={{ backgroundColor: brand }}
                         >
