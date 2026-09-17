@@ -170,10 +170,26 @@ const JobDetailPublic = () => {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(appliedStorageKey(orgSlug, jobId));
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed?.email) setAlreadyApplied(true);
-      }
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.email) return;
+      // Re-verify against ATS (not trust localStorage alone)
+      (async () => {
+        try {
+          const res = await fetch(
+            `${API_URL}/api/careers/${orgSlug}/jobs/${jobId}/application-status?email=${encodeURIComponent(parsed.email)}`,
+          );
+          const data = await res.json().catch(() => ({}));
+          if (data.alreadyApplied) {
+            setAlreadyApplied(true);
+            setFormData((prev) => (prev.email ? prev : { ...prev, email: parsed.email }));
+          } else {
+            localStorage.removeItem(appliedStorageKey(orgSlug, jobId));
+          }
+        } catch {
+          setAlreadyApplied(true);
+        }
+      })();
     } catch {
       /* ignore */
     }

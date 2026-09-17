@@ -40,6 +40,19 @@ function displayTitle(str) {
   return String(str || '').trim() || 'Untitled role';
 }
 
+/** Prefer industry (Banking, Insurance…); fall back to department when set in ATS. */
+function jobCategory(job) {
+  return String(job?.industry || job?.department || '').trim();
+}
+
+/** Extract trailing numeric job id for ordering (e.g. SKILLNIX-2026-0040 → 40). */
+function jobCodeSortValue(code) {
+  const raw = String(code || '').trim();
+  if (!raw) return 0;
+  const match = raw.match(/(\d+)\s*$/);
+  return match ? Number(match[1]) : 0;
+}
+
 const SORT_OPTIONS = [
   { value: 'featured', label: 'Featured first' },
   { value: 'newest', label: 'Newest first' },
@@ -54,7 +67,7 @@ const CareersPage = () => {
   const [error, setError] = useState(null);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [deptFilter, setDeptFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [locFilter, setLocFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [sortBy, setSortBy] = useState('featured');
@@ -81,7 +94,7 @@ const CareersPage = () => {
 
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, deptFilter, locFilter, typeFilter, sortBy]);
+  }, [searchQuery, categoryFilter, locFilter, typeFilter, sortBy]);
 
   const brand = orgData?.brandColor || '#0d9488';
   const logoSrc = resolveOrgLogoSrc(orgData?.logo);
@@ -97,12 +110,17 @@ const CareersPage = () => {
     [jobs],
   );
 
-  const departmentOptions = useMemo(() => [
-    { value: '', label: 'All departments' },
-    ...[...new Set(jobs.map((j) => j.department).filter(Boolean))]
-      .sort((a, b) => a.localeCompare(b))
-      .map((d) => ({ value: d, label: d })),
-  ], [jobs]);
+  const categoryTabs = useMemo(() => {
+    const counts = new Map();
+    jobs.forEach((j) => {
+      const cat = jobCategory(j);
+      if (!cat) return;
+      counts.set(cat, (counts.get(cat) || 0) + 1);
+    });
+    return [...counts.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([name, count]) => ({ name, count }));
+  }, [jobs]);
 
   const locationOptions = useMemo(() => [
     { value: '', label: 'All locations' },
@@ -120,38 +138,47 @@ const CareersPage = () => {
   const filteredJobs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     let filtered = jobs.filter((job) => {
-      const hay = `${job.title || ''} ${job.location || ''} ${job.department || ''} ${job.industry || ''} ${job.clientName || ''} ${(job.skills || []).join(' ')}`.toLowerCase();
+      const hay = `${job.title || ''} ${job.location || ''} ${job.department || ''} ${job.industry || ''} ${job.clientName || ''} ${job.jobCode || ''} ${(job.skills || []).join(' ')}`.toLowerCase();
       const matchesSearch = !q || hay.includes(q);
-      const matchesDept = deptFilter ? job.department === deptFilter : true;
+      const matchesCat = categoryFilter ? jobCategory(job) === categoryFilter : true;
       const matchesLoc = locFilter ? job.location === locFilter : true;
       const matchesType = typeFilter ? job.employmentType === typeFilter : true;
-      return matchesSearch && matchesDept && matchesLoc && matchesType;
+      return matchesSearch && matchesCat && matchesLoc && matchesType;
     });
 
     filtered = [...filtered];
+    const byLatestId = (a, b) => {
+      const codeDiff = jobCodeSortValue(b.jobCode) - jobCodeSortValue(a.jobCode);
+      if (codeDiff !== 0) return codeDiff;
+      const dateDiff = new Date(postedDate(b) || 0) - new Date(postedDate(a) || 0);
+      if (dateDiff !== 0) return dateDiff;
+      return String(b._id || '').localeCompare(String(a._id || ''));
+    };
+
     if (sortBy === 'title') {
       filtered.sort((a, b) => displayTitle(a.title).localeCompare(displayTitle(b.title)));
     } else if (sortBy === 'newest') {
-      filtered.sort((a, b) => new Date(postedDate(b) || 0) - new Date(postedDate(a) || 0));
+      filtered.sort(byLatestId);
     } else {
+      // Featured first, then latest job ID / newest
       filtered.sort((a, b) => {
         const pr = priorityRank(a.priority) - priorityRank(b.priority);
         if (pr !== 0) return pr;
-        return new Date(postedDate(b) || 0) - new Date(postedDate(a) || 0);
+        return byLatestId(a, b);
       });
     }
     return filtered;
-  }, [jobs, searchQuery, deptFilter, locFilter, typeFilter, sortBy]);
+  }, [jobs, searchQuery, categoryFilter, locFilter, typeFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredJobs.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const pageJobs = filteredJobs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-  const hasFilters = !!(searchQuery || deptFilter || locFilter || typeFilter);
+  const hasFilters = !!(searchQuery || categoryFilter || locFilter || typeFilter);
   const pageBlocks = orgData?.pageBlocks || [];
 
   const clearFilters = () => {
     setSearchQuery('');
-    setDeptFilter('');
+    setCategoryFilter('');
     setLocFilter('');
     setTypeFilter('');
   };
@@ -308,12 +335,50 @@ const CareersPage = () => {
             </span>
             <div>
               <p className="text-xs font-bold text-stone-800">Find openings</p>
-              <p className="text-[11px] text-stone-400">Filter by department, location, or employment type</p>
+              <p className="text-[11px] text-stone-400">Browse by industry, location, or employment type</p>
             </div>
           </div>
 
+          {categoryTabs.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 mb-4 pb-4 border-b border-stone-100">
+              <button
+                type="button"
+                onClick={() => setCategoryFilter('')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                  !categoryFilter
+                    ? 'text-white border-transparent shadow-sm'
+                    : 'bg-white text-stone-600 border-stone-200 hover:border-stone-300 hover:bg-stone-50'
+                }`}
+                style={!categoryFilter ? { backgroundColor: brand } : undefined}
+              >
+                All industries
+                <span className={`tabular-nums ${!categoryFilter ? 'text-white/80' : 'text-stone-400'}`}>{jobs.length}</span>
+              </button>
+              {categoryTabs.map((tab) => {
+                const active = categoryFilter === tab.name;
+                return (
+                  <button
+                    key={tab.name}
+                    type="button"
+                    onClick={() => setCategoryFilter(tab.name)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all max-w-full ${
+                      active
+                        ? 'text-white border-transparent shadow-sm'
+                        : 'bg-white text-stone-600 border-stone-200 hover:border-stone-300 hover:bg-stone-50'
+                    }`}
+                    style={active ? { backgroundColor: brand } : undefined}
+                    title={tab.name}
+                  >
+                    <span className="truncate max-w-[12rem]">{tab.name}</span>
+                    <span className={`tabular-nums ${active ? 'text-white/80' : 'text-stone-400'}`}>{tab.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-12 gap-3 sm:gap-4">
-            <div className="sm:col-span-2 xl:col-span-4 min-w-0">
+            <div className="sm:col-span-2 xl:col-span-6 min-w-0">
               <label className="label-ats">Search</label>
               <div className="relative">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none z-[1]" />
@@ -321,21 +386,10 @@ const CareersPage = () => {
                   type="search"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search title, location, or skills…"
+                  placeholder="Search title, job ID, location, or skills…"
                   className="input-ats input-ats-icon"
                 />
               </div>
-            </div>
-            <div className="xl:col-span-2 min-w-0">
-              <label className="label-ats">Department</label>
-              <PremiumSelect
-                variant="list"
-                value={deptFilter}
-                onChange={setDeptFilter}
-                options={departmentOptions}
-                placeholder="All departments"
-                searchable={departmentOptions.length > 8}
-              />
             </div>
             <div className="xl:col-span-3 min-w-0">
               <label className="label-ats">Location</label>
@@ -393,11 +447,22 @@ const CareersPage = () => {
                 return (
                   <article
                     key={job._id}
-                    className="card-ats-bordered relative overflow-hidden group p-4 sm:p-5 transition-all duration-300 hover:-translate-y-0.5"
+                    className="card-ats-bordered relative overflow-visible group p-4 sm:p-5 pt-5 transition-all duration-300 hover:-translate-y-0.5"
                     style={cardBorder}
                   >
+                    {featured ? (
+                      <span
+                        className="absolute -top-2.5 right-3 z-10 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide text-white shadow-lg animate-fade-in"
+                        style={{
+                          background: `linear-gradient(135deg, ${brand}, #0f766e)`,
+                          boxShadow: `0 8px 20px ${brand}55`,
+                        }}
+                      >
+                        <Sparkles size={11} strokeWidth={2.5} /> Featured
+                      </span>
+                    ) : null}
                     <div
-                      className="absolute inset-y-0 left-0 w-1"
+                      className="absolute inset-y-0 left-0 w-1 rounded-l-2xl"
                       style={{
                         background: featured
                           ? `linear-gradient(180deg, ${brand}, #2dd4bf)`
@@ -405,7 +470,7 @@ const CareersPage = () => {
                       }}
                     />
                     <div
-                      className="absolute inset-x-0 top-0 h-px opacity-80"
+                      className="absolute inset-x-0 top-0 h-px opacity-80 rounded-t-2xl overflow-hidden"
                       style={{ background: `linear-gradient(90deg, ${brand}55, transparent 70%)` }}
                     />
 
@@ -422,21 +487,18 @@ const CareersPage = () => {
                           <Briefcase size={17} />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5 mb-1.5 pr-16">
                             <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md border bg-emerald-50 text-emerald-700 border-emerald-200">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Open
                             </span>
-                            {featured ? (
-                              <span
-                                className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md border"
-                                style={{ backgroundColor: `${brand}12`, color: brand, borderColor: `${brand}35` }}
-                              >
-                                <Sparkles size={10} /> Featured
+                            {jobCategory(job) ? (
+                              <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-200 bg-white text-stone-500 uppercase tracking-wide truncate max-w-[10rem]">
+                                {jobCategory(job)}
                               </span>
                             ) : null}
-                            {job.industry ? (
-                              <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-200 bg-white text-stone-500 uppercase tracking-wide truncate max-w-[9rem]">
-                                {job.industry}
+                            {job.jobCode ? (
+                              <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-200 bg-stone-50 text-stone-600 tabular-nums tracking-wide">
+                                {job.jobCode}
                               </span>
                             ) : null}
                           </div>
@@ -451,10 +513,8 @@ const CareersPage = () => {
                               {title}
                             </Link>
                           </h3>
-                          {(job.clientName || job.jobCode) ? (
-                            <p className="mt-0.5 text-[12px] text-stone-500 truncate">
-                              {[job.clientName, job.jobCode].filter(Boolean).join(' · ')}
-                            </p>
+                          {job.clientName ? (
+                            <p className="mt-0.5 text-[12px] text-stone-500 truncate">{job.clientName}</p>
                           ) : null}
                         </div>
                       </div>
@@ -508,7 +568,7 @@ const CareersPage = () => {
                           className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl text-[13px] font-bold text-white shadow-sm transition-transform group-hover:translate-x-0.5"
                           style={{ backgroundColor: brand }}
                         >
-                          View role <ArrowRight size={14} />
+                          Apply here <ArrowRight size={14} />
                         </Link>
                       </div>
                     </div>
