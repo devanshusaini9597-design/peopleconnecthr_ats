@@ -26,7 +26,6 @@ import {
 import JobFormModal from '../components/jobs/JobFormModal';
 import JobViewModal from '../components/jobs/JobViewModal';
 import JobCardActionsMenu from '../components/jobs/JobCardActionsMenu';
-import FreelanceSubmissionsPanel from '../components/FreelanceSubmissionsPanel';
 import { ensureJobsBadge, markJobSeen } from '../hooks/useJobNavUpdates';
 
 const Jobs = () => {
@@ -601,8 +600,6 @@ const Jobs = () => {
     return <Navigate to="/mandates" replace />;
   }
 
-  const showFreelancePanel = ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales'].includes(user?.role);
-
   return (
     <div className="page-shell-ats animate-page-enter">
       {/* Header card */}
@@ -637,8 +634,6 @@ const Jobs = () => {
           </div>
         </div>
       </div>
-
-      {showFreelancePanel && <FreelanceSubmissionsPanel />}
 
       {/* Filters */}
       <div data-tour="jobs-filters" className="card-ats-bordered p-4 sm:p-5 relative overflow-hidden">
