@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Megaphone, Search, Upload, RefreshCw, Trash2, Send, Loader2,
-  CheckSquare, Square, MinusSquare, Mail,
+  CheckSquare, Square, MinusSquare, Mail, X, Info,
 } from 'lucide-react';
 import { authenticatedFetch } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -27,6 +27,7 @@ function formatDate(raw) {
 export default function MisPage() {
   const { user } = useAuth();
   const toast = useToast();
+  const fileInputRef = useRef(null);
   const {
     tableScrollRef,
     onTableDragScrollStart,
@@ -79,6 +80,7 @@ export default function MisPage() {
   const isPageSelected = pageIds.length > 0 && selectedOnPage.length === pageIds.length;
   const isPagePartial = selectedOnPage.length > 0 && !isPageSelected;
   const selectedIds = useMemo(() => [...selected], [selected]);
+  const totalLabel = (pagination.total || 0).toLocaleString();
 
   const togglePageSelection = () => {
     setSelected((prev) => {
@@ -159,12 +161,7 @@ export default function MisPage() {
       className: 'w-auto',
       render: (row) => <span className="text-sm text-stone-600 whitespace-nowrap">{row.email || '—'}</span>,
     },
-    {
-      key: 'location',
-      label: 'Location',
-      className: 'w-auto',
-      render: (row) => dash(row.location),
-    },
+    { key: 'location', label: 'Location', className: 'w-auto', render: (row) => dash(row.location) },
     {
       key: 'position',
       label: 'Position',
@@ -183,12 +180,7 @@ export default function MisPage() {
         </span>
       ) : <span className="text-stone-300">—</span>),
     },
-    {
-      key: 'companyName',
-      label: 'Company',
-      className: 'w-auto',
-      render: (row) => dash(row.companyName),
-    },
+    { key: 'companyName', label: 'Company', className: 'w-auto', render: (row) => dash(row.companyName) },
     {
       key: 'experience',
       label: 'Experience',
@@ -235,18 +227,8 @@ export default function MisPage() {
         );
       },
     },
-    {
-      key: 'client',
-      label: 'Client',
-      className: 'w-auto',
-      render: (row) => dash(row.client),
-    },
-    {
-      key: 'product',
-      label: 'Product / Skill',
-      className: 'w-auto',
-      render: (row) => dash(row.product),
-    },
+    { key: 'client', label: 'Client', className: 'w-auto', render: (row) => dash(row.client) },
+    { key: 'product', label: 'Product / Skill', className: 'w-auto', render: (row) => dash(row.product) },
     {
       key: 'source',
       label: 'Source',
@@ -347,83 +329,145 @@ export default function MisPage() {
     }
   };
 
+  const runSearch = () => {
+    setQ(draft.trim());
+    setPage(1);
+  };
+
   const showOverlay = loading && rows.length === 0;
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="page-shell-ats font-sans text-stone-900" role="main" aria-label="MIS">
       <PageHeader
         icon={Megaphone}
         title="MIS"
-        subtitle="Marketing contacts only — same tracker format as Candidates, separate from ATS. Leadership sees the whole org; others see their uploads."
+        subtitle={`${totalLabel} marketing contact${pagination.total === 1 ? '' : 's'} · ${scope === 'organization' ? 'Organization view' : 'My uploads'}`}
+        gradientTitle
       >
-        <label className="btn-secondary cursor-pointer inline-flex items-center gap-2">
-          {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-          Upload Excel
-          <input
-            type="file"
-            accept=".xlsx,.csv"
-            className="hidden"
+        <div className="flex w-full sm:w-auto flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => load()}
+            disabled={loading || uploading}
+            className="btn-secondary flex-1 sm:flex-none justify-center"
+            title="Refresh MIS"
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              e.target.value = '';
-              onUpload(f);
-            }}
-          />
-        </label>
-        <button type="button" className="btn-secondary" onClick={() => load()} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+            className="btn-primary flex-1 sm:flex-none justify-center"
+          >
+            {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+            Upload Excel
+          </button>
+        </div>
       </PageHeader>
 
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        <strong className="font-semibold">Marketing data desk.</strong>
-        {' '}Never merged into Candidates / Applications.
-        {' '}View: <span className="font-semibold">{scope === 'organization' ? 'Entire organization' : 'My uploads only'}</span>
-        {user?.role ? ` · ${user.role}` : ''}.
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx,.csv"
+        className="hidden"
+        aria-hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          onUpload(f);
+        }}
+      />
+
+      <div className="mb-4 flex items-start gap-3 rounded-xl border border-brand-100 bg-brand-50/60 px-4 py-3 text-sm text-brand-900">
+        <Info className="w-4 h-4 mt-0.5 shrink-0 text-brand-600" />
+        <p className="leading-relaxed">
+          <span className="font-semibold">Marketing desk only.</span>
+          {' '}Same tracker columns as Candidates, stored separately — never merged into ATS Candidates or Applications.
+        </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-          <input
-            className="w-full rounded-xl border border-stone-200 bg-white pl-9 pr-3 py-2.5 text-sm"
-            placeholder="Search name, email, company…"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                setQ(draft.trim());
-                setPage(1);
-              }
-            }}
-          />
+      {selectedIds.length > 0 ? (
+        <div className="sticky top-0 z-30 animate-fade-in mb-4">
+          <div className="rounded-2xl border border-brand-200/70 bg-gradient-to-r from-brand-50/90 via-white to-white shadow-[var(--shadow-elevated)] overflow-hidden">
+            <div className="px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-brand-500 to-teal-700 text-white flex items-center justify-center text-sm font-bold tabular-nums shadow-lg shadow-brand-500/25 ring-1 ring-white/20 flex-shrink-0">
+                  {selectedIds.length}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-700">
+                    Bulk actions
+                  </p>
+                  <p className="text-sm font-semibold text-stone-900 mt-0.5 truncate">
+                    {selectedIds.length === 1 ? '1 contact selected' : `${selectedIds.length} contacts selected`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelected(new Set())}
+                  className="h-10 w-10 rounded-xl border border-stone-200/80 bg-white text-stone-500 inline-flex items-center justify-center hover:bg-stone-50 hover:text-stone-800 hover:border-stone-300 transition-all shadow-sm flex-shrink-0"
+                  title="Clear selection"
+                  aria-label="Clear selection"
+                >
+                  <X size={16} strokeWidth={2} />
+                </button>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setMailOpen(true)}
+                  className="h-10 px-3.5 rounded-xl bg-white border border-stone-200/80 text-stone-700 inline-flex items-center justify-center gap-2 shadow-sm hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-all text-sm font-semibold"
+                >
+                  <Send size={16} strokeWidth={1.75} />
+                  Send marketing
+                </button>
+                <button
+                  type="button"
+                  onClick={deleteSelected}
+                  className="h-10 px-3.5 rounded-xl bg-white border border-rose-200 text-rose-700 inline-flex items-center justify-center gap-2 shadow-sm hover:bg-rose-50 transition-all text-sm font-semibold"
+                >
+                  <Trash2 size={16} strokeWidth={1.75} />
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-        <button type="button" className="btn-secondary" onClick={() => { setQ(draft.trim()); setPage(1); }}>
-          Search
-        </button>
-        <button
-          type="button"
-          className="btn-secondary disabled:opacity-50"
-          disabled={!selectedIds.length}
-          onClick={() => setMailOpen(true)}
-        >
-          <Send className="w-4 h-4" />
-          Send marketing ({selectedIds.length})
-        </button>
-        <button
-          type="button"
-          className="btn-secondary text-rose-700 disabled:opacity-50"
-          disabled={!selectedIds.length}
-          onClick={deleteSelected}
-        >
-          <Trash2 className="w-4 h-4" />
-          Delete
-        </button>
-      </div>
+      ) : null}
 
-      <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden shadow-sm">
+      <div className="card-ats-bordered relative overflow-hidden min-h-[320px]">
+        <div className="p-4 sm:p-5 border-b border-stone-100">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none z-[1]" />
+              <input
+                type="search"
+                placeholder="Search name, email, company, phone…"
+                className="w-full h-11 pl-11 sm:pl-12 pr-10 rounded-xl border border-stone-200 bg-stone-50/50 focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 outline-none text-sm font-medium text-stone-900 placeholder:text-stone-400 transition-all"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
+              />
+              {draft.trim() ? (
+                <button
+                  type="button"
+                  onClick={() => { setDraft(''); setQ(''); setPage(1); }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 z-[1]"
+                  title="Clear"
+                >
+                  <X size={14} />
+                </button>
+              ) : null}
+            </div>
+            <button type="button" className="btn-secondary h-11 justify-center" onClick={runSearch}>
+              <Search size={16} />
+              Search
+            </button>
+          </div>
+        </div>
+
         <div className="relative min-h-[280px]">
           <div
             ref={tableScrollRef}
@@ -543,22 +587,27 @@ export default function MisPage() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between px-4 py-3 border-t border-stone-100 text-sm text-stone-500">
-          <span>{pagination.total} contact{pagination.total === 1 ? '' : 's'}</span>
-          <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 sm:px-5 py-3.5 border-t border-stone-100 bg-stone-50/40">
+          <p className="text-sm text-stone-500 font-medium">
+            {totalLabel} contact{pagination.total === 1 ? '' : 's'}
+            {q ? <span className="text-stone-400"> · filtered</span> : null}
+          </p>
+          <div className="flex items-center gap-2">
             <button
               type="button"
               className="btn-secondary !py-1.5 !px-3 disabled:opacity-40"
-              disabled={page <= 1}
+              disabled={page <= 1 || loading}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
               Prev
             </button>
-            <span className="self-center text-xs">Page {pagination.page} / {pagination.pages}</span>
+            <span className="text-xs font-semibold text-stone-500 tabular-nums px-1">
+              Page {pagination.page} / {pagination.pages}
+            </span>
             <button
               type="button"
               className="btn-secondary !py-1.5 !px-3 disabled:opacity-40"
-              disabled={page >= pagination.pages}
+              disabled={page >= pagination.pages || loading}
               onClick={() => setPage((p) => p + 1)}
             >
               Next
@@ -568,24 +617,37 @@ export default function MisPage() {
       </div>
 
       {mailOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40" role="dialog" aria-modal="true">
-          <div className="w-full max-w-lg rounded-2xl bg-white border border-stone-200 shadow-xl p-5 space-y-3">
-            <div className="flex items-center gap-2">
-              <Mail className="w-5 h-5 text-brand-600" />
-              <h3 className="text-lg font-bold text-stone-900">Send marketing</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-[1px]" role="dialog" aria-modal="true">
+          <div className="w-full max-w-lg rounded-2xl bg-white border border-stone-200 shadow-xl shadow-stone-900/15 p-5 sm:p-6 space-y-3.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="h-10 w-10 rounded-xl bg-brand-50 border border-brand-100 text-brand-700 inline-flex items-center justify-center shrink-0">
+                  <Mail className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-lg font-bold text-stone-900 tracking-tight">Send marketing</h3>
+                  <p className="text-sm text-stone-500 mt-0.5">
+                    {selectedIds.length} selected · Zoho Campaigns · consent required
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMailOpen(false)}
+                className="h-9 w-9 rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700 inline-flex items-center justify-center"
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
             </div>
-            <p className="text-sm text-stone-500">
-              Sends via Zoho Campaigns to {selectedIds.length} selected contact(s) with consent.
-              Unsubscribed contacts are skipped.
-            </p>
             <input
-              className="w-full rounded-xl border border-stone-200 px-3 py-2.5 text-sm"
+              className="w-full h-11 rounded-xl border border-stone-200 px-3.5 text-sm font-medium outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15"
               placeholder="Subject"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
             />
             <textarea
-              className="w-full rounded-xl border border-stone-200 px-3 py-2.5 text-sm min-h-[140px]"
+              className="w-full rounded-xl border border-stone-200 px-3.5 py-3 text-sm font-medium min-h-[150px] outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15"
               placeholder="Message body"
               value={htmlBody}
               onChange={(e) => setHtmlBody(e.target.value)}
