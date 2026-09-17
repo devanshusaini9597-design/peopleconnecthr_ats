@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Loader2, BookOpen, Briefcase, UserCheck, Check, Plus, Users, Pencil, Eye,
   Settings2, Building2, IndianRupee, MapPin, Layers, Clock3, StickyNote, Search, Upload, Mail,
-  AlertTriangle, ChevronLeft, ChevronRight,
+  AlertTriangle, ChevronLeft, ChevronRight, ClipboardPaste, Sparkles,
 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import PremiumSelect from '../ui/PremiumSelect';
@@ -109,6 +109,8 @@ export default function JobFormModal({
   const [activeSection, setActiveSection] = useState('');
   const [staffQuery, setStaffQuery] = useState('');
   const [jdImporting, setJdImporting] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [showPasteBox, setShowPasteBox] = useState(true);
   const [nextJobCode, setNextJobCode] = useState('');
   const [loadingNextCode, setLoadingNextCode] = useState(false);
   const previewRef = useRef(null);
@@ -133,6 +135,8 @@ export default function JobFormModal({
     setStep(0);
     setTab('edit');
     setDraftSavedAt(null);
+    setPasteText('');
+    setShowPasteBox(!editingJob);
     if (!draftStorageKey || editingJob) return;
     try {
       const raw = localStorage.getItem(draftStorageKey);
@@ -283,6 +287,40 @@ export default function JobFormModal({
     patch({ locations: next, location: next.join(', ') });
   };
 
+  const applyParsedJd = (data, { source = 'file' } = {}) => {
+    const next = {};
+    if (data.summary) next.summary = data.summary;
+    if (data.responsibilities) next.responsibilitiesText = data.responsibilities;
+    if (data.requirements) next.requirementsText = data.requirements;
+    if (data.preferred) next.preferredProfile = data.preferred;
+    const locs = (data.locations || []).map((v) => String(v).trim().toUpperCase()).filter(Boolean);
+    const sk = (data.skills || []).map((v) => String(v).trim().toUpperCase()).filter(Boolean);
+    setFormData((prev) => ({
+      ...prev,
+      ...next,
+      role: prev.role || block(data.role),
+      grade: prev.grade || block(data.grade),
+      clientName: prev.clientName || block(data.clientName),
+      industry: prev.industry || block(data.industry),
+      ctc: prev.ctc || block(data.ctc),
+      experience: prev.experience || block(data.experience),
+      locations: prev.locations?.length ? prev.locations : locs,
+      location: prev.locations?.length ? prev.location : locs.join(', '),
+      skills: prev.skills?.length ? prev.skills : sk,
+    }));
+    if (sk.length) {
+      setSkillsInput((prev) => (prev && String(prev).trim() ? prev : sk.join(', ')));
+    }
+    toast.success(
+      source === 'paste'
+        ? 'Details extracted — review fields, then continue'
+        : 'JD uploaded — review the fields, then save'
+    );
+    setTab('edit');
+    setStep(0);
+    scrollPreview('summary');
+  };
+
   const importJdFile = async (file) => {
     if (!file || jdImporting) return;
     setJdImporting(true);
@@ -298,40 +336,40 @@ export default function JobFormModal({
         toast.error(payload.message || 'Could not read this JD file');
         return;
       }
-      const data = payload.data || payload;
-      const next = {};
-      if (data.summary) next.summary = data.summary;
-      if (data.responsibilities) next.responsibilitiesText = data.responsibilities;
-      if (data.requirements) next.requirementsText = data.requirements;
-      if (data.preferred) next.preferredProfile = data.preferred;
-      setFormData((prev) => {
-        const locs = (data.locations || []).map((v) => String(v).trim().toUpperCase()).filter(Boolean);
-        const sk = (data.skills || []).map((v) => String(v).trim().toUpperCase()).filter(Boolean);
-        return {
-          ...prev,
-          ...next,
-          role: prev.role || block(data.role),
-          grade: prev.grade || block(data.grade),
-          clientName: prev.clientName || block(data.clientName),
-          industry: prev.industry || block(data.industry),
-          ctc: prev.ctc || block(data.ctc),
-          experience: prev.experience || block(data.experience),
-          locations: prev.locations?.length ? prev.locations : locs,
-          location: prev.locations?.length ? prev.location : locs.join(', '),
-          skills: prev.skills?.length ? prev.skills : sk,
-        };
-      });
-      if (data.skills?.length && !(formData.skills || []).length) {
-        setSkillsInput(data.skills.map((v) => String(v).trim().toUpperCase()).join(', '));
-      }
-      toast.success('JD uploaded — review the fields, then save');
-      setTab('edit');
-      scrollPreview('summary');
+      applyParsedJd(payload.data || payload, { source: 'file' });
     } catch {
       toast.error('Could not upload this JD. Try PDF or TXT.');
     } finally {
       setJdImporting(false);
       if (jdInputRef.current) jdInputRef.current.value = '';
+    }
+  };
+
+  const importJdPaste = async () => {
+    const text = String(pasteText || '').trim();
+    if (text.length < 20) {
+      toast.warning('Paste the full job details from your client (a few lines at least)');
+      return;
+    }
+    if (jdImporting) return;
+    setJdImporting(true);
+    try {
+      const res = await authenticatedFetch(`${BASE_API_URL}/api/jobs/parse-jd`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(payload.message || 'Could not extract from this text');
+        return;
+      }
+      applyParsedJd(payload.data || payload, { source: 'paste' });
+      setShowPasteBox(false);
+    } catch {
+      toast.error('Could not extract job details. You can still fill the form manually.');
+    } finally {
+      setJdImporting(false);
     }
   };
 
@@ -477,6 +515,60 @@ export default function JobFormModal({
           </div>
 
           <div className={step === 0 ? '' : 'hidden'}>
+          {!editingJob && showPasteBox ? (
+            <section className="rounded-xl border border-teal-200/80 bg-gradient-to-br from-teal-50/80 via-white to-brand-50/40 p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="h-8 w-8 rounded-xl bg-teal-100 text-teal-800 border border-teal-200 inline-flex items-center justify-center flex-shrink-0">
+                    <ClipboardPaste size={15} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-stone-800 uppercase tracking-wide">Paste from client</p>
+                    <p className="text-[11px] text-stone-500 leading-snug">
+                      Got the JD on WhatsApp or email? Paste it here — we extract title, location, CTC, and description. You can still edit everything manually below.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="text-[11px] font-semibold text-stone-500 hover:text-stone-800 flex-shrink-0"
+                  onClick={() => setShowPasteBox(false)}
+                >
+                  Hide
+                </button>
+              </div>
+              <textarea
+                rows={5}
+                className="textarea-ats field-premium min-h-[120px] w-full normal-case text-sm"
+                placeholder={'Example:\nRelationship Manager Platinum\nLocation: Delhi, Noida\nExperience: 2-5 Years\nCTC: 6-10 LPA\n\nResponsibilities:\n- Acquire platinum customers…'}
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                disabled={jdImporting}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={jdImporting || String(pasteText || '').trim().length < 20}
+                  onClick={importJdPaste}
+                >
+                  {jdImporting ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                  {jdImporting ? 'Extracting…' : 'Extract & fill form'}
+                </button>
+                <span className="text-[11px] text-stone-400">Or skip and fill the form yourself · Upload file on Description step</span>
+              </div>
+            </section>
+          ) : null}
+          {!editingJob && !showPasteBox ? (
+            <button
+              type="button"
+              onClick={() => setShowPasteBox(true)}
+              className="w-full rounded-xl border border-dashed border-stone-200 bg-stone-50/80 px-3 py-2.5 text-left text-[12px] font-semibold text-stone-600 hover:border-teal-300 hover:bg-teal-50/40 transition inline-flex items-center gap-2"
+            >
+              <ClipboardPaste size={14} className="text-teal-700" />
+              Paste job details from client (optional)
+            </button>
+          ) : null}
           <section className="rounded-xl border border-stone-200/90 bg-white p-4 space-y-3.5">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 min-w-0">
@@ -485,7 +577,7 @@ export default function JobFormModal({
                 </span>
                 <div>
                   <p className="text-xs font-bold text-stone-800 uppercase tracking-wide">Role & details</p>
-                  <p className="text-[11px] text-stone-400">Title, client, location, CTC, and urgent hiring</p>
+                  <p className="text-[11px] text-stone-400">Fill manually, or use paste / upload above — both ways work</p>
                 </div>
               </div>
               <span className="text-[10px] font-bold tracking-widest text-brand-700 bg-brand-50 border border-brand-100 rounded-md px-2 py-1 tabular-nums">

@@ -21,7 +21,7 @@ const {
 const logger = require('../utils/logger');
 const eventBus = require('../events/eventBus');
 const eventTypes = require('../events/eventTypes');
-const { parseUploadedJd } = require('../services/jdImportService');
+const { parseUploadedJd, parseJdText } = require('../services/jdImportService');
 const { promoteNamesSafe } = require('../services/skillCatalogSync');
 const { promoteNamesSafe: promotePositionsSafe } = require('../services/positionCatalogSync');
 const {
@@ -166,10 +166,28 @@ async function dispatchJobOpeningNotifications(req, job, { notifyEmail = true, n
   }
 }
 
-router.post('/parse-jd', verifyToken, requireRecruiterOrAbove, jdUpload.single('file'), async (req, res) => {
+router.post('/parse-jd', verifyToken, requireRecruiterOrAbove, (req, res, next) => {
+  const ct = String(req.headers['content-type'] || '');
+  if (ct.includes('multipart/form-data')) {
+    return jdUpload.single('file')(req, res, (err) => {
+      if (err) return res.status(400).json({ message: err.message || 'Upload failed' });
+      return next();
+    });
+  }
+  return next();
+}, async (req, res) => {
   try {
+    const pasted = String(req.body?.text || req.body?.jdText || '').trim();
+    if (pasted) {
+      if (pasted.length < 20) {
+        return res.status(400).json({ message: 'Paste a fuller job description (at least a few lines)' });
+      }
+      const fields = parseJdText(pasted);
+      logger.info('JD paste parsed', { chars: pasted.length, role: fields.role || null });
+      return res.json({ success: true, data: { ...fields, text: pasted } });
+    }
     if (!req.file?.buffer) {
-      return res.status(400).json({ message: 'Upload a PDF, Word, or TXT job description' });
+      return res.status(400).json({ message: 'Paste job text or upload a PDF, Word, or TXT file' });
     }
     const parsed = await parseUploadedJd({
       buffer: req.file.buffer,
@@ -178,7 +196,7 @@ router.post('/parse-jd', verifyToken, requireRecruiterOrAbove, jdUpload.single('
     });
     res.json({ success: true, data: parsed });
   } catch (err) {
-    res.status(err.statusCode || 400).json({ message: err.message || 'Could not read this JD file' });
+    res.status(err.statusCode || 400).json({ message: err.message || 'Could not read this JD' });
   }
 });
 
