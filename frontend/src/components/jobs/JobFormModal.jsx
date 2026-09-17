@@ -293,8 +293,15 @@ export default function JobFormModal({
     if (data.responsibilities) next.responsibilitiesText = data.responsibilities;
     if (data.requirements) next.requirementsText = data.requirements;
     if (data.preferred) next.preferredProfile = data.preferred;
+    if (data.department) next.department = block(data.department);
     const locs = (data.locations || []).map((v) => String(v).trim().toUpperCase()).filter(Boolean);
     const sk = (data.skills || []).map((v) => String(v).trim().toUpperCase()).filter(Boolean);
+    const filled = [];
+    if (data.role) filled.push('title');
+    if (data.grade) filled.push('grade');
+    if (data.clientName) filled.push('client');
+    if (data.experience) filled.push('experience');
+    if (data.summary || data.responsibilities || data.requirements) filled.push('description');
     setFormData((prev) => ({
       ...prev,
       ...next,
@@ -312,9 +319,11 @@ export default function JobFormModal({
       setSkillsInput((prev) => (prev && String(prev).trim() ? prev : sk.join(', ')));
     }
     toast.success(
-      source === 'paste'
-        ? 'Details extracted — review fields, then continue'
-        : 'JD uploaded — review the fields, then save'
+      filled.length
+        ? `Filled ${filled.join(', ')} — review and edit as needed`
+        : (source === 'paste'
+          ? 'Details extracted — review fields, then continue'
+          : 'JD uploaded — review the fields, then save')
     );
     setTab('edit');
     setStep(0);
