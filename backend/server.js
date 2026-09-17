@@ -359,6 +359,7 @@ app.use('/api/team', teamRoutes);
 app.use('/api/freelancer', freelancerRoutes);
 app.use('/api/support', require('./routes/supportRoutes'));
 app.use('/api/talent-pools', verifyToken, talentPoolRoutes); // internally applies requireFeature('candidates.talentPools')
+app.use('/api/mis', require('./routes/misRoutes'));
 app.use('/api/skills', verifyToken, skillsRoutes); // requireFeature('candidates.skillsTaxonomy')
 app.use('/api/inbox', verifyToken, inboxRoutes); // requireFeature('messaging.inbox')
 app.use('/api/sequences', verifyToken, sequenceRoutes); // requireFeature('messaging.sequences')

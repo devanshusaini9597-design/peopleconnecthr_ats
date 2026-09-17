@@ -31,6 +31,25 @@ const applyUpload = multer({
   fileFilter: multerFileFilter,
 });
 
+function clientRateKey(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+/**
+ * GET /turnstile-config
+ * Public: whether Cloudflare Turnstile is enabled + site key for the widget.
+ * Must be registered before /:orgSlug so it is not captured as a slug.
+ */
+router.get('/turnstile-config', (req, res) => {
+  try {
+    const data = svc.publicTurnstileConfig();
+    res.json({ success: true, ...data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
 /**
  * GET /:orgSlug/jobs.xml
  * Indeed/Google-for-Jobs-compatible XML feed — plain-text errors (not JSON).

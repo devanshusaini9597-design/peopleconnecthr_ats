@@ -47,6 +47,7 @@ const AuditLogPage = React.lazy(() => import('./components/AuditLogPage'))
 const CustomRolesPage = React.lazy(() => import('./components/CustomRolesPage'))
 const CandidateFieldsPage = React.lazy(() => import('./components/CandidateFieldsPage'))
 const TalentPoolsPage = React.lazy(() => import('./components/TalentPoolsPage'))
+const MisPage = React.lazy(() => import('./components/MisPage'))
 const SSOCallbackPage = React.lazy(() => import('./components/SSOCallbackPage'))
 const SSOSettingsPage = React.lazy(() => import('./components/SSOSettingsPage'))
 const BillingPage = React.lazy(() => import('./components/BillingPage'))
@@ -172,6 +173,7 @@ const router = createBrowserRouter([
       { path: '/applications', element: <Suspense fallback={<LoadingFallback />}><ApplicationsPage /></Suspense> },
       { path: '/recruitment', element: <Suspense fallback={<LoadingFallback />}><ApplicationsPage /></Suspense> },
       { path: '/ats', element: <ATSPage /> },
+      { path: '/mis', element: <Suspense fallback={<LoadingFallback />}><MisPage /></Suspense> },
       { path: '/add-candidate', element: <Navigate to="/ats?add=1" replace /> },
       { path: '/resume-parsing', element: <ResumeParsing /> },
       { path: '/candidate-search', element: <CandidateSearch /> },

@@ -485,6 +485,22 @@ async function applicationListFilter(organizationId, user, extra = {}) {
   return filter;
 }
 
+/**
+ * MIS marketing contacts: leadership sees org-wide; other staff see only rows they uploaded.
+ * Freelancers have no MIS desk (empty result if called).
+ */
+function misListFilter(organizationId, user, extra = {}) {
+  const filter = { organizationId, ...extra };
+  if (isFreelancer(user)) {
+    filter._id = { $in: [] };
+    return filter;
+  }
+  if (canViewOrgAnalytics(user)) {
+    return filter;
+  }
+  return { ...filter, ...createdByFilter(user) };
+}
+
 /** Picklists / master data: freelancer sees only values they created. */
 function masterDataScope(req) {
   return orgOrOwnerScope(req);
@@ -552,6 +568,7 @@ module.exports = {
   candidateListScope,
   jobListFilter,
   applicationListFilter,
+  misListFilter,
   withoutUnsharedFreelancerDesks,
   ORG_WIDE_ANALYTICS_ROLES,
   canViewOrgAnalytics,

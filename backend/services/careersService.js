@@ -500,8 +500,11 @@ async function findApplicationByPhone(organizationId, jobId, phoneDigits) {
 /**
  * Send 6-digit email OTP for careers apply (keyed by org + job + email).
  */
-async function sendApplyOtp(orgSlug, jobId, { email: emailRaw, name, applyOtpToken } = {}, rateKey = '') {
+async function sendApplyOtp(orgSlug, jobId, { email: emailRaw, name, applyOtpToken, turnstileToken } = {}, rateKey = '') {
   if (rateKey) assertPublicRateLimit(`otp:${rateKey}`, { limit: 12, windowMs: 60 * 1000 });
+
+  const { assertTurnstileToken } = require('../utils/turnstile');
+  await assertTurnstileToken(turnstileToken, { remoteip: rateKey });
 
   const org = await Organization.findOne({ slug: orgSlug })
     .select('_id name atsSettings.careersPageEnabled');
@@ -1023,4 +1026,5 @@ module.exports = {
   sendApplyOtp,
   verifyApplyOtp,
   submitApplication,
+  publicTurnstileConfig: () => require('../utils/turnstile').publicTurnstileConfig(),
 };

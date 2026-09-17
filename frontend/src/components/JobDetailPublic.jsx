@@ -11,6 +11,7 @@ import PremiumSelect from './ui/PremiumSelect';
 import { resolveOrgLogoSrc } from '../utils/orgLogo';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
 import { toast } from './Toast';
+import { getTurnstileToken } from '../utils/turnstile';
 import {
   DEFAULT_CTC_BANDS, DEFAULT_EXPECTED_CTC, DEFAULT_NOTICE_PERIODS,
 } from '../utils/ctcRanges';
@@ -350,6 +351,12 @@ const JobDetailPublic = () => {
     setOtpSending(true);
     setOtpError('');
     try {
+      let turnstileToken = '';
+      try {
+        turnstileToken = await getTurnstileToken(API_URL);
+      } catch (captchaErr) {
+        throw new Error(captchaErr.message || 'Security check failed. Please try again.');
+      }
       const res = await fetch(`${API_URL}/api/careers/${orgSlug}/jobs/${jobId}/apply/otp/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -357,6 +364,7 @@ const JobDetailPublic = () => {
           email,
           name: formData.name.trim(),
           applyOtpToken: applyOtpToken || undefined,
+          turnstileToken: turnstileToken || undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
