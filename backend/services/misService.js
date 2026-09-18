@@ -292,11 +292,13 @@ async function bulkUpload(user, file) {
   const organizationId = user.organizationId;
   const createdBy = user.id || user._id;
   let created = 0;
-  let updated = 0;
-  let skipped = 0;
+  let duplicates = 0; // already in MIS — keep existing, never overwrite
+  let duplicatesInFile = 0; // same email repeated inside this spreadsheet
+  let skipped = 0; // invalid rows
   let blank = 0;
   const errors = [];
   const pending = [];
+  const seenEmails = new Set();
 
   for (let r = 2; r <= sheet.rowCount; r += 1) {
     const row = sheet.getRow(r);
@@ -311,6 +313,15 @@ async function bulkUpload(user, file) {
       if (errors.length < 50) errors.push({ row: r, message: 'Name and valid email required' });
       continue;
     }
+    if (seenEmails.has(email)) {
+      duplicatesInFile += 1;
+      if (errors.length < 50) {
+        errors.push({ row: r, message: 'Duplicate email in this file — kept first row only' });
+      }
+      continue;
+    }
+    seenEmails.add(email);
+
     const phone = phoneDigits(cellStr(row, map.contact));
     const payload = {
       name: normalizeText(name),
@@ -331,106 +342,85 @@ async function bulkUpload(user, file) {
   for (let i = 0; i < pending.length; i += CHUNK) {
     const chunk = pending.slice(i, i + CHUNK);
     const emails = chunk.map((c) => c.payload.email);
-    let existingRows = [];
+    let existingEmails = new Set();
     try {
-      existingRows = await MisContact.find({
+      const existingRows = await MisContact.find({
         organizationId,
         email: { $in: emails },
-      }).select('_id email unsubscribeSecret').lean();
+      }).select('email').lean();
+      existingEmails = new Set(existingRows.map((e) => e.email));
     } catch (err) {
       skipped += chunk.length;
       if (errors.length < 50) errors.push({ row: chunk[0]?.row, message: err.message || 'Lookup failed' });
       continue;
     }
-    const byEmail = new Map(existingRows.map((e) => [e.email, e]));
+
     const ops = [];
     for (const item of chunk) {
-      const { payload, row } = item;
-      const existing = byEmail.get(payload.email);
-      if (existing) {
-        ops.push({
-          updateOne: {
-            filter: { _id: existing._id },
-            update: {
-              $set: {
-                ...payload,
-                unsubscribeSecret: existing.unsubscribeSecret
-                  || crypto.randomBytes(16).toString('hex'),
-              },
-            },
-          },
-        });
-      } else {
-        ops.push({
-          insertOne: {
-            document: {
-              organizationId,
-              createdBy,
-              ...payload,
-              unsubscribeSecret: crypto.randomBytes(16).toString('hex'),
-            },
-          },
-        });
+      const { payload } = item;
+      if (existingEmails.has(payload.email)) {
+        duplicates += 1;
+        continue;
       }
+      ops.push({
+        insertOne: {
+          document: {
+            organizationId,
+            createdBy,
+            ...payload,
+            unsubscribeSecret: crypto.randomBytes(16).toString('hex'),
+          },
+        },
+      });
     }
     if (!ops.length) continue;
     try {
       const result = await MisContact.bulkWrite(ops, { ordered: false });
-      created += result.insertedCount || 0;
-      updated += result.modifiedCount || 0;
-      // upserts counted differently in some drivers
-      if (!result.insertedCount && !result.modifiedCount) {
-        const inserted = Number(result.nInserted || 0);
-        const modified = Number(result.nModified || 0);
-        created += inserted;
-        updated += modified;
-      }
+      created += result.insertedCount || Number(result.nInserted || 0) || 0;
     } catch (err) {
-      // Fall back to per-row so one bad email does not kill the chunk
+      // Fall back to per-row insert so one bad row does not kill the chunk
       for (const item of chunk) {
+        if (existingEmails.has(item.payload.email)) continue;
         try {
-          const existing = byEmail.get(item.payload.email);
-          if (existing) {
-            await MisContact.updateOne(
-              { _id: existing._id },
-              { $set: { ...item.payload } },
-            );
-            updated += 1;
-          } else {
-            const doc = new MisContact({
-              organizationId,
-              createdBy,
-              ...item.payload,
-            });
-            doc.ensureUnsubscribeSecret();
-            await doc.save();
-            created += 1;
-          }
+          const doc = new MisContact({
+            organizationId,
+            createdBy,
+            ...item.payload,
+          });
+          doc.ensureUnsubscribeSecret();
+          await doc.save();
+          created += 1;
         } catch (rowErr) {
-          skipped += 1;
-          if (errors.length < 50) {
-            errors.push({ row: item.row, message: rowErr.message || 'Row failed' });
+          if (rowErr?.code === 11000) {
+            duplicates += 1;
+          } else {
+            skipped += 1;
+            if (errors.length < 50) {
+              errors.push({ row: item.row, message: rowErr.message || 'Row failed' });
+            }
           }
         }
       }
-      logger.warn({ err: err.message }, 'MIS bulkWrite chunk fell back to per-row');
+      logger.warn({ err: err.message }, 'MIS bulkWrite chunk fell back to per-row insert');
     }
   }
 
   try { fs.unlinkSync(filePath); } catch { /* ignore */ }
 
   const totalRows = Math.max(0, sheet.rowCount - 1);
-  const processed = created + updated + skipped;
+  const processed = created + duplicates + duplicatesInFile + skipped;
   return {
     batchId,
     created,
-    updated,
+    updated: 0, // never overwrite — kept for older clients
+    duplicates,
+    duplicatesInFile,
     skipped,
     blank,
     totalRows,
     processed,
     errors: errors.slice(0, 40),
-    message: `Done · ${created} new · ${updated} updated · ${skipped} skipped · ${processed}/${totalRows || processed} rows`,
+    message: `Merged · ${created} new · ${duplicates} duplicates kept unchanged · ${duplicatesInFile} repeats in file · ${skipped} invalid`,
   };
 }
 

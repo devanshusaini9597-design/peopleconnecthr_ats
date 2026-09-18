@@ -1,13 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Megaphone, Search, Upload, RefreshCw, Trash2, Send, Loader2,
-  CheckSquare, Square, MinusSquare, Mail, X, Info,
+  CheckSquare, Square, MinusSquare, Mail, X, Info, Plus,
 } from 'lucide-react';
 import { authenticatedFetch, authenticatedUpload } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
 import Modal from './ui/Modal';
+import ConfirmationModal from './ConfirmationModal';
+import MisAddContactModal from './MisAddContactModal';
 import { useAuth } from '../context/AuthContext';
 import { useTableDragScroll } from './ats/hooks/useTableDragScroll';
 import { Navigate } from 'react-router-dom';
@@ -51,6 +53,10 @@ export default function MisPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadUi, setUploadUi] = useState(null);
   // uploadUi: { phase, percent, fileName, result? }
+  const [pendingUploadFile, setPendingUploadFile] = useState(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
   const [mailOpen, setMailOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -272,6 +278,7 @@ export default function MisPage() {
 
   const onUpload = async (file) => {
     if (!file) return;
+    setPendingUploadFile(null);
     setUploading(true);
     setUploadUi({
       phase: 'upload',
@@ -314,9 +321,14 @@ export default function MisPage() {
     }
   };
 
+  const requestUpload = (file) => {
+    if (!file) return;
+    setPendingUploadFile(file);
+  };
+
   const deleteSelected = async () => {
     if (!selectedIds.length) return;
-    if (!window.confirm(`Delete ${selectedIds.length} MIS contact(s)? This does not affect ATS Candidates.`)) return;
+    setDeleting(true);
     try {
       const res = await authenticatedFetch('/api/mis/bulk-delete', {
         method: 'POST',
@@ -326,9 +338,12 @@ export default function MisPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Delete failed');
       toast.success(`Deleted ${data.deleted || 0}`);
+      setDeleteConfirmOpen(false);
       await load();
     } catch (err) {
       toast.error(err.message || 'Delete failed');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -413,10 +428,19 @@ export default function MisPage() {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="btn-primary flex-1 sm:flex-none justify-center"
+            className="btn-secondary flex-1 sm:flex-none justify-center"
           >
             {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
             Upload Excel
+          </button>
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            disabled={uploading}
+            className="btn-primary flex-1 sm:flex-none justify-center"
+          >
+            <Plus size={16} />
+            Add contact
           </button>
         </div>
       </PageHeader>
@@ -430,7 +454,7 @@ export default function MisPage() {
         onChange={(e) => {
           const f = e.target.files?.[0];
           e.target.value = '';
-          onUpload(f);
+          requestUpload(f);
         }}
       />
 
@@ -438,8 +462,8 @@ export default function MisPage() {
         <Info className="w-4 h-4 mt-0.5 shrink-0 text-brand-600" />
         <p className="leading-relaxed">
           <span className="font-semibold">Owner-only marketing desk.</span>
-          {' '}Visible only to the company owner. Contacts stay separate from ATS Candidates.
-          Large Excel files show live upload % then a results summary (new / updated / skipped).
+          {' '}Separate from Candidates. Re-uploading Excel merges new emails only — existing contacts are never overwritten.
+          Use <span className="font-semibold">Add contact</span> for a single MIS entry.
         </p>
       </div>
 
@@ -480,7 +504,7 @@ export default function MisPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={deleteSelected}
+                  onClick={() => setDeleteConfirmOpen(true)}
                   className="h-10 px-3.5 rounded-xl bg-white border border-rose-200 text-rose-700 inline-flex items-center justify-center gap-2 shadow-sm hover:bg-rose-50 transition-all text-sm font-semibold"
                 >
                   <Trash2 size={16} strokeWidth={1.75} />
@@ -824,20 +848,28 @@ export default function MisPage() {
             {uploadUi.phase === 'done' && uploadUi.result ? (
               <div className="space-y-3">
                 <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/50 px-4 py-3">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700">Upload complete</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700">Merge complete</p>
                   <p className="text-sm font-semibold text-stone-900 mt-1">
-                    {uploadUi.result.processed ?? 0} of {uploadUi.result.totalRows ?? uploadUi.result.processed ?? 0} rows handled
+                    Existing MIS contacts were left unchanged. Only new emails were added.
                   </p>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
                     { label: 'New', value: uploadUi.result.created ?? 0, tone: 'text-emerald-700 bg-emerald-50 border-emerald-100' },
-                    { label: 'Updated', value: uploadUi.result.updated ?? 0, tone: 'text-sky-700 bg-sky-50 border-sky-100' },
-                    { label: 'Skipped', value: uploadUi.result.skipped ?? 0, tone: 'text-amber-700 bg-amber-50 border-amber-100' },
                     {
-                      label: 'Processed',
-                      value: `${uploadUi.result.processed ?? 0}/${uploadUi.result.totalRows ?? uploadUi.result.processed ?? 0}`,
-                      tone: 'text-stone-700 bg-stone-50 border-stone-200',
+                      label: 'Duplicates kept',
+                      value: uploadUi.result.duplicates ?? uploadUi.result.updated ?? 0,
+                      tone: 'text-sky-700 bg-sky-50 border-sky-100',
+                    },
+                    {
+                      label: 'In-file repeats',
+                      value: uploadUi.result.duplicatesInFile ?? 0,
+                      tone: 'text-violet-700 bg-violet-50 border-violet-100',
+                    },
+                    {
+                      label: 'Invalid',
+                      value: uploadUi.result.skipped ?? 0,
+                      tone: 'text-amber-700 bg-amber-50 border-amber-100',
                     },
                   ].map((card) => (
                     <div key={card.label} className={`rounded-xl border px-3 py-2.5 ${card.tone}`}>
@@ -850,7 +882,7 @@ export default function MisPage() {
                 {Array.isArray(uploadUi.result.errors) && uploadUi.result.errors.length ? (
                   <div className="rounded-xl border border-stone-200 bg-stone-50/80 max-h-36 overflow-y-auto p-3">
                     <p className="text-[11px] font-bold uppercase tracking-wider text-stone-500 mb-1.5">
-                      Sample issues ({uploadUi.result.errors.length})
+                      Sample notes ({uploadUi.result.errors.length})
                     </p>
                     <ul className="space-y-1 text-xs text-stone-600">
                       {uploadUi.result.errors.slice(0, 12).map((err, i) => (
@@ -868,6 +900,46 @@ export default function MisPage() {
           </div>
         ) : null}
       </Modal>
+
+      <MisAddContactModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        toast={toast}
+        onCreated={() => {
+          setPage(1);
+          load(1);
+        }}
+      />
+
+      <ConfirmationModal
+        isOpen={Boolean(pendingUploadFile)}
+        onClose={() => setPendingUploadFile(null)}
+        onConfirm={() => {
+          const file = pendingUploadFile;
+          if (file) onUpload(file);
+        }}
+        type="info"
+        eyebrow="Excel merge"
+        title="Upload to MIS?"
+        message={`“${pendingUploadFile?.name || 'file'}” will be merged into MIS. Matching emails that already exist are kept as-is (nothing is overwritten). Only new emails are added.`}
+        confirmText="Upload & merge"
+        cancelText="Cancel"
+        zClass="z-[140]"
+      />
+
+      <ConfirmationModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => { if (!deleting) setDeleteConfirmOpen(false); }}
+        onConfirm={deleteSelected}
+        type="delete"
+        eyebrow="Bulk delete"
+        title={`Delete ${selectedIds.length} contact${selectedIds.length === 1 ? '' : 's'}?`}
+        message="This removes them from MIS only. ATS Candidates are not affected."
+        confirmText="Delete"
+        cancelText="Cancel"
+        isLoading={deleting}
+        zClass="z-[140]"
+      />
     </div>
   );
 }
