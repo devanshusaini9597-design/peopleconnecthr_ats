@@ -10,6 +10,8 @@ import EmptyState from './ui/EmptyState';
 import Modal from './ui/Modal';
 import ConfirmationModal from './ConfirmationModal';
 import MisAddContactModal from './MisAddContactModal';
+import MisBulkToolbar from './MisBulkToolbar';
+import MisBulkEditModal from './MisBulkEditModal';
 import { useAuth } from '../context/AuthContext';
 import { useTableDragScroll } from './ats/hooks/useTableDragScroll';
 import { Navigate } from 'react-router-dom';
@@ -66,6 +68,14 @@ export default function MisPage() {
   const [sending, setSending] = useState(false);
   const [subject, setSubject] = useState('');
   const [htmlBody, setHtmlBody] = useState('');
+  const [consentMenuOpen, setConsentMenuOpen] = useState(false);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [bulkEditing, setBulkEditing] = useState(false);
+  const [whatsAppConfirmOpen, setWhatsAppConfirmOpen] = useState(false);
+  const [whatsAppTargets, setWhatsAppTargets] = useState([]);
+  const [consentBulk, setConsentBulk] = useState(null); // true | false | null
+  const [consentBulkConfirmOpen, setConsentBulkConfirmOpen] = useState(false);
+  const [consentBulkSaving, setConsentBulkSaving] = useState(false);
 
   const load = useCallback(async (pageOverride) => {
     const pageNum = pageOverride != null ? pageOverride : page;
@@ -85,7 +95,6 @@ export default function MisPage() {
       setRows(data.rows || []);
       setPagination(data.pagination || { page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
       setScope(data.scope || 'owner');
-      setSelected(new Set());
     } catch (err) {
       toast.error(err.message || 'Failed to load MIS');
       setRows([]);
@@ -93,6 +102,12 @@ export default function MisPage() {
       setLoading(false);
     }
   }, [page, q, consentFilter, unsubFilter, locationQ, toast]);
+
+  // Clear selection when filters/search change (not on page flip — keeps "select all matching")
+  useEffect(() => {
+    setSelected(new Set());
+    setConsentMenuOpen(false);
+  }, [q, consentFilter, unsubFilter, locationQ]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -102,6 +117,151 @@ export default function MisPage() {
   const isPagePartial = selectedOnPage.length > 0 && !isPageSelected;
   const selectedIds = useMemo(() => [...selected], [selected]);
   const totalLabel = (pagination.total || 0).toLocaleString();
+  const filteredCount = pagination.total || 0;
+  const isAllFilteredSelected =
+    filteredCount > 0
+    && selectedIds.length > 0
+    && selectedIds.length >= filteredCount;
+
+  const buildListParams = useCallback((extra = {}) => {
+    const params = new URLSearchParams({
+      page: String(extra.page ?? page),
+      limit: String(extra.limit ?? PAGE_SIZE),
+    });
+    if (q) params.set('q', q);
+    if (consentFilter === 'yes' || consentFilter === 'no') params.set('consent', consentFilter);
+    if (unsubFilter === '1' || unsubFilter === '0') params.set('unsubscribed', unsubFilter);
+    if (locationQ.trim()) params.set('location', locationQ.trim());
+    if (extra.idsOnly) params.set('idsOnly', '1');
+    return params;
+  }, [page, q, consentFilter, unsubFilter, locationQ]);
+
+  const handleSelectAllFiltered = useCallback(async () => {
+    try {
+      const params = buildListParams({ page: 1, limit: 1, idsOnly: true });
+      const res = await authenticatedFetch(`/api/mis?${params}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Could not select matching contacts');
+      const ids = (data.ids || []).map(String);
+      if (!ids.length) {
+        toast.warning('No matching contacts to select.');
+        return;
+      }
+      setSelected(new Set(ids));
+      const matchTotal = data.total || filteredCount;
+      if (data.capped) {
+        toast.warning(
+          `Selected ${ids.length.toLocaleString()} of ${matchTotal.toLocaleString()} matches (maximum). Refine filters to target the rest.`,
+        );
+      } else {
+        toast.success(`Selected all ${ids.length.toLocaleString()} matching contacts.`);
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Could not select all matching contacts.');
+    }
+  }, [buildListParams, filteredCount, toast]);
+
+  const handleBulkWhatsApp = useCallback(async () => {
+    if (!selectedIds.length) {
+      toast.warning('Please select at least one contact.');
+      return;
+    }
+    let pool = rows.filter((r) => selected.has(String(r._id)));
+    if (selectedIds.length > pool.length) {
+      try {
+        const params = buildListParams({ page: 1, limit: 1, idsOnly: true });
+        const res = await authenticatedFetch(`/api/mis?${params}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || 'Could not load phone numbers');
+        const idSet = new Set(selectedIds);
+        pool = (data.contacts || []).filter((c) => idSet.has(String(c._id)));
+      } catch (err) {
+        toast.error(err.message || 'Could not load phone numbers');
+        return;
+      }
+    }
+    const withPhone = pool.filter((c) => {
+      const phone = String(c.phone || c.contact || '').replace(/\D/g, '');
+      return phone.length >= 7;
+    });
+    if (withPhone.length === 0) {
+      toast.warning('No valid phone numbers found in selected contacts.');
+      return;
+    }
+    setWhatsAppTargets(withPhone);
+    setWhatsAppConfirmOpen(true);
+  }, [selectedIds, rows, selected, toast, buildListParams]);
+
+  const openWhatsAppTabs = useCallback(() => {
+    setWhatsAppConfirmOpen(false);
+    whatsAppTargets.forEach((c, i) => {
+      const phone = String(c.phone || c.contact || '').replace(/\D/g, '');
+      setTimeout(() => {
+        window.open(`https://wa.me/${phone}`, '_blank');
+      }, i * 500);
+    });
+    setWhatsAppTargets([]);
+  }, [whatsAppTargets]);
+
+  const requestBulkConsent = useCallback((value) => {
+    setConsentMenuOpen(false);
+    if (!selectedIds.length) {
+      toast.warning('Select contacts first');
+      return;
+    }
+    setConsentBulk(Boolean(value));
+    setConsentBulkConfirmOpen(true);
+  }, [selectedIds, toast]);
+
+  const confirmBulkConsent = async () => {
+    if (!selectedIds.length || consentBulk == null) return;
+    setConsentBulkSaving(true);
+    try {
+      const res = await authenticatedFetch('/api/mis/bulk-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: selectedIds,
+          updates: { marketingConsent: consentBulk },
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Consent update failed');
+      toast.success(
+        consentBulk
+          ? `Consent enabled for ${data.modified ?? selectedIds.length} contact(s)`
+          : `Consent removed for ${data.modified ?? selectedIds.length} contact(s)`,
+      );
+      setConsentBulkConfirmOpen(false);
+      setConsentBulk(null);
+      await load();
+    } catch (err) {
+      toast.error(err.message || 'Consent update failed');
+    } finally {
+      setConsentBulkSaving(false);
+    }
+  };
+
+  const submitBulkEdit = async (updates) => {
+    if (!selectedIds.length || !updates || !Object.keys(updates).length) return;
+    setBulkEditing(true);
+    try {
+      const res = await authenticatedFetch('/api/mis/bulk-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds, updates }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Bulk edit failed');
+      toast.success(`Updated ${data.modified ?? selectedIds.length} contact(s)`);
+      setBulkEditOpen(false);
+      await load();
+    } catch (err) {
+      toast.error(err.message || 'Bulk edit failed');
+    } finally {
+      setBulkEditing(false);
+    }
+  };
 
   const togglePageSelection = () => {
     setSelected((prev) => {
@@ -624,60 +784,21 @@ export default function MisPage() {
       </div>
 
       {selectedIds.length > 0 ? (
-        <div className="sticky top-0 z-30 animate-fade-in mb-4">
-          <div className="rounded-2xl border border-brand-200/70 bg-gradient-to-r from-brand-50/90 via-white to-white shadow-[var(--shadow-elevated)] overflow-hidden">
-            <div className="px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div className="flex items-center gap-3.5 min-w-0">
-                <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-brand-500 to-teal-700 text-white flex items-center justify-center text-sm font-bold tabular-nums shadow-lg shadow-brand-500/25 ring-1 ring-white/20 flex-shrink-0">
-                  {selectedIds.length}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-700">
-                    Bulk actions
-                  </p>
-                  <p className="text-sm font-semibold text-stone-900 mt-0.5 truncate">
-                    {selectedIds.length === 1 ? '1 contact selected' : `${selectedIds.length} contacts selected`}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSelected(new Set())}
-                  className="h-10 w-10 rounded-xl border border-stone-200/80 bg-white text-stone-500 inline-flex items-center justify-center hover:bg-stone-50 hover:text-stone-800 hover:border-stone-300 transition-all shadow-sm flex-shrink-0"
-                  title="Clear selection"
-                  aria-label="Clear selection"
-                >
-                  <X size={16} strokeWidth={2} />
-                </button>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => requestMove(selectedIds)}
-                  className="h-10 px-3.5 rounded-xl bg-white border border-stone-200/80 text-stone-700 inline-flex items-center justify-center gap-2 shadow-sm hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-all text-sm font-semibold"
-                >
-                  <Users size={16} strokeWidth={1.75} />
-                  Move to Candidates
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMailOpen(true)}
-                  className="h-10 px-3.5 rounded-xl bg-white border border-stone-200/80 text-stone-700 inline-flex items-center justify-center gap-2 shadow-sm hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-all text-sm font-semibold"
-                >
-                  <Send size={16} strokeWidth={1.75} />
-                  Send marketing
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDeleteConfirmOpen(true)}
-                  className="h-10 px-3.5 rounded-xl bg-white border border-rose-200 text-rose-700 inline-flex items-center justify-center gap-2 shadow-sm hover:bg-rose-50 transition-all text-sm font-semibold"
-                >
-                  <Trash2 size={16} strokeWidth={1.75} />
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <MisBulkToolbar
+          selectedIds={selectedIds}
+          onClear={() => { setSelected(new Set()); setConsentMenuOpen(false); }}
+          onEmail={() => setMailOpen(true)}
+          onWhatsApp={handleBulkWhatsApp}
+          onBulkEdit={() => { setConsentMenuOpen(false); setBulkEditOpen(true); }}
+          onConsentMenuToggle={() => setConsentMenuOpen((v) => !v)}
+          consentMenuOpen={consentMenuOpen}
+          onSetConsent={requestBulkConsent}
+          onMoveToCandidates={() => requestMove(selectedIds)}
+          onDelete={() => setDeleteConfirmOpen(true)}
+          filteredCount={filteredCount}
+          isAllFilteredSelected={isAllFilteredSelected}
+          onSelectAllFiltered={handleSelectAllFiltered}
+        />
       ) : null}
 
       <div className="card-ats-bordered relative overflow-hidden min-h-[320px]">
@@ -1185,6 +1306,49 @@ export default function MisPage() {
         ] : [
           { label: 'Selected', value: moveIds.length, tone: 'brand' },
         ]}
+      />
+
+      <ConfirmationModal
+        isOpen={whatsAppConfirmOpen}
+        onClose={() => { setWhatsAppConfirmOpen(false); setWhatsAppTargets([]); }}
+        onConfirm={openWhatsAppTabs}
+        type="info"
+        eyebrow="WhatsApp"
+        title="Open WhatsApp"
+        message={`Open WhatsApp for ${whatsAppTargets.length} contact(s)? Each will open in a new tab.`}
+        confirmText="Open WhatsApp"
+        cancelText="Cancel"
+        zClass="z-[140]"
+      />
+
+      <ConfirmationModal
+        isOpen={consentBulkConfirmOpen}
+        onClose={() => {
+          if (consentBulkSaving) return;
+          setConsentBulkConfirmOpen(false);
+          setConsentBulk(null);
+        }}
+        onConfirm={confirmBulkConsent}
+        type="info"
+        eyebrow="Marketing consent"
+        title={consentBulk ? 'Enable consent?' : 'Remove consent?'}
+        message={
+          consentBulk
+            ? `Enable marketing consent for ${selectedIds.length} selected contact(s). Unsubscribed flags will be cleared where consent is enabled.`
+            : `Remove marketing consent for ${selectedIds.length} selected contact(s). They will be excluded from Send marketing.`
+        }
+        confirmText={consentBulk ? 'Enable consent' : 'Remove consent'}
+        cancelText="Cancel"
+        isLoading={consentBulkSaving}
+        zClass="z-[140]"
+      />
+
+      <MisBulkEditModal
+        open={bulkEditOpen}
+        onClose={() => { if (!bulkEditing) setBulkEditOpen(false); }}
+        selectedCount={selectedIds.length}
+        onSubmit={submitBulkEdit}
+        isLoading={bulkEditing}
       />
     </div>
   );

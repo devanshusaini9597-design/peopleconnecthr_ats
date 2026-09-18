@@ -104,6 +104,15 @@ router.post('/bulk-delete', async (req, res) => {
   }
 });
 
+router.post('/bulk-update', async (req, res) => {
+  try {
+    const data = await svc.bulkUpdate(req.user, req.body?.ids || [], req.body?.updates || {});
+    res.json({ success: true, ...data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
 router.post('/move-to-candidates', async (req, res) => {
   try {
     const data = await svc.moveToCandidates(req.user, req.body?.ids || [], {

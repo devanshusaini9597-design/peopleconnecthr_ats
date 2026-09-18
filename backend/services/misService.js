@@ -123,6 +123,8 @@ function unsubscribeUrlFor(contact) {
   return `${root}/api/mis/unsubscribe?id=${contact._id}&token=${token}`;
 }
 
+const IDS_ONLY_CAP = 5000;
+
 async function listContacts(user, query = {}) {
   if (!user || user.role !== 'owner') {
     throw httpError('MIS is available to the company owner only', 403, { code: 'MIS_OWNER_ONLY' });
@@ -131,6 +133,7 @@ async function listContacts(user, query = {}) {
   if (!organizationId) throw httpError('Organization required', 403);
   const page = Math.max(1, Number(query.page) || 1);
   const limit = Math.min(200, Math.max(1, Number(query.limit) || 50));
+  const idsOnly = query.idsOnly === '1' || query.idsOnly === 'true' || query.idsOnly === true;
   const q = trimStr(query.q);
   const filter = misListFilter(organizationId, user);
   if (q) {
@@ -149,6 +152,34 @@ async function listContacts(user, query = {}) {
   }
   if (trimStr(query.source)) {
     filter.source = { $regex: trimStr(query.source).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+  }
+
+  if (idsOnly) {
+    const total = await MisContact.countDocuments(filter);
+    const idDocs = await MisContact.find(filter)
+      .sort({ createdAt: -1 })
+      .select('_id phone contact')
+      .limit(IDS_ONLY_CAP)
+      .lean();
+    const ids = idDocs.map((d) => String(d._id));
+    return {
+      ids,
+      contacts: idDocs.map((d) => ({
+        _id: String(d._id),
+        phone: d.phone || '',
+        contact: d.contact || d.phone || '',
+      })),
+      total,
+      capped: total > ids.length,
+      pagination: {
+        page: 1,
+        limit: ids.length,
+        total,
+        pages: 1,
+        hasMore: total > ids.length,
+      },
+      scope: 'owner',
+    };
   }
 
   const [rows, total] = await Promise.all([
@@ -171,6 +202,50 @@ async function listContacts(user, query = {}) {
       hasMore: page * limit < total,
     },
     scope: user.role === 'owner' ? 'owner' : 'none',
+  };
+}
+
+const BULK_UPDATE_FIELDS = [
+  'source', 'client', 'position', 'companyName', 'location', 'product', 'fls', 'remark',
+  'state', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'skills',
+];
+
+async function bulkUpdate(user, ids = [], updates = {}) {
+  if (!user || user.role !== 'owner') {
+    throw httpError('MIS is available to the company owner only', 403, { code: 'MIS_OWNER_ONLY' });
+  }
+  const idList = (ids || []).map(String).filter(Boolean);
+  if (!idList.length) throw httpError('No contacts selected');
+  if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+    throw httpError('updates object is required');
+  }
+
+  const $set = {};
+  for (const key of BULK_UPDATE_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(updates, key)) continue;
+    if (updates[key] == null) continue;
+    const val = normalizeText(trimStr(updates[key]));
+    if (!val) continue;
+    $set[key] = val;
+  }
+
+  let consentUpdate = null;
+  if (typeof updates.marketingConsent === 'boolean') {
+    consentUpdate = updates.marketingConsent;
+    $set.marketingConsent = consentUpdate;
+    if (consentUpdate) $set.unsubscribedAt = null;
+  }
+
+  if (!Object.keys($set).length) {
+    throw httpError('No valid fields to update. Choose at least one field.');
+  }
+
+  const filter = misListFilter(user.organizationId, user, { _id: { $in: idList } });
+  const result = await MisContact.updateMany(filter, { $set });
+  return {
+    matched: result.matchedCount ?? result.n ?? 0,
+    modified: result.modifiedCount ?? result.nModified ?? 0,
+    marketingConsent: consentUpdate,
   };
 }
 
@@ -474,6 +549,7 @@ module.exports = {
   updateContact,
   deleteContact,
   bulkDelete,
+  bulkUpdate,
   bulkUpload,
   getBulkUploadJob,
   moveToCandidates,
