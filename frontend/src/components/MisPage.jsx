@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Megaphone, Search, Upload, RefreshCw, Trash2, Send, Loader2,
-  CheckSquare, Square, MinusSquare, Mail, X, Info, Plus,
+  CheckSquare, Square, MinusSquare, Mail, X, Info, Plus, Users,
 } from 'lucide-react';
 import { authenticatedFetch, authenticatedUpload } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -57,6 +57,10 @@ export default function MisPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [moveConfirmOpen, setMoveConfirmOpen] = useState(false);
+  const [moveIds, setMoveIds] = useState([]);
+  const [moving, setMoving] = useState(false);
+  const [moveResult, setMoveResult] = useState(null);
   const [selected, setSelected] = useState(() => new Set());
   const [mailOpen, setMailOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -136,6 +140,17 @@ export default function MisPage() {
     } catch (err) {
       toast.error(err.message || 'Could not update consent');
     }
+  }, [toast]);
+
+  const requestMove = useCallback((ids) => {
+    const list = (ids || []).map(String).filter(Boolean);
+    if (!list.length) {
+      toast.warning('Select contacts first');
+      return;
+    }
+    setMoveIds(list);
+    setMoveResult(null);
+    setMoveConfirmOpen(true);
   }, [toast]);
 
   const columns = useMemo(() => [
@@ -274,7 +289,23 @@ export default function MisPage() {
         </span>
       ),
     },
-  ], [page, toggleConsent]);
+    {
+      key: 'actions',
+      label: 'Actions',
+      className: 'w-auto',
+      render: (row) => (
+        <button
+          type="button"
+          onClick={() => requestMove([row._id])}
+          className="h-8 px-2.5 rounded-lg border border-stone-200 bg-white text-xs font-semibold text-stone-700 inline-flex items-center gap-1.5 hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-all whitespace-nowrap"
+          title="Move to Candidates"
+        >
+          <Users size={13} />
+          To Candidates
+        </button>
+      ),
+    },
+  ], [page, toggleConsent, requestMove]);
 
   const onUpload = async (file) => {
     if (!file) return;
@@ -344,6 +375,29 @@ export default function MisPage() {
       toast.error(err.message || 'Delete failed');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const confirmMoveToCandidates = async () => {
+    if (!moveIds.length) return;
+    setMoving(true);
+    try {
+      const res = await authenticatedFetch('/api/mis/move-to-candidates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: moveIds, removeFromMis: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Move failed');
+      setMoveResult(data);
+      toast.success(data.message || `Moved ${data.moved || 0}`);
+      setSelected(new Set());
+      await load();
+    } catch (err) {
+      toast.error(err.message || 'Move failed');
+      setMoveConfirmOpen(false);
+    } finally {
+      setMoving(false);
     }
   };
 
@@ -463,7 +517,8 @@ export default function MisPage() {
         <p className="leading-relaxed">
           <span className="font-semibold">Owner-only marketing desk.</span>
           {' '}Separate from Candidates. Re-uploading Excel merges new emails only — existing contacts are never overwritten.
-          Use <span className="font-semibold">Add contact</span> for a single MIS entry.
+          Use <span className="font-semibold">Add contact</span> for a full Candidates-style form (saved to MIS only).
+          Select rows to <span className="font-semibold">Move to Candidates</span> — moved rows leave MIS.
         </p>
       </div>
 
@@ -494,6 +549,14 @@ export default function MisPage() {
                 </button>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => requestMove(selectedIds)}
+                  className="h-10 px-3.5 rounded-xl bg-white border border-stone-200/80 text-stone-700 inline-flex items-center justify-center gap-2 shadow-sm hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-all text-sm font-semibold"
+                >
+                  <Users size={16} strokeWidth={1.75} />
+                  Move to Candidates
+                </button>
                 <button
                   type="button"
                   onClick={() => setMailOpen(true)}
@@ -939,6 +1002,45 @@ export default function MisPage() {
         cancelText="Cancel"
         isLoading={deleting}
         zClass="z-[140]"
+      />
+
+      <ConfirmationModal
+        isOpen={moveConfirmOpen}
+        onClose={() => {
+          if (moving) return;
+          setMoveConfirmOpen(false);
+          setMoveResult(null);
+          setMoveIds([]);
+        }}
+        onConfirm={() => {
+          if (moveResult) {
+            setMoveConfirmOpen(false);
+            setMoveResult(null);
+            setMoveIds([]);
+            return;
+          }
+          confirmMoveToCandidates();
+        }}
+        type={moveResult ? 'success' : 'info'}
+        eyebrow="MIS → Candidates"
+        title={moveResult ? 'Move complete' : `Move ${moveIds.length} contact${moveIds.length === 1 ? '' : 's'} to Candidates?`}
+        message={
+          moveResult
+            ? (moveResult.message || 'Done')
+            : 'Creates Candidates from these MIS rows, then removes them from MIS. Existing candidate emails/phones are skipped (not overwritten).'
+        }
+        confirmText={moveResult ? 'Close' : 'Move to Candidates'}
+        cancelText={moveResult ? undefined : 'Cancel'}
+        showCancel={!moveResult}
+        isLoading={moving}
+        zClass="z-[140]"
+        stats={moveResult ? [
+          { label: 'Moved', value: moveResult.moved ?? 0, tone: 'emerald' },
+          { label: 'Already there', value: moveResult.skippedDuplicate ?? 0, tone: 'amber' },
+          { label: 'Skipped', value: moveResult.skippedInvalid ?? 0, tone: 'red' },
+        ] : [
+          { label: 'Selected', value: moveIds.length, tone: 'brand' },
+        ]}
       />
     </div>
   );

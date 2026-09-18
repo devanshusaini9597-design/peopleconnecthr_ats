@@ -95,6 +95,17 @@ router.post('/bulk-delete', async (req, res) => {
   }
 });
 
+router.post('/move-to-candidates', async (req, res) => {
+  try {
+    const data = await svc.moveToCandidates(req.user, req.body?.ids || [], {
+      removeFromMis: req.body?.removeFromMis !== false,
+    });
+    res.json({ success: true, ...data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
 router.post('/send-marketing', async (req, res) => {
   try {
     const data = await svc.sendMarketingToMis(req.user, req.body || {});

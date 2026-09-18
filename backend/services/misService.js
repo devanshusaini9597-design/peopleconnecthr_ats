@@ -189,10 +189,13 @@ async function createContact(user, body = {}) {
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
     throw httpError('Valid email is required');
   }
+  const phone = phoneDigits(body.phone || body.contact);
+  if (!phone || phone.length < 7 || phone.length > 15) {
+    throw httpError('Valid phone number is required (7–15 digits)');
+  }
   const existing = await MisContact.findOne({ organizationId, email });
   if (existing) throw httpError('This email already exists in MIS', 409, { code: 'DUPLICATE_EMAIL' });
 
-  const phone = phoneDigits(body.phone || body.contact);
   const doc = new MisContact({
     organizationId,
     createdBy: user.id || user._id,
@@ -466,6 +469,136 @@ async function sendMarketingToMis(user, body = {}) {
   };
 }
 
+/**
+ * Move MIS contacts into Candidates (create Candidate, then remove from MIS).
+ * Skips emails/phones already in Candidates and rows missing required phone.
+ */
+async function moveToCandidates(user, ids = [], options = {}) {
+  if (!user || user.role !== 'owner') {
+    throw httpError('MIS is available to the company owner only', 403, { code: 'MIS_OWNER_ONLY' });
+  }
+  const idList = (ids || []).map(String).filter(Boolean);
+  if (!idList.length) throw httpError('Select at least one MIS contact');
+
+  const removeFromMis = options.removeFromMis !== false;
+  const Candidate = require('../models/Candidate');
+  const LocationService = require('./locationService');
+  const { findOrgPhoneConflict, findOrgEmailConflict } = require('./dedupeService');
+  const { enforceSpocOnWrite } = require('../utils/spocIdentity');
+
+  const filter = misListFilter(user.organizationId, user, { _id: { $in: idList } });
+  const rows = await MisContact.find(filter).lean();
+  if (!rows.length) throw httpError('No MIS contacts found', 404);
+
+  let moved = 0;
+  let skippedDuplicate = 0;
+  let skippedInvalid = 0;
+  const errors = [];
+  const movedIds = [];
+
+  for (const row of rows) {
+    const email = normalizeEmail(row.email);
+    const contact = phoneDigits(row.phone || row.contact);
+    const name = trimStr(row.name);
+    const ctc = trimStr(row.ctc) || 'TO BE UPDATED';
+
+    if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      skippedInvalid += 1;
+      if (errors.length < 40) errors.push({ id: row._id, email, message: 'Name and valid email required' });
+      continue;
+    }
+    if (!contact || contact.length < 7 || contact.length > 15) {
+      skippedInvalid += 1;
+      if (errors.length < 40) errors.push({ id: row._id, email, message: 'Valid phone required to move' });
+      continue;
+    }
+
+    try {
+      if (user.organizationId) {
+        const emailHit = await findOrgEmailConflict(user.organizationId, email);
+        if (emailHit) {
+          skippedDuplicate += 1;
+          if (errors.length < 40) {
+            errors.push({ id: row._id, email, message: `Already a candidate (${emailHit.name || 'existing'})` });
+          }
+          continue;
+        }
+        const phoneHit = await findOrgPhoneConflict(user.organizationId, contact);
+        if (phoneHit) {
+          skippedDuplicate += 1;
+          if (errors.length < 40) {
+            errors.push({
+              id: row._id,
+              email,
+              message: `Phone already on candidate ${phoneHit.name || ''}`.trim(),
+            });
+          }
+          continue;
+        }
+      }
+
+      const payload = {
+        name: normalizeText(name),
+        email,
+        contact,
+        phone: contact,
+        position: normalizeText(trimStr(row.position)),
+        companyName: normalizeText(trimStr(row.companyName)),
+        location: normalizeText(trimStr(row.location)),
+        state: normalizeText(trimStr(row.state)),
+        experience: normalizeText(trimStr(row.experience)),
+        ctc: normalizeText(ctc),
+        expectedCtc: normalizeText(trimStr(row.expectedCtc)),
+        noticePeriod: normalizeText(trimStr(row.noticePeriod)),
+        skills: normalizeText(trimStr(row.skills)),
+        product: normalizeText(trimStr(row.product)),
+        client: normalizeText(trimStr(row.client)),
+        fls: normalizeText(trimStr(row.fls)),
+        source: normalizeText(trimStr(row.source) || 'MIS'),
+        remark: trimStr(row.remark),
+        status: 'APPLIED',
+        organizationId: user.organizationId,
+        createdBy: user.id || user._id,
+      };
+      if (payload.location && !payload.state) {
+        payload.state = LocationService.detectState(payload.location) || '';
+      }
+
+      const fakeReq = { user, body: payload };
+      await enforceSpocOnWrite(fakeReq, { isCreate: true });
+      Object.assign(payload, fakeReq.body);
+
+      const doc = new Candidate(payload);
+      await doc.save();
+      moved += 1;
+      movedIds.push(String(row._id));
+    } catch (err) {
+      skippedInvalid += 1;
+      if (errors.length < 40) {
+        errors.push({ id: row._id, email, message: err.message || 'Move failed' });
+      }
+    }
+  }
+
+  let deleted = 0;
+  if (removeFromMis && movedIds.length) {
+    const del = await MisContact.deleteMany(
+      misListFilter(user.organizationId, user, { _id: { $in: movedIds } })
+    );
+    deleted = del.deletedCount || 0;
+  }
+
+  return {
+    moved,
+    deleted,
+    skippedDuplicate,
+    skippedInvalid,
+    total: rows.length,
+    errors: errors.slice(0, 30),
+    message: `Moved ${moved} to Candidates · ${skippedDuplicate} already there · ${skippedInvalid} skipped`,
+  };
+}
+
 async function unsubscribePublic({ id, token }) {
   if (!id || !token) throw httpError('Invalid unsubscribe link', 400);
   const contact = await MisContact.findById(id);
@@ -493,6 +626,7 @@ module.exports = {
   deleteContact,
   bulkDelete,
   bulkUpload,
+  moveToCandidates,
   sendMarketingToMis,
   unsubscribePublic,
   unsubscribeUrlFor,
