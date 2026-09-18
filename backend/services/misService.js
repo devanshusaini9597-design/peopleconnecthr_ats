@@ -123,7 +123,7 @@ function unsubscribeUrlFor(contact) {
   return `${root}/api/mis/unsubscribe?id=${contact._id}&token=${token}`;
 }
 
-const IDS_ONLY_CAP = 5000;
+const IDS_ONLY_CAP = 50000;
 
 async function listContacts(user, query = {}) {
   if (!user || user.role !== 'owner') {
@@ -158,7 +158,7 @@ async function listContacts(user, query = {}) {
     const total = await MisContact.countDocuments(filter);
     const idDocs = await MisContact.find(filter)
       .sort({ createdAt: -1 })
-      .select('_id phone contact')
+      .select('_id phone contact email name marketingConsent unsubscribedAt')
       .limit(IDS_ONLY_CAP)
       .lean();
     const ids = idDocs.map((d) => String(d._id));
@@ -168,6 +168,10 @@ async function listContacts(user, query = {}) {
         _id: String(d._id),
         phone: d.phone || '',
         contact: d.contact || d.phone || '',
+        email: d.email || '',
+        name: d.name || '',
+        marketingConsent: Boolean(d.marketingConsent),
+        unsubscribedAt: d.unsubscribedAt || null,
       })),
       total,
       capped: total > ids.length,

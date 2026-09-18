@@ -59,6 +59,8 @@ export default function CandidateEmailModal(props) {
     quickPreviewHtml, setQuickPreviewHtml, quickPreviewSubject, setQuickPreviewSubject,
     loadingPreview, setLoadingPreview, isSendingEmail,
     sendTemplateEmail, sendSingleEmail,
+    campaignOnly = false,
+    recipientNoun = 'candidates',
   } = props;
 
   const { organization } = useAuth();
@@ -132,7 +134,9 @@ export default function CandidateEmailModal(props) {
 
             <div className="mt-4 sm:pl-14">
               <h3 className="text-base font-semibold text-stone-900 tracking-tight">
-                {isBulk ? `Email ${bulkEmailRecipients.length} candidates` : 'Send email'}
+                {isBulk
+                  ? `${campaignOnly ? 'Campaign' : 'Email'} ${bulkEmailRecipients.length} ${recipientNoun}`
+                  : (campaignOnly ? 'Send campaign' : 'Send email')}
               </h3>
               <p className="text-sm text-stone-600 mt-1 truncate" title={toLine}>
                 <span className="text-stone-400 font-medium">To</span>{' '}
@@ -159,7 +163,8 @@ export default function CandidateEmailModal(props) {
                 Choose how this message should be delivered.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className={`grid gap-3 ${campaignOnly ? 'grid-cols-1' : 'grid-cols-2'}`}>
+              {!campaignOnly ? (
               <button
                 type="button"
                 onClick={() => {
@@ -186,6 +191,7 @@ export default function CandidateEmailModal(props) {
                   Interviews, offers, and documents
                 </p>
               </button>
+              ) : null}
 
               <button
                 type="button"
@@ -213,7 +219,9 @@ export default function CandidateEmailModal(props) {
                   <span className="text-sm font-semibold">Campaign</span>
                 </div>
                 <p className="text-xs text-stone-500 mt-2 leading-relaxed">
-                  Outreach and nurture sequences
+                  {campaignOnly
+                    ? 'Zoho Campaigns · marketing templates · consent-checked list'
+                    : 'Outreach and nurture sequences'}
                 </p>
                 {!channelsAvailable.marketing && (
                   <p className="text-[11px] font-medium text-stone-400 mt-2">Unavailable</p>
@@ -223,6 +231,7 @@ export default function CandidateEmailModal(props) {
           </section>
 
           <section className="space-y-4">
+            {!campaignOnly ? (
             <div className="inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-stone-100/80 border border-stone-200/70">
               <button
                 type="button"
@@ -251,6 +260,7 @@ export default function CandidateEmailModal(props) {
                 <Zap size={14} /> Quick send
               </button>
             </div>
+            ) : null}
 
             <EmailCcBccFields
               emailCC={emailCC}

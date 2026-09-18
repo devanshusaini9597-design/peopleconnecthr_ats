@@ -58,8 +58,8 @@ export default function MisBulkToolbar({
                 type="button"
                 onClick={onEmail}
                 className="h-10 w-10 rounded-lg bg-white border border-stone-200/80 text-stone-600 inline-flex items-center justify-center shadow-sm hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-all"
-                title="Email / marketing"
-                aria-label="Email selected"
+                title="Campaign email"
+                aria-label="Campaign email selected"
               >
                 <Mail size={17} strokeWidth={1.75} />
               </button>

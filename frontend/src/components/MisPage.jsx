@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Megaphone, Search, Upload, RefreshCw, Trash2, Send, Loader2,
-  CheckSquare, Square, MinusSquare, Mail, X, Info, Plus, Users,
+  Megaphone, Search, Upload, RefreshCw, Trash2, Loader2,
+  CheckSquare, Square, MinusSquare, Info, Plus, Users, X,
 } from 'lucide-react';
-import { authenticatedFetch, authenticatedUpload } from '../utils/fetchUtils';
+import { authenticatedFetch, authenticatedUpload, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
@@ -12,9 +12,13 @@ import ConfirmationModal from './ConfirmationModal';
 import MisAddContactModal from './MisAddContactModal';
 import MisBulkToolbar from './MisBulkToolbar';
 import MisBulkEditModal from './MisBulkEditModal';
+import CandidateEmailModal from './ats/CandidateEmailModal';
+import EmailCampaignResultModal from './ats/EmailCampaignResultModal';
+import { useCandidateEmail } from './ats/hooks/useCandidateEmail';
 import { useAuth } from '../context/AuthContext';
 import { useTableDragScroll } from './ats/hooks/useTableDragScroll';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
+import BASE_API_URL from '../config';
 
 const PAGE_SIZE = 50;
 
@@ -33,6 +37,7 @@ function formatDate(raw) {
 export default function MisPage() {
   const { user } = useAuth();
   const toast = useToast();
+  const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const {
     tableScrollRef,
@@ -64,10 +69,6 @@ export default function MisPage() {
   const [moving, setMoving] = useState(false);
   const [moveResult, setMoveResult] = useState(null);
   const [selected, setSelected] = useState(() => new Set());
-  const [mailOpen, setMailOpen] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [subject, setSubject] = useState('');
-  const [htmlBody, setHtmlBody] = useState('');
   const [consentMenuOpen, setConsentMenuOpen] = useState(false);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [bulkEditing, setBulkEditing] = useState(false);
@@ -76,6 +77,7 @@ export default function MisPage() {
   const [consentBulk, setConsentBulk] = useState(null); // true | false | null
   const [consentBulkConfirmOpen, setConsentBulkConfirmOpen] = useState(false);
   const [consentBulkSaving, setConsentBulkSaving] = useState(false);
+  const [campaignStarting, setCampaignStarting] = useState(false);
 
   const load = useCallback(async (pageOverride) => {
     const pageNum = pageOverride != null ? pageOverride : page;
@@ -116,6 +118,25 @@ export default function MisPage() {
   const isPageSelected = pageIds.length > 0 && selectedOnPage.length === pageIds.length;
   const isPagePartial = selectedOnPage.length > 0 && !isPageSelected;
   const selectedIds = useMemo(() => [...selected], [selected]);
+  const setSelectedIds = useCallback((next) => {
+    if (typeof next === 'function') {
+      setSelected((prev) => {
+        const asArr = [...prev];
+        const result = next(asArr);
+        return new Set((result || []).map(String));
+      });
+      return;
+    }
+    setSelected(new Set((next || []).map(String)));
+  }, []);
+
+  const email = useCandidateEmail({
+    toast,
+    candidates: rows,
+    selectedIds,
+    setSelectedIds,
+  });
+
   const totalLabel = (pagination.total || 0).toLocaleString();
   const filteredCount = pagination.total || 0;
   const isAllFilteredSelected =
@@ -662,38 +683,108 @@ export default function MisPage() {
     }
   };
 
-  const sendMarketing = async () => {
+  const startMisCampaign = useCallback(async () => {
     if (!selectedIds.length) {
-      toast.warning('Select contacts first');
+      toast.warning('Please select at least one contact.');
       return;
     }
-    if (!subject.trim() || !htmlBody.trim()) {
-      toast.warning('Subject and message are required');
-      return;
-    }
-    setSending(true);
+    setCampaignStarting(true);
     try {
-      const res = await authenticatedFetch('/api/mis/send-marketing', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ids: selectedIds,
-          subject: subject.trim(),
-          htmlBody: htmlBody.includes('<') ? htmlBody : `<p>${htmlBody.replace(/\n/g, '<br/>')}</p>`,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || 'Send failed');
-      toast.success(data.message || `Campaign started for ${data.eligible || 0} contact(s)`);
-      setMailOpen(false);
-      setSubject('');
-      setHtmlBody('');
+      let pool = rows.filter((r) => selected.has(String(r._id)));
+      if (selectedIds.length > pool.length) {
+        const params = buildListParams({ page: 1, limit: 1, idsOnly: true });
+        const res = await authenticatedFetch(`/api/mis?${params}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || 'Could not load contacts for campaign');
+        const idSet = new Set(selectedIds);
+        pool = (data.contacts || []).filter((c) => idSet.has(String(c._id)));
+      }
+
+      const eligible = pool.filter((c) => {
+        const em = String(c.email || '').trim().toLowerCase();
+        if (!em || !em.includes('@')) return false;
+        if (c.marketingConsent === false) return false;
+        if (c.unsubscribedAt) return false;
+        return true;
+      }).map((c) => ({
+        _id: String(c._id),
+        email: String(c.email).trim(),
+        name: c.name || '',
+        position: c.position || '',
+        location: c.location || '',
+        client: c.client || '',
+        companyName: c.companyName || '',
+      }));
+
+      if (!eligible.length) {
+        toast.warning('No eligible contacts — need a valid email, marketing consent, and not unsubscribed.');
+        return;
+      }
+
+      if (eligible.length < selectedIds.length) {
+        toast.info(
+          `${eligible.length.toLocaleString()} of ${selectedIds.length.toLocaleString()} selected are eligible for campaign (consent + email).`,
+        );
+      }
+
+      try {
+        const statusRes = await authenticatedFetch(`${BASE_API_URL}/api/email/sender-status`);
+        const statusData = await statusRes.json();
+        if (statusData.success) {
+          email.setEmailSenderInfo({
+            fromEmail: statusData.fromEmail || statusData.agentFrom || '',
+            replyTo: statusData.replyTo || '',
+            displayName: statusData.displayName || '',
+            verifiedDomain: statusData.verifiedDomain || '',
+            sendAsUser: Boolean(statusData.sendAsUser),
+            agentFrom: statusData.agentFrom || '',
+            hint: statusData.hint || '',
+          });
+        }
+      } catch (_) { /* keep previous */ }
+
+      try {
+        const chRes = await authenticatedFetch(`${BASE_API_URL}/api/email/channels`);
+        const chData = await chRes.json();
+        if (chData.success && chData.channels) {
+          email.setChannelsAvailable({
+            transactional: false,
+            marketing: chData.channels.marketing?.available ?? false,
+          });
+        }
+      } catch (_) {
+        email.setChannelsAvailable({ transactional: false, marketing: false });
+      }
+
+      try {
+        const res = await authenticatedFetch(`${BASE_API_URL}/api/email-templates`);
+        if (isUnauthorized(res)) {
+          handleUnauthorized();
+          return;
+        }
+        const data = await res.json();
+        if (data.success && data.templates?.length) {
+          email.setEmailTemplates(data.templates);
+        }
+      } catch (_) { /* ignore */ }
+
+      email.setBulkEmailRecipients(eligible);
+      email.setEmailRecipient(eligible[0]);
+      email.setEmailChannel('marketing');
+      email.setEmailMode('template');
+      email.setSelectedTemplate(null);
+      email.setShowEmailModal(true);
     } catch (err) {
-      toast.error(err.message || 'Marketing send failed');
+      toast.error(err.message || 'Could not start campaign');
     } finally {
-      setSending(false);
+      setCampaignStarting(false);
     }
-  };
+  }, [
+    selectedIds, rows, selected, toast, buildListParams,
+    email.setEmailSenderInfo, email.setChannelsAvailable, email.setEmailTemplates,
+    email.setBulkEmailRecipients, email.setEmailRecipient, email.setEmailChannel,
+    email.setEmailMode, email.setSelectedTemplate, email.setShowEmailModal,
+  ]);
 
   const runSearch = () => {
     setQ(draft.trim());
@@ -787,7 +878,7 @@ export default function MisPage() {
         <MisBulkToolbar
           selectedIds={selectedIds}
           onClear={() => { setSelected(new Set()); setConsentMenuOpen(false); }}
-          onEmail={() => setMailOpen(true)}
+          onEmail={startMisCampaign}
           onWhatsApp={handleBulkWhatsApp}
           onBulkEdit={() => { setConsentMenuOpen(false); setBulkEditOpen(true); }}
           onConsentMenuToggle={() => setConsentMenuOpen((v) => !v)}
@@ -1015,59 +1106,87 @@ export default function MisPage() {
         </div>
       </div>
 
-      {mailOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-[1px]" role="dialog" aria-modal="true">
-          <div className="w-full max-w-lg rounded-2xl bg-white border border-stone-200 shadow-xl shadow-stone-900/15 p-5 sm:p-6 space-y-3.5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="h-10 w-10 rounded-xl bg-brand-50 border border-brand-100 text-brand-700 inline-flex items-center justify-center shrink-0">
-                  <Mail className="w-5 h-5" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-lg font-bold text-stone-900 tracking-tight">Send marketing</h3>
-                  <p className="text-sm text-stone-500 mt-0.5">
-                    {selectedIds.length} selected · Zoho Campaigns · consent required
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setMailOpen(false)}
-                className="h-9 w-9 rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700 inline-flex items-center justify-center"
-                aria-label="Close"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <input
-              className="w-full h-11 rounded-xl border border-stone-200 px-3.5 text-sm font-medium outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15"
-              placeholder="Subject"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-            />
-            <textarea
-              className="w-full rounded-xl border border-stone-200 px-3.5 py-3 text-sm font-medium min-h-[150px] outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15"
-              placeholder="Message body"
-              value={htmlBody}
-              onChange={(e) => setHtmlBody(e.target.value)}
-            />
-            <div className="flex justify-end gap-2 pt-1">
-              <button type="button" className="btn-secondary" onClick={() => setMailOpen(false)} disabled={sending}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-primary inline-flex items-center gap-2"
-                onClick={sendMarketing}
-                disabled={sending}
-              >
-                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                Send campaign
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <CandidateEmailModal
+        campaignOnly
+        recipientNoun="contacts"
+        showEmailModal={email.showEmailModal}
+        emailRecipient={email.emailRecipient}
+        setShowEmailModal={email.setShowEmailModal}
+        bulkEmailRecipients={email.bulkEmailRecipients}
+        setBulkEmailRecipients={email.setBulkEmailRecipients}
+        setSelectedIds={setSelectedIds}
+        emailChannel={email.emailChannel}
+        setEmailChannel={email.setEmailChannel}
+        channelsAvailable={email.channelsAvailable}
+        emailSenderInfo={email.emailSenderInfo}
+        emailMode={email.emailMode}
+        setEmailMode={email.setEmailMode}
+        emailCC={email.emailCC}
+        setEmailCC={email.setEmailCC}
+        emailBCC={email.emailBCC}
+        setEmailBCC={email.setEmailBCC}
+        teamMembers={[]}
+        ccInput={email.ccInput}
+        setCcInput={email.setCcInput}
+        bccInput={email.bccInput}
+        setBccInput={email.setBccInput}
+        showCCPicker={email.showCCPicker}
+        setShowCCPicker={email.setShowCCPicker}
+        showBCCPicker={email.showBCCPicker}
+        setShowBCCPicker={email.setShowBCCPicker}
+        emailTemplates={email.emailTemplates}
+        selectedTemplate={email.selectedTemplate}
+        selectEmailTemplate={email.selectEmailTemplate}
+        setSelectedTemplate={email.setSelectedTemplate}
+        templateVars={email.templateVars}
+        setTemplateVars={email.setTemplateVars}
+        templateDraftSubject={email.templateDraftSubject}
+        setTemplateDraftSubject={email.setTemplateDraftSubject}
+        templateDraftBody={email.templateDraftBody}
+        setTemplateDraftBody={email.setTemplateDraftBody}
+        templateDraftDirty={email.templateDraftDirty}
+        setTemplateDraftDirty={email.setTemplateDraftDirty}
+        emailType={email.emailType}
+        setEmailType={email.setEmailType}
+        quickName={email.quickName}
+        setQuickName={email.setQuickName}
+        quickPosition={email.quickPosition}
+        setQuickPosition={email.setQuickPosition}
+        quickDepartment={email.quickDepartment}
+        setQuickDepartment={email.setQuickDepartment}
+        quickJoiningDate={email.quickJoiningDate}
+        setQuickJoiningDate={email.setQuickJoiningDate}
+        customMessage={email.customMessage}
+        setCustomMessage={email.setCustomMessage}
+        quickSubject={email.quickSubject}
+        setQuickSubject={email.setQuickSubject}
+        showQuickPreview={email.showQuickPreview}
+        setShowQuickPreview={email.setShowQuickPreview}
+        quickPreviewHtml={email.quickPreviewHtml}
+        setQuickPreviewHtml={email.setQuickPreviewHtml}
+        quickPreviewSubject={email.quickPreviewSubject}
+        setQuickPreviewSubject={email.setQuickPreviewSubject}
+        loadingPreview={email.loadingPreview}
+        setLoadingPreview={email.setLoadingPreview}
+        isSendingEmail={email.isSendingEmail || campaignStarting}
+        sendTemplateEmail={email.sendTemplateEmail}
+        sendSingleEmail={email.sendSingleEmail}
+        toast={toast}
+      />
+
+      <EmailCampaignResultModal
+        open={Boolean(email.showEmailCampaignResult)}
+        result={email.emailCampaignResult}
+        onClose={() => {
+          email.setShowEmailCampaignResult?.(false);
+          email.setEmailCampaignResult?.(null);
+        }}
+        onViewReports={() => {
+          email.setShowEmailCampaignResult?.(false);
+          email.setEmailCampaignResult?.(null);
+          navigate('/email-reports');
+        }}
+      />
 
       <Modal
         open={Boolean(uploadUi)}

@@ -163,5 +163,6 @@ export function useCandidateEmail({
     handleBulkEmail, startBulkEmailFlow, toggleEmailSelection, selectAllEmails,
     handleConfirmSend, closeBulkEmailFlow, handleSendEmail, selectEmailTemplate,
     sendTemplateEmail, sendSingleEmail,
+    setEmailTemplates,
   };
 }
