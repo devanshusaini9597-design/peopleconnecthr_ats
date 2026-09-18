@@ -173,7 +173,7 @@ const router = createBrowserRouter([
       { path: '/applications', element: <Suspense fallback={<LoadingFallback />}><ApplicationsPage /></Suspense> },
       { path: '/recruitment', element: <Suspense fallback={<LoadingFallback />}><ApplicationsPage /></Suspense> },
       { path: '/ats', element: <ATSPage /> },
-      { path: '/mis', element: <Suspense fallback={<LoadingFallback />}><MisPage /></Suspense> },
+      { path: '/mis', element: <ProtectedRoute requiredRoles={['owner']}><Suspense fallback={<LoadingFallback />}><MisPage /></Suspense></ProtectedRoute> },
       { path: '/add-candidate', element: <Navigate to="/ats?add=1" replace /> },
       { path: '/resume-parsing', element: <ResumeParsing /> },
       { path: '/candidate-search', element: <CandidateSearch /> },

@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const ExcelJS = require('exceljs');
 const MisContact = require('../models/MisContact');
-const { misListFilter, canViewOrgAnalytics } = require('../utils/dataScope');
+const { misListFilter } = require('../utils/dataScope');
 const { normalizeText } = require('../utils/textNormalize');
 const { publicSiteBase } = require('./emailBrandLayout');
 const logger = require('../utils/logger');
@@ -124,6 +124,9 @@ function unsubscribeUrlFor(contact) {
 }
 
 async function listContacts(user, query = {}) {
+  if (!user || user.role !== 'owner') {
+    throw httpError('MIS is available to the company owner only', 403, { code: 'MIS_OWNER_ONLY' });
+  }
   const organizationId = user.organizationId;
   if (!organizationId) throw httpError('Organization required', 403);
   const page = Math.max(1, Number(query.page) || 1);
@@ -141,6 +144,12 @@ async function listContacts(user, query = {}) {
   if (query.consent === 'no') filter.marketingConsent = false;
   if (query.unsubscribed === '1') filter.unsubscribedAt = { $ne: null };
   if (query.unsubscribed === '0') filter.unsubscribedAt = null;
+  if (trimStr(query.location)) {
+    filter.location = { $regex: trimStr(query.location).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+  }
+  if (trimStr(query.source)) {
+    filter.source = { $regex: trimStr(query.source).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+  }
 
   const [rows, total] = await Promise.all([
     MisContact.find(filter)
@@ -161,7 +170,7 @@ async function listContacts(user, query = {}) {
       pages: Math.max(1, Math.ceil(total / limit)),
       hasMore: page * limit < total,
     },
-    scope: canViewOrgAnalytics(user) ? 'organization' : 'mine',
+    scope: user.role === 'owner' ? 'owner' : 'none',
   };
 }
 
@@ -255,6 +264,9 @@ async function bulkDelete(user, ids = []) {
 }
 
 async function bulkUpload(user, file) {
+  if (!user || user.role !== 'owner') {
+    throw httpError('MIS is available to the company owner only', 403, { code: 'MIS_OWNER_ONLY' });
+  }
   if (!file) throw httpError('Excel file is required');
   const filePath = file.path
     || path.join(process.cwd(), 'uploads', file.filename);
@@ -282,72 +294,143 @@ async function bulkUpload(user, file) {
   let created = 0;
   let updated = 0;
   let skipped = 0;
+  let blank = 0;
   const errors = [];
+  const pending = [];
 
   for (let r = 2; r <= sheet.rowCount; r += 1) {
     const row = sheet.getRow(r);
     const name = cellStr(row, map.name);
     const email = normalizeEmail(cellStr(row, map.email));
-    if (!name && !email) continue;
-    if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-      skipped += 1;
-      errors.push({ row: r, message: 'Name and valid email required' });
+    if (!name && !email) {
+      blank += 1;
       continue;
     }
-    try {
-      const phone = phoneDigits(cellStr(row, map.contact));
-      const payload = {
-        name: normalizeText(name),
-        email,
-        phone,
-        contact: phone,
-        uploadBatchId: batchId,
-        source: normalizeText(cellStr(row, map.source)) || 'MIS Upload',
-        marketingConsent: true,
-      };
-      for (const key of ['position', 'companyName', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'location', 'skills', 'product', 'client', 'fls', 'remark']) {
-        if (map[key]) payload[key] = normalizeText(cellStr(row, map[key]));
-      }
+    if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      skipped += 1;
+      if (errors.length < 50) errors.push({ row: r, message: 'Name and valid email required' });
+      continue;
+    }
+    const phone = phoneDigits(cellStr(row, map.contact));
+    const payload = {
+      name: normalizeText(name),
+      email,
+      phone,
+      contact: phone,
+      uploadBatchId: batchId,
+      source: normalizeText(cellStr(row, map.source)) || 'MIS Upload',
+      marketingConsent: true,
+    };
+    for (const key of ['position', 'companyName', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'location', 'skills', 'product', 'client', 'fls', 'remark']) {
+      if (map[key]) payload[key] = normalizeText(cellStr(row, map[key]));
+    }
+    pending.push({ row: r, payload });
+  }
 
-      const existing = await MisContact.findOne({ organizationId, email });
+  const CHUNK = 150;
+  for (let i = 0; i < pending.length; i += CHUNK) {
+    const chunk = pending.slice(i, i + CHUNK);
+    const emails = chunk.map((c) => c.payload.email);
+    let existingRows = [];
+    try {
+      existingRows = await MisContact.find({
+        organizationId,
+        email: { $in: emails },
+      }).select('_id email unsubscribeSecret').lean();
+    } catch (err) {
+      skipped += chunk.length;
+      if (errors.length < 50) errors.push({ row: chunk[0]?.row, message: err.message || 'Lookup failed' });
+      continue;
+    }
+    const byEmail = new Map(existingRows.map((e) => [e.email, e]));
+    const ops = [];
+    for (const item of chunk) {
+      const { payload, row } = item;
+      const existing = byEmail.get(payload.email);
       if (existing) {
-        // Only update if leadership or owner of the row
-        const canEdit = canViewOrgAnalytics(user)
-          || String(existing.createdBy) === String(createdBy);
-        if (!canEdit) {
-          skipped += 1;
-          errors.push({ row: r, message: 'Email owned by another uploader' });
-          continue;
-        }
-        Object.assign(existing, payload);
-        existing.ensureUnsubscribeSecret();
-        await existing.save();
-        updated += 1;
-      } else {
-        const doc = new MisContact({
-          organizationId,
-          createdBy,
-          ...payload,
+        ops.push({
+          updateOne: {
+            filter: { _id: existing._id },
+            update: {
+              $set: {
+                ...payload,
+                unsubscribeSecret: existing.unsubscribeSecret
+                  || crypto.randomBytes(16).toString('hex'),
+              },
+            },
+          },
         });
-        doc.ensureUnsubscribeSecret();
-        await doc.save();
-        created += 1;
+      } else {
+        ops.push({
+          insertOne: {
+            document: {
+              organizationId,
+              createdBy,
+              ...payload,
+              unsubscribeSecret: crypto.randomBytes(16).toString('hex'),
+            },
+          },
+        });
+      }
+    }
+    if (!ops.length) continue;
+    try {
+      const result = await MisContact.bulkWrite(ops, { ordered: false });
+      created += result.insertedCount || 0;
+      updated += result.modifiedCount || 0;
+      // upserts counted differently in some drivers
+      if (!result.insertedCount && !result.modifiedCount) {
+        const inserted = Number(result.nInserted || 0);
+        const modified = Number(result.nModified || 0);
+        created += inserted;
+        updated += modified;
       }
     } catch (err) {
-      skipped += 1;
-      errors.push({ row: r, message: err.message || 'Row failed' });
+      // Fall back to per-row so one bad email does not kill the chunk
+      for (const item of chunk) {
+        try {
+          const existing = byEmail.get(item.payload.email);
+          if (existing) {
+            await MisContact.updateOne(
+              { _id: existing._id },
+              { $set: { ...item.payload } },
+            );
+            updated += 1;
+          } else {
+            const doc = new MisContact({
+              organizationId,
+              createdBy,
+              ...item.payload,
+            });
+            doc.ensureUnsubscribeSecret();
+            await doc.save();
+            created += 1;
+          }
+        } catch (rowErr) {
+          skipped += 1;
+          if (errors.length < 50) {
+            errors.push({ row: item.row, message: rowErr.message || 'Row failed' });
+          }
+        }
+      }
+      logger.warn({ err: err.message }, 'MIS bulkWrite chunk fell back to per-row');
     }
   }
 
   try { fs.unlinkSync(filePath); } catch { /* ignore */ }
 
+  const totalRows = Math.max(0, sheet.rowCount - 1);
+  const processed = created + updated + skipped;
   return {
     batchId,
     created,
     updated,
     skipped,
+    blank,
+    totalRows,
+    processed,
     errors: errors.slice(0, 40),
-    message: `Imported ${created} new, updated ${updated}, skipped ${skipped}`,
+    message: `Done · ${created} new · ${updated} updated · ${skipped} skipped · ${processed}/${totalRows || processed} rows`,
   };
 }
 

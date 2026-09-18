@@ -35,7 +35,6 @@ export const PERMISSION_CATALOG = [
       { key: 'candidates.edit', label: 'Edit candidates', kind: 'action' },
       { key: 'candidates.delete', label: 'Delete candidates', kind: 'action' },
       { key: 'candidates.export', label: 'Export candidates (Owner, Admin, Manager)', kind: 'action' },
-      { key: 'modules.mis', label: 'MIS (Marketing contacts)', kind: 'module' },
       { key: 'modules.pipeline', label: 'Pipeline Board', kind: 'module' },
       { key: 'modules.resumeParsing', label: 'Resume Parsing', kind: 'module' },
       { key: 'modules.talentPools', label: 'Talent Pools', kind: 'module' },

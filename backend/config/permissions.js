@@ -19,7 +19,6 @@ const MODULE_PERMISSIONS = [
   'modules.jobs',
   'modules.applications',
   'modules.candidates',
-  'modules.mis',
   'modules.pipeline',
   'modules.resumeParsing',
   'modules.talentPools',
@@ -108,7 +107,6 @@ const PERMISSION_CATALOG = [
       { key: 'candidates.edit', label: 'Edit candidates', kind: 'action' },
       { key: 'candidates.delete', label: 'Delete candidates', kind: 'action' },
       { key: 'candidates.export', label: 'Export candidates (Owner, Admin, Manager)', kind: 'action' },
-      { key: 'modules.mis', label: 'MIS (Marketing contacts)', kind: 'module' },
       { key: 'modules.pipeline', label: 'Pipeline Board', kind: 'module' },
       { key: 'modules.resumeParsing', label: 'Resume Parsing', kind: 'module' },
       { key: 'modules.talentPools', label: 'Talent Pools', kind: 'module' },
@@ -201,7 +199,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
   hr_manager: [...PERMISSIONS].filter((p) => p !== 'billing.manage' && p !== 'modules.billing' && p !== 'team.resetPassword'),
   hr_recruiter: [
     'modules.dashboard', 'modules.analytics', 'modules.search', 'modules.reports', 'modules.announcements',
-    'modules.jobs', 'modules.applications', 'modules.freelanceReview', 'modules.candidates', 'modules.mis', 'modules.pipeline', 'modules.resumeParsing',
+    'modules.jobs', 'modules.applications', 'modules.freelanceReview', 'modules.candidates', 'modules.pipeline', 'modules.resumeParsing',
     'modules.talentPools', 'modules.skills', 'modules.collaboration', 'modules.formBuilder', 'modules.assessments',
     'modules.aiTools',
     'modules.inbox', 'modules.sequences', 'modules.consent',
@@ -215,7 +213,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
   ],
   sales: [
     'modules.dashboard', 'modules.analytics', 'modules.search', 'modules.announcements',
-    'modules.candidates', 'modules.mis', 'modules.pipeline', 'modules.talentPools',
+    'modules.candidates', 'modules.pipeline', 'modules.talentPools',
     'modules.applications', 'modules.freelanceReview',
     'modules.inbox', 'modules.consent',
     'modules.pushNotifications', 'modules.profile',

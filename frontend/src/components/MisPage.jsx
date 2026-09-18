@@ -3,12 +3,14 @@ import {
   Megaphone, Search, Upload, RefreshCw, Trash2, Send, Loader2,
   CheckSquare, Square, MinusSquare, Mail, X, Info,
 } from 'lucide-react';
-import { authenticatedFetch } from '../utils/fetchUtils';
+import { authenticatedFetch, authenticatedUpload } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import PageHeader from './ui/PageHeader';
 import EmptyState from './ui/EmptyState';
+import Modal from './ui/Modal';
 import { useAuth } from '../context/AuthContext';
 import { useTableDragScroll } from './ats/hooks/useTableDragScroll';
+import { Navigate } from 'react-router-dom';
 
 const PAGE_SIZE = 50;
 
@@ -37,12 +39,18 @@ export default function MisPage() {
 
   const [rows, setRows] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
-  const [scope, setScope] = useState('mine');
+  const [scope, setScope] = useState('owner');
   const [page, setPage] = useState(1);
   const [q, setQ] = useState('');
   const [draft, setDraft] = useState('');
+  const [consentFilter, setConsentFilter] = useState('all');
+  const [unsubFilter, setUnsubFilter] = useState('all');
+  const [locationFilter, setLocationFilter] = useState('');
+  const [locationQ, setLocationQ] = useState('');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadUi, setUploadUi] = useState(null);
+  // uploadUi: { phase, percent, fileName, result? }
   const [selected, setSelected] = useState(() => new Set());
   const [mailOpen, setMailOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -58,12 +66,15 @@ export default function MisPage() {
         limit: String(PAGE_SIZE),
       });
       if (q) params.set('q', q);
+      if (consentFilter === 'yes' || consentFilter === 'no') params.set('consent', consentFilter);
+      if (unsubFilter === '1' || unsubFilter === '0') params.set('unsubscribed', unsubFilter);
+      if (locationQ.trim()) params.set('location', locationQ.trim());
       const res = await authenticatedFetch(`/api/mis?${params}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Failed to load MIS');
       setRows(data.rows || []);
       setPagination(data.pagination || { page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
-      setScope(data.scope || 'mine');
+      setScope(data.scope || 'owner');
       setSelected(new Set());
     } catch (err) {
       toast.error(err.message || 'Failed to load MIS');
@@ -71,7 +82,7 @@ export default function MisPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, q, toast]);
+  }, [page, q, consentFilter, unsubFilter, locationQ, toast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -262,16 +273,41 @@ export default function MisPage() {
   const onUpload = async (file) => {
     if (!file) return;
     setUploading(true);
+    setUploadUi({
+      phase: 'upload',
+      percent: 0,
+      fileName: file.name,
+      result: null,
+    });
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const res = await authenticatedFetch('/api/mis/bulk-upload', { method: 'POST', body: fd });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || 'Upload failed');
+      const { response, data } = await authenticatedUpload('/api/mis/bulk-upload', fd, {
+        onProgress: ({ percent, phase }) => {
+          setUploadUi((prev) => ({
+            ...(prev || {}),
+            percent,
+            phase: phase === 'done' ? 'processing' : phase,
+            fileName: file.name,
+          }));
+        },
+      });
+      if (!response.ok) throw new Error(data.message || 'Upload failed');
+      setUploadUi({
+        phase: 'done',
+        percent: 100,
+        fileName: file.name,
+        result: data,
+      });
       toast.success(data.message || 'Upload complete');
       setPage(1);
       await load(1);
     } catch (err) {
+      setUploadUi((prev) => ({
+        ...(prev || { fileName: file.name, percent: 0 }),
+        phase: 'error',
+        error: err.message || 'Upload failed',
+      }));
       toast.error(err.message || 'Upload failed');
     } finally {
       setUploading(false);
@@ -331,17 +367,35 @@ export default function MisPage() {
 
   const runSearch = () => {
     setQ(draft.trim());
+    setLocationQ(locationFilter.trim());
+    setPage(1);
+  };
+
+  const clearFilters = () => {
+    setDraft('');
+    setQ('');
+    setConsentFilter('all');
+    setUnsubFilter('all');
+    setLocationFilter('');
+    setLocationQ('');
     setPage(1);
   };
 
   const showOverlay = loading && rows.length === 0;
+  const hasActiveFilters = Boolean(
+    q || consentFilter !== 'all' || unsubFilter !== 'all' || locationQ.trim()
+  );
+
+  if (user && user.role !== 'owner') {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   return (
     <div className="page-shell-ats font-sans text-stone-900" role="main" aria-label="MIS">
       <PageHeader
         icon={Megaphone}
         title="MIS"
-        subtitle={`${totalLabel} marketing contact${pagination.total === 1 ? '' : 's'} · ${scope === 'organization' ? 'Organization view' : 'My uploads'}`}
+        subtitle={`${totalLabel} marketing contact${pagination.total === 1 ? '' : 's'} · Owner only`}
         gradientTitle
       >
         <div className="flex w-full sm:w-auto flex-wrap items-center gap-2">
@@ -383,8 +437,9 @@ export default function MisPage() {
       <div className="mb-4 flex items-start gap-3 rounded-xl border border-brand-100 bg-brand-50/60 px-4 py-3 text-sm text-brand-900">
         <Info className="w-4 h-4 mt-0.5 shrink-0 text-brand-600" />
         <p className="leading-relaxed">
-          <span className="font-semibold">Marketing desk only.</span>
-          {' '}Same tracker columns as Candidates, stored separately — never merged into ATS Candidates or Applications.
+          <span className="font-semibold">Owner-only marketing desk.</span>
+          {' '}Visible only to the company owner. Contacts stay separate from ATS Candidates.
+          Large Excel files show live upload % then a results summary (new / updated / skipped).
         </p>
       </div>
 
@@ -438,7 +493,7 @@ export default function MisPage() {
       ) : null}
 
       <div className="card-ats-bordered relative overflow-hidden min-h-[320px]">
-        <div className="p-4 sm:p-5 border-b border-stone-100">
+        <div className="p-4 sm:p-5 border-b border-stone-100 space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none z-[1]" />
@@ -465,6 +520,41 @@ export default function MisPage() {
               <Search size={16} />
               Search
             </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              className="h-10 rounded-xl border border-stone-200 bg-white px-3 text-sm font-medium text-stone-700"
+              value={consentFilter}
+              onChange={(e) => { setConsentFilter(e.target.value); setPage(1); }}
+              aria-label="Consent filter"
+            >
+              <option value="all">All consent</option>
+              <option value="yes">Consented</option>
+              <option value="no">No consent</option>
+            </select>
+            <select
+              className="h-10 rounded-xl border border-stone-200 bg-white px-3 text-sm font-medium text-stone-700"
+              value={unsubFilter}
+              onChange={(e) => { setUnsubFilter(e.target.value); setPage(1); }}
+              aria-label="Unsubscribe filter"
+            >
+              <option value="all">All status</option>
+              <option value="0">Active</option>
+              <option value="1">Unsubscribed</option>
+            </select>
+            <input
+              type="text"
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
+              placeholder="Filter location"
+              className="h-10 min-w-[140px] flex-1 sm:flex-none rounded-xl border border-stone-200 bg-white px-3 text-sm font-medium text-stone-700 placeholder:text-stone-400"
+            />
+            {hasActiveFilters ? (
+              <button type="button" className="h-10 px-3 rounded-xl text-sm font-semibold text-stone-600 hover:bg-stone-100" onClick={clearFilters}>
+                Clear filters
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -669,6 +759,115 @@ export default function MisPage() {
           </div>
         </div>
       ) : null}
+
+      <Modal
+        open={Boolean(uploadUi)}
+        onClose={() => {
+          if (uploading) return;
+          setUploadUi(null);
+        }}
+        title={uploadUi?.phase === 'done' ? 'Upload results' : uploadUi?.phase === 'error' ? 'Upload failed' : 'Uploading MIS file'}
+        description={uploadUi?.fileName || 'Excel / CSV import'}
+        size="md"
+        icon={Upload}
+        closeOnBackdrop={!uploading}
+        zClass="z-[120]"
+        footer={
+          uploading ? null : (
+            <button type="button" className="btn-primary" onClick={() => setUploadUi(null)}>
+              Close
+            </button>
+          )
+        }
+      >
+        {uploadUi ? (
+          <div className="space-y-4">
+            {(uploadUi.phase === 'upload' || uploadUi.phase === 'processing') ? (
+              <>
+                <div className="rounded-xl border border-stone-200 bg-gradient-to-br from-stone-50 to-white p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-stone-500">
+                        {uploadUi.phase === 'upload' ? 'Transfer' : 'Import'}
+                      </p>
+                      <p className="text-sm font-semibold text-stone-900 mt-0.5 truncate">
+                        {uploadUi.phase === 'upload' ? 'Uploading spreadsheet…' : 'Writing records to MIS…'}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-2xl font-bold tabular-nums text-brand-700 leading-none">
+                        {uploadUi.phase === 'processing' ? '99' : (uploadUi.percent || 0)}
+                        <span className="text-sm font-semibold text-brand-500">%</span>
+                      </p>
+                      <p className="text-[10px] font-medium text-stone-400 mt-1 uppercase tracking-wider">
+                        {uploadUi.phase === 'processing' ? 'Processing' : 'Complete'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="h-2.5 rounded-full bg-stone-100 overflow-hidden border border-stone-200/80">
+                    <div
+                      className={`h-full rounded-full bg-gradient-to-r from-brand-500 via-teal-600 to-brand-600 transition-[width] duration-300 ease-out ${
+                        uploadUi.phase === 'processing' ? 'animate-pulse' : ''
+                      }`}
+                      style={{
+                        width: `${uploadUi.phase === 'processing' ? 99 : Math.max(3, uploadUi.percent || 0)}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs text-stone-500 leading-relaxed">
+                    Large Excel files can take longer after the bar reaches 99% while rows are imported. Keep this window open until results appear.
+                  </p>
+                </div>
+              </>
+            ) : null}
+
+            {uploadUi.phase === 'done' && uploadUi.result ? (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/50 px-4 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700">Upload complete</p>
+                  <p className="text-sm font-semibold text-stone-900 mt-1">
+                    {uploadUi.result.processed ?? 0} of {uploadUi.result.totalRows ?? uploadUi.result.processed ?? 0} rows handled
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { label: 'New', value: uploadUi.result.created ?? 0, tone: 'text-emerald-700 bg-emerald-50 border-emerald-100' },
+                    { label: 'Updated', value: uploadUi.result.updated ?? 0, tone: 'text-sky-700 bg-sky-50 border-sky-100' },
+                    { label: 'Skipped', value: uploadUi.result.skipped ?? 0, tone: 'text-amber-700 bg-amber-50 border-amber-100' },
+                    {
+                      label: 'Processed',
+                      value: `${uploadUi.result.processed ?? 0}/${uploadUi.result.totalRows ?? uploadUi.result.processed ?? 0}`,
+                      tone: 'text-stone-700 bg-stone-50 border-stone-200',
+                    },
+                  ].map((card) => (
+                    <div key={card.label} className={`rounded-xl border px-3 py-2.5 ${card.tone}`}>
+                      <p className="text-[10px] font-bold uppercase tracking-wider opacity-80">{card.label}</p>
+                      <p className="text-lg font-bold tabular-nums mt-0.5">{card.value}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-sm text-stone-600 leading-relaxed">{uploadUi.result.message}</p>
+                {Array.isArray(uploadUi.result.errors) && uploadUi.result.errors.length ? (
+                  <div className="rounded-xl border border-stone-200 bg-stone-50/80 max-h-36 overflow-y-auto p-3">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-stone-500 mb-1.5">
+                      Sample issues ({uploadUi.result.errors.length})
+                    </p>
+                    <ul className="space-y-1 text-xs text-stone-600">
+                      {uploadUi.result.errors.slice(0, 12).map((err, i) => (
+                        <li key={`${err.row}-${i}`}>Row {err.row}: {err.message}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {uploadUi.phase === 'error' ? (
+              <p className="text-sm text-rose-700 font-medium">{uploadUi.error || 'Upload failed'}</p>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

@@ -486,19 +486,16 @@ async function applicationListFilter(organizationId, user, extra = {}) {
 }
 
 /**
- * MIS marketing contacts: leadership sees org-wide; other staff see only rows they uploaded.
- * Freelancers have no MIS desk (empty result if called).
+ * MIS marketing contacts: company owner only (org-wide).
+ * All other roles get an empty scope — APIs also enforce requireOwner.
  */
 function misListFilter(organizationId, user, extra = {}) {
   const filter = { organizationId, ...extra };
-  if (isFreelancer(user)) {
+  if (!user || user.role !== 'owner') {
     filter._id = { $in: [] };
     return filter;
   }
-  if (canViewOrgAnalytics(user)) {
-    return filter;
-  }
-  return { ...filter, ...createdByFilter(user) };
+  return filter;
 }
 
 /** Picklists / master data: freelancer sees only values they created. */

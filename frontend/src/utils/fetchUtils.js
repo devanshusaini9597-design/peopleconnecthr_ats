@@ -186,4 +186,54 @@ export async function readApiJson(res) {
   }
 }
 
+/**
+ * Upload FormData with upload progress (0–100). Uses XHR + cookies.
+ * onProgress({ percent, loaded, total, phase })
+ * phase: 'upload' | 'processing'
+ */
+export function authenticatedUpload(url, formData, { onProgress, method = 'POST' } = {}) {
+  const orgId = localStorage.getItem('orgId');
+  const fullUrl = url.startsWith('http')
+    ? url
+    : `${BASE_API_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, fullUrl, true);
+    xhr.withCredentials = true;
+    if (orgId) xhr.setRequestHeader('X-Organization-Id', orgId);
+
+    xhr.upload.onprogress = (evt) => {
+      if (!evt.lengthComputable) return;
+      const percent = Math.max(0, Math.min(99, Math.round((evt.loaded / evt.total) * 100)));
+      onProgress?.({ percent, loaded: evt.loaded, total: evt.total, phase: 'upload' });
+    };
+    xhr.upload.onload = () => {
+      onProgress?.({ percent: 99, loaded: 0, total: 0, phase: 'processing' });
+    };
+
+    xhr.onload = () => {
+      let data = {};
+      try {
+        data = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+      } catch {
+        data = {};
+      }
+      const fakeRes = {
+        ok: xhr.status >= 200 && xhr.status < 300,
+        status: xhr.status,
+        json: async () => data,
+      };
+      if (xhr.status === 401) {
+        dropClientSession(data.code);
+      }
+      onProgress?.({ percent: 100, loaded: 0, total: 0, phase: 'done' });
+      resolve({ response: fakeRes, data });
+    };
+    xhr.onerror = () => reject(new Error('Network error during upload'));
+    xhr.onabort = () => reject(new Error('Upload cancelled'));
+    xhr.send(formData);
+  });
+}
+
 export { BASE_API_URL };

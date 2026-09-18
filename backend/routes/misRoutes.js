@@ -1,14 +1,14 @@
 /**
  * MIS / Marketing contacts routes.
  * Public: GET /unsubscribe
- * Auth: company recruiters+ (no freelancers)
+ * Auth: company owner only (requireOwner)
  */
 const express = require('express');
 const path = require('path');
 const multer = require('multer');
 const router = express.Router();
 const { verifyToken } = require('../middleware/authMiddleware');
-const { requireRecruiterOrAbove } = require('../middleware/rbacMiddleware');
+const { requireOwner } = require('../middleware/rbacMiddleware');
 const { multerFileFilter } = require('../utils/uploadAllowlist');
 const svc = require('../services/misService');
 
@@ -29,7 +29,7 @@ const upload = multer({
       cb(null, `mis-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
     },
   }),
-  limits: { fileSize: 15 * 1024 * 1024 },
+  limits: { fileSize: 40 * 1024 * 1024 },
   fileFilter: multerFileFilter,
 });
 
@@ -57,7 +57,7 @@ router.get('/unsubscribe', async (req, res) => {
   }
 });
 
-router.use(verifyToken, requireRecruiterOrAbove);
+router.use(verifyToken, requireOwner);
 
 router.get('/', async (req, res) => {
   try {
