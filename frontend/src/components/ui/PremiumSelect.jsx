@@ -62,27 +62,36 @@ export default function PremiumSelect({
     return value !== '' && value != null ? [String(value)] : [];
   }, [multiple, value, options]);
 
+  /** Keep selected values visible even when they are not yet in the picklist. */
+  const optionsWithSelected = useMemo(() => {
+    const have = new Set(options.map((o) => String(o.value)));
+    const extras = selectedValues
+      .filter((v) => v !== '' && !have.has(String(v)))
+      .map((v) => ({ value: String(v), label: String(v) }));
+    return extras.length ? [...extras, ...options] : options;
+  }, [options, selectedValues]);
+
   const selected = useMemo(
-    () => options.find((o) => String(o.value) === String(selectedValues[0])),
-    [options, selectedValues]
+    () => optionsWithSelected.find((o) => String(o.value) === String(selectedValues[0])),
+    [optionsWithSelected, selectedValues]
   );
 
   const displayLabel = useMemo(() => {
     if (!selectedValues.length) return '';
     const labels = selectedValues.map((v) => {
-      const opt = options.find((o) => String(o.value) === String(v));
+      const opt = optionsWithSelected.find((o) => String(o.value) === String(v));
       return opt?.label || v;
     });
     return labels.join(', ');
-  }, [options, selectedValues]);
+  }, [optionsWithSelected, selectedValues]);
 
   const optionHaystack = (o) =>
     `${o.label || ''} ${o.description || ''} ${o.meta || ''} ${o.searchText || ''}`.toLowerCase();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return options;
-    const matched = options.filter((o) => optionHaystack(o).includes(q));
+    if (!q) return optionsWithSelected;
+    const matched = optionsWithSelected.filter((o) => optionHaystack(o).includes(q));
     return matched.sort((a, b) => {
       const aName = `${a.description || ''} ${a.label || ''}`.toLowerCase();
       const bName = `${b.description || ''} ${b.label || ''}`.toLowerCase();
@@ -92,7 +101,7 @@ export default function PremiumSelect({
       if (!aStarts && bStarts) return 1;
       return 0;
     });
-  }, [options, query]);
+  }, [optionsWithSelected, query]);
 
   const updateMenuPosition = () => {
     const el = rootRef.current;
@@ -276,13 +285,13 @@ export default function PremiumSelect({
   };
 
   const realOptions = useMemo(
-    () => options.filter((o) => o.value !== '' && o.value != null),
-    [options]
+    () => optionsWithSelected.filter((o) => o.value !== '' && o.value != null),
+    [optionsWithSelected]
   );
 
   const defaultListOptions = useMemo(
-    () => options.filter((o) => o.value === '' || o.value == null),
-    [options]
+    () => optionsWithSelected.filter((o) => o.value === '' || o.value == null),
+    [optionsWithSelected]
   );
 
   const listFiltered = useMemo(() => {

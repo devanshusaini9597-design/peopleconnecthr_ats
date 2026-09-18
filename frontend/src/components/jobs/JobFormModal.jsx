@@ -434,37 +434,25 @@ export default function JobFormModal({
       ...next,
       role: data.role ? block(data.role) : prev.role,
       grade: data.grade ? block(data.grade) : prev.grade,
-      clientName: data.clientName ? block(data.clientName) : prev.clientName,
+      clientName: data.clientName ? block(data.clientName) : (data.clientName === '' ? '' : prev.clientName),
       industry: data.industry ? block(data.industry) : prev.industry,
-      ctc: data.ctc ? block(data.ctc) : prev.ctc,
+      ctc: data.ctc ? block(data.ctc) : (data.ctc === '' ? '' : prev.ctc),
       experience: data.experience ? block(data.experience) : prev.experience,
       locations: locs.length ? locs : prev.locations,
       location: locs.length ? locs.join(', ') : prev.location,
       skills: sk.length ? sk : prev.skills,
     }));
     if (sk.length) setSkillsInput(sk.join(', '));
-    if (locs.length) {
-      setLists((prev) => ({
-        ...prev,
-        location: toOptions(prev.location, locs),
-        clients: toOptions(prev.clients, data.clientName ? [data.clientName] : []),
-        grade: toOptions(prev.grade, data.grade ? [data.grade] : []),
-        experience: toOptions(prev.experience, data.experience ? [data.experience] : []),
-        industry: toOptions(prev.industry, data.industry ? [data.industry] : []),
-        ctc: toOptions(prev.ctc, data.ctc ? [data.ctc] : []),
-        positions: toOptions(prev.positions, data.role ? [data.role] : []),
-      }));
-    } else if (data.role || data.clientName || data.grade || data.experience || data.industry || data.ctc) {
-      setLists((prev) => ({
-        ...prev,
-        clients: toOptions(prev.clients, data.clientName ? [data.clientName] : []),
-        grade: toOptions(prev.grade, data.grade ? [data.grade] : []),
-        experience: toOptions(prev.experience, data.experience ? [data.experience] : []),
-        industry: toOptions(prev.industry, data.industry ? [data.industry] : []),
-        ctc: toOptions(prev.ctc, data.ctc ? [data.ctc] : []),
-        positions: toOptions(prev.positions, data.role ? [data.role] : []),
-      }));
-    }
+    setLists((prev) => ({
+      ...prev,
+      location: toOptions(prev.location, locs),
+      clients: toOptions(prev.clients, data.clientName ? [data.clientName] : []),
+      grade: toOptions(prev.grade, data.grade ? [data.grade] : []),
+      experience: toOptions(prev.experience, data.experience ? [data.experience] : []),
+      industry: toOptions(prev.industry, data.industry ? [data.industry] : []),
+      ctc: toOptions(prev.ctc, data.ctc ? [data.ctc] : []),
+      positions: toOptions(prev.positions, data.role ? [data.role] : []),
+    }));
     setAutosaveEnabled(true);
     toast.success(
       filled.length

@@ -9,6 +9,11 @@ try {
   extractText = null;
 }
 
+/** Separators that mean "Label: value" — never a bare hyphen inside words (client-facing). */
+const LABEL_SEP = String.raw`(?:\s*(?::|–|—)\s*|\s+-\s+)`;
+
+const NEXT_FIELD_STOP = String.raw`(?=\s+(?:Job\s*Title|Designation|Typical\s*Grade|Grade|Legal\s*Entity|Client\s*Name|Company\s*Name|Function|Department|Business\s*Unit|Division|CTC|Salary|Compensation|Reporting\s*Manager|Direct\s*Reports|Indirect\s*Reports|Travel\s*required|Level\s*of\s*travel|Experience|Education|Location|Locations|Industry|Sector|Skills?|Job\s*Summary|Key\s*Responsib|Purpose\s*of\s*the\s*role|JOB\s*DIMENSIONS|EDUCATION)|$)`;
+
 function escapeHtml(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')
@@ -32,26 +37,52 @@ function toHtml(block) {
 const HEADING_MAP = [
   ['summary', /^(job\s*summary|summary|about the role|overview|position summary|about (the )?company|purpose of the role|role description)$/i],
   ['responsibilities', /^(key\s*)?responsibilit(y|ies)|duties|what you.?ll do|role (and )?responsibilit|team building$/i],
-  ['requirements', /^(candidate\s*)?(requirements?|qualifications)|desired experience|must have|what you.?ll need|key results? area|kra$/i],
+  ['requirements', /^(candidate\s*)?(requirements?|qualifications)|education and experience|desired experience|must have|what you.?ll need|key results? area|kra$/i],
   ['preferred', /^(preferred|nice to have|good to have|candidate profile|preferred candidate)/i],
   ['skills', /^(skills?|skill set|competenc(y|ies))$/i],
   ['locations', /^(locations?|job location|work location)$/i],
 ];
 
-/** Inline labels found in WhatsApp / bank JD pastes (often one long line). */
-const INLINE_LABELS = [
-  { key: 'role', re: /\b(?:designation|job\s*title|position\s*title|role\s*title)\s*[:\-–]\s*/gi },
-  { key: 'grade', re: /\bgrade\s*[:\-–]\s*/gi },
-  { key: 'clientName', re: /\b(?:legal\s*entity|client(?:\s*name)?|company(?:\s*name)?|organisation|organization)\s*[:\-–]\s*/gi },
-  { key: 'industry', re: /\b(?:industry|sector|type of companies\/sector worked for)\s*[:\-–]\s*/gi },
-  { key: 'department', re: /\bdepartment\s*[:\-–]\s*/gi },
-  { key: 'ctc', re: /\b(?:ctc|salary|compensation|pay\s*range)\s*[:\-–]\s*/gi },
-  { key: 'experience', re: /\b(?:desired\s*)?experience(?:\s*&\s*qualification)?\s*[:\-–]\s*/gi },
-  { key: 'locations', re: /\b(?:locations?|job\s*location|work\s*location|geographic\s*spread)\s*[:\-–]\s*/gi },
-  { key: 'skills', re: /\b(?:skills?|skill\s*set)\s*[:\-–]\s*/gi },
-];
+const SECTION_SPLIT_RE = /\b(job\s*dimensions|purpose of the role|role description|key responsibilities|responsibilities|duties|education and experience|desired experience(?:\s*&\s*qualification)?|candidate requirements?|qualifications|key results?\s*area|kra|preferred candidate(?:\s*profile)?|skills?|job summary|about the role)\s*(?::|–|—)?\s*/gi;
 
-const SECTION_SPLIT_RE = /\b(purpose of the role|role description|key responsibilities|responsibilities|duties|desired experience(?:\s*&\s*qualification)?|candidate requirements?|qualifications|key results?\s*area|kra|preferred candidate(?:\s*profile)?|skills?|job summary|about the role)\s*[:\-–]?\s*/gi;
+function isBlankish(value) {
+  const v = String(value || '').trim();
+  if (!v) return true;
+  return /^(n\/?a|na|n\.a\.?|nil|none|null|-|—|–|\.)$/i.test(v);
+}
+
+function cleanScalar(value, { maxLen = 80 } = {}) {
+  let v = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!v || isBlankish(v)) return '';
+  // Cut at a following Label: if still jammed.
+  const cut = v.search(
+    /\s+(?:Job\s*Title|Designation|Typical\s*Grade|Grade|Function|Department|CTC|Salary|Reporting\s*Manager|Direct\s*Reports|Experience|Education|Location|Locations)\s*(?::|–|—)/i,
+  );
+  if (cut > 0) v = v.slice(0, cut).trim();
+  if (isBlankish(v)) return '';
+  if (v.length > maxLen) return '';
+  return v;
+}
+
+function looksLikeClientName(value) {
+  const v = cleanScalar(value, { maxLen: 70 });
+  if (!v) return '';
+  if (/\b(facing|satisfaction|responsib|support|management|analyst|ensure|collaborate|teams?\s+to)\b/i.test(v)) {
+    return '';
+  }
+  if (v.split(/\s+/).length > 8) return '';
+  return v;
+}
+
+function looksLikeCtc(value) {
+  const v = cleanScalar(value, { maxLen: 40 });
+  if (!v) return '';
+  if (/reporting|direct reports|manager|department|location/i.test(v)) return '';
+  if (/^(n\/?a|na)$/i.test(v)) return '';
+  // Accept money-ish or short band text
+  if (/[\d]/.test(v) || /\b(lpa|lakh|lac|inr|ctc)\b/i.test(v)) return v;
+  return '';
+}
 
 function classifyHeading(line) {
   const cleaned = String(line || '')
@@ -69,16 +100,20 @@ function normalizeJdText(raw) {
   let text = String(raw || '').replace(/\r/g, '').trim();
   if (!text) return '';
 
-  // Insert breaks before common section titles in flattened pastes.
   text = text.replace(SECTION_SPLIT_RE, '\n$1:\n');
 
-  // Break before known Label: patterns when jammed on one line.
-  for (const { re } of INLINE_LABELS) {
-    re.lastIndex = 0;
-    text = text.replace(re, (match) => `\n${match}`);
+  // Break only on Label: / Label – (colon or dash with spaces), never bare hyphen.
+  const breakLabels = [
+    'Job Title', 'Designation', 'Typical Grade', 'Grade', 'Legal Entity', 'Client Name',
+    'Company Name', 'Function', 'Department', 'Business Unit', 'Division', 'CTC', 'Salary',
+    'Compensation', 'Reporting Manager', 'Direct Reports', 'Indirect Reports',
+    'Experience', 'Education', 'Location', 'Locations', 'Industry', 'Sector', 'Skills',
+  ];
+  for (const label of breakLabels) {
+    const re = new RegExp(`\\b(${label.replace(/\s+/g, '\\s+')})${LABEL_SEP}`, 'gi');
+    text = text.replace(re, '\n$1: ');
   }
 
-  // Soft-wrap very long lines on sentence boundaries for bucket parsing.
   text = text
     .split('\n')
     .map((line) => {
@@ -91,47 +126,57 @@ function normalizeJdText(raw) {
 }
 
 function parseMetaLine(line, fields) {
-  const m = String(line || '').match(/^([A-Za-z][A-Za-z0-9 &/]+?)\s*[:\-–]\s*(.+)$/);
+  const m = String(line || '').match(/^([A-Za-z][A-Za-z0-9 &/]+?)\s*(?::|–|—)\s*(.+)$/)
+    || String(line || '').match(/^([A-Za-z][A-Za-z0-9 &/]+?)\s+-\s+(.+)$/);
   if (!m) return false;
   const label = m[1].trim().toLowerCase();
   let value = m[2].trim();
   if (!value) return false;
 
-  // Stop value at the next jammed Label: on the same remnant.
   const nextLabel = value.search(
-    /\s+\b(?:designation|job\s*title|grade|legal\s*entity|client|company|industry|department|ctc|salary|experience|location|skills?|travel required|level of travel|business unit|division|prepared by|ref\.?\s*no)\s*[:\-–]/i,
+    /\s+\b(?:job\s*title|designation|typical\s*grade|grade|legal\s*entity|client\s*name|company\s*name|function|industry|department|ctc|salary|experience|education|location|skills?|reporting\s*manager|direct\s*reports|travel required|business unit|division|prepared by|ref\.?\s*no)\s*(?::|–|—)/i,
   );
   if (nextLabel > 0) value = value.slice(0, nextLabel).trim();
-  if (!value) return false;
+  if (!value || isBlankish(value)) {
+    // Consume known empty meta so it does not pollute summary.
+    if (/^(job title|role|position|designation|typical grade|grade|client|client name|legal entity|company|function|industry|department|ctc|salary|compensation|experience|locations?|reporting manager|direct reports)$/.test(label)) {
+      return true;
+    }
+    return false;
+  }
 
   if (/^(job title|role|position|designation|role title|position title)$/.test(label) && !fields.role) {
-    fields.role = value;
-  } else if (/^(client|client name|legal entity|company|company name|organisation|organization)$/.test(label) && !fields.clientName) {
-    fields.clientName = value;
-  } else if (/^(industry|sector|type of companies\/sector worked for)$/.test(label) && !fields.industry) {
-    fields.industry = value;
+    fields.role = cleanScalar(value, { maxLen: 100 });
+  } else if (/^(client name|legal entity|company name|organisation|organization)$/.test(label) && !fields.clientName) {
+    fields.clientName = looksLikeClientName(value);
+  } else if (/^(function|industry|sector)$/.test(label) && !fields.industry) {
+    fields.industry = cleanScalar(value, { maxLen: 60 });
   } else if (/^department$/.test(label) && !fields.department) {
-    fields.department = value;
-  } else if (/^grade$/.test(label) && !fields.grade) {
-    fields.grade = value;
+    fields.department = cleanScalar(value, { maxLen: 80 });
+  } else if (/^(typical grade|grade)$/.test(label) && !fields.grade) {
+    fields.grade = cleanScalar(value, { maxLen: 60 });
   } else if (/^(ctc|salary|compensation|pay range)$/.test(label) && !fields.ctc) {
-    fields.ctc = value;
-  } else if (/experience/.test(label) && !fields.experience) {
+    fields.ctc = looksLikeCtc(value);
+  } else if (/^experience$/.test(label) && !fields.experience) {
     const years = value.match(/(\d+\s*[-–to]+\s*\d+\s*years?|\d+\+?\s*years?)/i);
-    fields.experience = years ? years[1].replace(/\s+/g, ' ').trim() : value.split(/[.]/)[0].trim();
-  } else if (/^locations?$|^job location$|^work location$/.test(label) && !fields.locations.length) {
-    fields.locations = value.split(/[,;/]+/).map((v) => v.trim()).filter(Boolean);
+    fields.experience = years
+      ? years[1].replace(/\s+/g, ' ').trim()
+      : cleanScalar(value.split(/[.]/)[0], { maxLen: 40 });
+  } else if (/^locations?$|^job location$|^work location$/.test(label)) {
+    const parts = value.split(/[,;/|]+/).map((v) => v.trim()).filter((v) => v && !isBlankish(v));
+    if (parts.length) {
+      fields.locations = [...new Set([...(fields.locations || []), ...parts])];
+    }
   } else if (/^skills?$|^skill set$/.test(label) && !fields.skills.length) {
-    fields.skills = value.split(/[,;/]+/).map((v) => v.trim()).filter(Boolean);
-  } else if (/prepared by|ref\.?\s*no|travel required|level of travel|^level$|business unit|division|reporting to|direct reports|indirect reports|geographic spread/.test(label)) {
-    // Recognized but unused metadata — consume so it doesn't pollute summary.
+    fields.skills = value.split(/[,;/]+/).map((v) => v.trim()).filter((v) => v && !isBlankish(v));
+  } else if (/prepared by|ref\.?\s*no|travel required|level of travel|^level$|business unit|division|reporting manager|direct reports|indirect reports|geographic spread|^education$/.test(label)) {
+    return true;
   } else {
     return false;
   }
   return true;
 }
 
-/** Major India city hints for flattened JD location detection. */
 const CITY_HINTS = [
   'NEW DELHI', 'NAVI MUMBAI', 'BENGALURU', 'BANGALORE', 'HYDERABAD', 'AHMEDABAD', 'CHENNAI',
   'KOLKATA', 'MUMBAI', 'PUNE', 'DELHI', 'NOIDA', 'GURUGRAM', 'GURGAON', 'FARIDABAD', 'GHAZIABAD',
@@ -155,53 +200,69 @@ function extractCitiesFromText(text) {
 
 function extractInlineFields(text, fields) {
   const patterns = [
-    { key: 'role', re: /\b(?:Designation|Job\s*Title|Position(?:\s*Title)?|Role(?:\s*Title)?)\s*[:\-–]\s*([^:\n]+?)(?=\s+(?:Grade|Legal\s*Entity|Client|Company|Business\s*Unit|Division|Department|Travel|Level|Job\s*Dimension|Purpose|Key\s*Responsib)|$)/i },
-    { key: 'grade', re: /\bGrade\s*[:\-–]\s*([A-Za-z0-9/.\- ]{1,40}?)(?=\s+(?:Legal\s*Entity|Client|Company|Business\s*Unit|Division|Department|Travel|Level|Job\s*Dimension|Purpose)|$)/i },
-    { key: 'clientName', re: /\b(?:Legal\s*Entity|Client(?:\s*Name)?|Company(?:\s*Name)?)\s*[:\-–]\s*([^:\n]+?)(?=\s+(?:Business\s*Unit|Division|Department|Travel|Level|Grade|Job\s*Dimension|Purpose|Industry)|$)/i },
-    { key: 'department', re: /\bDepartment\s*[:\-–]\s*([^:\n]+?)(?=\s+(?:Travel|Level|Job\s*Dimension|Purpose|Key\s*Responsib|Business\s*Unit)|$)/i },
-    { key: 'industry', re: /\b(?:Industry|Sector|Type of companies\/sector worked for)\s*[:\-–]\s*([^:\n]+?)(?=\s+(?:Graduation|Post-?graduation|Professional|Certifications|Desired|Key)|$)/i },
-    { key: 'experience', re: /\b(?:Desired\s*)?Experience(?:\s*&\s*Qualification)?\s*[:\-–]\s*([^:\n]+?)(?=\s+(?:Type of companies|Graduation|Post-?graduation|Professional|Certifications|Key)|$)/i },
-    { key: 'locationsRaw', re: /\b(?:Job\s*)?Locations?\s*[:\-–]\s*([^:\n]+?)(?=\s+(?:Experience|CTC|Salary|Skills?|Grade|Client|Industry|Department|Key\s*Responsib|Purpose)|$)/i },
+    { key: 'role', re: new RegExp(String.raw`\b(?:Job\s*Title|Designation|Position(?:\s*Title)?)${LABEL_SEP}([^:\n]+?)${NEXT_FIELD_STOP}`, 'i') },
+    { key: 'grade', re: new RegExp(String.raw`\b(?:Typical\s*Grade|Grade)${LABEL_SEP}([^:\n]+?)${NEXT_FIELD_STOP}`, 'i') },
+    { key: 'clientName', re: new RegExp(String.raw`\b(?:Legal\s*Entity|Client\s*Name|Company\s*Name)${LABEL_SEP}([^:\n]+?)${NEXT_FIELD_STOP}`, 'i') },
+    { key: 'department', re: new RegExp(String.raw`\bDepartment${LABEL_SEP}([^:\n]+?)${NEXT_FIELD_STOP}`, 'i') },
+    { key: 'industry', re: new RegExp(String.raw`\b(?:Function|Industry|Sector)${LABEL_SEP}([^:\n]+?)${NEXT_FIELD_STOP}`, 'i') },
+    { key: 'ctc', re: new RegExp(String.raw`\b(?:CTC|Salary|Compensation)${LABEL_SEP}([^:\n]+?)${NEXT_FIELD_STOP}`, 'i') },
+    { key: 'experience', re: new RegExp(String.raw`\bExperience${LABEL_SEP}([^:\n]+?)${NEXT_FIELD_STOP}`, 'i') },
   ];
 
   for (const { key, re } of patterns) {
-    if (key === 'locationsRaw') {
-      const m = text.match(re);
-      if (m?.[1]) {
-        const parts = m[1].split(/[,;/|]+/).map((v) => v.trim()).filter(Boolean);
-        if (parts.length) fields.locations = [...new Set([...(fields.locations || []), ...parts])];
-      }
-      continue;
-    }
     if (fields[key]) continue;
     const m = text.match(re);
     if (!m?.[1]) continue;
     let value = m[1].trim().replace(/\s+/g, ' ');
-    if (key === 'experience') {
-      const years = value.match(/(\d+\s*[-–to]+\s*\d+\s*years?|\d+\+?\s*years?)/i);
-      value = years ? years[1].replace(/\s+/g, ' ').trim() : value.split(/[.]/)[0].trim();
+    if (key === 'clientName') value = looksLikeClientName(value);
+    else if (key === 'ctc') value = looksLikeCtc(value);
+    else if (key === 'experience') {
+      const years = value.match(/(\d+\s*[-–to]+\s*\d+\s*years?|\d+\+?\s*years?)/i)
+        || value.match(/(\d+\+?\s*years?)/i);
+      value = years ? years[1].replace(/\s+/g, ' ').trim() : cleanScalar(value, { maxLen: 40 });
+    } else {
+      value = cleanScalar(value, { maxLen: key === 'role' ? 100 : 80 });
     }
     if (value) fields[key] = value;
   }
 
+  // Collect all Location: values (skip NA); later cities win over earlier blanks.
+  const locRe = new RegExp(String.raw`\bLocations?${LABEL_SEP}([^:\n]+?)${NEXT_FIELD_STOP}`, 'gi');
+  let locMatch;
+  const locParts = [];
+  while ((locMatch = locRe.exec(text)) !== null) {
+    locMatch[1].split(/[,;/|]+/).forEach((part) => {
+      const p = part.trim();
+      if (p && !isBlankish(p)) locParts.push(p);
+    });
+  }
+  if (locParts.length) {
+    fields.locations = [...new Set([...(fields.locations || []), ...locParts])];
+  }
+
   if (!fields.experience) {
-    const years = text.match(/(\d+\s*[-–]\s*\d+)\s*years?\s+of\s+experience/i);
-    if (years) fields.experience = `${years[1].replace(/\s+/g, '')} years`;
+    const years = text.match(/(\d+\s*[-–]\s*\d+)\s*years?\s+of\s+experience/i)
+      || text.match(/\bExperience\s*(?::|–|—)\s*(\d+\+?\s*years?)/i)
+      || text.match(/(\d+)\s*years?\s+of\s+experience/i);
+    if (years) {
+      fields.experience = years[1].includes('year')
+        ? years[1].replace(/\s+/g, ' ').trim()
+        : `${String(years[1]).replace(/\s+/g, '')} years`;
+    }
   }
 
-  if (!fields.locations.length) {
-    const cities = extractCitiesFromText(text);
-    if (cities.length) fields.locations = cities.slice(0, 8);
+  const cities = extractCitiesFromText(text);
+  if (cities.length) {
+    fields.locations = [...new Set([...(fields.locations || []).map((v) => String(v).toUpperCase()), ...cities])];
   }
 
-  if (!fields.ctc) {
-    const ctc = text.match(/\b(?:CTC|Salary|Compensation)\s*[:\-–]?\s*((?:INR\s*)?[\d.]+\s*[-–to]+\s*[\d.]+\s*(?:LPA|Lakh|Lakhs|Lacs)?|\d+\s*[-–]\s*\d+\s*LPA)/i);
-    if (ctc?.[1]) fields.ctc = ctc[1].replace(/\s+/g, ' ').trim();
-  }
+  // Drop leftover blankish locations
+  fields.locations = (fields.locations || []).filter((v) => v && !isBlankish(v));
 }
 
 function parseJdText(raw) {
-  const text = normalizeJdText(raw);
+  const original = String(raw || '');
+  const text = normalizeJdText(original);
   const fields = {
     role: '',
     clientName: '',
@@ -219,8 +280,7 @@ function parseJdText(raw) {
   };
   if (!text) return fields;
 
-  // Pull structured fields from the flattened original before line bucketing.
-  extractInlineFields(String(raw || ''), fields);
+  extractInlineFields(original, fields);
 
   const buckets = {
     summary: [],
@@ -244,7 +304,7 @@ function parseJdText(raw) {
     }
     if (parseMetaLine(line, fields)) continue;
     if (!consumedTitle && !fields.role && line.length <= 80 && !/[:@]/.test(line)) {
-      fields.role = line.replace(/^job title\s*[:\-]\s*/i, '').trim();
+      fields.role = cleanScalar(line.replace(/^job title\s*(?::|–|—)\s*/i, ''), { maxLen: 100 });
       consumedTitle = true;
       continue;
     }
@@ -254,7 +314,10 @@ function parseJdText(raw) {
   }
 
   if (!fields.locations.length && buckets.locations.length) {
-    fields.locations = buckets.locations.join(' ').split(/[,;/]+/).map((v) => v.trim()).filter(Boolean);
+    fields.locations = buckets.locations.join(' ')
+      .split(/[,;/]+/)
+      .map((v) => v.trim())
+      .filter((v) => v && !isBlankish(v));
   }
   if (!fields.skills.length && buckets.skills.length) {
     fields.skills = buckets.skills.join(' ').split(/[,;/]+/).map((v) => v.trim()).filter(Boolean);
@@ -269,11 +332,16 @@ function parseJdText(raw) {
     fields.summary = toHtml(text);
   }
 
-  // If role still empty, try designation from original once more with a looser grab.
-  if (!fields.role) {
-    const loose = String(raw || '').match(/\bDesignation\s*[:\-–]\s*([A-Za-z][A-Za-z0-9 /&-]{2,80}?)(?=\s+Grade\b|\s+Legal\b|$)/i);
-    if (loose?.[1]) fields.role = loose[1].trim();
-  }
+  // Final sanitizers
+  fields.clientName = looksLikeClientName(fields.clientName);
+  fields.ctc = looksLikeCtc(fields.ctc);
+  fields.role = cleanScalar(fields.role, { maxLen: 100 });
+  fields.grade = cleanScalar(fields.grade, { maxLen: 60 });
+  fields.industry = cleanScalar(fields.industry, { maxLen: 60 });
+  fields.department = cleanScalar(fields.department, { maxLen: 80 });
+  fields.locations = (fields.locations || [])
+    .map((v) => String(v).trim())
+    .filter((v) => v && !isBlankish(v));
 
   return fields;
 }

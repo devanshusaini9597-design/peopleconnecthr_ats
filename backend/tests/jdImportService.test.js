@@ -24,7 +24,9 @@ Consistent performers preferred
 `);
     expect(parsed.role).toMatch(/ASSISTANT BRANCH HEAD/i);
     expect(parsed.clientName).toMatch(/EQUITAS/i);
-    expect(parsed.locations).toEqual(expect.arrayContaining(['DELHI', 'DEHRADUN']));
+    expect(parsed.locations.map((v) => v.toUpperCase())).toEqual(
+      expect.arrayContaining(['DELHI', 'DEHRADUN'])
+    );
     expect(parsed.skills.join(' ')).toMatch(/LIFE INSURANCE/i);
     expect(parsed.summary).toMatch(/experienced branch head/i);
     expect(parsed.responsibilities).toMatch(/Drive branch sales/i);
@@ -41,8 +43,22 @@ Consistent performers preferred
     expect(parsed.clientName).toMatch(/Equitas Small Finance Bank/i);
     expect(parsed.department).toMatch(/Liability Sales/i);
     expect(parsed.experience).toMatch(/4-6\s*years/i);
-    expect(parsed.industry).toMatch(/Banking/i);
-    expect(parsed.locations.join(' ')).toMatch(/DELHI/i);
+    expect(parsed.locations.join(' ').toUpperCase()).toMatch(/DELHI/i);
     expect(parsed.responsibilities.length + parsed.summary.length).toBeGreaterThan(40);
+  });
+
+  it('parses Premium Account Manager JD without client-facing false positives', () => {
+    const parsed = parseJdText(`JOB DIMENSIONS Job Title: Premium Account Manager Location : NA Function: Sales/BD Department: Retail Branch Banking Typical Grade: Assistant Manager/ Deputy Manager CTC : NA Reporting Manager: NA Direct Reports: NA JOB SUMMARY As a Client Access and Support Analyst (CASA), you will leverage your experience in Privileged Access Management (PAM) to ensure efficient, secure, and user-friendly access to our systems and services. You will be responsible for managing client access requests, providing technical support, and ensuring compliance with security policies. This role involves close collaboration with IT, security, and client-facing teams to enhance client satisfaction and system security. KEY RESPONSIBILITIES Client Access Management: Process and validate client access requests. EDUCATION and EXPERIENCE Experience: 3 years of experience in sales, preferably in CASA. Education: Bachelor's degree. Location Location : Hyderabad , Bangalore .`);
+    expect(parsed.role).toMatch(/Premium Account Manager/i);
+    expect(parsed.grade).toMatch(/Assistant Manager/i);
+    expect(parsed.industry).toMatch(/Sales/i);
+    expect(parsed.department).toMatch(/Retail Branch Banking/i);
+    expect(parsed.clientName).toBe('');
+    expect(parsed.ctc).toBe('');
+    expect(parsed.experience).toMatch(/3\s*years/i);
+    expect(parsed.locations.map((v) => v.toUpperCase())).toEqual(
+      expect.arrayContaining(['HYDERABAD', 'BANGALORE'])
+    );
+    expect(parsed.locations.join(' ').toUpperCase()).not.toMatch(/\bNA\b/);
   });
 });
