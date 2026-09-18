@@ -339,7 +339,11 @@ export default function MisPage() {
 
       // Partial / hard failures: still show counts when the server returned them
       if (!response.ok && !data?.jobId && data?.created == null && data?.duplicates == null) {
-        throw new Error(data.message || `Upload failed (${response.status})`);
+        const msg = data.message
+          || (response.status === 502 || response.status === 504
+            ? 'Server timed out while reading the file. Please retry — large files now import in the background.'
+            : `Upload failed (${response.status})`);
+        throw new Error(msg);
       }
 
       let finalResult = data;
@@ -386,6 +390,7 @@ export default function MisPage() {
             duplicatesInFile: job.duplicatesInFile || 0,
             skipped: job.skipped || 0,
             blank: job.blank || 0,
+            message: job.message || prev?.message,
             result: job.status === 'done' || job.status === 'error' ? job : prev?.result,
             error: job.status === 'error' ? (job.error || job.message) : null,
           }));
@@ -984,7 +989,9 @@ export default function MisPage() {
                       <p className="text-sm font-semibold text-stone-900 mt-0.5 truncate">
                         {uploadUi.phase === 'upload'
                           ? 'Uploading spreadsheet…'
-                          : `Processed ${(uploadUi.processed || 0).toLocaleString()} of ${(uploadUi.totalRows || 0).toLocaleString()} rows`}
+                          : (uploadUi.totalRows
+                            ? `Processed ${(uploadUi.processed || 0).toLocaleString()} of ${(uploadUi.totalRows || 0).toLocaleString()} rows`
+                            : (uploadUi.message || 'Reading spreadsheet…'))}
                       </p>
                     </div>
                     <div className="text-right shrink-0">

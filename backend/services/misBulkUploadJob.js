@@ -116,9 +116,21 @@ function jobSnapshot(job) {
     + (job.skipped || 0)
     + (job.blank || 0);
   const totalRows = job.totalRows || 0;
-  const percent = totalRows > 0
-    ? Math.min(100, Math.round((processed / totalRows) * 100))
-    : (job.status === 'done' ? 100 : 0);
+  const percent = job.status === 'parsing'
+    ? 0
+    : totalRows > 0
+      ? Math.min(100, Math.round((processed / totalRows) * 100))
+      : (job.status === 'done' ? 100 : 0);
+  let message;
+  if (job.status === 'done') {
+    message = `Done · ${job.created || 0} added · ${job.duplicates || 0} duplicates · ${job.duplicatesInFile || 0} in-file repeats · ${job.skipped || 0} failed/invalid`;
+  } else if (job.status === 'error') {
+    message = job.error || 'Import failed';
+  } else if (job.status === 'parsing') {
+    message = 'Reading spreadsheet…';
+  } else {
+    message = `Processing ${processed.toLocaleString()} of ${totalRows.toLocaleString()} rows…`;
+  }
   return {
     jobId: job.jobId,
     status: job.status,
@@ -136,16 +148,121 @@ function jobSnapshot(job) {
     updated: 0,
     errors: (job.errors || []).slice(0, 40),
     error: job.error || null,
-    message: job.status === 'done'
-      ? `Done · ${job.created || 0} added · ${job.duplicates || 0} duplicates · ${job.duplicatesInFile || 0} in-file repeats · ${job.skipped || 0} failed/invalid`
-      : job.status === 'error'
-        ? (job.error || 'Import failed')
-        : `Processing ${processed.toLocaleString()} of ${totalRows.toLocaleString()} rows…`,
+    message,
   };
 }
 
 function scheduleJobCleanup(jobId) {
   setTimeout(() => { misUploadJobs.delete(jobId); }, MIS_JOB_TTL_MS);
+}
+
+async function parseAndQueueRows(job) {
+  const filePath = job.filePath;
+  const workbook = new ExcelJS.Workbook();
+  const ext = path.extname(job.fileName || filePath || '').toLowerCase();
+  try {
+    if (ext === '.csv') await workbook.csv.readFile(filePath);
+    else await workbook.xlsx.readFile(filePath);
+  } catch (err) {
+    try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+    throw httpError(err.message || 'Could not read spreadsheet', 400);
+  }
+
+  const sheet = workbook.worksheets[0];
+  if (!sheet) {
+    try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+    throw httpError('Spreadsheet is empty');
+  }
+
+  const headerRow = sheet.getRow(1);
+  const map = autoDetectHeaderMapping(headerRow);
+  if (!map.name || !map.email) {
+    try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+    throw httpError('Spreadsheet must include Name and Email columns');
+  }
+
+  const pending = [];
+  const seenEmails = new Set();
+  let duplicatesInFile = 0;
+  let skipped = 0;
+  let blank = 0;
+  const errors = [];
+
+  for (let r = 2; r <= sheet.rowCount; r += 1) {
+    const row = sheet.getRow(r);
+    const name = cellStr(row, map.name);
+    const email = normalizeEmail(cellStr(row, map.email));
+    if (!name && !email) {
+      blank += 1;
+      continue;
+    }
+    if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      skipped += 1;
+      if (errors.length < 50) errors.push({ row: r, message: 'Name and valid email required' });
+      continue;
+    }
+    if (seenEmails.has(email)) {
+      duplicatesInFile += 1;
+      if (errors.length < 50) {
+        errors.push({ row: r, message: 'Duplicate email in this file — kept first row only' });
+      }
+      continue;
+    }
+    seenEmails.add(email);
+
+    const phone = phoneDigits(cellStr(row, map.contact));
+    const payload = {
+      name: normalizeText(name),
+      email,
+      phone,
+      contact: phone,
+      uploadBatchId: job.batchId,
+      source: normalizeText(cellStr(row, map.source)) || 'MIS Upload',
+      marketingConsent: true,
+    };
+    for (const key of ['position', 'companyName', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'location', 'skills', 'product', 'client', 'fls', 'remark']) {
+      if (map[key]) payload[key] = normalizeText(cellStr(row, map[key]));
+    }
+    pending.push({ row: r, payload });
+
+    // Keep event loop responsive on huge sheets
+    if (r % 500 === 0) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  }
+
+  try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+  job.filePath = null;
+
+  job.pending = pending;
+  job.pendingTotal = pending.length;
+  job.totalRows = Math.max(0, sheet.rowCount - 1);
+  job.duplicatesInFile = duplicatesInFile;
+  job.skipped = skipped;
+  job.blank = blank;
+  job.errors = errors;
+  job.status = 'processing';
+}
+
+async function runMisUploadJob(jobId) {
+  const job = misUploadJobs.get(jobId);
+  if (!job) return;
+  try {
+    job.status = 'parsing';
+    await parseAndQueueRows(job);
+    await processMisUploadJob(jobId);
+  } catch (err) {
+    const j = misUploadJobs.get(jobId);
+    if (j) {
+      j.status = 'error';
+      j.error = err.message || 'Import failed';
+      if (j.filePath) {
+        try { fs.unlinkSync(j.filePath); } catch { /* ignore */ }
+        j.filePath = null;
+      }
+    }
+    logger.error({ err: err.message, jobId }, 'MIS upload job failed');
+  }
 }
 
 async function processMisUploadJob(jobId) {
@@ -235,6 +352,10 @@ async function processMisUploadJob(jobId) {
   }
 }
 
+/**
+ * Accept uploaded file and return a jobId immediately.
+ * Parse + DB import run in the background so Railway/proxy does not time out.
+ */
 async function startBulkUploadJob(user, file) {
   if (!user || user.role !== 'owner') {
     throw httpError('MIS is available to the company owner only', 403, { code: 'MIS_OWNER_ONLY' });
@@ -244,98 +365,26 @@ async function startBulkUploadJob(user, file) {
     || path.join(process.cwd(), 'uploads', file.filename);
   if (!fs.existsSync(filePath)) throw httpError('Uploaded file not found', 400);
 
-  const workbook = new ExcelJS.Workbook();
-  const ext = path.extname(file.originalname || '').toLowerCase();
-  try {
-    if (ext === '.csv') await workbook.csv.readFile(filePath);
-    else await workbook.xlsx.readFile(filePath);
-  } catch (err) {
-    try { fs.unlinkSync(filePath); } catch { /* ignore */ }
-    throw httpError(err.message || 'Could not read spreadsheet', 400);
-  }
-
-  const sheet = workbook.worksheets[0];
-  if (!sheet) {
-    try { fs.unlinkSync(filePath); } catch { /* ignore */ }
-    throw httpError('Spreadsheet is empty');
-  }
-
-  const headerRow = sheet.getRow(1);
-  const map = autoDetectHeaderMapping(headerRow);
-  if (!map.name || !map.email) {
-    try { fs.unlinkSync(filePath); } catch { /* ignore */ }
-    throw httpError('Spreadsheet must include Name and Email columns');
-  }
-
-  const batchId = `mis_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-  const organizationId = user.organizationId;
-  const createdBy = user.id || user._id;
-  const pending = [];
-  const seenEmails = new Set();
-  let duplicatesInFile = 0;
-  let skipped = 0;
-  let blank = 0;
-  const errors = [];
-
-  for (let r = 2; r <= sheet.rowCount; r += 1) {
-    const row = sheet.getRow(r);
-    const name = cellStr(row, map.name);
-    const email = normalizeEmail(cellStr(row, map.email));
-    if (!name && !email) {
-      blank += 1;
-      continue;
-    }
-    if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-      skipped += 1;
-      if (errors.length < 50) errors.push({ row: r, message: 'Name and valid email required' });
-      continue;
-    }
-    if (seenEmails.has(email)) {
-      duplicatesInFile += 1;
-      if (errors.length < 50) {
-        errors.push({ row: r, message: 'Duplicate email in this file — kept first row only' });
-      }
-      continue;
-    }
-    seenEmails.add(email);
-
-    const phone = phoneDigits(cellStr(row, map.contact));
-    const payload = {
-      name: normalizeText(name),
-      email,
-      phone,
-      contact: phone,
-      uploadBatchId: batchId,
-      source: normalizeText(cellStr(row, map.source)) || 'MIS Upload',
-      marketingConsent: true,
-    };
-    for (const key of ['position', 'companyName', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'location', 'skills', 'product', 'client', 'fls', 'remark']) {
-      if (map[key]) payload[key] = normalizeText(cellStr(row, map[key]));
-    }
-    pending.push({ row: r, payload });
-  }
-
-  try { fs.unlinkSync(filePath); } catch { /* ignore */ }
-
-  const totalRows = Math.max(0, sheet.rowCount - 1);
   const jobId = `job_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
+  const batchId = `mis_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
   const job = {
     jobId,
-    organizationId: String(organizationId),
+    organizationId: String(user.organizationId),
     userId: String(user.id || user._id),
     fileName: file.originalname || file.filename || 'upload',
-    status: 'processing',
+    filePath,
+    status: 'parsing',
     batchId,
-    createdBy,
-    pending,
-    pendingTotal: pending.length,
-    totalRows,
+    createdBy: user.id || user._id,
+    pending: [],
+    pendingTotal: 0,
+    totalRows: 0,
     created: 0,
     duplicates: 0,
-    duplicatesInFile,
-    skipped,
-    blank,
-    errors,
+    duplicatesInFile: 0,
+    skipped: 0,
+    blank: 0,
+    errors: [],
     error: null,
     startedAt: Date.now(),
   };
@@ -343,7 +392,7 @@ async function startBulkUploadJob(user, file) {
   scheduleJobCleanup(jobId);
 
   setImmediate(() => {
-    processMisUploadJob(jobId).catch((err) => {
+    runMisUploadJob(jobId).catch((err) => {
       const j = misUploadJobs.get(jobId);
       if (j) {
         j.status = 'error';
