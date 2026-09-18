@@ -34,7 +34,7 @@ Consistent performers preferred
 
   it('extracts flattened bank JD paste with Designation and Grade', () => {
     const parsed = parseJdText(
-      'Prepared by: Ankur Jain Ref. No.: Role Description Designation: Business Development Manager Grade: EB3/EB4 Legal Entity: Equitas Small Finance Bank Business Unit: Retail Banking Division: Branch Banking Department: Liability Sales Travel required: Yes Level of travel: Extensive Level: Managerial Job Dimension Reporting To Branch Manager Direct Reports 6 Indirect Reports 0 Geographic spread 01 Retail Branch Banking offices Purpose of the role: Responsible for selling banking products to its retail customers. Team Building Key Responsibilities: Achieving assigned month on month target, acquiring NTB, campaign activities, zero fraud compliance. Desired Experience & Qualification: 4-6 years of experience in sales. Type of companies/sector worked for: Banking Graduation: Must ( Any Graduation )'
+      'Prepared by: Ankur Jain Ref. No.: Role Description Designation: Business Development Manager Grade: EB3/EB4 Legal Entity: Equitas Small Finance Bank Business Unit: Retail Banking Division: Branch Banking Department: Liability Sales Travel required: Yes Level of travel: Extensive Level: Managerial Job Dimension Reporting To Branch Manager Direct Reports 6 Indirect Reports 0 Geographic spread 01 Retail Branch Banking offices Purpose of the role: Responsible for selling banking products to its retail customers. Team Building Key Responsibilities: Achieving assigned month on month target, acquiring NTB, campaign activities, zero fraud compliance. Desired Experience & Qualification: 4-6 years of experience in sales. Type of companies/sector worked for: Banking Graduation: Must ( Any Graduation ) Location: Delhi, Noida'
     );
     expect(parsed.role).toMatch(/Business Development Manager/i);
     expect(parsed.grade).toMatch(/EB3\/EB4/i);
@@ -42,6 +42,7 @@ Consistent performers preferred
     expect(parsed.department).toMatch(/Liability Sales/i);
     expect(parsed.experience).toMatch(/4-6\s*years/i);
     expect(parsed.industry).toMatch(/Banking/i);
+    expect(parsed.locations.join(' ')).toMatch(/DELHI/i);
     expect(parsed.responsibilities.length + parsed.summary.length).toBeGreaterThan(40);
   });
 });

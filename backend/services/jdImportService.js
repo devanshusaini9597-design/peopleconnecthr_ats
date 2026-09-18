@@ -119,16 +119,38 @@ function parseMetaLine(line, fields) {
   } else if (/experience/.test(label) && !fields.experience) {
     const years = value.match(/(\d+\s*[-–to]+\s*\d+\s*years?|\d+\+?\s*years?)/i);
     fields.experience = years ? years[1].replace(/\s+/g, ' ').trim() : value.split(/[.]/)[0].trim();
-  } else if (/location|geographic spread/.test(label) && !fields.locations.length) {
+  } else if (/^locations?$|^job location$|^work location$/.test(label) && !fields.locations.length) {
     fields.locations = value.split(/[,;/]+/).map((v) => v.trim()).filter(Boolean);
   } else if (/^skills?$|^skill set$/.test(label) && !fields.skills.length) {
     fields.skills = value.split(/[,;/]+/).map((v) => v.trim()).filter(Boolean);
-  } else if (/prepared by|ref\.?\s*no|travel required|level of travel|^level$|business unit|division|reporting to|direct reports|indirect reports/.test(label)) {
+  } else if (/prepared by|ref\.?\s*no|travel required|level of travel|^level$|business unit|division|reporting to|direct reports|indirect reports|geographic spread/.test(label)) {
     // Recognized but unused metadata — consume so it doesn't pollute summary.
   } else {
     return false;
   }
   return true;
+}
+
+/** Major India city hints for flattened JD location detection. */
+const CITY_HINTS = [
+  'NEW DELHI', 'NAVI MUMBAI', 'BENGALURU', 'BANGALORE', 'HYDERABAD', 'AHMEDABAD', 'CHENNAI',
+  'KOLKATA', 'MUMBAI', 'PUNE', 'DELHI', 'NOIDA', 'GURUGRAM', 'GURGAON', 'FARIDABAD', 'GHAZIABAD',
+  'CHANDIGARH', 'JAIPUR', 'LUCKNOW', 'KANPUR', 'INDORE', 'BHOPAL', 'NAGPUR', 'SURAT', 'VADODARA',
+  'COIMBATORE', 'KOCHI', 'THIRUVANANTHAPURAM', 'TRIVANDRUM', 'MYSORE', 'MYSURU', 'MANGALORE',
+  'VISAKHAPATNAM', 'VIJAYAWADA', 'PATNA', 'RANCHI', 'BHUBANESWAR', 'GUWAHATI', 'DEHRADUN',
+  'AMRITSAR', 'LUDHIANA', 'JALANDHAR', 'RAJKOT', 'JODHPUR', 'UDAIPUR', 'AGRA', 'VARANASI',
+  'MEERUT', 'NASHIK', 'AURANGABAD', 'THANE', 'KALYAN', 'HOWRAH', 'SECUNDERABAD', 'TRICHY',
+  'MADURAI', 'SALEM', 'HUBLI', 'BELGAUM', 'GOA', 'PANAJI', 'SHIMLA', 'HARIDWAR',
+];
+
+function extractCitiesFromText(text) {
+  const upper = String(text || '').toUpperCase();
+  const found = [];
+  for (const city of CITY_HINTS) {
+    const re = new RegExp(`\\b${city.replace(/\s+/g, '\\s+')}\\b`, 'i');
+    if (re.test(upper)) found.push(city);
+  }
+  return [...new Set(found)];
 }
 
 function extractInlineFields(text, fields) {
@@ -139,9 +161,18 @@ function extractInlineFields(text, fields) {
     { key: 'department', re: /\bDepartment\s*[:\-–]\s*([^:\n]+?)(?=\s+(?:Travel|Level|Job\s*Dimension|Purpose|Key\s*Responsib|Business\s*Unit)|$)/i },
     { key: 'industry', re: /\b(?:Industry|Sector|Type of companies\/sector worked for)\s*[:\-–]\s*([^:\n]+?)(?=\s+(?:Graduation|Post-?graduation|Professional|Certifications|Desired|Key)|$)/i },
     { key: 'experience', re: /\b(?:Desired\s*)?Experience(?:\s*&\s*Qualification)?\s*[:\-–]\s*([^:\n]+?)(?=\s+(?:Type of companies|Graduation|Post-?graduation|Professional|Certifications|Key)|$)/i },
+    { key: 'locationsRaw', re: /\b(?:Job\s*)?Locations?\s*[:\-–]\s*([^:\n]+?)(?=\s+(?:Experience|CTC|Salary|Skills?|Grade|Client|Industry|Department|Key\s*Responsib|Purpose)|$)/i },
   ];
 
   for (const { key, re } of patterns) {
+    if (key === 'locationsRaw') {
+      const m = text.match(re);
+      if (m?.[1]) {
+        const parts = m[1].split(/[,;/|]+/).map((v) => v.trim()).filter(Boolean);
+        if (parts.length) fields.locations = [...new Set([...(fields.locations || []), ...parts])];
+      }
+      continue;
+    }
     if (fields[key]) continue;
     const m = text.match(re);
     if (!m?.[1]) continue;
@@ -156,6 +187,16 @@ function extractInlineFields(text, fields) {
   if (!fields.experience) {
     const years = text.match(/(\d+\s*[-–]\s*\d+)\s*years?\s+of\s+experience/i);
     if (years) fields.experience = `${years[1].replace(/\s+/g, '')} years`;
+  }
+
+  if (!fields.locations.length) {
+    const cities = extractCitiesFromText(text);
+    if (cities.length) fields.locations = cities.slice(0, 8);
+  }
+
+  if (!fields.ctc) {
+    const ctc = text.match(/\b(?:CTC|Salary|Compensation)\s*[:\-–]?\s*((?:INR\s*)?[\d.]+\s*[-–to]+\s*[\d.]+\s*(?:LPA|Lakh|Lakhs|Lacs)?|\d+\s*[-–]\s*\d+\s*LPA)/i);
+    if (ctc?.[1]) fields.ctc = ctc[1].replace(/\s+/g, ' ').trim();
   }
 }
 

@@ -16,6 +16,7 @@ import { DEFAULT_CTC_BANDS } from '../../utils/ctcRanges';
 import {
   STATUS_OPTIONS, EMPLOYMENT_OPTIONS,
   GRADE_STARTERS, INDUSTRY_STARTERS, LOCATION_STARTERS, EXPERIENCE_STARTERS,
+  initialForm,
 } from './jobsConstants';
 import JobJdPreview from './JobJdPreview';
 
@@ -104,6 +105,9 @@ export default function JobFormModal({
   const [tab, setTab] = useState('edit');
   const [step, setStep] = useState(0);
   const [draftSavedAt, setDraftSavedAt] = useState(null);
+  const [resumePromptOpen, setResumePromptOpen] = useState(false);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [autosaveEnabled, setAutosaveEnabled] = useState(false);
   const [quickList, setQuickList] = useState(null);
   const [masterLoading, setMasterLoading] = useState(false);
   const [activeSection, setActiveSection] = useState('');
@@ -130,57 +134,174 @@ export default function JobFormModal({
   const patch = (partial) => setFormData((prev) => ({ ...prev, ...partial }));
   const block = (value) => String(value || '').toUpperCase();
 
+  const readStoredDraft = useCallback(() => {
+    if (!draftStorageKey) return null;
+    try {
+      const raw = localStorage.getItem(draftStorageKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.formData || typeof parsed.formData !== 'object') return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }, [draftStorageKey]);
+
+  const draftHasContent = useCallback((draft) => {
+    const fd = draft?.formData || {};
+    const skills = String(draft?.skillsInput || '').trim();
+    return Boolean(
+      String(fd.role || '').trim()
+      || String(fd.clientName || '').trim()
+      || String(fd.industry || '').trim()
+      || String(fd.grade || '').trim()
+      || String(fd.experience || '').trim()
+      || String(fd.ctc || '').trim()
+      || String(fd.summary || '').trim()
+      || String(fd.responsibilitiesText || '').trim()
+      || String(fd.requirementsText || '').trim()
+      || (Array.isArray(fd.locations) && fd.locations.length)
+      || String(fd.location || '').trim()
+      || skills
+    );
+  }, []);
+
+  const isFormDirty = useCallback(() => {
+    if (editingJob) return false;
+    return draftHasContent({ formData, skillsInput });
+  }, [editingJob, formData, skillsInput, draftHasContent]);
+
+  const clearLocalDraft = useCallback(() => {
+    if (!draftStorageKey) return;
+    try { localStorage.removeItem(draftStorageKey); } catch { /* ignore */ }
+    setDraftSavedAt(null);
+  }, [draftStorageKey]);
+
+  const writeLocalDraft = useCallback(() => {
+    if (!draftStorageKey || editingJob) return null;
+    try {
+      const savedAt = new Date().toISOString();
+      localStorage.setItem(draftStorageKey, JSON.stringify({
+        formData,
+        skillsInput,
+        savedAt,
+      }));
+      setDraftSavedAt(savedAt);
+      return savedAt;
+    } catch {
+      return null;
+    }
+  }, [draftStorageKey, editingJob, formData, skillsInput]);
+
+  const resetBlankForm = useCallback(() => {
+    setFormData({ ...initialForm });
+    setSkillsInput('');
+    setPasteText('');
+    setShowPasteBox(true);
+    setStep(0);
+    setTab('edit');
+  }, [setFormData, setSkillsInput]);
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setResumePromptOpen(false);
+      setCloseConfirmOpen(false);
+      setAutosaveEnabled(false);
+      return;
+    }
     setStep(0);
     setTab('edit');
     setDraftSavedAt(null);
     setPasteText('');
     setShowPasteBox(!editingJob);
-    if (!draftStorageKey || editingJob) return;
-    try {
-      const raw = localStorage.getItem(draftStorageKey);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (parsed?.formData && typeof parsed.formData === 'object') {
-        setFormData((prev) => ({ ...prev, ...parsed.formData }));
-        if (parsed.skillsInput != null) setSkillsInput(String(parsed.skillsInput));
-        setDraftSavedAt(parsed.savedAt || null);
-      }
-    } catch {
-      /* ignore */
+    setCloseConfirmOpen(false);
+
+    if (editingJob || !draftStorageKey) {
+      setAutosaveEnabled(true);
+      setResumePromptOpen(false);
+      return;
     }
-  }, [open, draftStorageKey, editingJob?._id]);
+
+    const stored = readStoredDraft();
+    if (draftHasContent(stored)) {
+      // Keep parent blank until user chooses Continue / Start new.
+      setAutosaveEnabled(false);
+      setResumePromptOpen(true);
+      setDraftSavedAt(stored.savedAt || null);
+    } else {
+      clearLocalDraft();
+      setAutosaveEnabled(true);
+      setResumePromptOpen(false);
+    }
+  }, [open, draftStorageKey, editingJob?._id, readStoredDraft, draftHasContent, clearLocalDraft]);
 
   useEffect(() => {
-    if (!open || !draftStorageKey || saving) return undefined;
+    if (!open || !draftStorageKey || saving || editingJob || !autosaveEnabled || resumePromptOpen) {
+      return undefined;
+    }
     const t = window.setTimeout(() => {
-      try {
-        const savedAt = new Date().toISOString();
-        localStorage.setItem(draftStorageKey, JSON.stringify({
-          formData,
-          skillsInput,
-          savedAt,
-        }));
-        setDraftSavedAt(savedAt);
-      } catch {
-        /* ignore */
-      }
+      if (!draftHasContent({ formData, skillsInput })) return;
+      writeLocalDraft();
     }, 900);
     return () => window.clearTimeout(t);
-  }, [open, draftStorageKey, formData, skillsInput, saving]);
+  }, [
+    open, draftStorageKey, formData, skillsInput, saving, editingJob,
+    autosaveEnabled, resumePromptOpen, draftHasContent, writeLocalDraft,
+  ]);
 
-  const clearLocalDraft = () => {
-    if (!draftStorageKey) return;
-    try { localStorage.removeItem(draftStorageKey); } catch { /* ignore */ }
-    setDraftSavedAt(null);
+  const resumeDraft = () => {
+    const stored = readStoredDraft();
+    if (stored?.formData) {
+      setFormData((prev) => ({ ...prev, ...stored.formData }));
+      if (stored.skillsInput != null) setSkillsInput(String(stored.skillsInput));
+      setDraftSavedAt(stored.savedAt || null);
+    }
+    setResumePromptOpen(false);
+    setAutosaveEnabled(true);
+  };
+
+  const startFreshDraft = () => {
+    clearLocalDraft();
+    resetBlankForm();
+    setResumePromptOpen(false);
+    setAutosaveEnabled(true);
+  };
+
+  const requestClose = () => {
+    if (saving) return;
+    if (resumePromptOpen) {
+      setResumePromptOpen(false);
+      onClose();
+      return;
+    }
+    if (!editingJob && isFormDirty()) {
+      setCloseConfirmOpen(true);
+      return;
+    }
+    if (!editingJob && !isFormDirty()) clearLocalDraft();
+    onClose();
+  };
+
+  const confirmSaveDraftAndClose = () => {
+    writeLocalDraft();
+    setCloseConfirmOpen(false);
+    onClose();
+    toast.success('Draft saved — you can continue next time');
+  };
+
+  const confirmDiscardAndClose = () => {
+    clearLocalDraft();
+    resetBlankForm();
+    setCloseConfirmOpen(false);
+    onClose();
   };
 
   const wrapSubmit = (e, opts) => {
     const result = onSubmit(e, opts);
     if (!opts?.asDraft) {
-      // Publish / save changes — clear local draft on success path handled by parent close
       window.setTimeout(() => clearLocalDraft(), 400);
+    } else {
+      writeLocalDraft();
     }
     return result;
   };
@@ -300,27 +421,54 @@ export default function JobFormModal({
     if (data.role) filled.push('title');
     if (data.grade) filled.push('grade');
     if (data.clientName) filled.push('client');
+    if (data.industry) filled.push('industry');
     if (data.experience) filled.push('experience');
+    if (data.ctc) filled.push('CTC');
+    if (locs.length) filled.push('location');
+    if (sk.length) filled.push('skills');
     if (data.summary || data.responsibilities || data.requirements) filled.push('description');
+
+    // Extract always writes fetched values (still fully editable afterwards).
     setFormData((prev) => ({
       ...prev,
       ...next,
-      role: prev.role || block(data.role),
-      grade: prev.grade || block(data.grade),
-      clientName: prev.clientName || block(data.clientName),
-      industry: prev.industry || block(data.industry),
-      ctc: prev.ctc || block(data.ctc),
-      experience: prev.experience || block(data.experience),
-      locations: prev.locations?.length ? prev.locations : locs,
-      location: prev.locations?.length ? prev.location : locs.join(', '),
-      skills: prev.skills?.length ? prev.skills : sk,
+      role: data.role ? block(data.role) : prev.role,
+      grade: data.grade ? block(data.grade) : prev.grade,
+      clientName: data.clientName ? block(data.clientName) : prev.clientName,
+      industry: data.industry ? block(data.industry) : prev.industry,
+      ctc: data.ctc ? block(data.ctc) : prev.ctc,
+      experience: data.experience ? block(data.experience) : prev.experience,
+      locations: locs.length ? locs : prev.locations,
+      location: locs.length ? locs.join(', ') : prev.location,
+      skills: sk.length ? sk : prev.skills,
     }));
-    if (sk.length) {
-      setSkillsInput((prev) => (prev && String(prev).trim() ? prev : sk.join(', ')));
+    if (sk.length) setSkillsInput(sk.join(', '));
+    if (locs.length) {
+      setLists((prev) => ({
+        ...prev,
+        location: toOptions(prev.location, locs),
+        clients: toOptions(prev.clients, data.clientName ? [data.clientName] : []),
+        grade: toOptions(prev.grade, data.grade ? [data.grade] : []),
+        experience: toOptions(prev.experience, data.experience ? [data.experience] : []),
+        industry: toOptions(prev.industry, data.industry ? [data.industry] : []),
+        ctc: toOptions(prev.ctc, data.ctc ? [data.ctc] : []),
+        positions: toOptions(prev.positions, data.role ? [data.role] : []),
+      }));
+    } else if (data.role || data.clientName || data.grade || data.experience || data.industry || data.ctc) {
+      setLists((prev) => ({
+        ...prev,
+        clients: toOptions(prev.clients, data.clientName ? [data.clientName] : []),
+        grade: toOptions(prev.grade, data.grade ? [data.grade] : []),
+        experience: toOptions(prev.experience, data.experience ? [data.experience] : []),
+        industry: toOptions(prev.industry, data.industry ? [data.industry] : []),
+        ctc: toOptions(prev.ctc, data.ctc ? [data.ctc] : []),
+        positions: toOptions(prev.positions, data.role ? [data.role] : []),
+      }));
     }
+    setAutosaveEnabled(true);
     toast.success(
       filled.length
-        ? `Filled ${filled.join(', ')} — review and edit as needed`
+        ? `Filled ${filled.join(', ')} — edit any field as needed`
         : (source === 'paste'
           ? 'Details extracted — review fields, then continue'
           : 'JD uploaded — review the fields, then save')
@@ -397,24 +545,24 @@ export default function JobFormModal({
     <>
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={requestClose}
       title={editingJob ? 'Edit job requisition' : 'Post a new job'}
       description={
         editingJob
           ? (formData.jobCode ? `Job ID ${formData.jobCode}` : 'Job ID is assigned when you save.')
           : (nextJobCode
-            ? `Next ID: ${nextJobCode}${draftSavedAt ? ' · Draft autosaved' : ''}`
-            : `Step ${step + 1} of ${FORM_STEPS.length}${draftSavedAt ? ' · Draft autosaved' : ''}`)
+            ? `Next ID: ${nextJobCode}${draftSavedAt && autosaveEnabled ? ' · Draft saved' : ''}`
+            : `Step ${step + 1} of ${FORM_STEPS.length}${draftSavedAt && autosaveEnabled ? ' · Draft saved' : ''}`)
       }
       size="full"
       icon={Briefcase}
       closeOnBackdrop={false}
       fillHeight
-      disableFocusLock={!!quickList}
+      disableFocusLock={!!quickList || resumePromptOpen || closeConfirmOpen}
       bodyClassName="flex-1 min-h-0 min-w-0 overflow-hidden p-0 flex flex-col bg-white"
       footer={
         <>
-          <button type="button" onClick={onClose} className="btn-secondary" disabled={saving}>
+          <button type="button" onClick={requestClose} className="btn-secondary" disabled={saving}>
             Cancel
           </button>
           {step > 0 ? (
@@ -497,10 +645,10 @@ export default function JobFormModal({
               <p className="text-[11px] font-bold uppercase tracking-wider text-stone-500">
                 Step {step + 1} of {FORM_STEPS.length}
               </p>
-              {draftSavedAt ? (
-                <p className="text-[10px] font-medium text-emerald-700">Draft autosaved</p>
+              {draftSavedAt && autosaveEnabled ? (
+                <p className="text-[10px] font-medium text-emerald-700">Draft saved locally</p>
               ) : (
-                <p className="text-[10px] font-medium text-stone-400">Autosave on</p>
+                <p className="text-[10px] font-medium text-stone-400">{autosaveEnabled ? 'Autosave on' : 'Draft idle'}</p>
               )}
             </div>
             <div className="grid grid-cols-4 gap-1.5">
@@ -650,14 +798,15 @@ export default function JobFormModal({
                 Use a custom Job ID instead
               </label>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 min-w-0">
-              <div className="sm:col-span-2" onFocus={() => scrollPreview('header')}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 min-w-0 [&>*]:min-w-0">
+              <div className="sm:col-span-2 min-w-0" onFocus={() => scrollPreview('header')}>
                 <ListField label="Job title" required noun="positions" listCfg={LIST.positions} onManage={setQuickList} loading={masterLoading}>
                   <PremiumSelect
                     variant="list"
                     searchable
                     creatable
                     allowClear
+                    className="w-full min-w-0"
                     value={formData.role}
                     onChange={(v) => patch({ role: block(v) })}
                     onCreate={async (name) => {
@@ -687,13 +836,15 @@ export default function JobFormModal({
                 <PremiumSelect
                   variant="list"
                   searchable
+                  creatable
                   allowClear
+                  className="w-full min-w-0"
                   value={formData.grade}
                   onChange={(v) => patch({ grade: block(v) })}
-                  options={lists.grade}
+                  options={toOptions(lists.grade, formData.grade ? [formData.grade] : [])}
                   placeholder="SELECT GRADE"
                   searchPlaceholder="Search grades…"
-                  emptyLabel="No grades — use Manage to add"
+                  emptyLabel="No grades — type to add"
                 />
               </ListField>
 
@@ -701,13 +852,15 @@ export default function JobFormModal({
                 <PremiumSelect
                   variant="list"
                   searchable
+                  creatable
                   allowClear
+                  className="w-full min-w-0"
                   value={formData.clientName}
                   onChange={(v) => patch({ clientName: block(v) })}
-                  options={lists.clients}
+                  options={toOptions(lists.clients, formData.clientName ? [formData.clientName] : [])}
                   placeholder="SELECT CLIENT"
                   searchPlaceholder="Type at least 2 characters to search…"
-                  emptyLabel="No clients — use Manage to add"
+                  emptyLabel="No clients — type to add"
                   minSearchChars={PICKLIST_MIN_SEARCH}
                   onSearch={(q) => searchPicklistOptions('/api/clients', q)}
                 />
@@ -717,20 +870,23 @@ export default function JobFormModal({
                 <PremiumSelect
                   variant="list"
                   searchable
+                  creatable
                   allowClear
+                  className="w-full min-w-0"
                   value={formData.industry}
                   onChange={(v) => patch({ industry: block(v) })}
-                  options={lists.industry}
+                  options={toOptions(lists.industry, formData.industry ? [formData.industry] : [])}
                   placeholder="SELECT INDUSTRY"
                   searchPlaceholder="Search industries…"
-                  emptyLabel="No industries — use Manage to add"
+                  emptyLabel="No industries — type to add"
                 />
               </ListField>
 
-              <div>
+              <div className="min-w-0">
                 <label className="block text-[11px] font-semibold text-stone-600 mb-1.5 uppercase tracking-wide">Employment type</label>
                 <PremiumSelect
                   variant="list"
+                  className="w-full min-w-0"
                   value={formData.employmentType}
                   onChange={(v) => patch({ employmentType: v || 'full_time' })}
                   options={EMPLOYMENT_OPTIONS}
@@ -738,7 +894,7 @@ export default function JobFormModal({
                 />
               </div>
 
-              <div className="sm:col-span-2">
+              <div className="sm:col-span-2 min-w-0">
               <ListField
                 label="Locations"
                 required
@@ -751,13 +907,15 @@ export default function JobFormModal({
                   variant="list"
                   searchable
                   multiple
+                  creatable
                   allowClear
+                  className="w-full min-w-0"
                   value={formData.locations || []}
                   onChange={persistLocation}
                   options={toOptions(lists.location, formData.locations)}
                   placeholder="SELECT LOCATIONS"
                   searchPlaceholder="Type at least 2 characters to search…"
-                  emptyLabel="No locations — use Manage to add"
+                  emptyLabel="No locations — type to add"
                   minSearchChars={PICKLIST_MIN_SEARCH}
                   onSearch={(q) => searchPicklistOptions('/api/org-lists/location', q)}
                 />
@@ -768,13 +926,15 @@ export default function JobFormModal({
                 <PremiumSelect
                   variant="list"
                   searchable
+                  creatable
                   allowClear
+                  className="w-full min-w-0"
                   value={formData.experience}
                   onChange={(v) => patch({ experience: block(v) })}
-                  options={lists.experience}
+                  options={toOptions(lists.experience, formData.experience ? [formData.experience] : [])}
                   placeholder="SELECT EXPERIENCE"
                   searchPlaceholder="Search experience…"
-                  emptyLabel="No bands — use Manage to add"
+                  emptyLabel="No bands — type to add"
                 />
               </ListField>
 
@@ -782,17 +942,19 @@ export default function JobFormModal({
                 <PremiumSelect
                   variant="list"
                   searchable
+                  creatable
                   allowClear
+                  className="w-full min-w-0"
                   value={formData.ctc}
                   onChange={(v) => patch({ ctc: block(v) })}
-                  options={lists.ctc}
+                  options={toOptions(lists.ctc, formData.ctc ? [formData.ctc] : [])}
                   placeholder="SELECT CTC"
                   searchPlaceholder="Search CTC bands…"
-                  emptyLabel="No CTC bands — use Manage to add"
+                  emptyLabel="No CTC bands — type to add"
                 />
               </ListField>
 
-              <div>
+              <div className="min-w-0">
                 <label className="block text-[11px] font-semibold text-stone-600 mb-1.5 uppercase tracking-wide">Openings</label>
                 <input
                   type="text"
@@ -1163,6 +1325,69 @@ export default function JobFormModal({
           onChanged={fetchMasterData}
         />
       )}
+
+      <Modal
+        open={open && resumePromptOpen}
+        onClose={() => {
+          setResumePromptOpen(false);
+          onClose();
+        }}
+        title="Continue last draft?"
+        description="You have an unfinished job draft on this device."
+        size="sm"
+        icon={StickyNote}
+        zClass="z-[120]"
+        closeOnBackdrop={false}
+        footer={
+          <>
+            <button type="button" className="btn-secondary" onClick={startFreshDraft}>
+              Start new
+            </button>
+            <button type="button" className="btn-primary" onClick={resumeDraft}>
+              Continue draft
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-stone-600 leading-relaxed">
+          Choose <span className="font-semibold text-stone-800">Continue draft</span> to keep your last fields,
+          or <span className="font-semibold text-stone-800">Start new</span> for a blank form.
+        </p>
+        {draftSavedAt ? (
+          <p className="text-xs text-stone-400 mt-3">
+            Last saved {new Date(draftSavedAt).toLocaleString()}
+          </p>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={closeConfirmOpen}
+        onClose={() => setCloseConfirmOpen(false)}
+        title="Save this as a draft?"
+        description="You have unsaved job details."
+        size="sm"
+        icon={AlertTriangle}
+        zClass="z-[120]"
+        closeOnBackdrop={false}
+        footer={
+          <>
+            <button type="button" className="btn-secondary" onClick={() => setCloseConfirmOpen(false)}>
+              Keep editing
+            </button>
+            <button type="button" className="btn-secondary" onClick={confirmDiscardAndClose}>
+              Discard
+            </button>
+            <button type="button" className="btn-primary" onClick={confirmSaveDraftAndClose}>
+              Save draft
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-stone-600 leading-relaxed">
+          Save keeps this form locally so the next time you post a job you can continue it.
+          Discard clears it.
+        </p>
+      </Modal>
     </>
   );
 }

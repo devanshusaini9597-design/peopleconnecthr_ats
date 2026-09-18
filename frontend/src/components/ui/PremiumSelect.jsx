@@ -542,8 +542,12 @@ export default function PremiumSelect({
           </span>
         ) : null}
         <span className="min-w-0 flex-1 overflow-hidden" title={displayLabel || placeholder || ''}>
-          <span className={`block break-words whitespace-normal leading-snug ${
-            compact ? 'text-[12.5px] font-semibold tracking-tight line-clamp-2' : 'text-sm font-semibold line-clamp-2'
+          <span className={`block leading-snug ${
+            compact
+              ? 'text-[12.5px] font-semibold tracking-tight line-clamp-2 break-words whitespace-normal'
+              : isList
+                ? 'text-sm font-semibold truncate whitespace-nowrap'
+                : 'text-sm font-semibold line-clamp-2 break-words whitespace-normal'
           } ${displayLabel ? 'text-stone-900' : 'text-stone-400'}`}>
             {displayLabel || placeholder}
           </span>
