@@ -191,7 +191,7 @@ export async function readApiJson(res) {
  * onProgress({ percent, loaded, total, phase })
  * phase: 'upload' | 'processing'
  */
-export function authenticatedUpload(url, formData, { onProgress, method = 'POST' } = {}) {
+export function authenticatedUpload(url, formData, { onProgress, method = 'POST', timeoutMs = 15 * 60 * 1000 } = {}) {
   const orgId = localStorage.getItem('orgId');
   const fullUrl = url.startsWith('http')
     ? url
@@ -201,6 +201,7 @@ export function authenticatedUpload(url, formData, { onProgress, method = 'POST'
     const xhr = new XMLHttpRequest();
     xhr.open(method, fullUrl, true);
     xhr.withCredentials = true;
+    xhr.timeout = timeoutMs;
     if (orgId) xhr.setRequestHeader('X-Organization-Id', orgId);
 
     xhr.upload.onprogress = (evt) => {
@@ -217,7 +218,7 @@ export function authenticatedUpload(url, formData, { onProgress, method = 'POST'
       try {
         data = xhr.responseText ? JSON.parse(xhr.responseText) : {};
       } catch {
-        data = {};
+        data = { message: xhr.responseText?.slice?.(0, 200) || 'Invalid server response' };
       }
       const fakeRes = {
         ok: xhr.status >= 200 && xhr.status < 300,
@@ -230,7 +231,8 @@ export function authenticatedUpload(url, formData, { onProgress, method = 'POST'
       onProgress?.({ percent: 100, loaded: 0, total: 0, phase: 'done' });
       resolve({ response: fakeRes, data });
     };
-    xhr.onerror = () => reject(new Error('Network error during upload'));
+    xhr.onerror = () => reject(new Error('Network error during upload — check connection and try again'));
+    xhr.ontimeout = () => reject(new Error('Upload timed out while sending the file. Try a smaller sheet or retry.'));
     xhr.onabort = () => reject(new Error('Upload cancelled'));
     xhr.send(formData);
   });

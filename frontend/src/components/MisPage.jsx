@@ -316,6 +316,12 @@ export default function MisPage() {
       percent: 0,
       fileName: file.name,
       result: null,
+      processed: 0,
+      totalRows: 0,
+      created: 0,
+      duplicates: 0,
+      duplicatesInFile: 0,
+      skipped: 0,
     });
     try {
       const fd = new FormData();
@@ -324,22 +330,112 @@ export default function MisPage() {
         onProgress: ({ percent, phase }) => {
           setUploadUi((prev) => ({
             ...(prev || {}),
-            percent,
-            phase: phase === 'done' ? 'processing' : phase,
+            percent: phase === 'upload' ? percent : (prev?.percent || 99),
+            phase: phase === 'done' || phase === 'processing' ? 'processing' : phase,
             fileName: file.name,
           }));
         },
       });
-      if (!response.ok) throw new Error(data.message || 'Upload failed');
-      setUploadUi({
-        phase: 'done',
-        percent: 100,
-        fileName: file.name,
-        result: data,
-      });
-      toast.success(data.message || 'Upload complete');
-      setPage(1);
-      await load(1);
+
+      // Partial / hard failures: still show counts when the server returned them
+      if (!response.ok && !data?.jobId && data?.created == null && data?.duplicates == null) {
+        throw new Error(data.message || `Upload failed (${response.status})`);
+      }
+
+      let finalResult = data;
+      if (data?.jobId || data?.async) {
+        const jobId = data.jobId;
+        setUploadUi((prev) => ({
+          ...(prev || {}),
+          phase: 'processing',
+          percent: data.percent || 0,
+          fileName: file.name,
+          jobId,
+          totalRows: data.totalRows || 0,
+          processed: data.processed || 0,
+          created: data.created || 0,
+          duplicates: data.duplicates || 0,
+          duplicatesInFile: data.duplicatesInFile || 0,
+          skipped: data.skipped || 0,
+          blank: data.blank || 0,
+        }));
+
+        const started = Date.now();
+        const maxMs = 30 * 60 * 1000;
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          if (Date.now() - started > maxMs) {
+            throw new Error('Import is taking too long. Refresh MIS to see what was saved.');
+          }
+          await new Promise((r) => setTimeout(r, 450));
+          const res = await authenticatedFetch(`/api/mis/bulk-upload/jobs/${encodeURIComponent(jobId)}`);
+          const job = await res.json().catch(() => ({}));
+          if (!res.ok && !job.processed && job.created == null) {
+            throw new Error(job.message || 'Could not read import progress');
+          }
+          setUploadUi((prev) => ({
+            ...(prev || {}),
+            phase: job.status === 'done' ? 'done' : job.status === 'error' ? 'error' : 'processing',
+            percent: job.percent ?? prev?.percent ?? 0,
+            fileName: file.name,
+            jobId,
+            totalRows: job.totalRows || 0,
+            processed: job.processed || 0,
+            created: job.created || 0,
+            duplicates: job.duplicates || 0,
+            duplicatesInFile: job.duplicatesInFile || 0,
+            skipped: job.skipped || 0,
+            blank: job.blank || 0,
+            result: job.status === 'done' || job.status === 'error' ? job : prev?.result,
+            error: job.status === 'error' ? (job.error || job.message) : null,
+          }));
+          if (job.status === 'done' || job.status === 'error') {
+            finalResult = job;
+            break;
+          }
+        }
+      }
+
+      const created = finalResult.created ?? 0;
+      const duplicates = finalResult.duplicates ?? 0;
+      const duplicatesInFile = finalResult.duplicatesInFile ?? 0;
+      const skipped = finalResult.skipped ?? 0;
+      const summary = `${created} added · ${duplicates} duplicates · ${duplicatesInFile} in-file repeats · ${skipped} failed/invalid`;
+
+      if (finalResult.status === 'error' && created === 0 && duplicates === 0) {
+        setUploadUi({
+          phase: 'error',
+          percent: 0,
+          fileName: file.name,
+          error: finalResult.error || finalResult.message || 'Import failed',
+          result: finalResult,
+        });
+        toast.error(finalResult.error || finalResult.message || 'Import failed');
+      } else {
+        setUploadUi({
+          phase: 'done',
+          percent: 100,
+          fileName: file.name,
+          result: finalResult,
+          created,
+          duplicates,
+          duplicatesInFile,
+          skipped,
+          processed: finalResult.processed,
+          totalRows: finalResult.totalRows,
+        });
+        if (created > 0) {
+          toast.success(`Import complete — ${summary}`);
+        } else if (duplicates > 0 || duplicatesInFile > 0) {
+          toast.info(`No new rows — ${summary}`);
+        } else if (skipped > 0) {
+          toast.warning(`Nothing added — ${summary}`);
+        } else {
+          toast.success(finalResult.message || summary);
+        }
+        setPage(1);
+        await load(1);
+      }
     } catch (err) {
       setUploadUi((prev) => ({
         ...(prev || { fileName: file.name, percent: 0 }),
@@ -853,7 +949,15 @@ export default function MisPage() {
           if (uploading) return;
           setUploadUi(null);
         }}
-        title={uploadUi?.phase === 'done' ? 'Upload results' : uploadUi?.phase === 'error' ? 'Upload failed' : 'Uploading MIS file'}
+        title={
+          uploadUi?.phase === 'done'
+            ? 'Upload results'
+            : uploadUi?.phase === 'error'
+              ? 'Upload issue'
+              : uploadUi?.phase === 'processing'
+                ? 'Importing rows'
+                : 'Uploading MIS file'
+        }
         description={uploadUi?.fileName || 'Excel / CSV import'}
         size="md"
         icon={Upload}
@@ -875,35 +979,60 @@ export default function MisPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-stone-500">
-                        {uploadUi.phase === 'upload' ? 'Transfer' : 'Import'}
+                        {uploadUi.phase === 'upload' ? 'File transfer' : 'Row import'}
                       </p>
                       <p className="text-sm font-semibold text-stone-900 mt-0.5 truncate">
-                        {uploadUi.phase === 'upload' ? 'Uploading spreadsheet…' : 'Writing records to MIS…'}
+                        {uploadUi.phase === 'upload'
+                          ? 'Uploading spreadsheet…'
+                          : `Processed ${(uploadUi.processed || 0).toLocaleString()} of ${(uploadUi.totalRows || 0).toLocaleString()} rows`}
                       </p>
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-2xl font-bold tabular-nums text-brand-700 leading-none">
-                        {uploadUi.phase === 'processing' ? '99' : (uploadUi.percent || 0)}
+                        {uploadUi.phase === 'processing'
+                          ? (uploadUi.totalRows
+                            ? Math.min(100, Math.round(((uploadUi.processed || 0) / uploadUi.totalRows) * 100))
+                            : (uploadUi.percent || 0))
+                          : (uploadUi.percent || 0)}
                         <span className="text-sm font-semibold text-brand-500">%</span>
                       </p>
                       <p className="text-[10px] font-medium text-stone-400 mt-1 uppercase tracking-wider">
-                        {uploadUi.phase === 'processing' ? 'Processing' : 'Complete'}
+                        {uploadUi.phase === 'processing' ? 'Live' : 'Transfer'}
                       </p>
                     </div>
                   </div>
                   <div className="h-2.5 rounded-full bg-stone-100 overflow-hidden border border-stone-200/80">
                     <div
-                      className={`h-full rounded-full bg-gradient-to-r from-brand-500 via-teal-600 to-brand-600 transition-[width] duration-300 ease-out ${
-                        uploadUi.phase === 'processing' ? 'animate-pulse' : ''
-                      }`}
+                      className="h-full rounded-full bg-gradient-to-r from-brand-500 via-teal-600 to-brand-600 transition-[width] duration-300 ease-out"
                       style={{
-                        width: `${uploadUi.phase === 'processing' ? 99 : Math.max(3, uploadUi.percent || 0)}%`,
+                        width: `${Math.max(
+                          3,
+                          uploadUi.phase === 'processing' && uploadUi.totalRows
+                            ? Math.min(100, Math.round(((uploadUi.processed || 0) / uploadUi.totalRows) * 100))
+                            : (uploadUi.percent || 0)
+                        )}%`,
                       }}
                     />
                   </div>
-                  <p className="text-xs text-stone-500 leading-relaxed">
-                    Large Excel files can take longer after the bar reaches 99% while rows are imported. Keep this window open until results appear.
-                  </p>
+                  {uploadUi.phase === 'processing' ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                      {[
+                        { label: 'Added', value: uploadUi.created ?? 0, tone: 'text-emerald-700 bg-emerald-50 border-emerald-100' },
+                        { label: 'Duplicates', value: uploadUi.duplicates ?? 0, tone: 'text-sky-700 bg-sky-50 border-sky-100' },
+                        { label: 'In-file', value: uploadUi.duplicatesInFile ?? 0, tone: 'text-violet-700 bg-violet-50 border-violet-100' },
+                        { label: 'Failed', value: uploadUi.skipped ?? 0, tone: 'text-amber-700 bg-amber-50 border-amber-100' },
+                      ].map((card) => (
+                        <div key={card.label} className={`rounded-xl border px-2.5 py-2 ${card.tone}`}>
+                          <p className="text-[9px] font-bold uppercase tracking-wider opacity-80">{card.label}</p>
+                          <p className="text-base font-bold tabular-nums mt-0.5">{card.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-stone-500 leading-relaxed">
+                      After the file finishes uploading, row import progress appears live (added / duplicates / failed).
+                    </p>
+                  )}
                 </div>
               </>
             ) : null}
@@ -911,17 +1040,18 @@ export default function MisPage() {
             {uploadUi.phase === 'done' && uploadUi.result ? (
               <div className="space-y-3">
                 <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/50 px-4 py-3">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700">Merge complete</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700">Import complete</p>
                   <p className="text-sm font-semibold text-stone-900 mt-1">
-                    Existing MIS contacts were left unchanged. Only new emails were added.
+                    {(uploadUi.result.processed ?? 0).toLocaleString()} of {(uploadUi.result.totalRows ?? 0).toLocaleString()} rows handled.
+                    Existing contacts were not overwritten.
                   </p>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
-                    { label: 'New', value: uploadUi.result.created ?? 0, tone: 'text-emerald-700 bg-emerald-50 border-emerald-100' },
+                    { label: 'Added', value: uploadUi.result.created ?? 0, tone: 'text-emerald-700 bg-emerald-50 border-emerald-100' },
                     {
                       label: 'Duplicates kept',
-                      value: uploadUi.result.duplicates ?? uploadUi.result.updated ?? 0,
+                      value: uploadUi.result.duplicates ?? 0,
                       tone: 'text-sky-700 bg-sky-50 border-sky-100',
                     },
                     {
@@ -930,7 +1060,7 @@ export default function MisPage() {
                       tone: 'text-violet-700 bg-violet-50 border-violet-100',
                     },
                     {
-                      label: 'Invalid',
+                      label: 'Failed / invalid',
                       value: uploadUi.result.skipped ?? 0,
                       tone: 'text-amber-700 bg-amber-50 border-amber-100',
                     },
@@ -958,7 +1088,14 @@ export default function MisPage() {
             ) : null}
 
             {uploadUi.phase === 'error' ? (
-              <p className="text-sm text-rose-700 font-medium">{uploadUi.error || 'Upload failed'}</p>
+              <div className="space-y-3">
+                <p className="text-sm text-rose-700 font-medium">{uploadUi.error || 'Upload failed'}</p>
+                {uploadUi.result && (uploadUi.result.created > 0 || uploadUi.result.duplicates > 0) ? (
+                  <p className="text-sm text-stone-600">
+                    Partial progress before the issue: {uploadUi.result.created || 0} added, {uploadUi.result.duplicates || 0} duplicates, {uploadUi.result.skipped || 0} failed.
+                  </p>
+                ) : null}
+              </div>
             ) : null}
           </div>
         ) : null}

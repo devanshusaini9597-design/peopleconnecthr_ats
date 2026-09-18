@@ -86,6 +86,15 @@ router.post('/bulk-upload', upload.single('file'), async (req, res) => {
   }
 });
 
+router.get('/bulk-upload/jobs/:jobId', async (req, res) => {
+  try {
+    const data = svc.getBulkUploadJob(req.user, req.params.jobId);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
 router.post('/bulk-delete', async (req, res) => {
   try {
     const data = await svc.bulkDelete(req.user, req.body?.ids || []);

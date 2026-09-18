@@ -267,164 +267,13 @@ async function bulkDelete(user, ids = []) {
 }
 
 async function bulkUpload(user, file) {
-  if (!user || user.role !== 'owner') {
-    throw httpError('MIS is available to the company owner only', 403, { code: 'MIS_OWNER_ONLY' });
-  }
-  if (!file) throw httpError('Excel file is required');
-  const filePath = file.path
-    || path.join(process.cwd(), 'uploads', file.filename);
-  if (!fs.existsSync(filePath)) throw httpError('Uploaded file not found', 400);
+  const { startBulkUploadJob } = require('./misBulkUploadJob');
+  return startBulkUploadJob(user, file);
+}
 
-  const workbook = new ExcelJS.Workbook();
-  const ext = path.extname(file.originalname || '').toLowerCase();
-  if (ext === '.csv') {
-    await workbook.csv.readFile(filePath);
-  } else {
-    await workbook.xlsx.readFile(filePath);
-  }
-  const sheet = workbook.worksheets[0];
-  if (!sheet) throw httpError('Spreadsheet is empty');
-
-  const headerRow = sheet.getRow(1);
-  const map = autoDetectHeaderMapping(headerRow);
-  if (!map.name || !map.email) {
-    throw httpError('Spreadsheet must include Name and Email columns');
-  }
-
-  const batchId = `mis_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-  const organizationId = user.organizationId;
-  const createdBy = user.id || user._id;
-  let created = 0;
-  let duplicates = 0; // already in MIS — keep existing, never overwrite
-  let duplicatesInFile = 0; // same email repeated inside this spreadsheet
-  let skipped = 0; // invalid rows
-  let blank = 0;
-  const errors = [];
-  const pending = [];
-  const seenEmails = new Set();
-
-  for (let r = 2; r <= sheet.rowCount; r += 1) {
-    const row = sheet.getRow(r);
-    const name = cellStr(row, map.name);
-    const email = normalizeEmail(cellStr(row, map.email));
-    if (!name && !email) {
-      blank += 1;
-      continue;
-    }
-    if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-      skipped += 1;
-      if (errors.length < 50) errors.push({ row: r, message: 'Name and valid email required' });
-      continue;
-    }
-    if (seenEmails.has(email)) {
-      duplicatesInFile += 1;
-      if (errors.length < 50) {
-        errors.push({ row: r, message: 'Duplicate email in this file — kept first row only' });
-      }
-      continue;
-    }
-    seenEmails.add(email);
-
-    const phone = phoneDigits(cellStr(row, map.contact));
-    const payload = {
-      name: normalizeText(name),
-      email,
-      phone,
-      contact: phone,
-      uploadBatchId: batchId,
-      source: normalizeText(cellStr(row, map.source)) || 'MIS Upload',
-      marketingConsent: true,
-    };
-    for (const key of ['position', 'companyName', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'location', 'skills', 'product', 'client', 'fls', 'remark']) {
-      if (map[key]) payload[key] = normalizeText(cellStr(row, map[key]));
-    }
-    pending.push({ row: r, payload });
-  }
-
-  const CHUNK = 150;
-  for (let i = 0; i < pending.length; i += CHUNK) {
-    const chunk = pending.slice(i, i + CHUNK);
-    const emails = chunk.map((c) => c.payload.email);
-    let existingEmails = new Set();
-    try {
-      const existingRows = await MisContact.find({
-        organizationId,
-        email: { $in: emails },
-      }).select('email').lean();
-      existingEmails = new Set(existingRows.map((e) => e.email));
-    } catch (err) {
-      skipped += chunk.length;
-      if (errors.length < 50) errors.push({ row: chunk[0]?.row, message: err.message || 'Lookup failed' });
-      continue;
-    }
-
-    const ops = [];
-    for (const item of chunk) {
-      const { payload } = item;
-      if (existingEmails.has(payload.email)) {
-        duplicates += 1;
-        continue;
-      }
-      ops.push({
-        insertOne: {
-          document: {
-            organizationId,
-            createdBy,
-            ...payload,
-            unsubscribeSecret: crypto.randomBytes(16).toString('hex'),
-          },
-        },
-      });
-    }
-    if (!ops.length) continue;
-    try {
-      const result = await MisContact.bulkWrite(ops, { ordered: false });
-      created += result.insertedCount || Number(result.nInserted || 0) || 0;
-    } catch (err) {
-      // Fall back to per-row insert so one bad row does not kill the chunk
-      for (const item of chunk) {
-        if (existingEmails.has(item.payload.email)) continue;
-        try {
-          const doc = new MisContact({
-            organizationId,
-            createdBy,
-            ...item.payload,
-          });
-          doc.ensureUnsubscribeSecret();
-          await doc.save();
-          created += 1;
-        } catch (rowErr) {
-          if (rowErr?.code === 11000) {
-            duplicates += 1;
-          } else {
-            skipped += 1;
-            if (errors.length < 50) {
-              errors.push({ row: item.row, message: rowErr.message || 'Row failed' });
-            }
-          }
-        }
-      }
-      logger.warn({ err: err.message }, 'MIS bulkWrite chunk fell back to per-row insert');
-    }
-  }
-
-  try { fs.unlinkSync(filePath); } catch { /* ignore */ }
-
-  const totalRows = Math.max(0, sheet.rowCount - 1);
-  const processed = created + duplicates + duplicatesInFile + skipped;
-  return {
-    batchId,
-    created,
-    updated: 0, // never overwrite — kept for older clients
-    duplicates,
-    duplicatesInFile,
-    skipped,
-    blank,
-    totalRows,
-    processed,
-    errors: errors.slice(0, 40),
-    message: `Merged · ${created} new · ${duplicates} duplicates kept unchanged · ${duplicatesInFile} repeats in file · ${skipped} invalid`,
-  };
+function getBulkUploadJob(user, jobId) {
+  const { getBulkUploadJob: getJob } = require('./misBulkUploadJob');
+  return getJob(user, jobId);
 }
 
 async function sendMarketingToMis(user, body = {}) {
@@ -626,6 +475,7 @@ module.exports = {
   deleteContact,
   bulkDelete,
   bulkUpload,
+  getBulkUploadJob,
   moveToCandidates,
   sendMarketingToMis,
   unsubscribePublic,
