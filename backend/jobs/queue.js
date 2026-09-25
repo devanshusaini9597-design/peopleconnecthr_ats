@@ -36,6 +36,7 @@ async function tryInitQueues() {
     connectTimeout: 1500,
     retryStrategy: () => null,
   });
+  probe.on('error', () => {});
 
   try {
     await probe.connect();

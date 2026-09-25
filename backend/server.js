@@ -18,6 +18,7 @@ const logger = require('./utils/logger');
 
 // ── Global crash handlers ────────────────────────────────────────────
 process.on('uncaughtException', (err) => {
+  console.error('STARTUP_CRASH', err && err.stack ? err.stack : err);
   logger.fatal({ err }, 'FATAL: Uncaught Exception — crashing process');
   // Give logger time to flush, then exit with failure code
   setTimeout(() => process.exit(1), 1000);
