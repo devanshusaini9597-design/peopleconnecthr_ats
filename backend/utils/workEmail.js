@@ -62,7 +62,10 @@ function validateWorkEmail(email) {
     return { valid: false, reason: 'Invalid email domain', code: 'email_invalid' };
   }
 
-  if (FREE_EMAIL_DOMAINS.has(domain)) {
+  const allowPersonal = ['1', 'true', 'yes'].includes(
+    String(process.env.ALLOW_PERSONAL_EMAIL_SIGNUP || '').trim().toLowerCase()
+  );
+  if (FREE_EMAIL_DOMAINS.has(domain) && !allowPersonal) {
     return {
       valid: false,
       reason: 'Please use your work email. Personal email providers (Gmail, Yahoo, Outlook, etc.) are not allowed.',

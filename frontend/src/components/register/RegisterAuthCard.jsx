@@ -32,6 +32,7 @@ export function RegisterSuccessCard({
   variant = 'verify',
 }) {
   const pending = variant === 'pending';
+  const ready = variant === 'ready';
   return (
     <motion.div
       initial={prefersReduced ? false : { opacity: 0, y: 20 }}
@@ -45,13 +46,19 @@ export function RegisterSuccessCard({
         </div>
         <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 text-[11px] font-semibold mb-4">
           <CheckCircle2 className="w-3 h-3" />
-          {pending ? 'Request received' : 'Almost there'}
+          {ready ? 'Account ready' : pending ? 'Request received' : 'Almost there'}
         </div>
         <h2 className="text-xl sm:text-2xl font-bold text-stone-900 mb-3 tracking-tight">
-          {pending ? 'Our team will contact you' : 'Check your email'}
+          {ready ? 'You can sign in now' : pending ? 'Our team will contact you' : 'Check your email'}
         </h2>
         <p className="text-stone-500 text-sm mb-8 leading-relaxed break-words">
-          {pending ? (
+          {ready ? (
+            <>
+              We created an account for{' '}
+              <span className="font-semibold text-stone-800">{email}</span>
+              . Use the password you just set.
+            </>
+          ) : pending ? (
             <>
               We confirmed{' '}
               <span className="font-semibold text-stone-800">{email}</span>
@@ -67,7 +74,7 @@ export function RegisterSuccessCard({
         </p>
 
         <div className="space-y-3">
-          {!pending && (
+          {!pending && !ready && (
             <button
               type="button"
               onClick={onResend}
@@ -81,7 +88,7 @@ export function RegisterSuccessCard({
             <p className="text-sm text-brand-700">{resendMessage}</p>
           )}
           <Link to="/login" className="btn-cta-primary w-full !py-3">
-            {pending ? 'Back to sign in' : 'Already verified? Continue to login'}
+            {ready ? 'Continue to login' : pending ? 'Back to sign in' : 'Already verified? Continue to login'}
             <ArrowRight size={16} />
           </Link>
         </div>

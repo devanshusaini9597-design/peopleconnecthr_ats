@@ -189,17 +189,37 @@ async function sendVerificationEmail(email, emailVerificationToken) {
   }
 }
 
+function autoApproveSignup() {
+  return ['1', 'true', 'yes'].includes(
+    String(process.env.AUTO_APPROVE_SIGNUP || '').trim().toLowerCase()
+  );
+}
+
 function pendingApprovalPayload({ isNewAccount, isUpdate }) {
   return {
     success: true,
     isNewAccount,
     pendingApproval: true,
+    canSignIn: false,
     requiresVerification: false,
     pendingVerification: false,
     emailSent: true,
     message: isUpdate
       ? 'We already have your request. Our sales team will contact you, then you can sign in after approval.'
       : 'Request received. Our sales team will contact you shortly. You can sign in after they approve access.',
+  };
+}
+
+function signupReadyPayload({ isNewAccount }) {
+  return {
+    success: true,
+    isNewAccount,
+    pendingApproval: false,
+    canSignIn: true,
+    requiresVerification: false,
+    pendingVerification: false,
+    emailSent: true,
+    message: 'Account created. You can sign in now.',
   };
 }
 
@@ -294,10 +314,11 @@ async function createPendingUserFromSignup({ email, name, phone, companyName, pa
     if (name) user.name = name;
     if (phone) user.phone = phone;
     if (companyName) user.companyName = companyName;
-    user.signupStatus = 'pending_approval';
+    user.signupStatus = autoApproveSignup() ? 'active' : 'pending_approval';
     user.isEmailVerified = true;
     user.isActive = true;
     user.role = user.role || 'admin';
+    if (autoApproveSignup()) user.signupApprovedAt = new Date();
   };
 
   if (existingUser?.signupStatus === 'active' && (existingUser.isEmailVerified || existingUser.organizationId)) {
@@ -307,6 +328,7 @@ async function createPendingUserFromSignup({ email, name, phone, companyName, pa
   if (existingUser) {
     applyDetails(existingUser);
     await existingUser.save();
+    if (autoApproveSignup()) return signupReadyPayload({ isNewAccount: false });
     await afterRequestSaved(existingUser, { isUpdate: true });
     return pendingApprovalPayload({ isNewAccount: false, isUpdate: true });
   }
@@ -319,10 +341,12 @@ async function createPendingUserFromSignup({ email, name, phone, companyName, pa
       phone: phone || '',
       companyName: companyName || '',
       role: 'admin',
-      signupStatus: 'pending_approval',
+      signupStatus: autoApproveSignup() ? 'active' : 'pending_approval',
       isEmailVerified: true,
+      ...(autoApproveSignup() ? { signupApprovedAt: new Date() } : {}),
     });
     await user.save();
+    if (autoApproveSignup()) return signupReadyPayload({ isNewAccount: true });
     await afterRequestSaved(user, { isUpdate: false });
     return pendingApprovalPayload({ isNewAccount: true, isUpdate: false });
   } catch (err) {
@@ -334,6 +358,7 @@ async function createPendingUserFromSignup({ email, name, phone, companyName, pa
       if (raced) {
         applyDetails(raced);
         await raced.save();
+        if (autoApproveSignup()) return signupReadyPayload({ isNewAccount: false });
         await afterRequestSaved(raced, { isUpdate: true });
         return pendingApprovalPayload({ isNewAccount: false, isUpdate: true });
       }
@@ -368,7 +393,7 @@ async function sendSignupOtp({ email, name }) {
 
   const normalizedEmail = normalizeEmail(email);
   const existingUser = await assertSignupEmailAvailable(normalizedEmail);
-  if (existingUser) {
+  if (existingUser && !autoApproveSignup()) {
     return pendingApprovalPayload({ isNewAccount: false, isUpdate: true });
   }
 
@@ -420,7 +445,7 @@ async function register({ email, password, name, phone, companyName, signupVerif
   readSignupVerifiedToken(signupVerifiedToken, normalizedEmail);
 
   const existingUser = await assertSignupEmailAvailable(normalizedEmail);
-  if (existingUser) {
+  if (existingUser && !autoApproveSignup()) {
     return pendingApprovalPayload({ isNewAccount: false, isUpdate: true });
   }
 

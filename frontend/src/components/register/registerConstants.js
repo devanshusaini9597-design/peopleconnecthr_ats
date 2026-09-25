@@ -169,6 +169,12 @@ export const FREE_EMAIL_DOMAINS = new Set([
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+export function allowPersonalEmails() {
+  if (typeof window === 'undefined') return false;
+  const host = String(window.location.hostname || '').toLowerCase();
+  return host.includes('staging') || host === 'localhost' || host === '127.0.0.1';
+}
+
 export function validateWorkEmail(email) {
   const normalized = String(email || '').toLowerCase().trim();
   if (!normalized) {
@@ -181,7 +187,7 @@ export function validateWorkEmail(email) {
   if (!domain.includes('.') || domain.split('.').some((p) => !p)) {
     return { valid: false, reason: 'Invalid email domain' };
   }
-  if (FREE_EMAIL_DOMAINS.has(domain)) {
+  if (FREE_EMAIL_DOMAINS.has(domain) && !allowPersonalEmails()) {
     return {
       valid: false,
       reason: 'Please use your work email. Personal providers (Gmail, Yahoo, Outlook, etc.) are not allowed.',

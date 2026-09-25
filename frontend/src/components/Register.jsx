@@ -71,6 +71,7 @@ const Register = () => {
   const [errors, setErrors] = useState({});
   const [apiError, setApiError] = useState('');
   const [isRegistered, setIsRegistered] = useState(false);
+  const [registerReady, setRegisterReady] = useState(false);
   const [signupOtpToken, setSignupOtpToken] = useState('');
   const [signupVerifiedToken, setSignupVerifiedToken] = useState('');
   const [emailVerified, setEmailVerified] = useState(false);
@@ -241,6 +242,7 @@ const Register = () => {
         const field = applyRegisterError(data, setApiError, setErrors);
         if (field) focusRegisterField(field);
       } else {
+        setRegisterReady(Boolean(data.canSignIn || data.pendingApproval === false));
         setIsRegistered(true);
       }
     } catch (err) {
@@ -307,7 +309,7 @@ const Register = () => {
     <RegisterSuccessCard
       prefersReduced={prefersReduced}
       email={formData.email}
-      variant="pending"
+      variant={registerReady ? 'ready' : 'pending'}
     />
   ) : (
     <motion.div
