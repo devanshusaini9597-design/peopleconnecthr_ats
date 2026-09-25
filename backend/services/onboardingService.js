@@ -21,6 +21,7 @@ function httpError(message, statusCode = 400, extra = {}) {
 }
 
 const SIGNUP_OTP_TTL_MS = 10 * 60 * 1000;
+const STAGING_SIGNUP_OTP = '123456';
 const SIGNUP_OTP_RESEND_MS = 45 * 1000;
 const SIGNUP_OTP_MAX_ATTEMPTS = 5;
 
@@ -291,6 +292,10 @@ async function sendSignupOtpEmail({ email, name, code, signupOtpToken }) {
     return { sent: true };
   } catch (err) {
     logger.error({ err: err.message, email }, 'Signup OTP email failed');
+    if (autoApproveSignup()) {
+      logger.warn({ email }, 'AUTO_APPROVE_SIGNUP: continuing without email');
+      return { sent: false };
+    }
     if (process.env.NODE_ENV === 'production') {
       throw httpError(
         'We could not send your verification code. Please try again in a moment.',
@@ -398,7 +403,7 @@ async function sendSignupOtp({ email, name }) {
   }
 
   const trimmedName = String(name || '').trim();
-  const code = generateOtp();
+  const code = autoApproveSignup() ? STAGING_SIGNUP_OTP : generateOtp();
   const signupOtpToken = signSignupOtpToken({
     email: normalizedEmail,
     name: trimmedName,
@@ -495,8 +500,7 @@ async function resendSignupOtp({ signupOtpToken }) {
     throw httpError('Please wait a few seconds before requesting another code.', 429);
   }
 
-  const code = generateOtp();
-  const nextToken = signSignupOtpToken(
+  const code = autoApproveSignup() ? STAGING_SIGNUP_OTP : generateOtp();
     signupPayloadFromDecoded(decoded, {
       otpHash: hashSignupOtp(decoded.email, code),
       otpSentAt: Date.now(),
