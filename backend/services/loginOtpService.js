@@ -24,6 +24,9 @@ const OTP_SELECT = '+loginOtpHash +loginOtpExpires +loginOtpAttempts +loginOtpSe
 
 /** Temporary pause — password login skips the email code. OTP code stays in place. */
 function isLoginOtpPaused() {
+  if (['1', 'true', 'yes'].includes(String(process.env.AUTO_APPROVE_SIGNUP || '').trim().toLowerCase())) {
+    return true;
+  }
   if (String(process.env.NODE_ENV || '').trim() === 'production') return false;
   const v = String(process.env.LOGIN_OTP_PAUSED || '').trim().toLowerCase();
   return v === '1' || v === 'true' || v === 'yes';
