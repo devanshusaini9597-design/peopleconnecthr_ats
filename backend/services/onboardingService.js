@@ -501,6 +501,7 @@ async function resendSignupOtp({ signupOtpToken }) {
   }
 
   const code = autoApproveSignup() ? STAGING_SIGNUP_OTP : generateOtp();
+  const nextToken = signSignupOtpToken(
     signupPayloadFromDecoded(decoded, {
       otpHash: hashSignupOtp(decoded.email, code),
       otpSentAt: Date.now(),
