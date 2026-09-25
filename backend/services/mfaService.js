@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
-const { generateSecret: otplibGenerateSecret, generateURI, verify } = require('otplib');
+const { authenticator } = require('otplib');
 const { encrypt, decrypt, isEncrypted } = require('../utils/encryption');
 
 const APP_NAME = process.env.MFA_APP_NAME || 'SkillNix ATS';
@@ -12,17 +12,16 @@ const decryptSecret = (stored) => {
   return stored;
 };
 
-const generateSecret = () => otplibGenerateSecret();
+const generateSecret = () => authenticator.generateSecret();
 
 const keyUri = (email, secret) =>
-  generateURI({ issuer: APP_NAME, label: email, secret });
+  authenticator.keyuri(email, APP_NAME, secret);
 
 const verifyTotp = (secret, token) => {
   const plain = decryptSecret(secret);
   if (!plain) return false;
   try {
-    const result = verify({ token: String(token).replace(/\s/g, ''), secret: plain });
-    return result?.valid === true || result === true;
+    return authenticator.check(String(token).replace(/\s/g, ''), plain);
   } catch (err) {
     return false;
   }
