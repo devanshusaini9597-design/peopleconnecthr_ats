@@ -248,12 +248,18 @@ export function hasUnseenProductUpdates(seenId, role) {
   return countUnseenProductUpdates(seenId, role) > 0;
 }
 
+export function isStagingFrontendHost() {
+  if (typeof window === 'undefined') return false;
+  const host = String(window.location.hostname || '').toLowerCase();
+  return host.includes('staging') || host === 'localhost' || host === '127.0.0.1';
+}
+
 /**
  * Auto-open What's New for unread releases on every user dashboard.
- * Unread must never be blocked by a session flag (Strict Mode remounts used to
- * leave only the header badge). Already-read daily reminder still uses session/day gates.
+ * Staging test hosts skip this so QA is not blocked by product tours.
  */
 export function shouldAutoOpenWhatsNew({ role, seenId, shownToday, shownThisSession } = {}) {
+  if (isStagingFrontendHost()) return false;
   const latest = getLatestProductUpdate(role);
   if (!latest) return false;
   if (hasUnseenProductUpdates(seenId, role)) return true;

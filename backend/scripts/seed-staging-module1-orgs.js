@@ -12,8 +12,18 @@ const User = require('../models/User');
 const Organization = require('../models/Organization');
 const { applyPlanLimits } = require('../config/planLimits');
 
+const ROLES = [
+  { key: 'admin', slug: 'admin', label: 'Admin' },
+  { key: 'hr_recruiter', slug: 'recruiter', label: 'HR Recruiter' },
+  { key: 'hr_manager', slug: 'manager', label: 'HR Manager' },
+  { key: 'sales', slug: 'sales', label: 'Sales' },
+  { key: 'freelancer', slug: 'freelancer', label: 'Freelancer' },
+  { key: 'other', slug: 'other', label: 'Other' },
+];
+
 const COMPANIES = [
   {
+    tag: 'a',
     name: 'Test Company A',
     slug: 'test-company-a',
     email: 'devanshusaini72+a.owner@gmail.com',
@@ -21,6 +31,7 @@ const COMPANIES = [
     personName: 'Company A Owner',
   },
   {
+    tag: 'b',
     name: 'Test Company B',
     slug: 'test-company-b',
     email: 'devanshusaini72+b.owner@gmail.com',
@@ -88,7 +99,45 @@ async function upsertCompany(spec) {
   user.organizationId = org._id;
   user.role = 'owner';
   await user.save();
-  return { email: user.email, org: org.slug };
+
+  const members = [];
+  for (const role of ROLES) {
+    const memberEmail = `devanshusaini72+${spec.tag}.${role.slug}@gmail.com`;
+    const memberName = `Company ${spec.tag.toUpperCase()} ${role.label}`;
+    let member = await User.findOne({ email: memberEmail });
+    if (!member) {
+      member = new User({
+        name: memberName,
+        email: memberEmail,
+        password: spec.password,
+        role: role.key,
+        signupStatus: 'active',
+        isEmailVerified: true,
+        isActive: true,
+        companyName: spec.name,
+        onboardingCompleted: true,
+        organizationId: org._id,
+        invitedBy: user._id,
+        signupApprovedAt: new Date(),
+      });
+      await member.save();
+    } else {
+      member.name = memberName;
+      member.password = spec.password;
+      member.role = role.key;
+      member.signupStatus = 'active';
+      member.isEmailVerified = true;
+      member.isActive = true;
+      member.companyName = spec.name;
+      member.onboardingCompleted = true;
+      member.organizationId = org._id;
+      member.invitedBy = user._id;
+      await member.save();
+    }
+    members.push({ role: role.key, email: member.email });
+  }
+
+  return { email: user.email, org: org.slug, members };
 }
 
 async function main() {

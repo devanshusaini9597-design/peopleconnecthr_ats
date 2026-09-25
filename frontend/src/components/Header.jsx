@@ -21,6 +21,7 @@ import {
   readSeenProductUpdateId,
   shouldAutoOpenWhatsNew,
   writeSeenProductUpdateId,
+  isStagingFrontendHost,
 } from '../config/productUpdates';
 
 const Header = ({ setSidebarOpen, sidebarOpen }) => {
@@ -254,7 +255,7 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
 
         <div className="flex items-center gap-1 sm:gap-3 flex-shrink-0 min-w-0">
           {!isFreelancer ? <LivePresenceBar /> : null}
-          {!isFreelancer && (
+          {!isFreelancer && !isStagingFrontendHost() && (
             <button
               type="button"
               onClick={() => setShowWhatsNew(true)}
