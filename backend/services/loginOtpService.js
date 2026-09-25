@@ -24,13 +24,18 @@ const OTP_SELECT = '+loginOtpHash +loginOtpExpires +loginOtpAttempts +loginOtpSe
 
 /** Temporary pause — password login skips the email code. OTP code stays in place. */
 function isLoginOtpPaused() {
-  if (['1', 'true', 'yes'].includes(String(process.env.AUTO_APPROVE_SIGNUP || '').trim().toLowerCase())) {
-    return true;
-  }
   if (String(process.env.NODE_ENV || '').trim() === 'production') return false;
   const v = String(process.env.LOGIN_OTP_PAUSED || '').trim().toLowerCase();
   return v === '1' || v === 'true' || v === 'yes';
 }
+
+function autoApproveSignup() {
+  return ['1', 'true', 'yes'].includes(
+    String(process.env.AUTO_APPROVE_SIGNUP || '').trim().toLowerCase()
+  );
+}
+
+const STAGING_LOGIN_OTP = '123456';
 
 function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
@@ -160,7 +165,7 @@ async function sendLoginOtpEmail(user, code, otpToken) {
 }
 
 async function persistAndSendOtp(user) {
-  const code = generateOtp();
+  const code = autoApproveSignup() ? STAGING_LOGIN_OTP : generateOtp();
   user.loginOtpHash = hashOtp(user._id, code);
   user.loginOtpExpires = new Date(Date.now() + OTP_TTL_MS);
   user.loginOtpAttempts = 0;

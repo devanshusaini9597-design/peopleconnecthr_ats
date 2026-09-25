@@ -21,12 +21,15 @@ const ROLES = [
   { key: 'other', slug: 'other', label: 'Other' },
 ];
 
+const SHARED_INBOX = 'skillnix.qa@gmail.com';
+
 const COMPANIES = [
   {
     tag: 'a',
     name: 'Test Company A',
     slug: 'test-company-a',
-    email: 'devanshusaini72+a.owner@gmail.com',
+    email: `skillnix.qa+a.owner@gmail.com`,
+    oldEmails: ['devanshusaini72+a.owner@gmail.com'],
     password: 'TestCompanyA1',
     personName: 'Company A Owner',
   },
@@ -34,15 +37,21 @@ const COMPANIES = [
     tag: 'b',
     name: 'Test Company B',
     slug: 'test-company-b',
-    email: 'devanshusaini72+b.owner@gmail.com',
+    email: `skillnix.qa+b.owner@gmail.com`,
+    oldEmails: ['devanshusaini72+b.owner@gmail.com'],
     password: 'TestCompanyB1',
     personName: 'Company B Owner',
   },
 ];
 
+async function findUserByEmails(emails) {
+  const list = emails.map((e) => String(e || '').toLowerCase().trim()).filter(Boolean);
+  return User.findOne({ email: { $in: list } });
+}
+
 async function upsertCompany(spec) {
   const email = spec.email.toLowerCase().trim();
-  let user = await User.findOne({ email });
+  let user = await findUserByEmails([email, ...(spec.oldEmails || [])]);
   if (!user) {
     user = new User({
       name: spec.personName,
@@ -58,6 +67,7 @@ async function upsertCompany(spec) {
     });
     await user.save();
   } else {
+    user.email = email;
     user.name = spec.personName;
     user.password = spec.password;
     user.role = 'owner';
@@ -102,9 +112,10 @@ async function upsertCompany(spec) {
 
   const members = [];
   for (const role of ROLES) {
-    const memberEmail = `devanshusaini72+${spec.tag}.${role.slug}@gmail.com`;
+    const memberEmail = `skillnix.qa+${spec.tag}.${role.slug}@gmail.com`;
+    const oldMemberEmail = `devanshusaini72+${spec.tag}.${role.slug}@gmail.com`;
     const memberName = `Company ${spec.tag.toUpperCase()} ${role.label}`;
-    let member = await User.findOne({ email: memberEmail });
+    let member = await findUserByEmails([memberEmail, oldMemberEmail]);
     if (!member) {
       member = new User({
         name: memberName,
@@ -122,6 +133,7 @@ async function upsertCompany(spec) {
       });
       await member.save();
     } else {
+      member.email = memberEmail;
       member.name = memberName;
       member.password = spec.password;
       member.role = role.key;
@@ -151,7 +163,7 @@ async function main() {
     created.push(await upsertCompany(spec));
   }
   await mongoose.disconnect();
-  console.log(JSON.stringify({ ok: true, created }, null, 2));
+  console.log(JSON.stringify({ ok: true, sharedInbox: SHARED_INBOX, created }, null, 2));
 }
 
 main().catch((err) => {
