@@ -101,6 +101,7 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
   const [formSection, setFormSection] = useState('basic');
   const [stepDirection, setStepDirection] = useState('forward');
   const [formErrors, setFormErrors] = useState({});
+  const [stepBanner, setStepBanner] = useState('');
   const [saving, setSaving] = useState(false);
   const [quickList, setQuickList] = useState(null);
   const [countryIso, setCountryIso] = useState('IN');
@@ -127,6 +128,7 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
     setFormSection('basic');
     setStepDirection('forward');
     setFormErrors({});
+    setStepBanner('');
     setSaving(false);
     setCountryIso('IN');
     setCountryCode('+91');
@@ -179,7 +181,20 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormField(name, type === 'checkbox' ? checked : value);
+    let next = type === 'checkbox' ? checked : value;
+    if (name === 'contact') {
+      next = String(value || '').replace(/\D/g, '').slice(0, countryCode === '+91' || countryCode === '+1' ? 10 : 15);
+    } else if (name === 'email') {
+      next = String(value || '').toLowerCase();
+    } else if (
+      name === 'name' || name === 'location' || name === 'companyName' || name === 'remark'
+      || name === 'position' || name === 'client' || name === 'source' || name === 'ctc'
+      || name === 'expectedCtc' || name === 'noticePeriod' || name === 'experience'
+      || name === 'fls' || name === 'skills' || name === 'product'
+    ) {
+      next = String(value || '').toUpperCase();
+    }
+    setFormField(name, next);
   };
 
   const formCountryOptions = useMemo(() => (countryCodes || []).map((c) => ({
@@ -263,26 +278,50 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
   const stepIdx = Math.max(0, steps.findIndex((s) => s.id === formSection));
   const stepProgress = ((stepIdx + 1) / steps.length) * 100;
 
-  const validateStep = (step) => {
+  const validateStep = (step, data = formData) => {
     const errors = {};
-    const t = { ...formData };
+    const t = { ...data };
     Object.keys(t).forEach((k) => { if (typeof t[k] === 'string') t[k] = t[k].trim(); });
 
     if (step === 'basic') {
       if (!t.name) errors.name = 'Name is required';
       else if (t.name.length < 2) errors.name = 'Name must be at least 2 characters';
+      else if (!/^[a-zA-Z\s.''-]+$/.test(t.name)) {
+        errors.name = 'Name can only contain letters, spaces, and hyphens';
+      }
       if (!t.email) errors.email = 'Email is required';
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(t.email)) errors.email = 'Enter a valid email address';
       if (!t.contact) errors.contact = 'Contact number is required';
       else {
         const digits = t.contact.replace(/\D/g, '');
-        if (digits.length < 7 || digits.length > 15) errors.contact = 'Enter a valid phone (7–15 digits)';
+        if (countryCode === '+91' && digits.length !== 10) {
+          errors.contact = 'Enter a valid 10-digit mobile number';
+        } else if (countryCode === '+1' && digits.length !== 10) {
+          errors.contact = 'Enter a valid 10-digit phone number';
+        } else if (digits.length < 7 || digits.length > 15) {
+          errors.contact = 'Enter a valid phone number';
+        }
       }
     }
     if (step === 'experience') {
       if (!t.ctc) errors.ctc = 'Current CTC is required';
     }
+    return errors;
+  };
+
+  const applyStepErrors = (errors) => {
     setFormErrors(errors);
+    const first = Object.keys(errors)[0];
+    if (first) {
+      setStepBanner(errors[first]);
+      toast?.warning?.(errors[first]);
+      requestAnimationFrame(() => {
+        fieldRefs[first]?.current?.focus?.();
+        fieldRefs[first]?.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+      });
+    } else {
+      setStepBanner('');
+    }
     return Object.keys(errors).length === 0;
   };
 
@@ -290,9 +329,11 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
     const targetIdx = steps.findIndex((s) => s.id === id);
     if (targetIdx > stepIdx) {
       for (let i = stepIdx; i < targetIdx; i += 1) {
-        if (!validateStep(steps[i].id)) return;
+        const errors = validateStep(steps[i].id);
+        if (!applyStepErrors(errors)) return;
       }
     }
+    setStepBanner('');
     setStepDirection(targetIdx < stepIdx ? 'back' : 'forward');
     setFormSection(id);
   };
@@ -305,9 +346,12 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
 
   const submit = async (e) => {
     e?.preventDefault?.();
-    if (!validateStep('basic') || !validateStep('experience')) {
-      if (!stepDone.basic) goStep('basic');
-      else if (!stepDone.experience) goStep('experience');
+    const basicErrors = validateStep('basic');
+    const expErrors = validateStep('experience');
+    const merged = { ...basicErrors, ...expErrors };
+    if (!applyStepErrors(merged)) {
+      if (Object.keys(basicErrors).length) setFormSection('basic');
+      else if (Object.keys(expErrors).length) setFormSection('experience');
       return;
     }
     setSaving(true);
@@ -339,13 +383,18 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (data.code === 'DUPLICATE_EMAIL' || res.status === 409) {
-          setFormErrors({ email: 'Already in MIS' });
+                        if (data.code === 'DUPLICATE_EMAIL' || (res.status === 409 && /email/i.test(data.message || ''))) {
+          setFormErrors({ email: 'Email already exists' });
           setFormSection('basic');
+          setStepBanner('This email already exists in MIS');
+        } else if (data.code === 'DUPLICATE_PHONE' || (res.status === 409 && /phone/i.test(data.message || ''))) {
+          setFormErrors({ contact: 'Phone already exists' });
+          setFormSection('basic');
+          setStepBanner('This phone number already exists in MIS');
         }
         throw new Error(data.message || 'Could not add contact');
       }
-      toast?.success?.('Contact added to MIS');
+      toast?.success?.('Contact saved');
       onCreated?.(data.data);
       handleClose();
     } catch (err) {
@@ -391,11 +440,11 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
                 </div>
                 <div className="min-w-0">
                   <h2 id="mis-form-title" className="text-base sm:text-lg font-bold text-stone-900 tracking-tight truncate">
-                    Add MIS contact
+                    Add contact
                   </h2>
                   <p className="text-[11px] sm:text-xs text-stone-500 mt-0.5 truncate">
                     Step {stepIdx + 1} of 3 · {steps[stepIdx]?.label}
-                    <span className="hidden sm:inline"> — saves to MIS only, not Candidates</span>
+                    <span className="hidden sm:inline"> — saved to MIS only</span>
                   </p>
                 </div>
               </div>
@@ -452,6 +501,12 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
                     ))}
                   </div>
 
+                  {stepBanner ? (
+                    <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm font-medium text-amber-900">
+                      {stepBanner}
+                    </div>
+                  ) : null}
+
                   <div className={`candidate-step-panel space-y-4 ${stepDirection === 'back' ? 'candidate-step-back' : 'candidate-step-forward'}`}>
                     {formSection === 'basic' && (
                       <section>
@@ -494,6 +549,8 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
                                 value={formData.contact}
                                 onChange={handleInputChange}
                                 placeholder="10-digit mobile"
+                                maxLength={countryCode === '+91' || countryCode === '+1' ? 10 : 15}
+                                inputMode="numeric"
                                 className={fieldClass(formErrors.contact)}
                               />
                             </div>
@@ -509,9 +566,28 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
                               placeholder="Select position"
                               allowClear
                               searchable
-                              searchPlaceholder="Search…"
+                              creatable
+                              searchPlaceholder="Search or type new…"
                               minSearchChars={PICKLIST_MIN_SEARCH}
                               onSearch={(q) => searchPicklistOptions('/api/positions', q)}
+                              onCreate={async (raw) => {
+                                const name = toBlock(raw);
+                                if (!name) return;
+                                try {
+                                  const res = await authenticatedFetch('/api/positions', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ name }),
+                                  });
+                                  const data = await res.json().catch(() => ({}));
+                                  if (res.ok) {
+                                    setMasterPositions((prev) => dedupeByName([...prev, { name }]));
+                                  } else if (!/exist/i.test(data.message || '')) {
+                                    toast?.warning?.(data.message || 'Could not save position to master list');
+                                  }
+                                } catch { /* still allow local value */ }
+                                setFormField('position', name);
+                              }}
                             />
                           </ListField>
                           <div className="min-w-0">
@@ -567,7 +643,7 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
                       <section>
                         <div className="mb-4 pb-3 border-b border-stone-100">
                           <h3 className="text-sm font-bold text-stone-900">Placement</h3>
-                          <p className="text-[12px] text-stone-500 mt-0.5">Client, source, and marketing consent for this MIS contact.</p>
+                          <p className="text-[12px] text-stone-500 mt-0.5">Client, source, and marketing consent.</p>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3.5 w-full min-w-0">
                           <ListField onManage={setQuickList} label="Client name" listCfg={LIST_META.clients}>
@@ -652,7 +728,7 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
                 ) : (
                   <button type="submit" form="mis-contact-form" disabled={saving} className="btn-primary w-full sm:w-auto sm:min-w-[160px] inline-flex items-center justify-center gap-2">
                     {saving ? <Loader2 size={16} className="animate-spin" /> : <Megaphone size={16} />}
-                    Save to MIS
+                    Save contact
                   </button>
                 )}
               </div>

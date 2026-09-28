@@ -56,15 +56,119 @@ function ListField({ label, count, noun, listCfg, required, children, onManage, 
 }
 
 function fieldClass(err) {
-  return `w-full min-w-0 max-w-full px-3 py-2.5 rounded-lg border bg-white text-sm font-medium outline-none uppercase box-border ${
+  return `w-full min-w-0 h-11 max-w-full px-3 py-2.5 rounded-xl border bg-white text-sm font-medium outline-none uppercase box-border ${
     err ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'border-stone-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15'
   }`;
 }
 
 function emailFieldClass(err) {
-  return `w-full min-w-0 max-w-full px-3 py-2.5 rounded-lg border bg-white text-sm font-medium outline-none normal-case box-border ${
+  return `w-full min-w-0 h-11 max-w-full px-3 py-2.5 rounded-xl border bg-white text-sm font-medium outline-none normal-case box-border ${
     err ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'border-stone-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15'
   }`;
+}
+
+function SpocReferenceField({ fieldRefs, formData, handleInputChange, canEditSpoc, editId }) {
+  return (
+    <div className="min-w-0">
+      <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">SPOC</label>
+      <input
+        ref={fieldRefs.spoc}
+        type="text"
+        name="spoc"
+        value={formData.spoc || ''}
+        onChange={handleInputChange}
+        placeholder={canEditSpoc ? 'SPOC' : ''}
+        disabled={!canEditSpoc}
+        readOnly={!canEditSpoc}
+        className={
+          canEditSpoc
+            ? fieldClass(false)
+            : 'w-full min-w-0 h-11 max-w-full px-3 py-2.5 rounded-xl border border-stone-300 bg-stone-200 text-sm font-medium text-stone-600 outline-none uppercase box-border cursor-not-allowed opacity-90'
+        }
+      />
+      <p className="text-[11px] text-stone-400 mt-1 leading-snug">
+        {editId
+          ? (canEditSpoc
+            ? 'Desk owner. Managers can reassign.'
+            : 'Locked to the original uploader.')
+          : (canEditSpoc
+            ? 'Defaults to the uploader. Managers can change it.'
+            : 'Filled from your account.')}
+      </p>
+    </div>
+  );
+}
+
+function matchJobBySelectValue(jobs, raw) {
+  const v = String(raw || '').trim();
+  if (!v || v === 'all') return null;
+  return (jobs || []).find((j) => {
+    const code = String(j.jobCode || '').trim();
+    if (code && code.toUpperCase() === v.toUpperCase()) return true;
+    return String(j._id) === v;
+  }) || null;
+}
+
+function JobIdField({ formData, setFormData, jobs, editId }) {
+  const raw = String(formData.jobId || '').trim();
+  const matched = matchJobBySelectValue(jobs, raw);
+  const selectValue = matched ? (matched.jobCode || String(matched._id)) : raw;
+  const extraOption = selectValue && !matched
+    ? [{
+        value: selectValue,
+        label: selectValue,
+        description: 'Tagged requisition',
+      }]
+    : [];
+
+  return (
+    <div className="min-w-0">
+      <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">
+        Job ID
+      </label>
+      <PremiumSelect
+        variant="list"
+        value={selectValue || ''}
+        onChange={(v) => {
+          const next = v === 'all' || v == null ? '' : String(v).trim();
+          if (!next) {
+            setFormData?.((prev) => ({ ...prev, jobId: '' }));
+            return;
+          }
+          const job = matchJobBySelectValue(jobs, next);
+          setFormData?.((prev) => ({
+            ...prev,
+            jobId: String(job?.jobCode || next).trim(),
+          }));
+        }}
+        options={[
+          { value: '', label: 'Not tagged to a job' },
+          ...extraOption,
+          ...(jobs || []).map((job) => {
+            const code = String(job.jobCode || '').trim();
+            const title = String(job.title || job.role || 'Untitled').trim();
+            return {
+              value: code || String(job._id),
+              label: code || 'Job ID pending',
+              description: title,
+              meta: String(Number(job.applicationCount) || 0),
+              searchText: `${code} ${title} ${job.location || ''}`,
+            };
+          }),
+        ]}
+        placeholder="Select Job ID"
+        searchable
+        searchPlaceholder="Search Job ID or title…"
+        emptyLabel="No open jobs"
+        allowClear={Boolean(selectValue)}
+      />
+      <p className="text-[11px] text-stone-400 mt-1 leading-snug">
+        {editId
+          ? 'Optional. Tag to a job to issue Candidate ID and Application ID.'
+          : 'Optional. Tag a job to issue IDs. Leave blank if this is only a desk profile.'}
+      </p>
+    </div>
+  );
 }
 
 export default function CandidateFormModal(props) {
@@ -77,6 +181,7 @@ export default function CandidateFormModal(props) {
     formFlsOptions, formExperienceOptions, formCtcOptions, formExpectedCtcOptions,
     formNoticeOptions, formStatusOptions, formClientOptions, masterClients,
     formSourceOptions, masterSources, orgCandidateFields, handleAddCandidate,
+    jobs = [],
     quickList, fetchMasterData, isAutoParsing, countryCodes,
     masterCtcBands = [], masterNoticePeriods = [], masterProducts = [],
     formProductOptions = [], setFormData,
@@ -375,10 +480,20 @@ export default function CandidateFormModal(props) {
                     <div className="mb-4 pb-3 border-b border-stone-100">
                       <h3 className="text-sm font-bold text-stone-900">Profile</h3>
                       <p className="text-[12px] text-stone-500 mt-0.5">
-                        Identity, contact details, and current employment.
+                        Identity, contact, Job ID (if this CV is for a requisition), and SPOC.
                       </p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3.5 w-full min-w-0">
+                      {!isFreelancer ? (
+                        <JobIdField formData={formData} setFormData={setFormData} jobs={jobs} editId={editId} />
+                      ) : null}
+                      <SpocReferenceField
+                        fieldRefs={fieldRefs}
+                        formData={formData}
+                        handleInputChange={handleInputChange}
+                        canEditSpoc={canEditSpoc}
+                        editId={editId}
+                      />
                       <div className="min-w-0">
                         <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Full name <span className="text-red-500">*</span></label>
                         <input ref={fieldRefs.name} type="text" name="name" value={formData.name || ''} onChange={handleInputChange} placeholder="Full name" className={fieldClass(formErrors.name)} />
@@ -392,7 +507,7 @@ export default function CandidateFormModal(props) {
                       <div className="md:col-span-2 min-w-0">
                         <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Phone <span className="text-red-500">*</span></label>
                         <div className="flex items-stretch gap-2 w-full min-w-0">
-                          <div className="w-[6.75rem] sm:w-[7.75rem] flex-shrink-0 min-w-0">
+                          <div className="w-[7.25rem] sm:w-[8.25rem] flex-shrink-0 min-w-0">
                             <PremiumSelect
                               value={countryIso}
                               onChange={(iso) => {
@@ -460,7 +575,7 @@ export default function CandidateFormModal(props) {
                         <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Current company</label>
                         <input type="text" name="companyName" value={formData.companyName || ''} onChange={handleInputChange} placeholder="Current company" className={fieldClass(false)} />
                       </div>
-                      <div className="md:col-span-2 min-w-0">
+                      <div className="min-w-0">
                         <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Location</label>
                         <input ref={fieldRefs.location} type="text" name="location" value={formData.location || ''} onChange={handleInputChange} placeholder="City / region" className={fieldClass(false)} />
                       </div>
@@ -573,7 +688,7 @@ export default function CandidateFormModal(props) {
                       <p className="text-[12px] text-stone-500 mt-0.5">
                         {isFreelancer
                           ? 'Client assignment, skill focus, and resume source.'
-                          : 'Client is the company you hire for. Source is where this CV came from.'}
+                          : 'Client is who you hire for. Source is where the CV came from.'}
                       </p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3.5 w-full min-w-0">
@@ -592,24 +707,6 @@ export default function CandidateFormModal(props) {
                           onSearch={(q) => searchPicklistOptions('/api/clients', q)}
                         />
                       </ListField>
-                        <div className="min-w-0">
-                        <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">SPOC</label>
-                        <input
-                          ref={fieldRefs.spoc}
-                          type="text"
-                          name="spoc"
-                          value={formData.spoc || ''}
-                          onChange={handleInputChange}
-                          placeholder={canEditSpoc ? 'SPOC' : ''}
-                          disabled={!canEditSpoc}
-                          readOnly={!canEditSpoc}
-                          className={
-                            canEditSpoc
-                              ? fieldClass(false)
-                              : 'w-full min-w-0 max-w-full px-3 py-2.5 rounded-lg border border-stone-300 bg-stone-200 text-sm font-medium text-stone-600 outline-none uppercase box-border cursor-not-allowed opacity-90'
-                          }
-                        />
-                      </div>
                       <div className="min-w-0">
                         <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">
                           PAN No.{clientRequiresPan(formData.client, masterClients) ? <span className="text-red-500"> *</span> : null}

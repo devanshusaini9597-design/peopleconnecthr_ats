@@ -10,7 +10,7 @@ export default function EmailCcBccFields({
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" onClick={e => e.stopPropagation()}>
       {/* CC Field */}
       <div className="relative">
-        <label className="label-ats mb-1.5 block">CC (optional)</label>
+        <label className="label-ats mb-1.5 block">CC</label>
         <div className="input-ats !h-auto min-h-[42px] flex flex-wrap items-center gap-1 !py-1.5 cursor-text"
           onClick={() => document.getElementById('cc-input')?.focus()}>
           {emailCC.map((email, i) => (
@@ -69,7 +69,7 @@ export default function EmailCcBccFields({
 
       {/* BCC Field */}
       <div className="relative">
-        <label className="label-ats mb-1.5 block">BCC (optional)</label>
+        <label className="label-ats mb-1.5 block">BCC</label>
         <div className="input-ats !h-auto min-h-[42px] flex flex-wrap items-center gap-1 !py-1.5 cursor-text"
           onClick={() => document.getElementById('bcc-input')?.focus()}>
           {emailBCC.map((email, i) => (

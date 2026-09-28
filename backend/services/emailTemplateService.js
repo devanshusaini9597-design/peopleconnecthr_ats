@@ -25,7 +25,6 @@ async function resolveOrgContext(userId, organizationIdHint) {
 }
 
 const SIGN_OFF = `Best regards,
-Talent Acquisition Team
 {{company}}`;
 
 const SUBSCRIBE_BODY = `Dear {{candidateName}},
@@ -392,35 +391,39 @@ ${SIGN_OFF}`,
       subject: 'A role that may fit your profile – {{position}} | {{company}}',
       body: `Dear {{candidateName}},
 
-We reviewed profiles in our talent network and believe you may be a strong match for {{position}} at {{company}}.
+We reviewed profiles in our talent network and believe you may be a strong match for {{position}}.
 
 Highlights:
 • CTC: {{ctc}}
 • Experience: {{experience}}
 • Location: {{location}}
+• Employer: {{jobEmployer}}
 
 If you are open to exploring this opportunity, reply to this email or share an updated resume.
 
 ${SIGN_OFF}`,
-      variables: ['candidateName', 'position', 'company', 'ctc', 'experience', 'location', 'subscribeLink'],
+      variables: ['candidateName', 'position', 'company', 'jobEmployer', 'ctc', 'experience', 'location', 'subscribeLink'],
     }),
     base({
       name: 'Open Role Spotlight',
       category: 'marketing',
-      subject: 'Open role: {{position}} – {{company}}',
+      subject: 'Open role: {{position}}',
       body: `Dear {{candidateName}},
 
-We have an open role that may match your profile: {{position}} at {{company}}.
+We came across your profile and thought this opening may be a strong match.
 
-Highlights:
-• CTC: {{ctc}}
-• Experience: {{experience}}
-• Location: {{location}}
+Role: {{position}}
+Job ID: {{jobCode}}
+Employer: {{jobEmployer}}
+CTC: {{ctc}}
+Experience: {{experience}}
+Location: {{location}}
 
-Reply to this email if you would like to be considered, or stay subscribed for future openings.
+If you would like to be considered, reply to this email or apply using the link below:
+{{applyLink}}
 
 ${SIGN_OFF}`,
-      variables: ['candidateName', 'position', 'company', 'ctc', 'experience', 'location', 'subscribeLink'],
+      variables: ['candidateName', 'position', 'company', 'jobEmployer', 'ctc', 'experience', 'location', 'jobCode', 'applyLink', 'subscribeLink'],
     }),
     base({
       name: 'Job Alert – New Opening',
@@ -428,18 +431,22 @@ ${SIGN_OFF}`,
       subject: 'New opening: {{position}} | {{location}}',
       body: `Dear {{candidateName}},
 
-A new opening is live that may interest you.
+A role that may fit your background is now open.
 
 Role: {{position}}
-Company: {{company}}
+Job ID: {{jobCode}}
+Employer: {{jobEmployer}}
 CTC: {{ctc}}
 Experience: {{experience}}
 Location: {{location}}
 
-Reply to express interest, or use the link below to manage your job-alert subscription.
+Apply using the link below:
+{{applyLink}}
+
+Reply if you would like us to consider your profile.
 
 ${SIGN_OFF}`,
-      variables: ['candidateName', 'position', 'company', 'ctc', 'experience', 'location', 'subscribeLink'],
+      variables: ['candidateName', 'position', 'company', 'jobEmployer', 'ctc', 'experience', 'location', 'jobCode', 'applyLink', 'subscribeLink'],
     }),
     base({
       name: 'Hiring Drive Broadcast',
@@ -488,68 +495,87 @@ ${SIGN_OFF}`,
   ];
 }
 
-async function ensureDefaultCatalog(userId, organizationId) {
+async function ensureDefaultCatalog(userId, organizationId, { syncBodies = false } = {}) {
   const catalog = buildDefaultCatalog(userId, organizationId);
+  const catalogNames = catalog.map((tpl) => tpl.name);
+
+  // One query instead of N findOne round-trips (was the main listTemplates delay).
+  const existing = await EmailTemplate.find({
+    organizationId,
+    name: { $in: catalogNames },
+  })
+    .select('name')
+    .lean();
+  const existingNames = new Set(existing.map((row) => row.name));
+  const missing = catalog.filter((tpl) => !existingNames.has(tpl.name));
+
   let added = 0;
-  for (const tpl of catalog) {
-    const exists = await EmailTemplate.findOne({
-      organizationId,
-      name: tpl.name,
-    })
-      .select('_id')
-      .lean();
-    if (!exists) {
-      try {
-        await EmailTemplate.create(tpl);
-        added += 1;
-      } catch (err) {
-        // Race on unique (organizationId, name) — ignore
-        if (err?.code !== 11000) throw err;
+  if (missing.length) {
+    try {
+      const inserted = await EmailTemplate.insertMany(missing, { ordered: false });
+      added = inserted.length;
+    } catch (err) {
+      // Parallel seed races hit unique (organizationId, name) — count what landed.
+      if (err?.code !== 11000 && err?.writeErrors) {
+        added = missing.length - err.writeErrors.length;
+      } else if (err?.code !== 11000 && !err?.writeErrors) {
+        throw err;
+      } else {
+        const after = await EmailTemplate.countDocuments({
+          organizationId,
+          name: { $in: catalogNames },
+        });
+        added = Math.max(0, after - existingNames.size);
       }
     }
   }
-  await EmailTemplate.findOneAndUpdate(
-    { organizationId, name: 'Subscribe for Updates', category: 'marketing' },
-    {
-      $set: {
-        subject: subscribeTemplatePayload(userId, organizationId).subject,
-        body: SUBSCRIBE_BODY,
-        variables: ['candidateName', 'company', 'subscribeLink'],
-        isDefault: true,
-      },
-    }
-  );
 
-  // Refresh key marketing templates (layout/copy) without wiping custom user edits for others
-  const marketingRefresh = [
-    'Talent Pool Nurture',
-    'Open Role Spotlight',
-    'Job Alert – New Opening',
-    'Hiring Drive Broadcast',
-    'Talent Re-engagement',
-  ];
-  for (const name of marketingRefresh) {
-    const seed = catalog.find((t) => t.name === name);
-    if (!seed) continue;
+  // Body sync is expensive; only on explicit seed-defaults, not every list.
+  if (syncBodies || added > 0) {
+    const subscribe = subscribeTemplatePayload(userId, organizationId);
     await EmailTemplate.findOneAndUpdate(
-      { organizationId, name, category: 'marketing' },
+      { organizationId, name: 'Subscribe for Updates', category: 'marketing' },
       {
         $set: {
-          subject: seed.subject,
-          body: seed.body,
-          variables: seed.variables,
+          subject: subscribe.subject,
+          body: SUBSCRIBE_BODY,
+          variables: ['candidateName', 'company', 'subscribeLink'],
           isDefault: true,
         },
-      },
-      { upsert: false }
+      }
     );
+
+    if (syncBodies) {
+      await Promise.all(
+        catalog.map((seed) =>
+          EmailTemplate.findOneAndUpdate(
+            { organizationId, name: seed.name, isDefault: true },
+            {
+              $set: {
+                subject: seed.subject,
+                body: seed.body,
+                variables: seed.variables,
+                category: seed.category,
+                isDefault: true,
+              },
+            },
+            { upsert: false }
+          )
+        )
+      );
+    }
   }
+
   return { added, total: catalog.length, organizationId };
 }
 
 async function listTemplates(userId, organizationIdHint) {
   const { organizationId } = await resolveOrgContext(userId, organizationIdHint);
-  await ensureDefaultCatalog(userId, organizationId);
+  // Skip seeding when the org already has templates (main latency fix).
+  const hasAny = await EmailTemplate.exists({ organizationId });
+  if (!hasAny) {
+    await ensureDefaultCatalog(userId, organizationId, { syncBodies: false });
+  }
   const templates = await EmailTemplate.find({ organizationId }).sort({
     isDefault: -1,
     category: 1,
@@ -630,7 +656,7 @@ async function deleteTemplate(userId, id, organizationIdHint) {
 
 async function seedDefaults(userId, organizationIdHint) {
   const { organizationId } = await resolveOrgContext(userId, organizationIdHint);
-  const result = await ensureDefaultCatalog(userId, organizationId);
+  const result = await ensureDefaultCatalog(userId, organizationId, { syncBodies: true });
   return {
     message: result.added
       ? `Added ${result.added} templates for your organization (${result.total} in catalog)`

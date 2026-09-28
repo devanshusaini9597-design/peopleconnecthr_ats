@@ -11,6 +11,7 @@ describe('emailTemplateSendService', () => {
       candidateName: 'Ada',
       company: 'Acme',
     })).toBe('Hi Ada at Acme');
+    expect(applyVariables('Hi {{ candidateName }}', { candidateName: 'Ada' })).toBe('Hi Ada');
   });
 
   it('buildHtmlContent turns plain text into paragraphs', () => {

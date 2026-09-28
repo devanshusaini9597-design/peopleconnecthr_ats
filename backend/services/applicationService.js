@@ -7,11 +7,78 @@ const Candidate = require('../models/Candidate');
 const eventBus = require('../events/eventBus');
 const eventTypes = require('../events/eventTypes');
 const { applicationListFilter } = require('../utils/dataScope');
+const { veiledEmployer, jobEmailSummary } = require('../utils/employerVeil');
 
 function httpError(message, statusCode = 400) {
   const err = new Error(message);
   err.statusCode = statusCode;
   return err;
+}
+
+const IN_CHUNK = 4000;
+const JOB_CAMPAIGN_SELECT = '_id jobCode title role publicId location locations department clientName summary experience description ctc salaryRange industry';
+
+function chunkIds(list, size = IN_CHUNK) {
+  const out = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+
+function jobLocationLine(job) {
+  const extra = Array.isArray(job?.locations) ? job.locations : [];
+  return [...new Set([job?.location, ...extra].map((v) => String(v || '').trim()).filter(Boolean))].join(', ');
+}
+
+function stripJobHtml(value) {
+  return String(value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function jobCtcLine(job) {
+  const field = String(job?.ctc || '').trim();
+  if (field) return field;
+  const min = job?.salaryRange?.min;
+  const max = job?.salaryRange?.max;
+  if (min == null && max == null) return '';
+  if (min != null && max != null) return `${min}–${max} LPA`;
+  if (min != null) return `${min} LPA`;
+  return `${max} LPA`;
+}
+
+function jobPlainSummary(job) {
+  const summary = stripJobHtml(job?.summary);
+  if (summary) return summary.slice(0, 400);
+  return stripJobHtml(job?.description).slice(0, 400);
+}
+
+function jobCampaignFields(job) {
+  if (!job) {
+    return {
+      jobTitle: '',
+      jobCode: '',
+      jobLocation: '',
+      jobDepartment: '',
+      jobClient: '',
+      jobExperience: '',
+      jobSummary: '',
+      jobCtc: '',
+      jobIndustry: '',
+    };
+  }
+  return {
+    jobTitle: String(job.title || job.role || '').trim(),
+    jobCode: String(job.jobCode || '').trim(),
+    jobLocation: jobLocationLine(job),
+    jobDepartment: String(job.department || '').trim(),
+    jobClient: veiledEmployer(job.industry, job.clientName),
+    jobExperience: String(job.experience || '').trim(),
+    jobSummary: jobEmailSummary(jobPlainSummary(job), job.clientName),
+    jobCtc: jobCtcLine(job),
+    jobIndustry: String(job.industry || '').trim(),
+  };
 }
 
 async function listApplications(organizationId, query = {}, user) {
@@ -117,6 +184,8 @@ async function createApplication(user, body) {
     stage,
     source,
     assignedTo,
+    appliedAt: new Date(),
+    applicationCode: await require('./candidateCodeService').allocateApplicationCode(user.organizationId),
     stageHistory: [{ stage, movedAt: new Date(), movedBy: user.id }],
   });
 
@@ -423,6 +492,269 @@ async function scheduleInterview(user, applicationId, body) {
   return application;
 }
 
+/**
+ * Remove applications left behind after a candidate is deleted so job counts stay accurate.
+ */
+async function purgeApplicationsForCandidates(organizationId, candidateIds = []) {
+  const ids = [...new Set((candidateIds || []).map((id) => id).filter(Boolean))];
+  if (!organizationId || !ids.length) return { deleted: 0 };
+  const apps = await Application.find({
+    organizationId,
+    candidateId: { $in: ids },
+  }).select('_id jobId').lean();
+  if (!apps.length) return { deleted: 0 };
+  await Application.deleteMany({
+    organizationId,
+    candidateId: { $in: ids },
+  });
+  const byJob = new Map();
+  for (const app of apps) {
+    if (!app.jobId) continue;
+    const key = String(app.jobId);
+    byJob.set(key, (byJob.get(key) || 0) + 1);
+  }
+  const Job = require('../models/Job');
+  await Promise.all([...byJob.entries()].map(([jobId, n]) => (
+    Job.findByIdAndUpdate(jobId, { $inc: { applicationCount: -n } }).catch(() => {})
+  )));
+  return { deleted: apps.length };
+}
+
+/**
+ * Tag an existing ATS candidate onto a requisition (recruiter add / edit).
+ * Idempotent: already linked to that Job ID is a no-op success.
+ */
+async function tagCandidateToJob(user, candidateId, jobIdRaw, { source = 'Recruiter' } = {}) {
+  const Job = require('../models/Job');
+  const mongoose = require('mongoose');
+  const { allocateApplicationCode, ensureApplicationCode, ensureCandidateCode } = require('./candidateCodeService');
+
+  const raw = String(jobIdRaw || '').trim();
+  if (!user?.organizationId || !candidateId || !raw || raw === 'all') {
+    return { tagged: false };
+  }
+
+  let job = null;
+  if (mongoose.Types.ObjectId.isValid(raw) && raw.length === 24) {
+    job = await Job.findOne({ _id: raw, organizationId: user.organizationId, isTemplate: { $ne: true } })
+      .select('_id jobCode title role')
+      .lean();
+  }
+  if (!job) {
+    job = await Job.findOne({
+      organizationId: user.organizationId,
+      jobCode: raw.toUpperCase(),
+      isTemplate: { $ne: true },
+    }).select('_id jobCode title role').lean();
+  }
+  if (!job) return { tagged: false, error: 'Job not found' };
+
+  const existing = await Application.findOne({
+    organizationId: user.organizationId,
+    jobId: job._id,
+    candidateId,
+  });
+  if (existing) {
+    await ensureApplicationCode(existing);
+    const cand = await Candidate.findById(candidateId);
+    if (cand) await ensureCandidateCode(cand);
+    return { tagged: true, alreadyTagged: true, job, application: existing };
+  }
+
+  const application = new Application({
+    organizationId: user.organizationId,
+    jobId: job._id,
+    candidateId,
+    stage: 'Applied',
+    source: source || 'Recruiter',
+    assignedTo: user.id,
+    appliedAt: new Date(),
+    applicationCode: await allocateApplicationCode(user.organizationId),
+    stageHistory: [{
+      stage: 'Applied',
+      movedAt: new Date(),
+      movedBy: user.id,
+      remark: source === 'Campaign'
+      ? `Tagged to ${job.jobCode || 'job'} via campaign`
+      : 'Tagged to job by recruiter',
+    }],
+  });
+  await application.save();
+  Job.findByIdAndUpdate(job._id, { $inc: { applicationCount: 1 } }).catch(() => {});
+  const cand = await Candidate.findById(candidateId);
+  if (cand) await ensureCandidateCode(cand);
+  return { tagged: true, alreadyTagged: false, job, application };
+}
+
+async function resolveJobForOrg(user, jobIdRaw) {
+  const Job = require('../models/Job');
+  const mongoose = require('mongoose');
+  const raw = String(jobIdRaw || '').trim();
+  if (!user?.organizationId || !raw || raw === 'all') return null;
+  let job = null;
+  if (mongoose.Types.ObjectId.isValid(raw) && raw.length === 24) {
+    job = await Job.findOne({ _id: raw, organizationId: user.organizationId, isTemplate: { $ne: true } })
+      .select(JOB_CAMPAIGN_SELECT)
+      .lean();
+  }
+  if (!job) {
+    job = await Job.findOne({
+      organizationId: user.organizationId,
+      jobCode: raw.toUpperCase(),
+      isTemplate: { $ne: true },
+    }).select(JOB_CAMPAIGN_SELECT).lean();
+  }
+  return job;
+}
+
+async function jobApplyMeta(user, job) {
+  if (!user?.organizationId || !job) {
+    return {
+      applyUrl: '',
+      ...jobCampaignFields(null),
+    };
+  }
+  const Organization = require('../models/Organization');
+  const { careersJobUrl } = require('./careersService');
+  const { signJobShareToken } = require('../utils/jobShareAttribution');
+  const { cleanApplyUrl } = require('../utils/employerVeil');
+  const org = await Organization.findById(user.organizationId).select('slug').lean();
+  const slug = String(org?.slug || '').trim();
+  let applyUrl = cleanApplyUrl(careersJobUrl(slug, job));
+  const via = signJobShareToken({
+    organizationId: user.organizationId,
+    jobId: job._id,
+    userId: user.id || user._id,
+  });
+  if (applyUrl && via) applyUrl += `${applyUrl.includes('?') ? '&' : '?'}via=${encodeURIComponent(via)}`;
+  return {
+    applyUrl: cleanApplyUrl(applyUrl),
+    ...jobCampaignFields(job),
+  };
+}
+
+async function candidateIdsFromMisContacts(user, misIds = []) {
+  const mongoose = require('mongoose');
+  const MisContact = require('../models/MisContact');
+  const { misListFilter } = require('../utils/dataScope');
+  const unique = [...new Set(
+    (Array.isArray(misIds) ? misIds : [])
+      .map((id) => String(id || '').trim())
+      .filter((id) => mongoose.Types.ObjectId.isValid(id))
+  )];
+  if (!unique.length || !user?.organizationId) {
+    return { ids: [], created: 0 };
+  }
+  const rows = [];
+  for (const part of chunkIds(unique)) {
+    const batch = await MisContact.find(
+      misListFilter(user.organizationId, user, { _id: { $in: part } })
+    ).lean();
+    rows.push(...batch);
+  }
+  const emails = [...new Set(rows.map((row) => String(row.email || '').trim().toLowerCase()).filter(Boolean))];
+  const existing = emails.length
+    ? await Candidate.find({
+      organizationId: user.organizationId,
+      email: { $in: emails },
+    }).select('_id email').lean()
+    : [];
+  const byEmail = new Map(existing.map((row) => [String(row.email || '').trim().toLowerCase(), String(row._id)]));
+  const ids = [];
+  let created = 0;
+  for (const row of rows) {
+    const email = String(row.email || '').trim().toLowerCase();
+    if (!email) continue;
+    if (byEmail.has(email)) {
+      ids.push(byEmail.get(email));
+      continue;
+    }
+    const name = String(row.name || '').trim();
+    if (!name) continue;
+    try {
+      const doc = new Candidate({
+        name,
+        email,
+        contact: String(row.contact || row.phone || '').trim(),
+        phone: String(row.phone || row.contact || '').trim(),
+        position: String(row.position || '').trim(),
+        companyName: String(row.companyName || '').trim(),
+        location: String(row.location || '').trim(),
+        state: String(row.state || '').trim(),
+        experience: String(row.experience || '').trim(),
+        ctc: String(row.ctc || '').trim() || 'TO BE UPDATED',
+        expectedCtc: String(row.expectedCtc || '').trim(),
+        noticePeriod: String(row.noticePeriod || '').trim(),
+        skills: String(row.skills || '').trim(),
+        product: String(row.product || '').trim(),
+        client: String(row.client || '').trim(),
+        source: String(row.source || 'MIS').trim() || 'MIS',
+        remark: String(row.remark || '').trim(),
+        status: 'APPLIED',
+        organizationId: user.organizationId,
+        createdBy: user.id || user._id,
+      });
+      await doc.save();
+      const id = String(doc._id);
+      byEmail.set(email, id);
+      ids.push(id);
+      created += 1;
+    } catch {
+      /* duplicate race: try lookup */
+      const hit = await Candidate.findOne({
+        organizationId: user.organizationId,
+        email,
+      }).select('_id').lean();
+      if (hit?._id) {
+        const id = String(hit._id);
+        byEmail.set(email, id);
+        ids.push(id);
+      }
+    }
+  }
+  return { ids: [...new Set(ids)], created };
+}
+
+async function bulkTagCandidatesToJob(req, { ids = [], misIds = [], jobId } = {}) {
+  const mongoose = require('mongoose');
+  const { candidateWriteScope } = require('../utils/dataScope');
+  const user = req.user;
+  const job = await resolveJobForOrg(user, jobId);
+  if (!job) throw httpError('Job not found. Pick a Job ID from your openings.');
+  const fromMis = await candidateIdsFromMisContacts(user, misIds);
+  const unique = [...new Set(
+    [...(Array.isArray(ids) ? ids : []), ...fromMis.ids]
+      .map((id) => String(id || '').trim())
+      .filter((id) => mongoose.Types.ObjectId.isValid(id))
+  )];
+  const scope = candidateWriteScope(req);
+  const allowed = [];
+  for (const part of chunkIds(unique)) {
+    const batch = await Candidate.find({ $and: [scope, { _id: { $in: part } }] }).select('_id').lean();
+    allowed.push(...batch);
+  }
+  const allowedSet = new Set(allowed.map((row) => String(row._id)));
+  let tagged = 0;
+  let already = 0;
+  let skipped = unique.length - allowedSet.size;
+  for (const id of allowedSet) {
+    const result = await tagCandidateToJob(user, id, job._id, { source: 'Campaign' });
+    if (result?.alreadyTagged) already += 1;
+    else if (result?.tagged) tagged += 1;
+    else skipped += 1;
+  }
+  const meta = await jobApplyMeta(user, job);
+  return {
+    tagged,
+    already,
+    skipped,
+    fromMis: fromMis.created,
+    total: unique.length,
+    job: { _id: job._id, jobCode: job.jobCode, title: job.title || job.role || '' },
+    ...meta,
+  };
+}
+
 module.exports = {
   listApplications,
   getStats,
@@ -437,4 +769,10 @@ module.exports = {
   deleteApplication,
   listByJob,
   listByCandidate,
+  tagCandidateToJob,
+  bulkTagCandidatesToJob,
+  jobApplyMeta,
+  jobCampaignFields,
+  resolveJobForOrg,
+  purgeApplicationsForCandidates,
 };

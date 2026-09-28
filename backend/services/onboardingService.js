@@ -757,6 +757,21 @@ async function inviteTeammate(actor, { email, role, name, customRoleId, reportsT
     logger.warn(`Invite created but email failed for ${normalizedEmail}: ${emailError}`);
   }
 
+  if (isFreelancerInvite) {
+    try {
+      const { linkInviteToApplication } = require('./partnerSignupService');
+      await linkInviteToApplication({
+        organizationId: actor.organizationId,
+        email: normalizedEmail,
+        userId: invitee._id,
+        inviteUrl,
+        inviteEmailSent: emailSent,
+      });
+    } catch (err) {
+      logger.warn(`[invite] partner application link skipped for ${normalizedEmail}: ${err.message}`);
+    }
+  }
+
   return {
     success: true,
     message: emailSent
@@ -788,6 +803,19 @@ async function acceptInvite({ token, name, password }, req) {
   user.inviteToken = undefined;
   user.inviteTokenExpires = undefined;
   await user.save();
+
+  if (user.role === 'freelancer') {
+    try {
+      const { markFreelancerJoined } = require('./partnerSignupService');
+      await markFreelancerJoined({
+        organizationId: user.organizationId,
+        email: user.email,
+        userId: user._id,
+      });
+    } catch (err) {
+      logger.warn(`[invite] partner join sync skipped for ${user.email}: ${err.message}`);
+    }
+  }
 
   try {
     const eventBus = require('../events/eventBus');

@@ -72,8 +72,8 @@ export default function MisBulkEditModal({
     <Modal
       open={open}
       onClose={isLoading ? undefined : onClose}
-      title="Bulk edit MIS contacts"
-      description={`Update fields on ${selectedCount} selected contact${selectedCount === 1 ? '' : 's'}. Unticked fields stay unchanged.`}
+      title="Edit selected contacts"
+      description={`Update fields on ${selectedCount} selected contact${selectedCount === 1 ? '' : 's'}. Fields that are not ticked remain unchanged.`}
       size="md"
       icon={Pencil}
       closeOnBackdrop={!isLoading}

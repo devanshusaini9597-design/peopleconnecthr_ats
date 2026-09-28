@@ -15,12 +15,40 @@ const {
 const { buildQuickEmailContent } = require('./quickEmailContent');
 const { loadOrgEmailBrand } = require('./emailBrandLayout');
 const { signEmail } = require('../utils/subscribeSign');
+const { personalizeBulkText } = require('../utils/bulkPersonalize');
+const { polishMergedBody, polishMergedSubject } = require('../utils/emailMergePolish');
 
 function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
   err.statusCode = statusCode;
   Object.assign(err, extra);
   return err;
+}
+
+function classifyBulkFailureReason(message = '', code = '') {
+  const text = `${code} ${message}`.toLowerCase();
+  if (/invalid email|email address is required|no valid email|missing email|malformed/i.test(text)) {
+    return 'invalid_address';
+  }
+  if (
+    /mailbox (not found|unavailable|does not exist)|user unknown|recipient rejected|no such user|550\b|5\.1\.1|address rejected|undeliverable|does not exist|account does not exist|unknown recipient/i.test(
+      text
+    )
+  ) {
+    return 'mailbox_unavailable';
+  }
+  if (/unsubscrib|opted.?out|opt.?out|no marketing consent|not eligible for marketing/i.test(text)) {
+    return 'unsubscribed';
+  }
+  if (/spam|blocked|blacklist|reputation|suppress/i.test(text)) {
+    return 'blocked';
+  }
+  if (
+    /not configured|not verified|oauth|zoho campaigns|smtp|sender|verified domain|credentials/i.test(text)
+  ) {
+    return 'configuration';
+  }
+  return 'provider_error';
 }
 
 async function bumpEmailUsage(organizationId, count = 1) {
@@ -133,8 +161,8 @@ async function sendTypedEmail(user, body) {
       if (!customMessage) throw httpError('Custom message is required for custom email type');
       result = await sendCustomEmail(
         email,
-        (body.subject || '').trim() || 'Message from recruiting team',
-        customMessage,
+        polishMergedSubject((body.subject || '').trim() || 'Message from recruiting team'),
+        polishMergedBody(customMessage),
         {
           ...emailOptions,
           candidateName: name,
@@ -187,15 +215,29 @@ async function sendBulkTypedEmails(user, body) {
   const success = [];
   const failed = [];
 
+  // UI bulk drafts usually bake in the first selected person's name — swap that only.
+  const bakedNames = [];
+  const firstName = String(candidates[0]?.name || '').trim();
+  if (firstName) bakedNames.push(firstName);
+
   for (const candidate of candidates) {
     const email = candidate?.email;
     const name = candidate?.name || 'Candidate';
     const position = candidate?.position || '';
-    const department = candidate?.department || 'N/A';
-    const joiningDate = candidate?.joiningDate || 'TBD';
+    const department = String(candidate?.department || '').trim();
+    const joiningDate = String(candidate?.joiningDate || '').trim();
+    const cleanDepartment = /^(n\/?a|none|-)$/i.test(department) ? '' : department;
+    const cleanJoining = /^(tbd|n\/?a|none|to be (confirmed|decided)|-)$/i.test(joiningDate)
+      ? ''
+      : joiningDate;
 
     if (!email || !String(email).includes('@')) {
-      failed.push({ email: email || '', error: 'Invalid email address' });
+      failed.push({
+        email: email || '',
+        error: 'Invalid email address',
+        displayMessage: 'Invalid or missing email address',
+        reasonCode: 'invalid_address',
+      });
       continue;
     }
 
@@ -208,10 +250,16 @@ async function sendBulkTypedEmails(user, body) {
       // Quick-send edited drafts arrive as custom + subject/body.
       if (emailType === 'custom') {
         if (!customMessage) throw httpError('Custom message is required for custom email type');
+        const personalizedSubject = polishMergedSubject(
+          personalizeBulkText(subject || '', name, bakedNames)
+        );
+        const personalizedBody = polishMergedBody(
+          personalizeBulkText(customMessage, name, bakedNames)
+        );
         result = await sendCustomEmail(
           email,
-          (subject || '').trim() || 'Message from recruiting team',
-          customMessage,
+          personalizedSubject.trim() || 'Message from recruiting team',
+          personalizedBody,
           { ...perRecipientOptions, candidateName: name }
         );
       } else if (emailType === 'interview') {
@@ -221,16 +269,25 @@ async function sendBulkTypedEmails(user, body) {
       } else if (emailType === 'document') {
         result = await sendDocumentEmail(email, name, position, perRecipientOptions);
       } else if (emailType === 'onboarding') {
-        result = await sendOnboardingEmail(email, name, position, department, joiningDate, perRecipientOptions);
+        result = await sendOnboardingEmail(
+          email,
+          name,
+          position,
+          cleanDepartment,
+          cleanJoining,
+          perRecipientOptions
+        );
       } else {
         throw httpError('Invalid email type. Must be: interview, rejection, document, onboarding, or custom');
       }
       success.push({ email, messageId: result?.messageId });
     } catch (err) {
+      const displayMessage = err.displayMessage || err.message || 'Send failed';
       failed.push({
         email,
         error: err.message || 'Send failed',
-        displayMessage: err.displayMessage || err.message,
+        displayMessage,
+        reasonCode: classifyBulkFailureReason(displayMessage, err.code || ''),
       });
     }
   }

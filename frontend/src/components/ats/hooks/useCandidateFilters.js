@@ -7,6 +7,8 @@ function snapshotFilters({
   activityPeriod,
   activityFrom,
   activityTo,
+  listKind,
+  cohortMonth,
   sortField,
   sortOrder,
 }) {
@@ -15,6 +17,8 @@ function snapshotFilters({
     activityPeriod: String(activityPeriod || '').trim(),
     activityFrom: String(activityFrom || '').trim(),
     activityTo: String(activityTo || '').trim(),
+    listKind: String(listKind || '').trim(),
+    cohortMonth: String(cohortMonth || '').trim(),
     sortField: String(sortField || 'date').trim() || 'date',
     sortOrder: String(sortOrder || 'desc').trim() || 'desc',
   };
@@ -37,6 +41,8 @@ export function useCandidateFilters(
   const [searchQuery, setSearchQuery] = useState('');
   const [searchScope, setSearchScope] = useState('all');
   const [filterJob, setFilterJob] = useState('');
+  const [jobIdFilter, setJobIdFilter] = useState('');
+  const [jobAppSource, setJobAppSource] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   /** Freelancer mandate drill-down: only candidates submitted to a mandate. */
   const [idFilter, setIdFilter] = useState([]);
@@ -46,6 +52,8 @@ export function useCandidateFilters(
   const [activityPeriod, setActivityPeriod] = useState('');
   const [activityFrom, setActivityFrom] = useState('');
   const [activityTo, setActivityTo] = useState('');
+  const [listKind, setListKind] = useState('');
+  const [cohortMonth, setCohortMonth] = useState('');
   const [sortField, setSortField] = useState('date');
   const [sortOrder, setSortOrder] = useState('desc');
 
@@ -54,6 +62,8 @@ export function useCandidateFilters(
     activityPeriod: '',
     activityFrom: '',
     activityTo: '',
+    listKind: '',
+    cohortMonth: '',
     sortField: 'date',
     sortOrder: 'desc',
   }));
@@ -67,10 +77,12 @@ export function useCandidateFilters(
       activityPeriod,
       activityFrom,
       activityTo,
+      listKind,
+      cohortMonth,
       sortField,
       sortOrder,
     }),
-    [advancedSearchFilters, activityPeriod, activityFrom, activityTo, sortField, sortOrder],
+    [advancedSearchFilters, activityPeriod, activityFrom, activityTo, listKind, cohortMonth, sortField, sortOrder],
   );
 
   const filtersDirty = useMemo(
@@ -84,6 +96,8 @@ export function useCandidateFilters(
       activityPeriod,
       activityFrom,
       activityTo,
+      listKind,
+      cohortMonth,
       sortField,
       sortOrder,
     });
@@ -94,7 +108,7 @@ export function useCandidateFilters(
     setAppliedFilters(next);
     setCurrentPage(1);
     return { ok: true };
-  }, [advancedSearchFilters, activityPeriod, activityFrom, activityTo, sortField, sortOrder]);
+  }, [advancedSearchFilters, activityPeriod, activityFrom, activityTo, listKind, cohortMonth, sortField, sortOrder]);
 
   /** Sort applies immediately — date only (oldest / newest). */
   const applySortChange = useCallback((_field, order) => {
@@ -115,6 +129,8 @@ export function useCandidateFilters(
       activityPeriod: '',
       activityFrom: '',
       activityTo: '',
+      listKind: '',
+      cohortMonth: '',
       sortField: 'date',
       sortOrder: 'desc',
     });
@@ -122,6 +138,8 @@ export function useCandidateFilters(
     setActivityPeriod('');
     setActivityFrom('');
     setActivityTo('');
+    setListKind('');
+    setCohortMonth('');
     setSortField('date');
     setSortOrder('desc');
     setAppliedFilters(empty);
@@ -129,18 +147,24 @@ export function useCandidateFilters(
   }, []);
 
   /** Sync URL/dashboard period into both draft + applied (external navigation). */
-  const syncActivityFromUrl = useCallback((period, from, to) => {
+  const syncActivityFromUrl = useCallback((period, from, to, list, cohort) => {
     const p = String(period || '').trim();
     const f = String(from || '').trim();
     const t = String(to || '').trim();
+    const kind = String(list || '').trim();
+    const month = String(cohort || '').trim();
     setActivityPeriod(p);
     setActivityFrom(f);
     setActivityTo(t);
+    setListKind(kind);
+    setCohortMonth(month);
     setAppliedFilters((prev) => ({
       ...prev,
       activityPeriod: p,
       activityFrom: f,
       activityTo: t,
+      listKind: kind,
+      cohortMonth: month,
     }));
   }, []);
 
@@ -166,6 +190,10 @@ export function useCandidateFilters(
       status: statusFilter,
       ids: ids.length ? ids : undefined,
       position: String(adv.position || filterJob || '').trim(),
+      jobId: String(jobIdFilter || '').trim(),
+      appSource: String(jobAppSource || '').trim(),
+      candidateCode: String(adv.candidateCode || '').trim(),
+      applicationCode: String(adv.applicationCode || '').trim(),
       location: String(adv.location || '').trim(),
       companyName: String(adv.companyName || '').trim(),
       skills: String(adv.skills || '').trim(),
@@ -176,6 +204,8 @@ export function useCandidateFilters(
       dateRange: String(appliedFilters.activityPeriod || '').trim(),
       customFrom: String(appliedFilters.activityFrom || '').trim(),
       customTo: String(appliedFilters.activityTo || '').trim(),
+      list: String(appliedFilters.listKind || '').trim(),
+      cohort: String(appliedFilters.cohortMonth || '').trim(),
       expMin: String(adv.expMin || '').trim(),
       expMax: String(adv.expMax || '').trim(),
       ctcMin: String(adv.ctcMin || '').trim(),
@@ -187,7 +217,7 @@ export function useCandidateFilters(
       freelanceOnly: Boolean(freelanceOnly),
     };
   }, [
-    searchQuery, searchScope, statusFilter, idFilter, filterJob, appliedFilters, freelanceOnly,
+    searchQuery, searchScope, statusFilter, idFilter, filterJob, jobIdFilter, jobAppSource, appliedFilters, freelanceOnly,
   ]);
 
   const pageCandidates = useMemo(() => {
@@ -216,12 +246,16 @@ export function useCandidateFilters(
     searchQuery, setSearchQuery,
     searchScope, setSearchScope,
     filterJob, setFilterJob,
+    jobIdFilter, setJobIdFilter,
+    jobAppSource, setJobAppSource,
     statusFilter, setStatusFilter,
     showAdvancedSearch, setShowAdvancedSearch,
     advancedSearchFilters, setAdvancedSearchFilters,
     activityPeriod, setActivityPeriod,
     activityFrom, setActivityFrom,
     activityTo, setActivityTo,
+    listKind, setListKind,
+    cohortMonth, setCohortMonth,
     sortField, setSortField,
     sortOrder, setSortOrder,
     applySortChange,

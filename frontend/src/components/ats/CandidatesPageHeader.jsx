@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Upload, ChevronDown, FileSpreadsheet, Database, Share2, GitMerge, RefreshCw, Users, Info } from 'lucide-react';
+import { Plus, Upload, ChevronDown, FileSpreadsheet, Database, Share2, GitMerge, RefreshCw, Users, Info, Download } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import PageHeader from '../ui/PageHeader';
 import FeatureGate from '../FeatureGate';
@@ -16,6 +16,7 @@ export default function CandidatesPageHeader(props) {
     setShowModal, isLoadingInitial, candidates, isFreelancer,
     initialFormState, openAddCandidate,
     onRefresh, refreshing, lastSyncedAt, autoRefreshSeconds,
+    canExportCandidates, setShowDownloadModal,
   } = props;
   return (
     <>
@@ -26,7 +27,7 @@ export default function CandidatesPageHeader(props) {
         gradientTitle
       >
         <div className="flex w-full sm:w-auto flex-wrap items-center gap-2" data-tour="cand-actions">
-          {isFreelancer && typeof onRefresh === 'function' ? (
+          {typeof onRefresh === 'function' ? (
             <button
               type="button"
               onClick={onRefresh}
@@ -137,6 +138,21 @@ export default function CandidatesPageHeader(props) {
             </>
           )}
           </div>
+          {canExportCandidates ? (
+            <button
+              type="button"
+              onClick={() => {
+                if ((typeof filteredCount === 'number' ? filteredCount : filteredCandidates.length) === 0) {
+                  toast.warning('No candidates to export.');
+                  return;
+                }
+                setShowDownloadModal(true);
+              }}
+              className="btn-secondary flex-1 sm:flex-none justify-center"
+            >
+              <Download size={16} /> {t('candidates.export')}{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+            </button>
+          ) : null}
           {!isFreelancer && (
           <FeatureGate feature="candidates.dedupe">
             <button

@@ -31,4 +31,20 @@ export const ctcLpaBreakpoints = [
   0, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 18, 20, 25, 30, 40, 50, 75, 100, 999,
 ];
 
+export const UPTO_CTC_LPA = [3, 4, 5, 6, 8, 10, 12, 15, 18, 20, 25, 30, 40, 50, 75, 100];
+
+export function uptoCtcOptions() {
+  return UPTO_CTC_LPA.map((n) => ({
+    value: String(n),
+    label: n >= 100 ? 'Up to 1 Cr' : `Up to ${n} LPA`,
+  }));
+}
+
+export function fromCtcOptions() {
+  return UPTO_CTC_LPA.map((n) => ({
+    value: String(n),
+    label: n >= 100 ? '1 Cr and above' : `${n} LPA and above`,
+  }));
+}
+
 export default ctcRanges;

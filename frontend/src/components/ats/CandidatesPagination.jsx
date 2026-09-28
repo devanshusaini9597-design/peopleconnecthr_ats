@@ -14,11 +14,15 @@ export default function CandidatesPagination({
   filteredCandidates,
   totalFilteredPages,
   totalCount,
+  countPending = false,
+  countPlus = false,
 }) {
   const total = typeof totalCount === 'number' ? totalCount : (filteredCandidates?.length || 0);
+  const hideTotal = countPending;
   const pages = Math.max(1, totalFilteredPages || 1);
-  const from = visibleCandidates.length > 0 ? (currentPage - 1) * PAGE_SIZE + 1 : 0;
-  const to = Math.min(currentPage * PAGE_SIZE, total);
+  const loaded = visibleCandidates.length;
+  const from = loaded > 0 ? (currentPage - 1) * PAGE_SIZE + 1 : 0;
+  const to = loaded > 0 ? from + loaded - 1 : 0;
 
   const go = (page) => {
     const next = Math.min(pages, Math.max(1, page));
@@ -43,13 +47,13 @@ export default function CandidatesPagination({
           Showing{' '}
           <span className="text-stone-800 font-semibold tabular-nums">{from.toLocaleString()}–{to.toLocaleString()}</span>
           {' '}of{' '}
-          <span className="text-stone-800 font-semibold tabular-nums">{total.toLocaleString()}</span>
+          <span className="text-stone-800 font-semibold tabular-nums">{hideTotal ? '…' : total.toLocaleString()}</span>
         </p>
         <span className="hidden sm:inline text-stone-300" aria-hidden>|</span>
         <p className="text-xs sm:text-sm font-semibold text-stone-700 tabular-nums">
           Page <span className="text-brand-700">{currentPage.toLocaleString()}</span>
           {' '}of{' '}
-          <span className="text-stone-900">{pages.toLocaleString()}</span>
+          <span className="text-stone-900">{hideTotal ? '…' : pages.toLocaleString()}</span>
         </p>
       </div>
 

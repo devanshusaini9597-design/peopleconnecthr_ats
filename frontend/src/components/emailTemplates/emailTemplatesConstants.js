@@ -67,6 +67,9 @@ export const VARIABLE_OPTIONS = [
   { key: 'spoc', label: 'SPOC name', example: 'Mr. XYZ' },
   { key: 'subscribeLink', label: 'Subscribe URL', example: 'https://yoursite.com/subscribe' },
   { key: 'unsubscribeLink', label: 'Unsubscribe link', example: '#unsubscribe' },
+  { key: 'jobTitle', label: 'Job title', example: 'Relationship Manager' },
+  { key: 'jobCode', label: 'Job ID', example: 'SKILLNIX-2026-0001' },
+  { key: 'applyLink', label: 'Job apply link', example: 'https://www.peopleconnecthr.com/careers/acme/jobs/SKILLNIX-2026-0001' },
 ];
 
 export const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {

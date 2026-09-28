@@ -3,14 +3,7 @@
  * Keep wording aligned with backend/services/quickEmailContent.js
  */
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+import { convertPlainEmailBody, escapeHtml } from '../../../utils/emailBodyHtml';
 
 export function buildQuickDraft({
   emailType = 'interview',
@@ -103,60 +96,75 @@ export function buildQuickDraftHtml({
   body,
   brand = '',
   logoUrl = '',
-  brandColor = '#5b21b6',
+  brandColor = '#0f766e',
   senderName = '',
+  sampleName = '',
 } = {}) {
   const orgName = String(brand || 'Talent Acquisition').trim() || 'Talent Acquisition';
   const accent = /^#[0-9a-fA-F]{3,8}$/.test(String(brandColor || '').trim())
     ? String(brandColor).trim()
-    : '#5b21b6';
+    : '#0f766e';
   const year = new Date().getFullYear();
   const logo = String(logoUrl || '').trim();
   const safeBrand = escapeHtml(orgName);
   const safeSender = escapeHtml(senderName || '');
+  const safeSubject = escapeHtml(String(subject || '').trim());
   const font =
     "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
   const useWordmark =
     /skillnix/i.test(orgName) || /skillnix/i.test(logo);
 
+  const inner = convertPlainEmailBody(body || '', {
+    brandColor: accent,
+    sampleName: sampleName || undefined,
+  });
+
   let brandHeader;
   if (logo && useWordmark) {
-    brandHeader = `<tr><td style="background:#0b0b0f;padding:28px 32px;text-align:center;">
-      <img src="${escapeHtml(logo)}" alt="${safeBrand}" width="220" style="display:inline-block;max-width:220px;width:220px;height:auto;border:0;" />
+    brandHeader = `<tr><td style="background:#111827;padding:22px 40px;">
+      <img src="${escapeHtml(logo)}" alt="${safeBrand}" width="168" style="display:block;max-width:168px;width:168px;height:auto;border:0;" />
     </td></tr>`;
   } else if (logo) {
-    brandHeader = `<tr><td style="background:#0b0b0f;padding:22px 28px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-        <td width="48" valign="middle"><img src="${escapeHtml(logo)}" alt="${safeBrand}" width="40" height="40" style="display:block;width:40px;height:40px;border:0;border-radius:8px;object-fit:contain;" /></td>
-        <td valign="middle" style="padding-left:14px;"><p style="margin:0;font-family:${font};font-size:18px;font-weight:700;color:#fff;">${safeBrand}</p></td>
+    brandHeader = `<tr><td style="padding:20px 40px;border-bottom:1px solid #e5e7eb;background:#ffffff;">
+      <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+        <td valign="middle"><img src="${escapeHtml(logo)}" alt="${safeBrand}" width="36" height="36" style="display:block;width:36px;height:36px;border:0;border-radius:6px;" /></td>
+        <td valign="middle" style="padding-left:12px;"><p style="margin:0;font-family:${font};font-size:15px;font-weight:600;color:#111827;">${safeBrand}</p></td>
       </tr></table>
     </td></tr>`;
   } else {
-    brandHeader = `<tr><td style="background:#0b0b0f;padding:26px 28px;">
-      <p style="margin:0;font-family:${font};font-size:20px;font-weight:700;color:#fff;">${safeBrand}</p>
+    brandHeader = `<tr><td style="padding:20px 40px;border-bottom:1px solid #e5e7eb;">
+      <p style="margin:0;font-family:${font};font-size:15px;font-weight:600;color:#111827;">${safeBrand}</p>
     </td></tr>`;
   }
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background:#eceef2;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eceef2;padding:48px 12px;">
+<body style="margin:0;padding:0;background:#f3f4f6;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 12px;">
     <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
-        <tr><td style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e5eb;box-shadow:0 12px 40px rgba(15,23,42,0.08);">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
+        <tr><td style="background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid #e5e7eb;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr><td style="height:4px;background:${accent};font-size:0;line-height:0;">&nbsp;</td></tr>
             ${brandHeader}
-            <tr><td style="height:4px;background:${accent};background-image:linear-gradient(90deg,#7c3aed 0%,#2563eb 55%,#22d3ee 100%);font-size:0;line-height:0;">&nbsp;</td></tr>
-            <tr><td style="padding:40px;font-family:${font};font-size:15px;line-height:1.7;color:#3f3f46;">
-              <div style="white-space:pre-wrap;">${escapeHtml(body || '')}</div>
+            ${
+              safeSubject
+                ? `<tr><td style="padding:28px 40px 0 40px;">
+              <p style="margin:0 0 8px 0;font-family:${font};font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#6b7280;">Opportunity</p>
+              <h1 style="margin:0;font-family:${font};font-size:22px;font-weight:600;line-height:1.35;color:#111827;letter-spacing:-0.02em;">${safeSubject}</h1>
+            </td></tr>`
+                : ''
+            }
+            <tr><td style="padding:${safeSubject ? '20px' : '32px'} 40px 36px 40px;font-family:${font};font-size:15px;line-height:1.7;color:#374151;">
+              ${inner}
             </td></tr>
           </table>
         </td></tr>
         <tr><td style="padding:28px 16px 8px 16px;text-align:center;">
-          ${safeSender ? `<p style="margin:0 0 12px 0;font-family:${font};font-size:12px;color:#71717a;">Sent by <span style="color:#3f3f46;font-weight:600;">${safeSender}</span></p>` : ''}
-          <p style="margin:0 0 6px 0;font-family:${font};font-size:13px;font-weight:700;color:#27272a;">${safeBrand}</p>
-          <p style="margin:0;font-family:${font};font-size:11px;color:#a1a1aa;">&copy; ${year} ${safeBrand}. All rights reserved.</p>
+          ${safeSender ? `<p style="margin:0 0 12px 0;font-family:${font};font-size:12px;color:#6b7280;">Sent by <span style="color:#111827;font-weight:600;">${safeSender}</span></p>` : ''}
+          <p style="margin:0 0 6px 0;font-family:${font};font-size:13px;font-weight:700;color:#111827;">${safeBrand}</p>
+          <p style="margin:0;font-family:${font};font-size:11px;color:#9ca3af;">&copy; ${year} ${safeBrand}</p>
         </td></tr>
       </table>
     </td></tr>

@@ -103,7 +103,7 @@ async function ask(orgSlug, rawMessage) {
       organizationId: org._id,
       isPublished: true,
       status: 'Open'
-    }).select('title location department').limit(5).lean();
+    }).select('title location department industry').limit(5).lean();
 
     if (!jobs.length) {
       return {

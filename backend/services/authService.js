@@ -49,6 +49,12 @@ async function login(email, password, req) {
     });
   }
 
+  if (user.isDemo) {
+    throw httpError('demo_use_public_link', 403, {
+      displayMessage: 'This is a sales-demo account. Open /demo to walk the product by role — no password.',
+    });
+  }
+
   if (!user.password.startsWith('$2')) {
     logger.warn({ email: user.email }, 'Legacy plaintext password — forcing reset');
     throw httpError('password_upgrade_required', 401, {
@@ -82,16 +88,18 @@ async function login(email, password, req) {
 
   if (user.signupStatus === 'pending_approval') {
     throw httpError('signup_pending_approval', 403, {
-      displayMessage:
-        'Your trial request is being reviewed. Our team will contact you shortly. You can sign in after approval.',
+      displayMessage: user.role === 'freelancer'
+        ? 'Your freelance recruiter application is being reviewed. You can sign in after the company approves it.'
+        : 'Your trial request is being reviewed. Our team will contact you shortly. You can sign in after approval.',
       email: user.email,
     });
   }
 
   if (user.signupStatus === 'rejected') {
     throw httpError('signup_rejected', 403, {
-      displayMessage:
-        'This trial request was not approved. Please contact our sales team if you have questions.',
+      displayMessage: user.role === 'freelancer'
+        ? 'This freelance recruiter application was not approved. Please contact the company if you have questions.'
+        : 'This trial request was not approved. Please contact our sales team if you have questions.',
       email: user.email,
     });
   }
@@ -164,6 +172,7 @@ async function completeLogin(user, req) {
         profilePicture: user.profilePicture || '',
         mfaEnabled: user.mfaEnabled,
         mustChangePassword: Boolean(user.mustChangePassword),
+        isDemo: Boolean(user.isDemo),
         customRoleId: user.customRoleId || null,
         isPlatformOperator: require('../utils/orgDomain').isPlatformOperator(user),
         permissions,

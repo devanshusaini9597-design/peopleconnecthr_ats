@@ -92,7 +92,19 @@ export function mergeResumeIntoForm(prev, parsed, mode = 'empty-only', opts = {}
   }
   setIf('experience', parsed.experience, (v) => String(v).trim());
   setIf('location', parsed.location, (v) => String(v).trim());
+  setIf('skills', parsed.skills, (v) => String(v).trim());
+  setIf('education', parsed.education, (v) => String(v).trim());
+  // SPOC is never read from the resume — it comes from the uploading account.
 
+  return next;
+}
+
+/** Apply resume-parsing handoff (localStorage) onto a blank add-candidate form. */
+export function applyParsedResumeHandoff(form, parsed, opts = {}) {
+  const next = mergeResumeIntoForm(form, parsed, 'replace', opts);
+  if (parsed?.spoc && String(parsed.spoc).trim()) {
+    next.spoc = String(parsed.spoc).trim().toUpperCase();
+  }
   return next;
 }
 

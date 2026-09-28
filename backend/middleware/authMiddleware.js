@@ -52,10 +52,13 @@ const verifyToken = async (req, res, next) => {
     }
 
     if (user.signupStatus === 'pending_approval' || user.signupStatus === 'rejected') {
+      const freelancer = user.role === 'freelancer';
       return res.status(403).json({
         success: false,
         code: 'SIGNUP_PENDING_APPROVAL',
-        message: 'Your trial request is still under review. Our team will contact you shortly.',
+        message: freelancer
+          ? 'Your freelance recruiter application is still under review.'
+          : 'Your trial request is still under review. Our team will contact you shortly.',
       });
     }
 

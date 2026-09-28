@@ -19,8 +19,10 @@ export default function MisBulkToolbar({
   filteredCount = 0,
   isAllFilteredSelected = false,
   onSelectAllFiltered,
+  selectingAll = false,
 }) {
   if (!selectedIds.length) return null;
+  const countShown = isAllFilteredSelected && filteredCount > selectedIds.length ? filteredCount : selectedIds.length;
   const canExpand = !isAllFilteredSelected
     && filteredCount > selectedIds.length
     && typeof onSelectAllFiltered === 'function';
@@ -31,14 +33,14 @@ export default function MisBulkToolbar({
         <div className="px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
             <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-brand-500 to-teal-700 text-white flex items-center justify-center text-sm font-bold tabular-nums shadow-lg shadow-brand-500/25 ring-1 ring-white/20 flex-shrink-0">
-              {selectedIds.length}
+              {countShown.toLocaleString()}
             </div>
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-700">
                 Bulk actions
               </p>
               <p className="text-sm font-semibold text-stone-900 mt-0.5 truncate">
-                {selectedIds.length === 1 ? '1 contact selected' : `${selectedIds.length} contacts selected`}
+                {countShown === 1 ? '1 contact selected' : `${countShown.toLocaleString()} contacts selected`}
               </p>
             </div>
             <button
@@ -58,7 +60,7 @@ export default function MisBulkToolbar({
                 type="button"
                 onClick={onEmail}
                 className="h-10 w-10 rounded-lg bg-white border border-stone-200/80 text-stone-600 inline-flex items-center justify-center shadow-sm hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-all"
-                title="Campaign email"
+                title="Email selected"
                 aria-label="Campaign email selected"
               >
                 <Mail size={17} strokeWidth={1.75} />
@@ -128,15 +130,17 @@ export default function MisBulkToolbar({
                   </>
                 ) : null}
               </div>
-              <button
-                type="button"
-                onClick={onMoveToCandidates}
-                className="h-10 px-3 rounded-lg bg-white border border-stone-200/80 text-stone-700 inline-flex items-center justify-center gap-1.5 shadow-sm hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-all text-xs font-bold"
-                title="Move to Candidates"
-              >
-                <Users size={15} strokeWidth={1.75} />
-                To Candidates
-              </button>
+              {typeof onMoveToCandidates === 'function' ? (
+                <button
+                  type="button"
+                  onClick={onMoveToCandidates}
+                  className="h-10 px-3 rounded-lg bg-white border border-stone-200/80 text-stone-700 inline-flex items-center justify-center gap-1.5 shadow-sm hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-all text-xs font-bold"
+                  title="Move to Candidates"
+                >
+                  <Users size={15} strokeWidth={1.75} />
+                  Move to Candidates
+                </button>
+              ) : null}
             </div>
 
             <button
@@ -151,13 +155,20 @@ export default function MisBulkToolbar({
           </div>
         </div>
 
+        {selectingAll ? (
+          <div className="px-4 sm:px-5 py-2.5 border-t border-brand-100/80 bg-brand-50/50">
+            <p className="text-xs sm:text-sm text-stone-600 font-medium">
+              Confirming all matching results in the background…
+            </p>
+          </div>
+        ) : null}
         {canExpand ? (
           <div className="px-4 sm:px-5 py-2.5 border-t border-brand-100/80 bg-brand-50/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <p className="text-xs sm:text-sm text-stone-600">
-              {selectedIds.length} selected on this view.
+              {selectedIds.length} selected on this page.
               {' '}
               <span className="text-stone-500">
-                {filteredCount.toLocaleString()} match your current search/filters.
+                {filteredCount.toLocaleString()} match the current filters.
               </span>
             </p>
             <button

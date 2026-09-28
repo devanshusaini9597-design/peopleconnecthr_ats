@@ -13,6 +13,7 @@ import UpgradeFeatureFallback from './ui/UpgradeFeatureFallback';
 import ProductTour from './ui/ProductTour';
 import TourHelpFab from './ui/TourHelpFab';
 import usePageTour from '../hooks/usePageTour';
+import { publicSiteOrigin } from '../utils/publicSiteOrigin';
 
 const REF_TOUR_KEY = 'skillnix_tour_referrals_v1';
 const REF_TOUR_STEPS = [
@@ -62,7 +63,7 @@ const REWARD_BADGE = {
 };
 
 function referralLink(code) {
-  return `${window.location.origin}/careers?ref=${code}`;
+  return `${publicSiteOrigin()}/careers?ref=${code}`;
 }
 
 /** Premium single-line share field — truncates cleanly, one-click copy */

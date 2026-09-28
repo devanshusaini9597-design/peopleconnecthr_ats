@@ -130,6 +130,17 @@ export function ParseReviewModals({
                       )}
                     </div>
                   ))}
+                  <div className="sm:col-span-2">
+                    <label className="label-ats">SPOC</label>
+                    <input
+                      type="text"
+                      value={reviewResult.data.spoc || ''}
+                      readOnly
+                      disabled
+                      className="field-premium bg-stone-100 text-stone-600 cursor-not-allowed uppercase"
+                    />
+                    <p className="text-[11px] text-stone-400 mt-1">From the account that uploaded this resume — not extracted from the CV.</p>
+                  </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
@@ -139,6 +150,11 @@ export function ParseReviewModals({
                       <span className="text-stone-900 font-medium break-words">{reviewResult.data[k] || '—'}</span>
                     </div>
                   ))}
+                  <div className="rounded-xl border border-stone-200 px-3 py-2.5 bg-stone-50/50">
+                    <span className="text-stone-500 text-[10px] font-bold uppercase tracking-wide block mb-0.5">SPOC</span>
+                    <span className="text-stone-900 font-medium break-words uppercase">{reviewResult.data.spoc || '—'}</span>
+                    <span className="block text-[11px] text-stone-400 mt-1">Uploader account reference</span>
+                  </div>
                 </div>
               )
             )}

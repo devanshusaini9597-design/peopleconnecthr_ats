@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, Briefcase, Clock, UploadCloud, CheckCircle, AlertCircle,
-  Building, FileText, ChevronRight, ChevronLeft, User, IndianRupee, Send, Lock, X,
+  Building, FileText, ChevronRight, ChevronLeft, User, IndianRupee, Send, Lock, X, Copy,
 } from 'lucide-react';
 import API_URL from '../config';
 import { employmentLabel } from './jobs/jobsConstants';
@@ -10,8 +10,8 @@ import PublicAnnouncementBanner from './PublicAnnouncementBanner';
 import PremiumSelect from './ui/PremiumSelect';
 import { resolveOrgLogoSrc } from '../utils/orgLogo';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
+import { publicJobDomain, titleCaseWords } from '../utils/publicJobDomain';
 import { toast } from './Toast';
-import { getTurnstileToken } from '../utils/turnstile';
 import {
   DEFAULT_CTC_BANDS, DEFAULT_EXPECTED_CTC, DEFAULT_NOTICE_PERIODS,
 } from '../utils/ctcRanges';
@@ -99,7 +99,54 @@ function FieldLabel({ children, required, hint }) {
   );
 }
 
-function SuccessPanel({ jobTitle, brand, orgSlug }) {
+function ReferenceIds({ candidateCode, applicationCode }) {
+  const [copied, setCopied] = useState('');
+  const rows = [
+    candidateCode ? { key: 'candidate', label: 'Candidate ID', code: candidateCode } : null,
+    applicationCode ? { key: 'application', label: 'Application ID', code: applicationCode } : null,
+  ].filter(Boolean);
+  if (!rows.length) return null;
+
+  const copy = async (code, key) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(key);
+      window.setTimeout(() => setCopied(''), 1600);
+    } catch {
+      setCopied('');
+    }
+  };
+
+  return (
+    <div className="mb-5 mx-auto max-w-[22rem] rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-left">
+      <p className="text-[12px] text-stone-500 leading-relaxed mb-3">
+        Please retain these references for any correspondence regarding this application.
+      </p>
+      <div className="space-y-3">
+        {rows.map((row) => (
+          <div key={row.key}>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-400">{row.label}</p>
+            <div className="mt-1 flex items-center gap-2 min-w-0">
+              <span className="min-w-0 font-mono text-sm font-semibold text-stone-900 tracking-wide truncate">
+                {row.code}
+              </span>
+              <button
+                type="button"
+                onClick={() => copy(row.code, row.key)}
+                className="ml-auto flex-shrink-0 inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white px-2 py-1 text-[11px] font-semibold text-stone-600 hover:bg-stone-100"
+              >
+                <Copy size={12} strokeWidth={2.25} />
+                {copied === row.key ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SuccessPanel({ jobTitle, brand, orgSlug, candidateCode, applicationCode, existingProfile }) {
   return (
     <div className="text-center py-5 px-1">
       <div
@@ -109,41 +156,45 @@ function SuccessPanel({ jobTitle, brand, orgSlug }) {
         <CheckCircle className="h-8 w-8" style={{ color: brand }} strokeWidth={2} />
       </div>
       <h4 className="text-lg font-bold text-stone-900 mb-1.5 tracking-tight">Application received</h4>
-      <p className="text-sm text-stone-600 mb-5 leading-relaxed max-w-[22rem] mx-auto">
+      <p className="text-sm text-stone-600 mb-4 leading-relaxed max-w-[22rem] mx-auto">
         Thank you for applying to{' '}
-        <span className="font-semibold text-stone-800">{jobTitle}</span>. Our recruiting team will review
-        your profile and contact you if there is a match.
+        <span className="font-semibold text-stone-800">{jobTitle}</span>.
+        {existingProfile
+          ? ' Your candidate profile is already on file. This application has been recorded against that profile.'
+          : ' Our recruiting team will review your submission and will contact you if your profile is suitable for the role.'}
       </p>
+      <ReferenceIds candidateCode={candidateCode} applicationCode={applicationCode} />
       <Link
         to={`/careers/${orgSlug}`}
         className="inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-sm"
         style={{ backgroundColor: brand }}
       >
-        Browse other openings
+        View other roles
       </Link>
     </div>
   );
 }
 
-function AlreadyAppliedPanel({ jobTitle, brand, orgSlug, onCloseModal }) {
+function AlreadyAppliedPanel({ jobTitle, brand, orgSlug, onCloseModal, candidateCode, applicationCode }) {
   return (
     <div className="text-center py-5 px-1">
       <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-2xl bg-amber-50 border border-amber-100 mb-4 shadow-sm">
         <AlertCircle className="h-8 w-8 text-amber-600" strokeWidth={2} />
       </div>
-      <h4 className="text-lg font-bold text-stone-900 mb-1.5 tracking-tight">Application already received</h4>
-      <p className="text-sm text-stone-600 mb-5 leading-relaxed max-w-[22rem] mx-auto">
-        We already have an application on file for{' '}
-        <span className="font-semibold text-stone-800">{jobTitle}</span> with this email or mobile.
-        You can still apply to other roles with the same details — you just cannot apply twice to the same job.
+      <h4 className="text-lg font-bold text-stone-900 mb-1.5 tracking-tight">Application already on file</h4>
+      <p className="text-sm text-stone-600 mb-4 leading-relaxed max-w-[22rem] mx-auto">
+        An application for{' '}
+        <span className="font-semibold text-stone-800">{jobTitle}</span>{' '}
+        is already associated with this email address or mobile number. A further submission is not required.
       </p>
+      <ReferenceIds candidateCode={candidateCode} applicationCode={applicationCode} />
       <div className="flex flex-col gap-2">
         <Link
           to={`/careers/${orgSlug}`}
           className="inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-sm"
           style={{ backgroundColor: brand }}
         >
-          Browse other openings
+          View other roles
         </Link>
         {onCloseModal ? (
           <button type="button" onClick={onCloseModal} className="btn-secondary justify-center">
@@ -165,6 +216,17 @@ const JobDetailPublic = () => {
   const formRef = useRef(null);
   const formBodyRef = useRef(null);
 
+  useEffect(() => {
+    try {
+      const via = new URLSearchParams(window.location.search).get('via') || '';
+      if (via && orgSlug && jobId) {
+        sessionStorage.setItem(`careersVia:${orgSlug}:${jobId}`, via);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [orgSlug, jobId]);
+
   const [step, setStep] = useState(0);
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -182,45 +244,16 @@ const JobDetailPublic = () => {
   const [submitError, setSubmitError] = useState('');
   const [alreadyApplied, setAlreadyApplied] = useState(false);
   const [alreadyModalOpen, setAlreadyModalOpen] = useState(false);
+  const [candidateCode, setCandidateCode] = useState('');
+  const [applicationCode, setApplicationCode] = useState('');
+  const [existingProfile, setExistingProfile] = useState(false);
   const [checkingEmail, setCheckingEmail] = useState(false);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const navLockRef = useRef(false);
-  const [applyOtpToken, setApplyOtpToken] = useState('');
-  const [emailVerifiedToken, setEmailVerifiedToken] = useState('');
-  const [emailVerifiedFor, setEmailVerifiedFor] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpSending, setOtpSending] = useState(false);
-  const [otpVerifying, setOtpVerifying] = useState(false);
-  const [otpError, setOtpError] = useState('');
-  const [otpResendAt, setOtpResendAt] = useState(0);
-  const [otpTick, setOtpTick] = useState(0);
-
   const brand = org?.brandColor || '#0d9488';
   const jobLocations = useMemo(() => splitJobLocations(job), [job]);
   const multiLocation = jobLocations.length > 1;
   const displayJobCode = job?.jobCode || '';
-  const emailVerified = Boolean(
-    emailVerifiedToken
-    && emailVerifiedFor
-    && emailVerifiedFor === formData.email.trim().toLowerCase(),
-  );
-  const otpResendWaitSec = Math.max(0, Math.ceil((otpResendAt - Date.now()) / 1000));
-  void otpTick;
-
-  useEffect(() => {
-    if (!otpResendAt) return undefined;
-    const id = window.setInterval(() => {
-      if (Date.now() >= otpResendAt) {
-        setOtpResendAt(0);
-        window.clearInterval(id);
-      } else {
-        setOtpTick((n) => n + 1);
-      }
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [otpResendAt]);
-
   const experienceOptions = useMemo(() => toOptions(fieldOptions.experience), [fieldOptions.experience]);
   const ctcOptions = useMemo(() => toOptions(fieldOptions.ctc), [fieldOptions.ctc]);
   const expectedCtcOptions = useMemo(() => toOptions(fieldOptions.expectedCtc), [fieldOptions.expectedCtc]);
@@ -241,6 +274,9 @@ const JobDetailPublic = () => {
           const data = await res.json().catch(() => ({}));
           if (data.alreadyApplied) {
             setAlreadyApplied(true);
+            if (data.candidateCode) setCandidateCode(data.candidateCode);
+            if (data.applicationCode) setApplicationCode(data.applicationCode);
+            if (data.existingProfile) setExistingProfile(true);
             setFormData((prev) => (prev.email ? prev : { ...prev, email: parsed.email }));
           } else {
             localStorage.removeItem(appliedStorageKey(orgSlug, jobId));
@@ -322,7 +358,10 @@ const JobDetailPublic = () => {
       const data = await res.json().catch(() => ({}));
       if (data.alreadyApplied) {
         markAlreadyApplied(normalized || phoneDigits);
-        toast.warning('You have already applied for this job');
+        if (data.candidateCode) setCandidateCode(data.candidateCode);
+        if (data.applicationCode) setApplicationCode(data.applicationCode);
+        if (data.existingProfile) setExistingProfile(true);
+        toast.warning('An application for this role is already on file.');
         setAlreadyModalOpen(true);
         return true;
       }
@@ -333,105 +372,6 @@ const JobDetailPublic = () => {
       setCheckingEmail(false);
     }
   }, [orgSlug, jobId, markAlreadyApplied]);
-
-  const clearEmailVerification = useCallback(() => {
-    setApplyOtpToken('');
-    setEmailVerifiedToken('');
-    setEmailVerifiedFor('');
-    setOtpCode('');
-    setOtpSent(false);
-    setOtpError('');
-  }, []);
-
-  const sendEmailOtp = useCallback(async () => {
-    const email = formData.email.trim().toLowerCase();
-    if (!email || !isValidEmail(email)) {
-      setFieldErrors((prev) => ({ ...prev, email: 'Enter a valid email address' }));
-      toast.warning('Enter a valid email address');
-      return false;
-    }
-    const dup = await checkAlreadyApplied(email, formData.phone);
-    if (dup) return false;
-    setOtpSending(true);
-    setOtpError('');
-    try {
-      let turnstileToken = '';
-      try {
-        turnstileToken = await getTurnstileToken(API_URL);
-      } catch (captchaErr) {
-        throw new Error(captchaErr.message || 'Security check failed. Please try again.');
-      }
-      const res = await fetch(`${API_URL}/api/careers/${orgSlug}/jobs/${jobId}/apply/otp/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          name: formData.name.trim(),
-          applyOtpToken: applyOtpToken || undefined,
-          turnstileToken: turnstileToken || undefined,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (data.code === 'ALREADY_APPLIED') {
-          markAlreadyApplied(email);
-          setAlreadyModalOpen(true);
-        }
-        throw new Error(data.message || 'Could not send verification code');
-      }
-      setApplyOtpToken(data.applyOtpToken || '');
-      setOtpSent(true);
-      setEmailVerifiedToken('');
-      setEmailVerifiedFor('');
-      setOtpCode('');
-      setOtpResendAt(Date.now() + ((data.resendInSec || 45) * 1000));
-      toast.success('Verification code sent to your email');
-      return true;
-    } catch (err) {
-      setOtpError(err.message || 'Could not send verification code');
-      toast.error(err.message || 'Could not send verification code');
-      return false;
-    } finally {
-      setOtpSending(false);
-    }
-  }, [formData.email, formData.phone, formData.name, orgSlug, jobId, applyOtpToken, checkAlreadyApplied, markAlreadyApplied]);
-
-  const verifyEmailOtp = useCallback(async () => {
-    const email = formData.email.trim().toLowerCase();
-    const code = String(otpCode || '').trim();
-    if (!applyOtpToken) {
-      setOtpError('Send a verification code first');
-      return false;
-    }
-    if (!/^\d{6}$/.test(code)) {
-      setOtpError('Enter the 6-digit code from your email');
-      return false;
-    }
-    setOtpVerifying(true);
-    setOtpError('');
-    try {
-      const res = await fetch(`${API_URL}/api/careers/${orgSlug}/jobs/${jobId}/apply/otp/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ applyOtpToken, code }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (data.applyOtpToken) setApplyOtpToken(data.applyOtpToken);
-        throw new Error(data.message || 'Incorrect code');
-      }
-      setEmailVerifiedToken(data.emailVerifiedToken || '');
-      setEmailVerifiedFor(data.email || email);
-      setOtpError('');
-      toast.success('Email verified');
-      return true;
-    } catch (err) {
-      setOtpError(err.message || 'Incorrect code');
-      return false;
-    } finally {
-      setOtpVerifying(false);
-    }
-  }, [formData.email, otpCode, applyOtpToken, orgSlug, jobId]);
 
   const focusFirstError = useCallback((errs) => {
     requestAnimationFrame(() => {
@@ -474,13 +414,7 @@ const JobDetailPublic = () => {
 
   const setField = (name, value) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
-    if (name === 'email') {
-      const nextEmail = String(value || '').trim().toLowerCase();
-      if (emailVerifiedFor && nextEmail !== emailVerifiedFor) {
-        clearEmailVerification();
-      }
-      validateFieldLive(name, value);
-    } else if (name === 'name') {
+    if (name === 'email' || name === 'name') {
       validateFieldLive(name, value);
     } else if (name === 'phone') {
       // Clear error once a complete number is entered; otherwise wait for blur
@@ -525,7 +459,6 @@ const JobDetailPublic = () => {
       if (!digits) errs.phone = 'Mobile number is required';
       else if (digits.length !== 10) errs.phone = 'Enter a valid 10-digit mobile number';
       if (multiLocation && !formData.location.trim()) errs.location = 'Select a location';
-      if (!emailVerified) errs.otp = 'Verify your email with the code we send before continuing';
     }
     if (idx === 1) {
       if (!formData.experience.trim()) errs.experience = 'Experience is required';
@@ -571,9 +504,8 @@ const JobDetailPublic = () => {
     if (!email || !isValidEmail(email)) return false;
     if (digits.length !== 10) return false;
     if (multiLocation && !formData.location.trim()) return false;
-    if (!emailVerified) return false;
     return true;
-  }, [formData, multiLocation, emailVerified]);
+  }, [formData, multiLocation]);
 
   const step1Ready = useMemo(() => (
     Boolean(
@@ -621,10 +553,6 @@ const JobDetailPublic = () => {
     if (navLockRef.current) return;
     if (!validateStep(step)) return;
     if (step === 0) {
-      if (!emailVerified) {
-        toast.warning('Verify your email before continuing');
-        return;
-      }
       const dup = await checkAlreadyApplied(formData.email, formData.phone);
       if (dup) return;
     }
@@ -664,7 +592,7 @@ const JobDetailPublic = () => {
     if (navLockRef.current) return;
     if (alreadyApplied) {
       setAlreadyModalOpen(true);
-      toast.warning('You have already applied for this role');
+      toast.warning('An application for this role is already on file.');
       return;
     }
     // Only the final step may submit — never auto-advance via form submit
@@ -673,12 +601,6 @@ const JobDetailPublic = () => {
     if (!validateStep(0, { silent: true })) {
       setStep(0);
       validateStep(0);
-      return;
-    }
-    if (!emailVerifiedToken) {
-      setStep(0);
-      setOtpError('Verify your email before submitting');
-      toast.warning('Verify your email before submitting');
       return;
     }
     if (!validateStep(1, { silent: true })) {
@@ -698,7 +620,6 @@ const JobDetailPublic = () => {
       const fd = new FormData();
       fd.append('name', formData.name.trim());
       fd.append('email', formData.email.trim().toLowerCase());
-      fd.append('emailVerifiedToken', emailVerifiedToken);
       if (displayJobCode) fd.append('jobCode', displayJobCode);
       fd.append('phone', phoneDigits);
       fd.append('position', (formData.position || job?.title || '').trim());
@@ -713,6 +634,8 @@ const JobDetailPublic = () => {
       fd.append('remark', formData.coverLetter.trim());
       fd.append('customResponses', JSON.stringify(customResponses || {}));
       if (resumeFile) fd.append('resume', resumeFile);
+      const via = String(sessionStorage.getItem(`careersVia:${orgSlug}:${jobId}`) || '').trim();
+      if (via) fd.append('via', via);
 
       const res = await fetch(`${API_URL}/api/careers/${orgSlug}/jobs/${jobId}/apply`, {
         method: 'POST',
@@ -720,24 +643,24 @@ const JobDetailPublic = () => {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (data.code === 'ALREADY_APPLIED' || /already applied/i.test(String(data.message || ''))) {
+        if (data.code === 'ALREADY_APPLIED' || /already applied|already on file/i.test(String(data.message || ''))) {
           markAlreadyApplied(formData.email);
-          toast.warning('You have already applied for this role');
+          if (data.candidateCode) setCandidateCode(data.candidateCode);
+          if (data.applicationCode) setApplicationCode(data.applicationCode);
+          toast.warning('An application for this role is already on file.');
           setAlreadyModalOpen(true);
-          return;
-        }
-        if (data.code === 'email_not_verified') {
-          setStep(0);
-          clearEmailVerification();
-          setOtpError(data.message || 'Verify your email before submitting');
-          toast.warning(data.message || 'Verify your email before submitting');
           return;
         }
         throw new Error(data.message || 'Application could not be submitted');
       }
       markAlreadyApplied(formData.email);
+      if (data.candidateCode) setCandidateCode(data.candidateCode);
+      if (data.applicationCode) setApplicationCode(data.applicationCode);
+      setExistingProfile(Boolean(data.existingProfile));
       setSubmitSuccess(true);
-      toast.success('Application submitted successfully');
+      toast.success(data.existingProfile
+        ? 'Application submitted — existing ATS profile kept'
+        : 'Application submitted successfully');
     } catch (err) {
       setSubmitError(err.message || 'Could not submit application');
       toast.error(err.message || 'Could not submit application');
@@ -756,7 +679,7 @@ const JobDetailPublic = () => {
   const scrollToForm = () => {
     if (alreadyApplied) {
       setAlreadyModalOpen(true);
-      toast.warning('You have already applied for this job');
+      toast.warning('An application for this role is already on file.');
       return;
     }
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -832,19 +755,21 @@ const JobDetailPublic = () => {
                   </span>
                 ) : null}
                 {job.industry ? (
-                  <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wide">{job.industry}</span>
+                  <span className="text-[11px] font-semibold text-stone-500 tracking-wide">{titleCaseWords(job.industry)}</span>
                 ) : null}
               </div>
-              <h1 className="text-3xl sm:text-[2.15rem] font-bold tracking-tight text-stone-900 mb-4 leading-tight">{job.title}</h1>
+              <h1 className="text-3xl sm:text-[2.15rem] font-bold tracking-tight text-stone-900 mb-4 leading-tight break-words [overflow-wrap:anywhere]">{titleCaseWords(job.title)}</h1>
               <div className="flex flex-wrap gap-2 text-sm text-stone-600 mb-6">
-                {job.clientName ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-stone-50 border border-stone-200/80 px-2.5 py-1 text-[13px] font-medium">
-                    <Building className="h-3.5 w-3.5 text-stone-400" />{job.clientName}
+                {publicJobDomain(job, org?.name) ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-stone-50 border border-stone-200/80 px-2.5 py-1 text-[13px] font-medium max-w-full min-w-0">
+                    <Building className="h-3.5 w-3.5 text-stone-400 flex-shrink-0" />
+                    <span className="break-words [overflow-wrap:anywhere]">{publicJobDomain(job, org?.name)}</span>
                   </span>
                 ) : null}
                 {job.location ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-stone-50 border border-stone-200/80 px-2.5 py-1 text-[13px] font-medium">
-                    <MapPin className="h-3.5 w-3.5 text-stone-400" />{job.location}
+                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-stone-50 border border-stone-200/80 px-2.5 py-1 text-[13px] font-medium max-w-full min-w-0">
+                    <MapPin className="h-3.5 w-3.5 text-stone-400 flex-shrink-0" />
+                    <span className="break-words">{job.location}</span>
                   </span>
                 ) : null}
                 {job.employmentType ? (
@@ -858,23 +783,10 @@ const JobDetailPublic = () => {
                   </span>
                 ) : null}
               </div>
-              <div className="prose prose-stone max-w-none text-stone-700 prose-p:leading-relaxed prose-headings:text-stone-900">
+              <div className="prose prose-stone max-w-none text-stone-700 prose-p:leading-relaxed prose-headings:text-stone-900 overflow-x-auto break-words [overflow-wrap:anywhere]">
                 <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(job.description) }} />
               </div>
             </div>
-
-            {Array.isArray(job.skills) && job.skills.length > 0 ? (
-              <div className="rounded-2xl border border-stone-200/90 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                <h3 className="text-sm font-bold uppercase tracking-wide text-stone-500 mb-3">Required skills</h3>
-                <div className="flex flex-wrap gap-2">
-                  {job.skills.map((skill) => (
-                    <span key={skill} className="inline-flex items-center px-3 py-1 rounded-lg text-sm font-medium bg-brand-50 text-brand-800 border border-brand-100">
-                      {skill}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null}
 
             <div className="lg:hidden sticky bottom-4 z-10">
               <button
@@ -908,9 +820,9 @@ const JobDetailPublic = () => {
                 </div>
 
                 {submitSuccess ? (
-                  <SuccessPanel jobTitle={job.title} brand={brand} orgSlug={orgSlug} />
+                  <SuccessPanel jobTitle={job.title} brand={brand} orgSlug={orgSlug} candidateCode={candidateCode} applicationCode={applicationCode} existingProfile={existingProfile} />
                 ) : alreadyApplied ? (
-                  <AlreadyAppliedPanel jobTitle={job.title} brand={brand} orgSlug={orgSlug} />
+                  <AlreadyAppliedPanel jobTitle={job.title} brand={brand} orgSlug={orgSlug} candidateCode={candidateCode} applicationCode={applicationCode} />
                 ) : (
                   <form onSubmit={handleSubmit} onKeyDown={onFormKeyDown} className="space-y-4" noValidate>
                     <div className="grid grid-cols-3 gap-1.5 mb-1">
@@ -928,10 +840,6 @@ const JobDetailPublic = () => {
                                 for (let j = step; j < i; j += 1) {
                                   if (!validateStep(j)) return;
                                   if (j === 0) {
-                                    if (!emailVerified) {
-                                      toast.warning('Verify your email before continuing');
-                                      return;
-                                    }
                                     const dup = await checkAlreadyApplied(formData.email, formData.phone);
                                     if (dup) return;
                                   }
@@ -994,99 +902,25 @@ const JobDetailPublic = () => {
                           </div>
                           <div>
                             <FieldLabel required>Email</FieldLabel>
-                            <div className="relative">
-                              <input
-                                data-field="email"
-                                type="email"
-                                aria-invalid={!!fieldErrors.email}
-                                className={`${fieldClass(fieldErrors.email)} ${emailVerified ? 'pr-28' : 'pr-[5.25rem]'}`}
-                                value={formData.email}
-                                onChange={(e) => setField('email', e.target.value)}
-                                onBlur={() => {
-                                  const email = formData.email.trim();
-                                  if (email && isValidEmail(email)) {
-                                    checkAlreadyApplied(email, formData.phone);
-                                  } else if (email) {
-                                    validateFieldLive('email', email);
-                                  }
-                                }}
-                                autoComplete="email"
-                                disabled={emailVerified}
-                              />
-                              {emailVerified ? (
-                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 pointer-events-none">
-                                  <CheckCircle size={14} strokeWidth={2.25} />
-                                  Verified
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    const ok = await sendEmailOtp();
-                                    if (ok) setOtpSent(true);
-                                  }}
-                                  disabled={otpSending || checkingEmail || !isValidEmail(formData.email.trim())}
-                                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50"
-                                  style={{ backgroundColor: brand }}
-                                >
-                                  {otpSending ? '…' : otpSent ? 'Resend' : 'Verify'}
-                                </button>
-                              )}
-                            </div>
+                            <input
+                              data-field="email"
+                              type="email"
+                              aria-invalid={!!fieldErrors.email}
+                              className={fieldClass(fieldErrors.email)}
+                              value={formData.email}
+                              onChange={(e) => setField('email', e.target.value)}
+                              onBlur={() => {
+                                const email = formData.email.trim();
+                                if (email && isValidEmail(email)) {
+                                  checkAlreadyApplied(email, formData.phone);
+                                } else if (email) {
+                                  validateFieldLive('email', email);
+                                }
+                              }}
+                              autoComplete="email"
+                            />
                             {fieldErrors.email ? <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.email}</p> : null}
                             {checkingEmail ? <p className="text-[11px] text-stone-400 mt-1">Checking application status…</p> : null}
-                            {emailVerified ? (
-                              <button
-                                type="button"
-                                className="mt-1 text-[11px] font-semibold text-stone-500 hover:text-stone-800"
-                                onClick={clearEmailVerification}
-                              >
-                                Change email
-                              </button>
-                            ) : null}
-                            {otpSent && !emailVerified ? (
-                              <div data-field="otp" className="mt-2 space-y-1.5">
-                                <FieldLabel required>Verification code</FieldLabel>
-                                <div className="flex gap-2">
-                                  <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    maxLength={6}
-                                    placeholder="6-digit code"
-                                    aria-invalid={!!otpError || !!fieldErrors.otp}
-                                    className={`${fieldClass(otpError || fieldErrors.otp)} font-mono tracking-[0.2em] text-center`}
-                                    value={otpCode}
-                                    onChange={(e) => {
-                                      setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
-                                      setOtpError('');
-                                    }}
-                                    autoComplete="one-time-code"
-                                    autoFocus
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={verifyEmailOtp}
-                                    disabled={otpVerifying || otpCode.length !== 6}
-                                    className="shrink-0 inline-flex items-center justify-center rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white disabled:opacity-60"
-                                    style={{ backgroundColor: brand }}
-                                  >
-                                    {otpVerifying ? '…' : 'Confirm'}
-                                  </button>
-                                </div>
-                                <div className="flex items-center justify-between gap-2">
-                                  <p className="text-[11px] text-stone-400">Code sent to your email · expires in 10 min</p>
-                                  {otpResendWaitSec > 0 ? (
-                                    <span className="text-[11px] text-stone-400">Resend in {otpResendWaitSec}s</span>
-                                  ) : null}
-                                </div>
-                                {otpError || fieldErrors.otp ? (
-                                  <p className="text-[11px] text-rose-600">{otpError || fieldErrors.otp}</p>
-                                ) : null}
-                              </div>
-                            ) : null}
-                            {!otpSent && !emailVerified && fieldErrors.otp ? (
-                              <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.otp}</p>
-                            ) : null}
                           </div>
                           <div>
                             <FieldLabel required>Phone</FieldLabel>
@@ -1338,7 +1172,7 @@ const JobDetailPublic = () => {
                       ) : (
                         <button
                           type="submit"
-                          disabled={isSubmitting || !step2Ready || !emailVerified}
+                          disabled={isSubmitting || !step2Ready}
                           className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-70 shadow-sm"
                           style={{ backgroundColor: brand }}
                         >
@@ -1379,6 +1213,8 @@ const JobDetailPublic = () => {
               jobTitle={job.title}
               brand={brand}
               orgSlug={orgSlug}
+              candidateCode={candidateCode}
+              applicationCode={applicationCode}
               onCloseModal={() => setAlreadyModalOpen(false)}
             />
           </div>

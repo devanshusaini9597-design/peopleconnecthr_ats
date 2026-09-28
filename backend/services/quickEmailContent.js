@@ -120,10 +120,16 @@ function buildQuickEmailContent({
           bodyHtml: `
             <p style="margin:0 0 16px 0;font-size:15px;color:#0f172a;font-weight:600;">Dear ${safeName},</p>
             <p style="margin:0 0 12px 0;color:#334155;line-height:1.7;">Welcome! We are excited to have you join as <strong style="color:#0f172a;">${safeRole}</strong>${department ? ` in <strong style="color:#0f172a;">${escapeHtml(department)}</strong>` : ''}.</p>
-            <p style="margin:0 0 12px 0;color:#334155;line-height:1.7;"><strong style="color:#0f172a;">Joining date:</strong> ${escapeHtml(joiningDate || 'To be confirmed')}</p>
+            ${joiningDate && !/^(tbd|n\/?a|none|to be confirmed)$/i.test(String(joiningDate).trim())
+              ? `<p style="margin:0 0 12px 0;color:#334155;line-height:1.7;"><strong style="color:#0f172a;">Joining date:</strong> ${escapeHtml(joiningDate)}</p>`
+              : ''}
             <p style="margin:0;color:#334155;line-height:1.7;">Please complete onboarding formalities and bring the required documents on your first day.</p>`,
         }),
-        text: `Dear ${name || 'Candidate'},\n\nWelcome! You are joining as ${role}${department ? ` in ${department}` : ''}. Joining date: ${joiningDate || 'To be confirmed'}.\n\nBest regards,\n${sender}\n\n${orgName}`,
+        text: `Dear ${name || 'Candidate'},\n\nWelcome! You are joining as ${role}${department ? ` in ${department}` : ''}.${
+          joiningDate && !/^(tbd|n\/?a|none|to be confirmed)$/i.test(String(joiningDate).trim())
+            ? ` Joining date: ${joiningDate}.`
+            : ''
+        }\n\nBest regards,\n${sender}\n\n${orgName}`,
       };
 
     case 'custom': {

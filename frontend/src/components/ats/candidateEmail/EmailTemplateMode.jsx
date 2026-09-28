@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Mail, Briefcase, Phone, XCircle, UserCheck, FileCheck, Sparkles, Megaphone,
-  ClipboardList, Search, RotateCcw,
+  Briefcase, Phone, XCircle, UserCheck, FileCheck, Sparkles, Megaphone,
+  ClipboardList, Search, RotateCcw, Eye,
 } from 'lucide-react';
 import PremiumSelect from '../../ui/PremiumSelect';
 import { TIME_SELECT_OPTIONS } from '../atsConstants';
+import { mergeAndPolish } from '../../../utils/emailMergePolish';
+import { buildQuickDraftHtml } from './quickEmailDraft';
+import EmailPreviewModal from './EmailPreviewModal';
 
 const CATEGORY_UI = {
   hiring: { label: 'Hiring', Icon: Briefcase },
@@ -23,7 +26,9 @@ const MARKETING_CATEGORIES = new Set(['marketing']);
 const FIELD_LABELS = {
   candidateName: 'Candidate name',
   position: 'Position / role',
-  company: 'Company',
+  company: 'Organization',
+  orgName: 'Organization',
+  jobEmployer: 'Employer (public)',
   ctc: 'CTC / salary',
   experience: 'Experience',
   location: 'Location',
@@ -32,18 +37,26 @@ const FIELD_LABELS = {
   venue: 'Venue / link',
   spoc: 'SPOC',
   subscribeLink: 'Subscribe URL',
+  jobTitle: 'Job title',
+  jobCode: 'Job ID',
+  applyLink: 'Apply link',
+  jobLocation: 'Job location',
+  jobDepartment: 'Job department',
+  jobClient: 'Employer (public)',
+  jobExperience: 'Job experience',
+  jobSummary: 'Short summary',
 };
 
-function applyTemplateVars(text, vars) {
-  let out = String(text || '');
-  Object.entries(vars || {}).forEach(([k, v]) => {
-    out = out.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v || `{{${k}}}`);
+function applyTemplateVars(text, vars, { kind = 'body', isBulk = false } = {}) {
+  return mergeAndPolish(text, vars, {
+    kind,
+    preserveTokens: isBulk ? ['candidateName'] : [],
   });
-  return out;
 }
 
 export default function EmailTemplateMode({
   emailTemplates,
+  templatesLoading = false,
   selectedTemplate,
   selectEmailTemplate,
   setSelectedTemplate,
@@ -57,14 +70,36 @@ export default function EmailTemplateMode({
   setTemplateDraftBody,
   templateDraftDirty = false,
   setTemplateDraftDirty,
+  isBulk = false,
 }) {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [previewSubject, setPreviewSubject] = useState('');
 
   const brand = useMemo(
     () => orgName || String(templateVars?.company || '').trim() || 'Your company',
     [orgName, templateVars?.company]
   );
+
+  const orgLogoUrl = useMemo(() => {
+    try {
+      const data = JSON.parse(localStorage.getItem('orgData') || '{}');
+      return String(data?.logo || '').trim();
+    } catch {
+      return '';
+    }
+  }, []);
+
+  const orgBrandColor = useMemo(() => {
+    try {
+      const data = JSON.parse(localStorage.getItem('orgData') || '{}');
+      return data?.atsSettings?.brandColor || '#0f766e';
+    } catch {
+      return '#0f766e';
+    }
+  }, []);
 
   const categoryOptions = useMemo(() => {
     const cats = new Set(emailTemplates.map((t) => t.category).filter(Boolean));
@@ -96,12 +131,13 @@ export default function EmailTemplateMode({
   useEffect(() => {
     if (!selectedTemplate || !setTemplateDraftSubject || !setTemplateDraftBody) return;
     if (templateDraftDirty) return;
-    setTemplateDraftSubject(applyTemplateVars(selectedTemplate.subject, templateVars));
-    setTemplateDraftBody(applyTemplateVars(selectedTemplate.body, templateVars));
+    setTemplateDraftSubject(applyTemplateVars(selectedTemplate.subject, templateVars, { kind: 'subject', isBulk }));
+    setTemplateDraftBody(applyTemplateVars(selectedTemplate.body, templateVars, { kind: 'body', isBulk }));
   }, [
     selectedTemplate,
     templateVars,
     templateDraftDirty,
+    isBulk,
     setTemplateDraftSubject,
     setTemplateDraftBody,
   ]);
@@ -109,8 +145,8 @@ export default function EmailTemplateMode({
   const resetDraftFromTemplate = () => {
     if (!selectedTemplate) return;
     setTemplateDraftDirty?.(false);
-    setTemplateDraftSubject?.(applyTemplateVars(selectedTemplate.subject, templateVars));
-    setTemplateDraftBody?.(applyTemplateVars(selectedTemplate.body, templateVars));
+    setTemplateDraftSubject?.(applyTemplateVars(selectedTemplate.subject, templateVars, { kind: 'subject', isBulk }));
+    setTemplateDraftBody?.(applyTemplateVars(selectedTemplate.body, templateVars, { kind: 'body', isBulk }));
   };
 
   const onSubjectChange = (value) => {
@@ -123,14 +159,31 @@ export default function EmailTemplateMode({
     setTemplateDraftBody?.(value);
   };
 
+  const openPreview = () => {
+    const subject = (templateDraftSubject || '').trim() || 'Message';
+    const html = buildQuickDraftHtml({
+      subject,
+      body: templateDraftBody || '',
+      brand,
+      logoUrl: orgLogoUrl,
+      brandColor: orgBrandColor,
+      sampleName: isBulk ? 'Candidate' : (templateVars?.candidateName || ''),
+    });
+    setPreviewSubject(subject);
+    setPreviewHtml(html);
+    setShowPreview(true);
+  };
+
   if (!selectedTemplate) {
     return (
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
           <div>
-            <h3 className="text-sm font-semibold text-stone-800">Choose a template</h3>
+            <h3 className="text-sm font-semibold text-stone-900">Select a template</h3>
             <p className="text-xs text-stone-500 mt-0.5">
-              {filtered.length} for {emailChannel === 'marketing' ? 'campaign' : 'direct'} delivery
+              {templatesLoading
+                ? 'Loading template library…'
+                : `${filtered.length} available for ${emailChannel === 'marketing' ? 'campaign' : 'transactional'} delivery`}
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:max-w-md">
@@ -140,8 +193,9 @@ export default function EmailTemplateMode({
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search…"
+                placeholder="Search templates…"
                 className="input-ats input-ats-icon w-full !py-2"
+                disabled={templatesLoading}
               />
             </div>
             <div className="w-full sm:w-40 shrink-0">
@@ -151,19 +205,28 @@ export default function EmailTemplateMode({
                 onChange={(v) => setCategoryFilter(v || 'all')}
                 options={categoryOptions}
                 placeholder="Category"
+                disabled={templatesLoading}
               />
             </div>
           </div>
         </div>
 
-        {emailTemplates.length === 0 ? (
-          <p className="text-sm text-stone-500 py-8 text-center">Loading templates…</p>
+        {templatesLoading ? (
+          <div className="rounded-xl border border-stone-200 bg-stone-50/60 px-4 py-10 text-center space-y-3">
+            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
+            <p className="text-sm font-medium text-stone-700">Loading template library</p>
+            <p className="text-xs text-stone-500">Preparing approved message templates for your organization.</p>
+          </div>
+        ) : emailTemplates.length === 0 ? (
+          <p className="text-sm text-stone-500 py-8 text-center rounded-xl border border-dashed border-stone-200">
+            No templates available. Contact your administrator if the library should already be seeded.
+          </p>
         ) : filtered.length === 0 ? (
-          <p className="text-sm text-stone-500 py-8 text-center">
-            No templates match. Try another filter or channel.
+          <p className="text-sm text-stone-500 py-8 text-center rounded-xl border border-dashed border-stone-200">
+            No templates match this filter. Try another category or delivery channel.
           </p>
         ) : (
-          <ul className="divide-y divide-stone-100 border border-stone-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+          <ul className="divide-y divide-stone-100 border border-stone-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto bg-white">
             {filtered.map((t) => {
               const meta = CATEGORY_UI[t.category] || CATEGORY_UI.custom;
               const Icon = meta.Icon;
@@ -200,10 +263,13 @@ export default function EmailTemplateMode({
     <section className="space-y-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs text-stone-400 font-medium">Selected</p>
+          <p className="text-xs text-stone-400 font-medium">Selected template</p>
           <h3 className="text-sm font-semibold text-stone-900 mt-0.5">{selectedTemplate.name}</h3>
           <p className="text-xs text-stone-500 mt-0.5">
-            Edit subject and body below for this send only — the saved template is unchanged.
+            Edits apply to this send only; the saved template library is unchanged.
+            {isBulk
+              ? ' Keep {{candidateName}} in the text so each recipient is addressed individually.'
+              : ''}
           </p>
         </div>
         <button
@@ -224,10 +290,17 @@ export default function EmailTemplateMode({
         <div className="space-y-3">
           <h4 className="text-sm font-semibold text-stone-800">Details</h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {selectedTemplate.variables.map((v) => (
+            {selectedTemplate.variables.filter((v) => v !== 'subscribeLink').map((v) => (
               <div key={v}>
                 <label className="label-ats mb-1.5 block">{FIELD_LABELS[v] || v}</label>
-                {v === 'time' ? (
+                {v === 'candidateName' && isBulk ? (
+                  <div className="rounded-lg border border-dashed border-stone-300 bg-stone-50 px-3 py-2.5">
+                    <p className="text-sm font-medium text-stone-800">Auto — each person&apos;s name</p>
+                    <p className="text-[11px] text-stone-500 mt-0.5 leading-snug">
+                      No need to type anything. The mail uses each recipient&apos;s own name automatically.
+                    </p>
+                  </div>
+                ) : v === 'time' ? (
                   <PremiumSelect
                     compact
                     searchable
@@ -264,6 +337,7 @@ export default function EmailTemplateMode({
                     onChange={(e) => setTemplateVars((prev) => ({ ...prev, [v]: e.target.value }))}
                     placeholder={FIELD_LABELS[v] || v}
                     className="input-ats w-full"
+                    readOnly={v === 'company' || v === 'orgName' || v === 'jobEmployer' || v === 'applyLink'}
                   />
                 )}
               </div>
@@ -314,6 +388,23 @@ export default function EmailTemplateMode({
           <span>{emailChannel === 'marketing' ? 'Campaign' : 'Direct'}</span>
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={openPreview}
+        className="btn-secondary !text-sm"
+        disabled={!(templateDraftBody || '').trim()}
+      >
+        <Eye size={14} /> Preview how it will look
+      </button>
+
+      <EmailPreviewModal
+        open={Boolean(showPreview && previewHtml)}
+        onClose={() => setShowPreview(false)}
+        subject={previewSubject}
+        html={previewHtml}
+        brand={brand}
+      />
     </section>
   );
 }

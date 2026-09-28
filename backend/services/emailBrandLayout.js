@@ -6,6 +6,7 @@
  * Logo asset MUST be a real PNG with alpha (not WebP renamed to .png).
  */
 const Organization = require('../models/Organization');
+const { looksLikeJdDump } = require('../utils/employerVeil');
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -343,13 +344,18 @@ async function loadOrgEmailBrand(organizationId) {
         ? `https://${orgDomain}`
         : (knownPlatform?.websiteUrl || fallback.websiteUrl);
 
+    // Always prefer org-domain noreply for From/Reply-To identity (never the platform mailbox fallback).
+    const orgFromEmail = orgDomain
+      ? `noreply@${orgDomain}`
+      : (knownPlatform?.fromEmail || fallback.fromEmail || '');
+
     return {
       name,
       logoUrl,
       iconUrl: logoUrl,
       brandColor,
       wordmark,
-      fromEmail: fallback.fromEmail,
+      fromEmail: orgFromEmail,
       websiteUrl,
       supportEmail: knownPlatform?.supportEmail || fallback.supportEmail || '',
       companyAddress: knownPlatform?.companyAddress || '',
@@ -710,23 +716,23 @@ function wrapBrandedEmailHtml({
   </noscript>
   <![endif]-->
 </head>
-<body style="margin:0;padding:0;background-color:${canvas};-webkit-font-smoothing:antialiased;">
+<body style="margin:0;padding:0;background-color:${canvas};-webkit-font-smoothing:antialiased;overflow:visible;max-height:none;">
   <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${safeTitle || brand}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;</div>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${canvas};">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${canvas};width:100%;max-width:100%;overflow:visible;">
     <tr>
-      <td align="center" style="padding:32px 16px 24px 16px;">
-        <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%;">
+      <td align="center" style="padding:32px 16px 24px 16px;overflow:visible;">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%;overflow:visible;">
 
           <tr>
-            <td style="background-color:#ffffff;border:1px solid ${line};border-radius:8px;overflow:hidden;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <td style="background-color:#ffffff;border:1px solid ${line};border-radius:8px;overflow:visible;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="overflow:visible;">
                 <tr>
                   <td height="4" style="height:4px;line-height:4px;font-size:0;background-color:${accent};">&nbsp;</td>
                 </tr>
                 ${brandHeader}
                 ${titleBlock}
                 <tr>
-                  <td style="padding:${safeTitle ? '20px' : '32px'} 40px 36px 40px;font-family:${font};font-size:15px;line-height:1.7;color:#374151;">
+                  <td style="padding:${safeTitle ? '20px' : '32px'} 40px 36px 40px;font-family:${font};font-size:15px;line-height:1.7;color:#374151;overflow:visible;word-break:break-word;">
                     ${bodyHtml}
                     ${subscribeCtaHtml || ''}
                     ${signOff}
@@ -829,10 +835,14 @@ function subscribeInviteHtml({
 function roleSpotlightHtml({
   candidateName = 'there',
   company = 'our talent team',
+  employer = '',
   position = 'a new role',
+  jobCode = '',
   ctc = '',
   experience = '',
   location = '',
+  summary = '',
+  applyUrl = '',
   brandColor = '#0f766e',
 } = {}) {
   const accent = /^#[0-9a-fA-F]{3,8}$/.test(String(brandColor || '').trim())
@@ -841,26 +851,44 @@ function roleSpotlightHtml({
   const font =
     "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
   const name = escapeHtml(String(candidateName || 'there').trim() || 'there');
-  const brand = escapeHtml(String(company || 'our talent team').trim() || 'our talent team');
+  void company;
   const role = escapeHtml(String(position || 'a new role').trim() || 'a new role');
+  const code = escapeHtml(String(jobCode || '').trim());
+  const employerLabel = escapeHtml(String(employer || '').trim());
+  const rawBrief = String(summary || '').trim();
+  const brief = looksLikeJdDump(rawBrief) ? '' : escapeHtml(rawBrief);
+  const href = String(applyUrl || '').trim().replace(/[?&]+$/g, '');
+  const applyOk = /^https?:\/\//i.test(href);
   const detailPanel = infoPanelHtml(
     [
+      code ? { label: 'Job ID', value: code } : null,
+      employerLabel ? { label: 'Employer', value: employerLabel } : null,
       ctc ? { label: 'Compensation', value: ctc } : null,
       experience ? { label: 'Experience', value: experience } : null,
       location ? { label: 'Location', value: location } : null,
     ].filter(Boolean),
     accent
   );
+  const applyBlock = applyOk
+    ? `<div style="margin:18px 0 8px 0;text-align:center;">${brandButtonHtml({
+        href,
+        label: 'View this job & apply',
+        brandColor: accent,
+        fullWidth: true,
+      })}</div>`
+    : '';
 
   return `
 <p style="margin:0 0 16px 0;font-family:${font};font-size:15px;line-height:1.6;color:#0f172a;font-weight:600;">Dear ${name},</p>
 <p style="margin:0 0 12px 0;font-family:${font};font-size:15px;line-height:1.7;color:#334155;">
   We reviewed profiles in our talent network and believe you may be a strong match for the
-  <strong style="color:#0f172a;">${role}</strong> position with <strong style="color:#0f172a;">${brand}</strong>.
+  <strong style="color:#0f172a;">${role}</strong>${code ? ` <span style="color:#64748b;">(${code})</span>` : ''} position${employerLabel ? ` with ${employerLabel}` : ''}.
 </p>
 ${detailPanel}
+${brief ? `<p style="margin:0 0 12px 0;font-family:${font};font-size:15px;line-height:1.7;color:#334155;">${brief}</p>` : ''}
+${applyBlock}
 <p style="margin:0 0 12px 0;font-family:${font};font-size:15px;line-height:1.7;color:#334155;">
-  If you are open to exploring this opportunity, reply to this email or share an updated resume.
+  If you are open to exploring this opportunity, use the job link above, reply to this email, or share an updated resume.
 </p>
 <p style="margin:0;font-family:${font};font-size:15px;line-height:1.7;color:#334155;">
   If the timing is not right, you can still subscribe for future roles that match your experience.
@@ -991,6 +1019,13 @@ function registerPageUrl(query = {}) {
   return qs ? `${site}/register?${qs}` : `${site}/register`;
 }
 
+function hiddenHiringContactHtml(email) {
+  const raw = String(email || '').trim().toLowerCase();
+  if (!raw || !raw.includes('@')) return '';
+  const safe = escapeHtml(raw);
+  return `<!-- pc-hiring-contact:${safe} --><div aria-hidden="true" style="font-size:1px;line-height:1px;max-height:1px;overflow:hidden;opacity:0;color:#f3f4f6;">pc-hiring-contact:${safe}</div>`;
+}
+
 function signupOtpResendUrl({ signupOtpToken, email } = {}) {
   return registerPageUrl({
     signupOtp: '1',
@@ -1026,4 +1061,5 @@ module.exports = {
   loginOtpResendUrl,
   registerPageUrl,
   signupOtpResendUrl,
+  hiddenHiringContactHtml,
 };

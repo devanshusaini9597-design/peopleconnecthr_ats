@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { FixedSizeList as List } from 'react-window';
 import { CheckSquare, Square, Edit, Trash2, Mail, FileText, MessageCircle } from 'lucide-react';
+import { guardTableCopy } from '../utils/tableCopyGuard';
 
 const VirtualizedCandidateTable = ({
   candidates,
@@ -19,8 +20,8 @@ const VirtualizedCandidateTable = ({
 }) => {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
+      <div className="overflow-x-auto select-none" onCopy={guardTableCopy}>
+        <table className="w-full text-left border-collapse select-none">
           {/* Table Header */}
           <thead>
             <tr className="bg-emerald-50 text-slate-700 border-b-2 border-emerald-100">

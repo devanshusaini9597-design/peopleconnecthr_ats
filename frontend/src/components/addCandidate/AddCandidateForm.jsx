@@ -2,6 +2,8 @@ import React from 'react';
 import { Upload, Info } from 'lucide-react';
 import { ctcRanges, expectedCtcOptions, noticePeriodOptions } from '../../utils/ctcRanges';
 import { clientRequiresPan, PAN_INFO_TITLE, PAN_INFO_MESSAGE } from '../../utils/panClientRules';
+import { useAuth } from '../../context/AuthContext';
+import { canEditCandidateSpoc } from '../../utils/spocIdentity';
 
 export default function AddCandidateForm({
   formData,
@@ -27,6 +29,8 @@ export default function AddCandidateForm({
   setShowPanRequiredModal,
   isFreelancer = false,
 }) {
+  const { user } = useAuth();
+  const canEditSpoc = canEditCandidateSpoc(user?.role);
   return (
     <>
     <form onSubmit={handleSubmit} className="card-ats-bordered p-5 sm:p-8 space-y-8">
@@ -318,11 +322,18 @@ export default function AddCandidateForm({
                   <input
                     type="text"
                     name="spoc"
-                    value={formData.spoc}
+                    value={formData.spoc || ''}
                     onChange={handleInputChange}
-                    placeholder="SPOC Name"
-                    className="input-ats"
+                    placeholder={canEditSpoc ? 'SPOC Name' : ''}
+                    disabled={!canEditSpoc}
+                    readOnly={!canEditSpoc}
+                    className={`input-ats ${canEditSpoc ? '' : 'bg-stone-200 text-stone-600 cursor-not-allowed'}`}
                   />
+                  <p className="text-[11px] text-stone-400 mt-1">
+                    {canEditSpoc
+                      ? 'Defaults to the account that uploaded this resume. Managers can change it.'
+                      : 'Filled from your account (the uploader). Not read from the resume.'}
+                  </p>
                 </div>
 
                 <div>

@@ -143,10 +143,14 @@ function withActivityDateRange(baseFilter, dateFilter) {
     clauses.push({ $lt: [activityDateExpr(), dateFilter.$lt] });
   }
   if (!clauses.length) return baseFilter;
-  return { ...baseFilter, $expr: { $and: clauses } };
+  const expr = { $expr: clauses.length === 1 ? clauses[0] : { $and: clauses } };
+  if (!baseFilter || !Object.keys(baseFilter).length) return expr;
+  return { $and: [baseFilter, expr] };
 }
 
 const backfillInFlight = new Map();
+const backfillFreshUntil = new Map();
+const BACKFILL_FRESH_MS = 10 * 60 * 1000;
 
 /**
  * Backfill appliedAt from Excel/manual `date` so DATE-column sort is correct.
@@ -156,10 +160,9 @@ const backfillInFlight = new Map();
 async function backfillAppliedAtForOrg(organizationId, Candidate) {
   const key = String(organizationId || '');
   if (!key) return 0;
+  if ((backfillFreshUntil.get(key) || 0) > Date.now()) return 0;
 
-  if (backfillInFlight.has(key)) {
-    return backfillInFlight.get(key);
-  }
+  if (backfillInFlight.has(key)) return 0;
 
   const run = (async () => {
     const batch = 400;
@@ -211,6 +214,7 @@ async function backfillAppliedAtForOrg(organizationId, Candidate) {
     return await run;
   } finally {
     backfillInFlight.delete(key);
+    backfillFreshUntil.set(key, Date.now() + BACKFILL_FRESH_MS);
   }
 }
 

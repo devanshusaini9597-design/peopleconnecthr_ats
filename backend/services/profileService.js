@@ -81,6 +81,7 @@ async function getProfile(userId) {
       isEmailVerified: user.isEmailVerified,
       onboardingCompleted: user.onboardingCompleted,
       mustChangePassword: Boolean(user.mustChangePassword),
+      isDemo: Boolean(user.isDemo),
       customRoleId: user.customRoleId || null,
       isPlatformOperator: require('../utils/orgDomain').isPlatformOperator(user),
       createdAt: user.createdAt,

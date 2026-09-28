@@ -3,8 +3,6 @@
  */
 const path = require('path');
 const fs = require('fs');
-const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
 const Organization = require('../models/Organization');
 const Job = require('../models/Job');
 const Candidate = require('../models/Candidate');
@@ -12,14 +10,13 @@ const Application = require('../models/Application');
 const OrgListItem = require('../models/OrgListItem');
 const { planHasFeature } = require('../config/planFeatures');
 const { normalizeText } = require('../utils/textNormalize');
+const { publicDomainLabel, scrubPublicJobHtml, publicEmployerLabel, isOwnCompanyHire } = require('../utils/publicJobPrivacy');
 const logger = require('../utils/logger');
-const { JWT_SECRET } = require('../middleware/authMiddleware');
 const { sendEmail } = require('./emailService');
 const {
   wrapBrandedEmailHtml,
-  loadOrgEmailBrand,
+  loadSendingEmailBrand,
   escapeHtml,
-  otpCodeHtml,
   brandButtonHtml,
   infoPanelHtml,
   publicSiteBase,
@@ -29,6 +26,7 @@ const {
   ensurePublicId,
   careersJobPathSegment,
 } = require('./jobPublicIdService');
+const { allocateCandidateCode, allocateApplicationCode, ensureCandidateCode, ensureApplicationCode } = require('./candidateCodeService');
 
 function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
@@ -37,133 +35,12 @@ function httpError(message, statusCode = 400, extra = {}) {
   return err;
 }
 
-const APPLY_OTP_TTL_MS = 10 * 60 * 1000;
-const APPLY_OTP_RESEND_MS = 45 * 1000;
-const APPLY_OTP_MAX_ATTEMPTS = 5;
-
 function normalizeEmail(email) {
   return String(email || '').toLowerCase().trim();
 }
 
 function phoneDigitsOnly(raw) {
   return String(raw || '').replace(/\D/g, '');
-}
-
-function generateApplyOtp() {
-  return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
-}
-
-function hashApplyOtp(orgId, jobId, email, code) {
-  return crypto
-    .createHmac('sha256', JWT_SECRET)
-    .update(`careers_apply:${String(orgId)}:${String(jobId)}:${normalizeEmail(email)}:${String(code).trim()}`)
-    .digest('hex');
-}
-
-function applyOtpMatches(orgId, jobId, email, code, storedHash) {
-  if (!storedHash || !code) return false;
-  const expected = hashApplyOtp(orgId, jobId, email, code);
-  try {
-    const a = Buffer.from(expected, 'hex');
-    const b = Buffer.from(String(storedHash), 'hex');
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
-  } catch {
-    return false;
-  }
-}
-
-function signApplyOtpToken(payload) {
-  return jwt.sign(
-    { ...payload, purpose: 'careers_apply_otp' },
-    JWT_SECRET,
-    { expiresIn: '15m' },
-  );
-}
-
-function signApplyVerifiedToken({ orgId, jobId, email }) {
-  return jwt.sign(
-    {
-      orgId: String(orgId),
-      jobId: String(jobId),
-      email: normalizeEmail(email),
-      purpose: 'careers_email_verified',
-    },
-    JWT_SECRET,
-    { expiresIn: '30m' },
-  );
-}
-
-function readApplyOtpToken(token) {
-  if (!token) throw httpError('Enter the code from your email to continue.', 400);
-  let decoded;
-  try {
-    decoded = jwt.verify(token, JWT_SECRET);
-  } catch (err) {
-    if (err.name === 'TokenExpiredError') {
-      throw httpError('This verification code expired. Send a new code to continue.', 401);
-    }
-    throw httpError('This verification session expired. Send a new code to continue.', 401);
-  }
-  if (decoded.purpose !== 'careers_apply_otp' || !decoded.email || !decoded.otpHash) {
-    throw httpError('Invalid verification session. Send a new code to continue.', 401);
-  }
-  return decoded;
-}
-
-function readApplyVerifiedToken(token, { orgId, jobId, email }) {
-  if (!token) {
-    throw httpError('Verify your email before submitting.', 400, { code: 'email_not_verified' });
-  }
-  let decoded;
-  try {
-    decoded = jwt.verify(token, JWT_SECRET);
-  } catch {
-    throw httpError('Your email verification expired. Send a new code to continue.', 401, {
-      code: 'email_not_verified',
-    });
-  }
-  if (decoded.purpose !== 'careers_email_verified' || !decoded.email) {
-    throw httpError('Verify your email before submitting.', 400, { code: 'email_not_verified' });
-  }
-  if (normalizeEmail(decoded.email) !== normalizeEmail(email)) {
-    throw httpError('Email does not match the verified address. Send a new code.', 400, {
-      code: 'email_not_verified',
-    });
-  }
-  if (String(decoded.orgId) !== String(orgId) || String(decoded.jobId) !== String(jobId)) {
-    throw httpError('Email verification does not match this job. Send a new code.', 400, {
-      code: 'email_not_verified',
-    });
-  }
-  return decoded;
-}
-
-function buildApplyOtpEmailHtml({ name, code, jobTitle, brand }) {
-  const first = escapeHtml((name || 'there').split(' ')[0] || 'there');
-  const role = escapeHtml(jobTitle || 'this role');
-  return wrapBrandedEmailHtml({
-    title: 'Verify your email to apply',
-    eyebrow: 'Application security',
-    orgName: brand.name,
-    logoUrl: brand.logoUrl,
-    brandColor: brand.brandColor,
-    wordmark: brand.wordmark,
-    senderName: brand.name,
-    senderEmail: brand.fromEmail,
-    websiteUrl: brand.websiteUrl,
-    supportEmail: brand.supportEmail,
-    socialLinks: brand.socialLinks,
-    bodyHtml: `
-      <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi ${first},</p>
-      <p style="margin:0 0 4px 0;color:#475569;line-height:1.7;">
-        Use this one-time code to confirm your email before applying for <strong>${role}</strong>.
-      </p>
-      ${otpCodeHtml(code, brand.brandColor)}
-      <p style="margin:16px 0 0 0;color:#64748b;font-size:13px;line-height:1.65;">
-        This code expires in 10 minutes. If you did not start an application, you can ignore this email.
-      </p>`,
-  });
 }
 
 const DEFAULT_CTC = [
@@ -243,10 +120,18 @@ function publicSalaryRange(salaryRange) {
   };
 }
 
-function toPublicJobDoc(job) {
+function toPublicJobDoc(job, org = {}) {
   const raw = job && typeof job.toObject === 'function' ? job.toObject() : { ...(job || {}) };
   const salaryRange = publicSalaryRange(raw.salaryRange);
   const publicId = String(raw.publicId || '').trim().toLowerCase() || null;
+  const industry = String(raw.industry || '').trim();
+  const orgName = String(org.name || '').trim();
+  const ownHire = isOwnCompanyHire(raw.clientName, orgName);
+  const employerLabel = publicEmployerLabel({
+    industry,
+    clientName: raw.clientName,
+    orgName,
+  });
   return {
     // Link key for careers URLs — never expose Mongo ObjectId on public pages.
     id: publicId || careersJobPathSegment(raw),
@@ -256,12 +141,16 @@ function toPublicJobDoc(job) {
     location: raw.location,
     locations: raw.locations,
     employmentType: raw.employmentType,
-    description: raw.description,
+    description: ownHire
+      ? raw.description
+      : scrubPublicJobHtml(raw.description, raw.clientName),
     skills: raw.skills,
     experience: raw.experience,
-    clientName: raw.clientName,
     grade: raw.grade,
-    industry: raw.industry,
+    industry,
+    domainLabel: ownHire ? employerLabel : publicDomainLabel(industry),
+    employerLabel,
+    ownHire,
     jobCode: raw.jobCode,
     isPublished: raw.isPublished !== false,
     publishedAt: raw.publishedAt,
@@ -308,13 +197,6 @@ function trimStr(v) {
   return String(v ?? '').trim();
 }
 
-function fillIfEmpty(doc, key, value) {
-  const next = trimStr(value);
-  if (!next) return;
-  const cur = trimStr(doc[key]);
-  if (!cur) doc[key] = next;
-}
-
 /**
  * Indeed/Google-for-Jobs-compatible XML feed of published jobs.
  * Gated by 'integrations.jobBoard' (Enterprise).
@@ -345,7 +227,7 @@ async function getJobsXmlFeed(orgSlug) {
     <url><![CDATA[${baseUrl}/careers/${orgSlug}/jobs/${pathId}]]></url>
     <company><![CDATA[${xmlEscape(org.name)}]]></company>
     <city><![CDATA[${xmlEscape(job.location)}]]></city>
-    <description><![CDATA[${job.description || ''}]]></description>
+    <description><![CDATA[${scrubPublicJobHtml(job.description || '', job.clientName)}]]></description>
     <jobtype>${xmlEscape(job.employmentType || 'full_time')}</jobtype>
     ${job.salaryRange?.displayPublicly && job.salaryRange?.min ? `<salary>${job.salaryRange.min}-${job.salaryRange.max || job.salaryRange.min} ${job.salaryRange.currency || 'INR'}</salary>` : ''}
   </job>`;
@@ -378,7 +260,7 @@ async function getCareersPage(orgSlug) {
   assertCareersLive(org);
 
   const jobs = await Job.find(publicOpenJobFilter(org._id))
-    .select('title department location locations employmentType isPublished priority skills createdAt openedAt publishedAt industry experience clientName jobCode grade updatedAt publicId')
+    .select('title department location locations employmentType isPublished priority skills createdAt openedAt publishedAt industry experience clientName jobCode grade updatedAt publicId description')
     .sort({ priority: -1, openedAt: -1, createdAt: -1 });
 
   for (const job of jobs) {
@@ -405,7 +287,7 @@ async function getCareersPage(orgSlug) {
     pageBlocks,
   };
 
-  return { organization, jobs: jobs.map(toPublicJobDoc) };
+  return { organization, jobs: jobs.map((job) => toPublicJobDoc(job, org)) };
 }
 
 /**
@@ -449,7 +331,7 @@ async function getPublicJob(orgSlug, jobId) {
     }
   }
 
-  const publicJob = toPublicJobDoc(job);
+  const publicJob = toPublicJobDoc(job, org);
   return {
     data: publicJob,
     job: publicJob,
@@ -485,16 +367,39 @@ async function checkAlreadyApplied(orgSlug, jobId, emailRaw, phoneRaw, rateKey =
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
       throw httpError('Enter a valid email address', 400);
     }
-    const candidate = await Candidate.findOne({ email, organizationId: org._id }).select('_id');
+    const candidate = await Candidate.findOne({ email, organizationId: org._id }).select('_id candidateCode organizationId');
     if (candidate) {
-      const app = await Application.findOne({ candidateId: candidate._id, jobId: job._id }).select('_id');
-      if (app) return { alreadyApplied: true, reason: 'email' };
+      const app = await Application.findOne({ candidateId: candidate._id, jobId: job._id }).select('_id appliedAt createdAt applicationCode organizationId');
+      if (app) {
+        const candidateCode = await ensureCandidateCode(candidate);
+        const applicationCode = await ensureApplicationCode(app);
+        return {
+          alreadyApplied: true,
+          reason: 'email',
+          candidateCode,
+          applicationCode,
+          existingProfile: true,
+          appliedAt: app.appliedAt || app.createdAt || null,
+        };
+      }
     }
   }
 
   if (phone && phone.length === 10) {
     const phoneApp = await findApplicationByPhone(org._id, job._id, phone);
-    if (phoneApp) return { alreadyApplied: true, reason: 'phone' };
+    if (phoneApp) {
+      const cand = await Candidate.findById(phoneApp.candidateId).select('_id candidateCode organizationId');
+      const candidateCode = cand ? await ensureCandidateCode(cand) : '';
+      const applicationCode = await ensureApplicationCode(phoneApp);
+      return {
+        alreadyApplied: true,
+        reason: 'phone',
+        candidateCode,
+        applicationCode,
+        existingProfile: Boolean(cand),
+        appliedAt: phoneApp.appliedAt || phoneApp.createdAt || null,
+      };
+    }
   }
 
   return { alreadyApplied: false };
@@ -513,164 +418,7 @@ async function findApplicationByPhone(organizationId, jobId, phoneDigits) {
   return Application.findOne({
     candidateId: { $in: candidates.map((c) => c._id) },
     jobId,
-  }).select('createdAt stage source');
-}
-
-/**
- * Send 6-digit email OTP for careers apply (keyed by org + job + email).
- */
-async function sendApplyOtp(orgSlug, jobId, { email: emailRaw, name, applyOtpToken, turnstileToken } = {}, rateKey = '') {
-  if (rateKey) assertPublicRateLimit(`otp:${rateKey}`, { limit: 12, windowMs: 60 * 1000 });
-
-  const { assertTurnstileToken } = require('../utils/turnstile');
-  await assertTurnstileToken(turnstileToken, { remoteip: rateKey });
-
-  const org = await Organization.findOne({ slug: orgSlug })
-    .select('_id name atsSettings.careersPageEnabled');
-  if (!org) throw httpError('Organization not found', 404);
-  assertCareersLive(org);
-
-  const job = await findPublicOpenJob(org._id, jobId, '_id title publicId');
-  if (!job) throw httpError('Job not found', 404);
-
-  const email = normalizeEmail(emailRaw);
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-    throw httpError('Enter a valid email address', 400);
-  }
-
-  // Rate-limit resend when an existing OTP session is provided
-  if (applyOtpToken) {
-    try {
-      const prev = readApplyOtpToken(applyOtpToken);
-      if (
-        normalizeEmail(prev.email) === email
-        && String(prev.orgId) === String(org._id)
-        && String(prev.jobId) === String(job._id)
-        && prev.otpSentAt
-        && Date.now() - Number(prev.otpSentAt) < APPLY_OTP_RESEND_MS
-      ) {
-        const waitSec = Math.ceil((APPLY_OTP_RESEND_MS - (Date.now() - Number(prev.otpSentAt))) / 1000);
-        throw httpError(`Please wait ${waitSec}s before requesting a new code.`, 429, {
-          code: 'otp_resend_cooldown',
-          retryAfterSec: waitSec,
-        });
-      }
-    } catch (err) {
-      if (err.code === 'otp_resend_cooldown' || err.statusCode === 429) throw err;
-      // Expired / invalid prior token — allow a fresh send
-    }
-  }
-
-  const dup = await checkAlreadyApplied(orgSlug, jobId, email);
-  if (dup.alreadyApplied) {
-    throw httpError('You have already applied for this job', 409, { code: 'ALREADY_APPLIED' });
-  }
-
-  const code = generateApplyOtp();
-  const nextToken = signApplyOtpToken({
-    orgId: String(org._id),
-    jobId: String(job._id),
-    email,
-    otpHash: hashApplyOtp(org._id, job._id, email, code),
-    otpSentAt: Date.now(),
-    attempts: 0,
-    name: trimStr(name).slice(0, 120),
-  });
-
-  const brand = await loadOrgEmailBrand(org._id);
-  const html = buildApplyOtpEmailHtml({
-    name: trimStr(name),
-    code,
-    jobTitle: job.title,
-    brand,
-  });
-  await sendEmail(
-    email,
-    `Your verification code for ${job.title || 'your application'}`,
-    html,
-    `Your verification code is ${code}. It expires in 10 minutes.`,
-    {
-      senderName: brand.name,
-      senderEmail: brand.fromEmail,
-      organizationId: org._id,
-    },
-  ).catch((err) => {
-    logger.error({ err: err.message, email }, 'Careers apply OTP email failed');
-    if (process.env.NODE_ENV === 'production') {
-      throw httpError(
-        'We could not send your verification code. Please try again in a moment.',
-        503,
-      );
-    }
-    if (err.message === 'EMAIL_NOT_CONFIGURED') {
-      logger.warn({ email, otp: code }, 'Dev-only careers apply OTP (email not configured)');
-    }
-  });
-
-  return {
-    message: 'Verification code sent',
-    applyOtpToken: nextToken,
-    expiresInSec: Math.floor(APPLY_OTP_TTL_MS / 1000),
-    resendInSec: Math.floor(APPLY_OTP_RESEND_MS / 1000),
-  };
-}
-
-/**
- * Verify careers apply OTP and return a short-lived email-verified token.
- */
-async function verifyApplyOtp(orgSlug, jobId, { applyOtpToken, code } = {}, rateKey = '') {
-  if (rateKey) assertPublicRateLimit(`otp-verify:${rateKey}`, { limit: 30, windowMs: 60 * 1000 });
-
-  const org = await Organization.findOne({ slug: orgSlug })
-    .select('_id atsSettings.careersPageEnabled');
-  if (!org) throw httpError('Organization not found', 404);
-  assertCareersLive(org);
-
-  const job = await findPublicOpenJob(org._id, jobId, '_id publicId');
-  if (!job) throw httpError('Job not found', 404);
-
-  const decoded = readApplyOtpToken(applyOtpToken);
-  if (String(decoded.orgId) !== String(org._id) || String(decoded.jobId) !== String(job._id)) {
-    throw httpError('Invalid verification session. Send a new code to continue.', 401);
-  }
-
-  const attempts = Number(decoded.attempts || 0);
-  if (attempts >= APPLY_OTP_MAX_ATTEMPTS) {
-    throw httpError('Too many incorrect codes. Send a new code to continue.', 429, {
-      code: 'otp_locked',
-    });
-  }
-  if (decoded.otpSentAt && Date.now() - Number(decoded.otpSentAt) > APPLY_OTP_TTL_MS) {
-    throw httpError('This verification code expired. Send a new code to continue.', 401);
-  }
-  if (!applyOtpMatches(org._id, job._id, decoded.email, String(code || '').trim(), decoded.otpHash)) {
-    const nextToken = signApplyOtpToken({
-      orgId: decoded.orgId,
-      jobId: decoded.jobId,
-      email: decoded.email,
-      otpHash: decoded.otpHash,
-      otpSentAt: decoded.otpSentAt,
-      attempts: attempts + 1,
-      name: decoded.name || '',
-    });
-    throw httpError('Incorrect code. Try again.', 400, {
-      code: 'otp_invalid',
-      applyOtpToken: nextToken,
-      attemptsRemaining: APPLY_OTP_MAX_ATTEMPTS - attempts - 1,
-    });
-  }
-
-  const emailVerifiedToken = signApplyVerifiedToken({
-    orgId: org._id,
-    jobId: job._id,
-    email: decoded.email,
-  });
-
-  return {
-    message: 'Email verified',
-    emailVerifiedToken,
-    email: decoded.email,
-  };
+  }).select('createdAt appliedAt stage source candidateId applicationCode organizationId');
 }
 
 async function storeResumeFile(organizationId, file) {
@@ -712,6 +460,81 @@ async function resolveJobSpocEmails(job) {
   return [...emails];
 }
 
+/**
+ * Route careers applicants onto the job owner's ATS desk (Candidates + Applications).
+ * Never stamp SPOC as "Careers Page" — that string does not match recruiter desks.
+ */
+async function resolveCareersDeskOwner(job, attributedUser = null) {
+  const User = require('../models/User');
+  const { resolveEmployeeSpocLabel, loadOrgEmployeeNames } = require('../utils/spocIdentity');
+  const { isFreelancer } = require('../utils/dataScope');
+  const ownerUser = attributedUser || (
+    (job.hiringManager || job.createdBy)
+      ? await User.findById(job.hiringManager || job.createdBy).select('_id name email role').lean()
+      : null
+  );
+  const ownerId = ownerUser?._id || job.hiringManager || job.createdBy || null;
+  const shareIds = [];
+  const pushId = (raw) => {
+    if (!raw) return;
+    const id = String(raw);
+    if (!shareIds.includes(id)) shareIds.push(id);
+  };
+  pushId(job.hiringManager);
+  pushId(job.createdBy);
+  for (const rec of job.assignedRecruiters || []) pushId(rec);
+
+  let spocName = '';
+  if (ownerUser) {
+    if (isFreelancer(ownerUser)) {
+      spocName = normalizeText(trimStr(ownerUser.name) || String(ownerUser.email || '').split('@')[0]);
+    } else {
+      const names = await loadOrgEmployeeNames(job.organizationId);
+      spocName = resolveEmployeeSpocLabel(ownerUser, names);
+    }
+  }
+  if (!spocName) spocName = trimStr(job.spocName);
+  if (!spocName && Array.isArray(job.hiringManagers) && job.hiringManagers.length) {
+    const first = trimStr(job.hiringManagers[0]);
+    if (first && !first.includes('@')) spocName = first;
+  }
+  return {
+    createdBy: ownerId || undefined,
+    assignedTo: ownerId || undefined,
+    spoc: spocName,
+    shareWithIds: shareIds.filter((id) => !ownerId || String(id) !== String(ownerId)),
+    client: trimStr(job.clientName),
+    attributedUser,
+  };
+}
+
+async function resolveAttributedSharer(organizationId, job, viaToken) {
+  const { verifyJobShareToken } = require('../utils/jobShareAttribution');
+  const userId = verifyJobShareToken(viaToken, { organizationId, jobId: job._id });
+  if (!userId) return null;
+  const User = require('../models/User');
+  return User.findOne({
+    _id: userId,
+    organizationId,
+    isActive: { $ne: false },
+  }).select('_id name email role').lean();
+}
+
+function mergeSharedWith(candidate, userIds = []) {
+  if (!candidate || !userIds.length) return;
+  const existing = new Set(
+    (candidate.sharedWith || []).map((row) => String(row.userId || '')).filter(Boolean)
+  );
+  const owner = candidate.createdBy ? String(candidate.createdBy) : '';
+  if (!Array.isArray(candidate.sharedWith)) candidate.sharedWith = [];
+  for (const raw of userIds) {
+    const id = String(raw || '').trim();
+    if (!id || existing.has(id) || id === owner) continue;
+    candidate.sharedWith.push({ userId: id, sharedAt: new Date() });
+    existing.add(id);
+  }
+}
+
 function careersJobUrl(orgSlug, jobOrId) {
   const base = (publicSiteBase() || process.env.FRONTEND_URL || '').replace(/\/$/, '');
   if (!base || !orgSlug) return '';
@@ -728,11 +551,18 @@ async function notifyCareersApplyEmails({
   job,
   candidate,
   application,
+  existingProfile = false,
+  extraNotifyEmail = '',
 }) {
-  const brand = await loadOrgEmailBrand(org._id);
+  const brand = await loadSendingEmailBrand({
+    organizationId: org._id,
+    system: true,
+  });
   const jobTitle = job.title || 'the role';
   const jobCode = trimStr(job.jobCode);
   const candidateName = candidate.name || 'Candidate';
+  const candidateCode = trimStr(candidate.candidateCode);
+  const applicationCode = trimStr(application?.applicationCode);
   const applyUrl = careersJobUrl(orgSlug, job);
   const appsUrl = (publicSiteBase() || process.env.FRONTEND_URL || '').replace(/\/$/, '')
     ? `${(publicSiteBase() || process.env.FRONTEND_URL || '').replace(/\/$/, '')}/applications`
@@ -740,7 +570,6 @@ async function notifyCareersApplyEmails({
 
   const candidateHtml = wrapBrandedEmailHtml({
     title: 'Application received',
-    eyebrow: 'Careers',
     orgName: brand.name,
     logoUrl: brand.logoUrl,
     brandColor: brand.brandColor,
@@ -756,11 +585,16 @@ async function notifyCareersApplyEmails({
         Thank you for applying for <strong>${escapeHtml(jobTitle)}</strong>${jobCode ? ` (${escapeHtml(jobCode)})` : ''} at ${escapeHtml(org.name || brand.name)}.
       </p>
       <p style="margin:0 0 12px 0;color:#475569;line-height:1.7;">
-        Our recruiting team has received your application and will review your profile. If there is a match, they will contact you on this email.
+        Our recruiting team has received your application and will review your submission. If your profile is suitable for the role, they will contact you on this email.
+      </p>
+      <p style="margin:0 0 12px 0;color:#475569;line-height:1.7;">
+        Please retain your Candidate ID and Application ID for any future correspondence.
       </p>
       ${infoPanelHtml([
         { label: 'Role', value: jobTitle },
         ...(jobCode ? [{ label: 'Job ID', value: jobCode }] : []),
+        ...(candidateCode ? [{ label: 'Candidate ID', value: candidateCode }] : []),
+        ...(applicationCode ? [{ label: 'Application ID', value: applicationCode }] : []),
         { label: 'Status', value: 'Application received' },
       ], brand.brandColor)}
       ${applyUrl ? `<div style="text-align:center;">${brandButtonHtml({ href: applyUrl, label: 'View role', brandColor: brand.brandColor })}</div>` : ''}`,
@@ -775,17 +609,20 @@ async function notifyCareersApplyEmails({
       senderName: brand.name,
       senderEmail: brand.fromEmail,
       organizationId: org._id,
+      system: true,
     },
   ).catch((err) => {
     logger.warn({ err: err.message, email: candidate.email }, 'Careers candidate confirmation email failed');
   });
 
   const spocEmails = await resolveJobSpocEmails(job);
-  if (!spocEmails.length) return;
+  const extra = normalizeEmail(extraNotifyEmail);
+  if (extra) spocEmails.push(extra);
+  const uniqueEmails = [...new Set(spocEmails.filter(Boolean))];
+  if (!uniqueEmails.length) return;
 
   const spocHtml = wrapBrandedEmailHtml({
     title: 'New careers application',
-    eyebrow: 'Hiring alert',
     orgName: brand.name,
     logoUrl: brand.logoUrl,
     brandColor: brand.brandColor,
@@ -799,9 +636,14 @@ async function notifyCareersApplyEmails({
       <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">New application received</p>
       <p style="margin:0 0 12px 0;color:#475569;line-height:1.7;">
         <strong>${escapeHtml(candidateName)}</strong> applied for <strong>${escapeHtml(jobTitle)}</strong>${jobCode ? ` (${escapeHtml(jobCode)})` : ''} via the careers page.
+        ${existingProfile
+          ? ' This email/phone was already in ATS — the existing candidate profile was not overwritten.'
+          : ''}
       </p>
       ${infoPanelHtml([
         { label: 'Candidate', value: candidateName },
+        ...(candidateCode ? [{ label: 'Candidate ID', value: candidateCode }] : []),
+        ...(applicationCode ? [{ label: 'Application ID', value: applicationCode }] : []),
         { label: 'Email', value: candidate.email },
         { label: 'Phone', value: candidate.phone || candidate.contact || '—' },
         { label: 'Experience', value: candidate.experience || '—' },
@@ -809,11 +651,12 @@ async function notifyCareersApplyEmails({
         { label: 'Expected CTC', value: candidate.expectedCtc || '—' },
         { label: 'Notice', value: candidate.noticePeriod || '—' },
         ...(jobCode ? [{ label: 'Job ID', value: jobCode }] : []),
+        ...(existingProfile ? [{ label: 'ATS profile', value: 'Existing — not changed' }] : []),
       ], brand.brandColor)}
       ${appsUrl ? `<div style="text-align:center;">${brandButtonHtml({ href: appsUrl, label: 'Open applications', brandColor: brand.brandColor })}</div>` : ''}`,
   });
 
-  await Promise.all(spocEmails.map((to) => sendEmail(
+  await Promise.all(uniqueEmails.map((to) => sendEmail(
     to,
     `New application: ${candidateName} → ${jobTitle}`,
     spocHtml,
@@ -822,6 +665,7 @@ async function notifyCareersApplyEmails({
       senderName: brand.name,
       senderEmail: brand.fromEmail,
       organizationId: org._id,
+      system: true,
     },
   ).catch((err) => {
     logger.warn({ err: err.message, to }, 'Careers SPOC notify email failed');
@@ -861,7 +705,6 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null, rateKey
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
     throw httpError('Enter a valid email address', 400);
   }
-  readApplyVerifiedToken(body.emailVerifiedToken, { orgId: org._id, jobId: job._id, email });
 
   const phoneDigits = phoneDigitsOnly(phone);
   if (!phone || phoneDigits.length !== 10) {
@@ -876,16 +719,31 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null, rateKey
   }
 
   // Block duplicates before writing candidate / resume (email+job, then phone+job)
-  const existingCand = await Candidate.findOne({ email, organizationId: org._id }).select('_id');
+  const existingCand = await Candidate.findOne({ email, organizationId: org._id }).select('_id candidateCode organizationId');
   if (existingCand) {
-    const existingApp = await Application.findOne({ candidateId: existingCand._id, jobId: job._id }).select('_id');
+    const existingApp = await Application.findOne({ candidateId: existingCand._id, jobId: job._id }).select('_id applicationCode organizationId');
     if (existingApp) {
-      throw httpError('You have already applied for this job', 409, { code: 'ALREADY_APPLIED' });
+      const candidateCode = await ensureCandidateCode(existingCand);
+      const applicationCode = await ensureApplicationCode(existingApp);
+      throw httpError('An application for this job is already on file', 409, {
+        code: 'ALREADY_APPLIED',
+        candidateCode,
+        applicationCode,
+        existingProfile: true,
+      });
     }
   }
   const phoneDup = await findApplicationByPhone(org._id, job._id, phoneDigits);
   if (phoneDup) {
-    throw httpError('You have already applied for this job', 409, { code: 'ALREADY_APPLIED' });
+    const phoneCand = await Candidate.findById(phoneDup.candidateId).select('_id candidateCode organizationId');
+    const candidateCode = phoneCand ? await ensureCandidateCode(phoneCand) : '';
+    const applicationCode = await ensureApplicationCode(phoneDup);
+    throw httpError('An application for this job is already on file', 409, {
+      code: 'ALREADY_APPLIED',
+      candidateCode,
+      applicationCode,
+      existingProfile: true,
+    });
   }
 
   if (planHasFeature(org.plan, 'careers.formBuilder')) {
@@ -936,6 +794,12 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null, rateKey
   let candidate = existingCand
     ? await Candidate.findById(existingCand._id)
     : null;
+
+  const attributedUser = await resolveAttributedSharer(org._id, job, body.via || body.shareVia || '');
+  const desk = await resolveCareersDeskOwner(job, attributedUser);
+  const todayIso = new Date().toISOString().split('T')[0];
+  let existingProfile = false;
+
   if (!candidate) {
     candidate = new Candidate({
       organizationId: org._id,
@@ -955,8 +819,15 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null, rateKey
       resume: resumeKey,
       status: 'APPLIED',
       statusEnteredAt: new Date(),
+      appliedAt: new Date(),
+      date: todayIso,
+      spoc: desk.spoc,
+      client: desk.client,
+      createdBy: desk.createdBy,
       customFields: customResponses,
+      candidateCode: await allocateCandidateCode(org._id),
     });
+    mergeSharedWith(candidate, desk.shareWithIds);
     if (!Array.isArray(candidate.statusHistory) || candidate.statusHistory.length === 0) {
       candidate.statusHistory = [{
         status: 'APPLIED',
@@ -967,33 +838,31 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null, rateKey
     }
     await candidate.save();
   } else {
-    fillIfEmpty(candidate, 'name', textFields.name);
-    fillIfEmpty(candidate, 'phone', phoneDigits);
-    fillIfEmpty(candidate, 'contact', phoneDigits);
-    fillIfEmpty(candidate, 'position', textFields.position);
-    fillIfEmpty(candidate, 'companyName', textFields.companyName);
-    fillIfEmpty(candidate, 'location', textFields.location);
-    fillIfEmpty(candidate, 'experience', textFields.experience);
-    fillIfEmpty(candidate, 'ctc', textFields.ctc);
-    fillIfEmpty(candidate, 'expectedCtc', textFields.expectedCtc);
-    fillIfEmpty(candidate, 'noticePeriod', textFields.noticePeriod);
-    fillIfEmpty(candidate, 'source', textFields.source);
-    if (resumeKey && !trimStr(candidate.resume)) candidate.resume = resumeKey;
-    if (textFields.remark) {
-      const existingRemark = trimStr(candidate.remark);
-      candidate.remark = existingRemark
-        ? `${existingRemark}\n\n[Careers apply] ${textFields.remark}`
-        : textFields.remark;
+    existingProfile = true;
+    // Keep existing ATS contact data. Share the attributed desk so they can see this apply.
+    if (!candidate.createdBy && desk.createdBy) candidate.createdBy = desk.createdBy;
+    const currentSpoc = trimStr(candidate.spoc);
+    if (!currentSpoc || /^careers\s*page$/i.test(currentSpoc)) {
+      if (desk.spoc) candidate.spoc = desk.spoc;
     }
-    if (Object.keys(customResponses).length) {
-      candidate.customFields = { ...(candidate.customFields || {}), ...customResponses };
-    }
-    await candidate.save();
+    mergeSharedWith(candidate, [
+      desk.createdBy,
+      ...desk.shareWithIds,
+    ].filter(Boolean));
+    await ensureCandidateCode(candidate);
+    if (candidate.isModified()) await candidate.save();
   }
 
   const existingApp = await Application.findOne({ candidateId: candidate._id, jobId: job._id });
   if (existingApp) {
-    throw httpError('You have already applied for this job', 409, { code: 'ALREADY_APPLIED' });
+    const candidateCode = await ensureCandidateCode(candidate);
+    const applicationCode = await ensureApplicationCode(existingApp);
+    throw httpError('An application for this job is already on file', 409, {
+      code: 'ALREADY_APPLIED',
+      candidateCode,
+      applicationCode,
+      existingProfile: true,
+    });
   }
 
   const application = new Application({
@@ -1002,11 +871,26 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null, rateKey
     candidateId: candidate._id,
     stage: 'Applied',
     source: 'Careers Page',
+    assignedTo: desk.assignedTo,
     coverLetter: coverLetter.slice(0, 5000),
     notes: coverLetter.slice(0, 5000),
-    stageHistory: [{ stage: 'Applied', movedAt: new Date(), remark: 'Applied via careers page' }],
+    appliedAt: new Date(),
+    applicationCode: await allocateApplicationCode(org._id),
+    metadata: {
+      submittedBy: desk.createdBy ? String(desk.createdBy) : undefined,
+      attributedRole: attributedUser?.role || '',
+      viaJobShare: Boolean(attributedUser),
+    },
+    stageHistory: [{
+      stage: 'Applied',
+      movedAt: new Date(),
+      remark: attributedUser
+        ? `Applied via job link shared by ${trimStr(attributedUser.name) || trimStr(attributedUser.email) || 'desk owner'}`
+        : 'Applied via careers page',
+    }],
   });
   await application.save();
+  Job.findByIdAndUpdate(job._id, { $inc: { applicationCount: 1 } }).catch(() => {});
 
   try {
     const eventBus = require('../events/eventBus');
@@ -1028,14 +912,23 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null, rateKey
     job,
     candidate,
     application,
+    existingProfile,
+    extraNotifyEmail: attributedUser?.email || '',
   }).catch((err) => {
     logger.warn({ err: err.message }, 'Careers apply notification emails failed');
   });
 
+  const candidateCode = String(candidate.candidateCode || '').trim().toUpperCase();
+  const applicationCode = String(application.applicationCode || '').trim().toUpperCase();
   return {
     applicationId: application._id,
     candidateId: candidate._id,
-    message: 'Application submitted successfully',
+    candidateCode,
+    applicationCode,
+    existingProfile,
+    message: existingProfile
+      ? 'Application submitted. Your existing ATS profile was not changed.'
+      : 'Application submitted successfully',
   };
 }
 
@@ -1045,8 +938,7 @@ module.exports = {
   getCareersPage,
   getPublicJob,
   checkAlreadyApplied,
-  sendApplyOtp,
-  verifyApplyOtp,
   submitApplication,
+  careersJobUrl,
   publicTurnstileConfig: () => require('../utils/turnstile').publicTurnstileConfig(),
 };

@@ -11,6 +11,7 @@ import PublicAnnouncementBanner from './PublicAnnouncementBanner';
 import PremiumSelect from './ui/PremiumSelect';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
 import { resolveOrgLogoSrc } from '../utils/orgLogo';
+import { publicJobDomain, titleCaseWords } from '../utils/publicJobDomain';
 
 const PAGE_SIZE = 12;
 
@@ -58,6 +59,12 @@ const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest first' },
   { value: 'title', label: 'Title A–Z' },
 ];
+
+function careersJobHref(orgSlug, job) {
+  const key = String(job?.id || job?.publicId || job?.jobCode || '').trim();
+  if (!orgSlug || !key) return `/careers/${orgSlug || ''}`;
+  return `/careers/${orgSlug}/jobs/${encodeURIComponent(key)}`;
+}
 
 const CareersPage = () => {
   const { orgSlug } = useParams();
@@ -161,7 +168,7 @@ const CareersPage = () => {
   const filteredJobs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     let filtered = jobs.filter((job) => {
-      const hay = `${job.title || ''} ${job.location || ''} ${job.department || ''} ${job.industry || ''} ${job.clientName || ''} ${job.jobCode || ''} ${(job.skills || []).join(' ')}`.toLowerCase();
+      const hay = `${job.title || ''} ${job.location || ''} ${job.department || ''} ${job.industry || ''} ${job.domainLabel || ''} ${job.jobCode || ''} ${(job.skills || []).join(' ')}`.toLowerCase();
       const matchesSearch = !q || hay.includes(q);
       const matchesCat = categoryFilter ? jobCategory(job) === categoryFilter : true;
       const matchesLoc = jobHasLocation(job, locFilter);
@@ -392,7 +399,7 @@ const CareersPage = () => {
                     style={active ? { backgroundColor: brand } : undefined}
                     title={tab.name}
                   >
-                    <span className="truncate max-w-[12rem]">{tab.name}</span>
+                    <span className="break-words [overflow-wrap:anywhere] text-left">{titleCaseWords(tab.name)}</span>
                     <span className={`tabular-nums ${active ? 'text-white/80' : 'text-stone-400'}`}>{tab.count}</span>
                   </button>
                 );
@@ -469,18 +476,18 @@ const CareersPage = () => {
                 const title = displayTitle(job.title);
                 return (
                   <article
-                    key={job._id}
-                    className="relative overflow-hidden group p-4 sm:p-5 pt-5 min-w-0 rounded-2xl border border-stone-300/90 bg-white transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-stone-400/90 hover:shadow-[0_8px_24px_-8px_rgba(15,23,42,0.14),0_0_0_1px_rgba(15,23,42,0.04)]"
+                    key={job._id || job.id || job.jobCode}
+                    className="relative overflow-hidden group p-4 sm:p-5 pt-5 min-w-0 rounded-2xl border border-stone-300/90 bg-white flex flex-col h-full transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-stone-400/90 hover:shadow-[0_8px_24px_-8px_rgba(15,23,42,0.14),0_0_0_1px_rgba(15,23,42,0.04)]"
                     style={cardBorder}
                   >
                     {featured ? (
                       <span
-                        className="absolute top-3 right-3 z-10 inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide text-white shadow-sm"
+                        className="absolute top-3 right-3 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide text-white shadow-sm max-w-[7.5rem] truncate"
                         style={{
                           background: `linear-gradient(135deg, ${brand}, #0f766e)`,
                         }}
                       >
-                        <Sparkles size={11} strokeWidth={2.5} /> Featured
+                        <Sparkles size={11} strokeWidth={2.5} className="flex-shrink-0" /> Featured
                       </span>
                     ) : null}
                     <div
@@ -516,34 +523,36 @@ const CareersPage = () => {
                           <Briefcase size={17} />
                         </div>
                         <div className="min-w-0 flex-1 overflow-hidden">
-                          <div className={`flex flex-wrap items-center gap-1.5 mb-1.5 ${featured ? 'pr-20' : ''}`}>
+                          <div className={`flex flex-wrap items-center gap-1.5 mb-1.5 ${featured ? 'pr-24' : ''}`}>
                             <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md border bg-emerald-50 text-emerald-700 border-emerald-200">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Open
                             </span>
                             {jobCategory(job) ? (
-                              <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-200 bg-white text-stone-500 uppercase tracking-wide truncate max-w-[10rem]">
-                                {jobCategory(job)}
+                              <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-200 bg-white text-stone-500 tracking-wide max-w-full break-words [overflow-wrap:anywhere]">
+                                {titleCaseWords(jobCategory(job))}
                               </span>
                             ) : null}
                             {job.jobCode ? (
-                              <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-200 bg-stone-50 text-stone-600 tabular-nums tracking-wide truncate max-w-[9rem]">
+                              <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-200 bg-stone-50 text-stone-600 tabular-nums tracking-wide max-w-full break-all" title={job.jobCode}>
                                 {job.jobCode}
                               </span>
                             ) : null}
                           </div>
-                          <h3 className="text-[15px] sm:text-base font-bold text-stone-900 tracking-tight leading-snug uppercase break-words">
+                          <h3 className="text-[15px] sm:text-base font-bold text-stone-900 tracking-tight leading-snug break-words [overflow-wrap:anywhere]">
                             <Link
-                              to={`/careers/${orgSlug}/jobs/${job.publicId || job.id || job.jobCode}`}
+                              to={careersJobHref(orgSlug, job)}
                               className="hover:underline underline-offset-2"
                               style={{ textDecorationColor: `${brand}40` }}
                               onMouseEnter={(e) => { e.currentTarget.style.color = brand; }}
                               onMouseLeave={(e) => { e.currentTarget.style.color = ''; }}
                             >
-                              {title}
+                              {titleCaseWords(title)}
                             </Link>
                           </h3>
-                          {job.clientName ? (
-                            <p className="mt-0.5 text-[12px] text-stone-500 truncate">{job.clientName}</p>
+                          {publicJobDomain(job, orgData?.name) ? (
+                            <p className="mt-0.5 text-[12px] text-stone-500 break-words [overflow-wrap:anywhere] leading-snug">
+                              {publicJobDomain(job, orgData?.name)}
+                            </p>
                           ) : null}
                         </div>
                       </div>
@@ -551,49 +560,32 @@ const CareersPage = () => {
                       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px] text-stone-600 min-w-0">
                         <span className="inline-flex items-center gap-1 min-w-0 max-w-full">
                           <MapPin size={12} className="text-stone-400 flex-shrink-0" />
-                          <span className="truncate font-medium">{job.location || 'Location TBD'}</span>
+                          <span className="font-medium break-words [overflow-wrap:anywhere]">{job.location || 'Location TBD'}</span>
                         </span>
-                        <span className="inline-flex items-center gap-1 min-w-0 max-w-[11rem]">
+                        <span className="inline-flex items-center gap-1 min-w-0">
                           <Clock size={12} className="text-stone-400 flex-shrink-0" />
-                          <span className="truncate">{job.employmentType ? employmentLabel(job.employmentType) : 'Full-time'}</span>
+                          <span className="whitespace-nowrap">{job.employmentType ? employmentLabel(job.employmentType) : 'Full-time'}</span>
                         </span>
                         {job.experience ? (
-                          <span className="inline-flex items-center gap-1 min-w-0 max-w-[10rem]">
+                          <span className="inline-flex items-center gap-1 min-w-0">
                             <Building2 size={12} className="text-stone-400 flex-shrink-0" />
-                            <span className="truncate">{job.experience}</span>
+                            <span className="whitespace-nowrap">{job.experience}</span>
                           </span>
                         ) : null}
                         {job.ctc ? (
                           <span className="inline-flex items-center gap-1 min-w-0 max-w-full font-semibold text-stone-800">
                             <IndianRupee size={12} className="text-stone-400 flex-shrink-0" />
-                            <span className="truncate">{job.ctc}</span>
+                            <span className="break-words [overflow-wrap:anywhere]">{job.ctc}</span>
                           </span>
                         ) : null}
                       </div>
-
-                      {Array.isArray(job.skills) && job.skills.length > 0 ? (
-                        <div className="mt-2.5 flex flex-wrap gap-1.5 min-w-0">
-                          {job.skills.slice(0, 4).map((skill) => (
-                            <span
-                              key={skill}
-                              className="inline-flex max-w-[10rem] truncate px-2 py-0.5 rounded-md text-[10px] font-semibold border"
-                              style={{ backgroundColor: `${brand}10`, color: brand, borderColor: `${brand}25` }}
-                            >
-                              {skill}
-                            </span>
-                          ))}
-                          {job.skills.length > 4 ? (
-                            <span className="text-[10px] font-semibold text-stone-500">+{job.skills.length - 4}</span>
-                          ) : null}
-                        </div>
-                      ) : null}
 
                       <div className="mt-auto pt-4 flex items-center justify-between gap-3 border-t border-stone-100 min-w-0">
                         <span className="text-[11px] font-medium text-stone-400 truncate min-w-0">
                           {formatPosted(job) ? `Posted ${formatPosted(job)}` : 'Open position'}
                         </span>
                         <Link
-                          to={`/careers/${orgSlug}/jobs/${job.publicId || job.id || job.jobCode}`}
+                          to={careersJobHref(orgSlug, job)}
                           className="relative overflow-hidden inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl text-[13px] font-bold text-white shadow-sm flex-shrink-0 transition-transform duration-300 group-hover:scale-[1.04]"
                           style={{ backgroundColor: brand }}
                         >
@@ -681,6 +673,8 @@ const CareersPage = () => {
       <footer className="mt-auto border-t border-stone-200 bg-white py-5">
         <div className="w-full px-4 sm:px-6 lg:px-10 text-center text-sm text-stone-500">
           © {orgData?.name}
+          <span className="mx-2 text-stone-300">·</span>
+          <Link to={`/partners/${orgSlug}`} className="font-semibold text-stone-700 hover:opacity-80">Talent partnerships</Link>
           {!orgData?.hidePoweredBy ? (
             <>
               <span className="mx-2 text-stone-300">·</span>

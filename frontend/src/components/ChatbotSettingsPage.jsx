@@ -14,6 +14,7 @@ import ProductTour from './ui/ProductTour';
 import TourHelpFab from './ui/TourHelpFab';
 import usePageTour from '../hooks/usePageTour';
 import { useAuth } from '../context/AuthContext';
+import { publicSiteOrigin } from '../utils/publicSiteOrigin';
 
 const CHAT_TOUR_KEY = 'skillnix_tour_careers_chatbot_v1';
 const CHAT_TOUR_STEPS = [
@@ -122,12 +123,12 @@ export default function ChatbotSettingsPage() {
 
   const careersUrl = useMemo(() => {
     if (!orgSlug || typeof window === 'undefined') return '';
-    return `${window.location.origin}/careers/${orgSlug}`;
+    return `${publicSiteOrigin()}/careers/${orgSlug}`;
   }, [orgSlug]);
 
   const embedSnippet = useMemo(() => {
     if (!orgSlug || typeof window === 'undefined') return '';
-    return `<iframe src="${window.location.origin}/embed/chatbot/${orgSlug}" style="border:0;width:100%;min-height:420px;height:60vh;max-height:640px" title="Careers chatbot"></iframe>`;
+    return `<iframe src="${publicSiteOrigin()}/embed/chatbot/${orgSlug}" style="border:0;width:100%;min-height:420px;height:60vh;max-height:640px" title="Careers chatbot"></iframe>`;
   }, [orgSlug]);
 
   const load = useCallback(async () => {

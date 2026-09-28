@@ -13,11 +13,18 @@ export const StatCard = ({
   gradient,
   loading,
   onClick,
-}) => (
-  <button
-    type="button"
+  aligned = false,
+}) => {
+  const Tag = onClick ? 'button' : 'div';
+  return (
+  <Tag
+    type={onClick ? 'button' : undefined}
     onClick={onClick}
-    className="relative card-ats-bordered px-5 py-5 sm:px-6 sm:py-6 min-h-[120px] min-w-0 flex flex-col justify-between overflow-hidden text-left w-full group transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-lg hover:shadow-stone-200/60 hover:border-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 active:scale-[0.995]"
+    className={`relative card-ats-bordered px-5 py-5 sm:px-6 sm:py-6 min-w-0 flex flex-col justify-between overflow-hidden text-left w-full group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
+      aligned
+        ? 'min-h-[168px] h-full transition-shadow duration-300 ease-out hover:shadow-lg hover:shadow-stone-200/60 hover:border-transparent'
+        : 'min-h-[120px] transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-lg hover:shadow-stone-200/60 hover:border-transparent active:scale-[0.995]'
+    }`}
   >
     <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${gradient} transition-all duration-300 group-hover:h-1.5`} />
     <div
@@ -27,15 +34,14 @@ export const StatCard = ({
     <div className="relative flex items-start justify-between gap-3 min-w-0 flex-1">
       <div className="flex-1 min-w-0 pr-1 flex flex-col">
         {/* Fixed 2-line label slot so value + caption align across every card */}
-        <p className="text-stone-500 text-sm font-medium leading-5 h-10 line-clamp-2">
+        <p className="text-stone-500 text-sm font-medium leading-5 min-h-10 break-words whitespace-normal">
           {label}
         </p>
-        <p className="text-2xl sm:text-3xl font-bold text-stone-900 mt-1.5 tabular-nums tracking-tight">
+        <p className={`text-2xl sm:text-3xl font-bold text-stone-900 mt-1.5 tabular-nums tracking-tight ${aligned ? 'leading-none min-h-[2.25rem] flex items-center whitespace-nowrap' : ''}`}>
           {loading ? '—' : typeof value === 'number' ? value.toLocaleString() : value}
         </p>
 
-        {/* Fixed caption slot keeps footer text at the same height on every card */}
-        <div className="mt-2 min-h-[2rem]">
+        <div className={`mt-2 ${aligned ? 'min-h-[2.75rem]' : 'min-h-[2rem]'}`}>
           {caption ? (
             <p className="text-xs text-stone-400 font-medium leading-snug break-words whitespace-normal">
               {caption}
@@ -69,11 +75,14 @@ export const StatCard = ({
         <Icon size={22} className="text-white" />
       </div>
     </div>
-    <div className="relative mt-3 flex items-center gap-1 text-[11px] font-semibold text-stone-400 opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
-      View details <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" />
-    </div>
-  </button>
-);
+    {onClick ? (
+      <div className="relative mt-3 flex items-center gap-1 text-[11px] font-semibold text-stone-400 opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+        View details <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" />
+      </div>
+    ) : <div className="mt-3 h-[16px]" />}
+  </Tag>
+  );
+};
 
 export const QuickAction = ({ icon: Icon, label, desc, onClick, tone }) => (
   <button
@@ -86,7 +95,7 @@ export const QuickAction = ({ icon: Icon, label, desc, onClick, tone }) => (
     </div>
     <div className="min-w-0 flex-1">
       <p className="text-sm font-bold text-stone-900 tracking-tight">{label}</p>
-      <p className="text-[11px] text-stone-400 truncate">{desc}</p>
+      <p className="text-[11px] text-stone-400 break-words whitespace-normal">{desc}</p>
     </div>
     <ChevronRight size={16} className="text-stone-300 group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all duration-300" />
   </button>

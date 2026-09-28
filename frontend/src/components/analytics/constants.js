@@ -15,7 +15,7 @@ export const ANALYTICS_TOUR_STEPS = [
   {
     target: '[data-tour="analytics-period"]',
     title: 'Report period',
-    body: 'Switch between weekly, monthly, quarterly, yearly, or a custom date range. All KPIs and charts update to match.',
+    body: 'Every performance number on this page follows the period you pick. The dashboard keeps the live pipeline.',
     placement: 'bottom',
   },
   {
@@ -27,19 +27,19 @@ export const ANALYTICS_TOUR_STEPS = [
   {
     target: '[data-tour="analytics-kpis"]',
     title: 'Headline metrics',
-    body: 'Total candidates, plus a card for every hiring status. New statuses you add in settings appear here automatically.',
+    body: 'New candidates, hire rate, time to hire, and rejection rate for the selected period.',
     placement: 'bottom',
   },
   {
     target: '[data-tour="analytics-charts"]',
     title: 'Trends & pipeline',
-    body: 'Daily submissions and stage breakdown show where your funnel is moving.',
+    body: 'The funnel is the current stage of people added in the period. Time in stage uses completed moves only.',
     placement: 'bottom',
   },
   {
     target: '[data-tour="analytics-activity"]',
-    title: 'Recent activity',
-    body: 'Latest candidates for the selected period. Open any row to view matching records in Candidates.',
+    title: 'Source and role quality',
+    body: 'Hire rate is hired or joined divided by people added from that source or role in the period.',
     placement: 'top',
   },
 ];

@@ -65,6 +65,7 @@ export default function ATSModals(props) {
         stepDirection={form.stepDirection}
         editId={form.editId}
         orgPlan={orgPlan}
+        jobs={props.jobs || []}
         jdForScore={form.jdForScore}
         setJdForScore={form.setJdForScore}
         handleAiScore={form.handleAiScore}
@@ -159,6 +160,7 @@ export default function ATSModals(props) {
         showBCCPicker={email.showBCCPicker}
         setShowBCCPicker={email.setShowBCCPicker}
         emailTemplates={email.emailTemplates}
+        emailTemplatesLoading={email.emailTemplatesLoading}
         selectedTemplate={email.selectedTemplate}
         selectEmailTemplate={email.selectEmailTemplate}
         setSelectedTemplate={email.setSelectedTemplate}
@@ -264,6 +266,25 @@ export default function ATSModals(props) {
         isPreviewLoading={resume.isPreviewLoading}
         closeResumePreview={resume.closeResumePreview}
         handleResumeDownload={resume.handleResumeDownload}
+      />
+
+      <ConfirmationModal
+        isOpen={Boolean(form.duplicateHit)}
+        onClose={() => form.setDuplicateHit(null)}
+        onConfirm={() => {
+          if (form.duplicateHit?.existingId) form.openExistingFromDuplicate();
+          else form.setDuplicateHit(null);
+        }}
+        type="warning"
+        eyebrow="Duplicate check"
+        title="Candidate already in ATS"
+        message={form.duplicateHit?.message || 'A candidate with this email or phone already exists.'}
+        details={form.duplicateHit?.existingName
+          ? `${form.duplicateHit.existingName}${form.duplicateHit.existingEmail ? ` · ${form.duplicateHit.existingEmail}` : ''}${form.duplicateHit.existingPhone ? ` · ${form.duplicateHit.existingPhone}` : ''}`
+          : null}
+        confirmText={form.duplicateHit?.existingId ? 'Open existing profile' : 'OK'}
+        cancelText="Keep editing"
+        showCancel
       />
 
       <ConfirmationModal

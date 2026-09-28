@@ -322,9 +322,9 @@ select[data-long-list] {
 .cand-filters-chips {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.5rem 1rem;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 0.65rem 1rem;
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border-light);
 }
@@ -340,21 +340,27 @@ select[data-long-list] {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-tertiary);
-  margin-right: 0.15rem;
+  margin-right: 0.2rem;
+  line-height: 1.7;
+  flex-shrink: 0;
+  padding-top: 0.15rem;
 }
 .cand-filters-chip {
   display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
+  align-items: flex-start;
+  gap: 0.35rem;
   max-width: 100%;
-  height: 1.5rem;
-  padding: 0 0.3rem 0 0.5rem;
+  min-height: 1.7rem;
+  height: auto;
+  padding: 0.28rem 0.4rem 0.28rem 0.55rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--cand-filter-accent-border);
   background: var(--cand-filter-accent-soft);
   color: var(--cand-filter-accent-text);
   font-size: 11px;
   font-weight: 500;
+  text-align: left;
+  line-height: 1.35;
   transition: filter var(--transition-fast), background var(--transition-fast);
 }
 .cand-filters-chip:hover {
@@ -363,23 +369,25 @@ select[data-long-list] {
 .cand-filters-chip-key {
   opacity: 0.75;
   font-weight: 600;
+  flex-shrink: 0;
 }
 .cand-filters-chip-key::after {
   content: ':';
 }
 .cand-filters-chip-val {
-  max-width: 8.5rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: min(100%, 28rem);
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   font-weight: 700;
 }
 .cand-filters-body {
-  padding: 0.9rem 1rem 1rem;
+  padding: 1.05rem 1rem 1.15rem;
   background: var(--bg-primary);
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.15rem;
 }
 @media (min-width: 640px) {
   .cand-filters-body {
@@ -407,8 +415,15 @@ select[data-long-list] {
   border-color: var(--border-dark) !important;
 }
 .cand-filters-control:focus {
-  border-color: var(--cand-filter-accent) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cand-filter-accent) 18%, transparent) !important;
+  border-color: var(--brand, #0d9488) !important;
+  box-shadow: none !important;
+}
+.cand-filters-panel button[aria-haspopup="listbox"] {
+  min-height: 2.25rem !important;
+  height: 2.25rem !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  border-radius: var(--radius-md) !important;
 }
 .cand-filters-range-sep {
   display: flex;
@@ -424,6 +439,18 @@ select[data-long-list] {
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.6rem;
+}
+.cand-filters-section-icon {
+  flex-shrink: 0;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--cand-filter-accent, #0f766e);
+  background: color-mix(in srgb, var(--cand-filter-accent, #0f766e) 12%, white);
+  border: 1px solid color-mix(in srgb, var(--cand-filter-accent, #0f766e) 22%, white);
 }
 .cand-filters-section-title {
   font-size: 10px;
@@ -732,13 +759,15 @@ select.select-ats[multiple] {
 button:focus-visible,
 a:focus-visible,
 [role="button"]:focus-visible,
-input:focus-visible:not(.chip-input-ats),
+input:focus-visible:not(.chip-input-ats):not(.search-bare-input),
 textarea:focus-visible,
 select:focus-visible {
   @apply outline-none ring-2 ring-brand-500/50 ring-offset-2;
 }
 .chip-input-ats:focus,
-.chip-input-ats:focus-visible {
+.chip-input-ats:focus-visible,
+.search-bare-input:focus,
+.search-bare-input:focus-visible {
   outline: none !important;
   box-shadow: none !important;
   --tw-ring-shadow: 0 0 #0000 !important;

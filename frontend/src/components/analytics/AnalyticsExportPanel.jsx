@@ -31,7 +31,15 @@ export default function AnalyticsExportPanel({
   isExporting,
   openShareModal,
 }) {
-  const candidateCount = stats?.totalCandidates ?? filteredCandidateCount ?? 0;
+  const analysis = stats?.analysis || {};
+  const candidateCount = analysis.intake ?? stats?.totalCandidates ?? filteredCandidateCount ?? 0;
+  const reportContents = {
+    'recruitment-summary': ['Candidates added', 'Current stage of those people', 'Hired, rejected, and in progress', 'Candidates added over time'],
+    'source-performance': ['Each source', 'Candidates added', 'Hired or joined', 'Hire rate'],
+    'position-report': ['Each role', 'Candidates added', 'Hired or joined', 'Fill rate'],
+    'client-report': ['Each client', 'Candidates added', 'Interview, offer, and hire counts', 'Success rate'],
+    'pipeline-status': ['Stage totals', 'Candidate name, role, stage, source, and client', 'Record date'],
+  };
   const rangeLabel = periodLabel
     || (dateRange === 'custom' && customFrom && customTo
       ? `${new Date(customFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} – ${new Date(customTo).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
@@ -56,8 +64,8 @@ export default function AnalyticsExportPanel({
               <BarChart3 size={17} strokeWidth={2} />
             </span>
             <div className="min-w-0">
-              <h3 className="text-sm font-bold text-stone-900 tracking-tight">Generate report</h3>
-              <p className="text-xs text-stone-500 mt-0.5 truncate">PDF summaries or Excel workbooks for the selected period</p>
+              <h3 className="text-sm font-bold text-stone-900 tracking-tight">Build a report</h3>
+              <p className="text-xs text-stone-500 mt-0.5">PDF or Excel for the period and desk selected above</p>
             </div>
           </div>
 
@@ -115,9 +123,17 @@ export default function AnalyticsExportPanel({
               </div>
             </div>
 
-            <p className="text-xs text-stone-500 rounded-lg border border-stone-100 bg-stone-50/60 px-3 py-2.5">
-              Period and reporting scope are taken from the filters above.
-            </p>
+            <div className="rounded-xl border border-stone-200 bg-stone-50/70 px-3.5 py-3 min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-500 mb-2">Included in this report</p>
+              <ul className="space-y-1.5">
+                {(reportContents[reportType] || []).map((item) => (
+                  <li key={item} className="flex items-start gap-2 text-sm text-stone-700 break-words">
+                    <Check size={14} className="text-brand-600 mt-0.5 flex-shrink-0" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         </div>
 
@@ -131,12 +147,12 @@ export default function AnalyticsExportPanel({
             {scopeLabel && (
               <div className="flex justify-between gap-3 min-w-0">
                 <span className="text-stone-500 flex-shrink-0">Scope</span>
-                <span className="font-semibold text-stone-900 text-right text-xs max-w-[60%] truncate">{scopeLabel}</span>
+                <span className="font-semibold text-stone-900 text-right text-xs break-words">{scopeLabel}</span>
               </div>
             )}
             <div className="flex justify-between gap-3 min-w-0">
               <span className="text-stone-500 flex-shrink-0">Report</span>
-              <span className="font-semibold text-stone-900 text-right text-xs truncate">{REPORT_LABELS[reportType]}</span>
+              <span className="font-semibold text-stone-900 text-right text-xs break-words">{REPORT_LABELS[reportType]}</span>
             </div>
             <div className="flex justify-between gap-3">
               <span className="text-stone-500">Format</span>
@@ -144,17 +160,25 @@ export default function AnalyticsExportPanel({
             </div>
             <div className="flex justify-between gap-3 min-w-0">
               <span className="text-stone-500 flex-shrink-0">Period</span>
-              <span className="font-semibold text-stone-900 text-xs text-right truncate max-w-[60%]">{rangeLabel}</span>
+              <span className="font-semibold text-stone-900 text-xs text-right break-words">{rangeLabel}</span>
             </div>
-            <div className="border-t border-stone-100 pt-3 flex justify-between items-center gap-3">
-              <span className="text-stone-500">Candidates</span>
-              <span className="font-bold text-brand-600 tabular-nums text-base">
-                {Number(candidateCount).toLocaleString()}
-              </span>
+            <div className="border-t border-stone-100 pt-3 space-y-2">
+              <div className="flex justify-between items-center gap-3">
+                <span className="text-stone-500">Candidates added</span>
+                <span className="font-bold text-brand-700 tabular-nums">{Number(candidateCount).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center gap-3">
+                <span className="text-stone-500">Hired or joined</span>
+                <span className="font-semibold text-stone-900 tabular-nums">{Number(analysis.hired || 0).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center gap-3">
+                <span className="text-stone-500">Rejected or dropped</span>
+                <span className="font-semibold text-stone-900 tabular-nums">{Number(analysis.rejected || 0).toLocaleString()}</span>
+              </div>
             </div>
           </div>
 
-          <div className="px-4 sm:px-5 pb-5 space-y-2">
+          <div className="px-4 sm:px-5 pb-5 space-y-2 mb-2">
             <button
               type="button"
               onClick={handlePreview}

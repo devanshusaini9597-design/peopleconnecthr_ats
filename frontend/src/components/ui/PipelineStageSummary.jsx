@@ -11,9 +11,9 @@ function useDragScroll() {
 
   const onPointerDown = (e) => {
     if (e.button !== 0) return;
-    if (e.target.closest('button, a, input, textarea, [role="button"]')) return;
+    if (e.target.closest('a, input, textarea, select, [data-no-drag]')) return;
     const el = ref.current;
-    if (!el) return;
+    if (!el || el.scrollWidth <= el.clientWidth + 2) return;
     drag.current = {
       active: true,
       startX: e.clientX,
@@ -70,6 +70,7 @@ export default function PipelineStageSummary({
   hint = 'Hiring pipeline',
   showHint = true,
   tourAttr = 'apps-stage-summary',
+  countLabel = 'candidates',
 }) {
   const scroll = useDragScroll();
 
@@ -106,13 +107,14 @@ export default function PipelineStageSummary({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className="inline-flex items-center h-7 px-2.5 rounded-lg border border-stone-200 bg-stone-50 text-[11px] font-semibold text-stone-700 tabular-nums">
-            {Number(total) || 0} candidates
+            {Number(total) || 0} {countLabel}
           </span>
           {activeLabel ? (
             <button
               type="button"
               onClick={() => setStageFilter?.('all')}
-              className="h-7 px-2.5 rounded-lg border border-stone-200 bg-white text-[11px] font-semibold text-stone-700 hover:bg-stone-50"
+              data-no-drag
+            className="h-7 px-2.5 rounded-lg border border-stone-200 bg-white text-[11px] font-semibold text-stone-700 hover:bg-stone-50"
             >
               Clear
             </button>
@@ -122,7 +124,7 @@ export default function PipelineStageSummary({
 
       <div
         ref={scroll.ref}
-        className="overflow-x-auto overscroll-x-contain select-none cursor-grab active:cursor-grabbing [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="overflow-x-auto overscroll-x-contain touch-pan-y select-none cursor-grab active:cursor-grabbing py-2 px-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         onPointerDown={scroll.onPointerDown}
         onPointerMove={scroll.onPointerMove}
         onPointerUp={scroll.onPointerUp}
@@ -131,7 +133,7 @@ export default function PipelineStageSummary({
         role="list"
         aria-label="Pipeline stages"
       >
-        <div className="flex gap-3 sm:gap-4 w-max min-w-full pb-0.5">
+        <div className="flex gap-4 sm:gap-5 w-max min-w-full pb-0.5">
           {stages.map((stage, index) => {
             const id = stage.id || stage.key;
             const label = stage.label || id;

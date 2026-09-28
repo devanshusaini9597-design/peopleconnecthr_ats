@@ -16,6 +16,7 @@ export const isPublicAuthPath = (path = typeof window !== 'undefined' ? window.l
   const p = String(path || '');
   return (
     p.startsWith('/login')
+    || p.startsWith('/demo')
     || p.startsWith('/register')
     || p.startsWith('/reset-password')
     || p.startsWith('/verify-email')

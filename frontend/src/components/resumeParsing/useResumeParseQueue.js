@@ -4,6 +4,8 @@ import usePageTour from '../../hooks/usePageTour';
 import { BASE_API_URL } from '../../config';
 import { authenticatedFetch } from '../../utils/fetchUtils';
 import { useToast } from '../Toast';
+import { useAuth } from '../../context/AuthContext';
+import { resolveEmployeeSpocLabel } from '../../utils/spocIdentity';
 import {
   saveResumeFile, openResumeFile, deleteResumeFiles, clearResumeFiles,
 } from '../../utils/resumeFileStore';
@@ -15,6 +17,8 @@ import {
 export function useResumeParseQueue() {
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
+  const uploaderSpoc = resolveEmployeeSpocLabel(user, user?.name ? [user.name] : []);
   const [tourOpen, setTourOpen] = usePageTour(PARSE_TOUR_KEY);
   const fileInputRef = useRef(null);
   const tableScrollRef = useRef(null);
@@ -52,6 +56,19 @@ export function useResumeParseQueue() {
   useEffect(() => {
     setCurrentPage(1);
   }, [statusFilter]);
+
+  useEffect(() => {
+    if (!uploaderSpoc) return;
+    setResults((prev) => {
+      let changed = false;
+      const next = prev.map((r) => {
+        if (!r?.success || !r.data || String(r.data.spoc || '').trim()) return r;
+        changed = true;
+        return { ...r, data: { ...r.data, spoc: uploaderSpoc } };
+      });
+      return changed ? next : prev;
+    });
+  }, [uploaderSpoc]);
 
   const handleViewResume = async (result) => {
     if (!result?.id) return;
@@ -143,6 +160,7 @@ export function useResumeParseQueue() {
               location: result.parsed?.location || result.location || '',
               skills: result.parsed?.skills || result.skills || '',
               education: result.parsed?.education || result.education || '',
+              spoc: result.spoc || result.metadata?.uploaderSpoc || uploaderSpoc,
             },
             confidence: result.parsed?.confidence || result.confidence || {},
             metadata: result.metadata || {},
@@ -192,7 +210,7 @@ export function useResumeParseQueue() {
       setParsing(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  }, [toast]);
+  }, [toast, uploaderSpoc]);
 
   const handleFileSelect = (event) => {
     parseFiles(event.target.files);
@@ -240,8 +258,11 @@ export function useResumeParseQueue() {
   };
 
   const addToCandidate = (resultData) => {
-    localStorage.setItem('parsedResumeData', JSON.stringify(resultData));
-    navigate('/ats');
+    localStorage.setItem('parsedResumeData', JSON.stringify({
+      ...resultData,
+      spoc: resultData?.spoc || uploaderSpoc,
+    }));
+    navigate('/ats?add=1');
   };
 
   const setRowStatus = (idx, reviewStatus) => {
@@ -309,6 +330,7 @@ export function useResumeParseQueue() {
       skills: c.skills || '',
       education: c.education || '',
       ctc: c.ctc || 'Not disclosed',
+      spoc: c.spoc || uploaderSpoc,
     }));
 
     setAddingAll(true);

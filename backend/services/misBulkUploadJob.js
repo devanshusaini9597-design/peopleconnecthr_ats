@@ -7,8 +7,28 @@ const fs = require('fs');
 const path = require('path');
 const ExcelJS = require('exceljs');
 const MisContact = require('../models/MisContact');
+const { isMisCompanyRole } = require('../utils/dataScope');
 const { normalizeText } = require('../utils/textNormalize');
+const { autoDetectHeaderMapping } = require('../utils/misHeaderMap');
+const { autoFixMisRow, looksLikeEmail } = require('../utils/misRowFix');
+const { parseRecordDate } = require('../utils/candidateActivityDate');
 const logger = require('../utils/logger');
+
+function deskScopeForUser(user) {
+  return user?.role === 'owner' ? 'org' : 'personal';
+}
+
+function cellValue(row, col) {
+  if (!col) return null;
+  const cell = row.getCell(col);
+  const v = cell?.value;
+  if (v == null) return null;
+  if (v instanceof Date) return v;
+  if (typeof v === 'number') return v;
+  if (typeof v === 'object' && v.result != null) return v.result;
+  if (typeof v === 'object' && v.text != null) return v.text;
+  return v;
+}
 
 const misUploadJobs = new Map();
 const MIS_JOB_TTL_MS = 60 * 60 * 1000;
@@ -24,12 +44,8 @@ function trimStr(v) {
   return String(v ?? '').trim();
 }
 
-function normalizeEmail(email) {
-  return String(email || '').toLowerCase().trim();
-}
-
-function phoneDigits(raw) {
-  return String(raw || '').replace(/\D/g, '');
+function hasAnyRowValue(raw) {
+  return Object.values(raw || {}).some((v) => String(v || '').trim());
 }
 
 function cellStr(row, col) {
@@ -40,72 +56,6 @@ function cellStr(row, col) {
   if (typeof v === 'object' && v.text) return String(v.text).trim();
   if (typeof v === 'object' && v.result != null) return String(v.result).trim();
   return String(v).trim();
-}
-
-function autoDetectHeaderMapping(headerRow) {
-  const candidates = {};
-  const set = (field, col, priority) => {
-    if (!candidates[field] || candidates[field].priority < priority) {
-      candidates[field] = { col, priority };
-    }
-  };
-  headerRow.eachCell((cell, colNumber) => {
-    const header = String(cell.value || '').toLowerCase().trim();
-    const norm = header.replace(/[^a-z0-9]/g, '');
-    const has = (s) => header.includes(s) || norm.includes(s.replace(/[^a-z0-9]/g, ''));
-
-    if (norm === 'name' || norm === 'candidatename' || norm === 'fullname') set('name', colNumber, 10);
-    else if ((has('name') || has('candidate')) && !has('company')) set('name', colNumber, 5);
-
-    if (norm === 'email' || norm === 'emailid') set('email', colNumber, 10);
-    else if (has('email') || has('mail')) set('email', colNumber, 5);
-
-    if (norm === 'contact' || norm === 'phone' || norm === 'mobile') set('contact', colNumber, 10);
-    else if (has('contact') || has('phone') || has('mobile')) set('contact', colNumber, 5);
-
-    if (norm === 'position' || norm === 'designation' || norm === 'role') set('position', colNumber, 10);
-    else if (has('position') || has('role') || has('designation')) set('position', colNumber, 5);
-
-    if (norm === 'company' || norm === 'companyname') set('companyName', colNumber, 10);
-    else if (has('company') || has('employer')) set('companyName', colNumber, 5);
-
-    if (norm === 'experience' || norm === 'exp') set('experience', colNumber, 10);
-    else if (has('experience') || has('exp')) set('experience', colNumber, 5);
-
-    if (norm === 'ctc' || norm === 'currentctc') set('ctc', colNumber, 10);
-    else if (has('ctc') && !has('expected')) set('ctc', colNumber, 5);
-
-    if (norm === 'expectedctc' || norm === 'ectc') set('expectedCtc', colNumber, 10);
-    else if (has('expected') && has('ctc')) set('expectedCtc', colNumber, 5);
-
-    if (norm === 'notice' || norm === 'noticeperiod') set('noticePeriod', colNumber, 10);
-    else if (has('notice')) set('noticePeriod', colNumber, 5);
-
-    if (norm === 'location' || norm === 'city') set('location', colNumber, 10);
-    else if (has('location') || has('city')) set('location', colNumber, 5);
-
-    if (norm === 'skills' || norm === 'skill') set('skills', colNumber, 10);
-    else if (has('skill')) set('skills', colNumber, 5);
-
-    if (norm === 'product') set('product', colNumber, 10);
-    else if (has('product')) set('product', colNumber, 5);
-
-    if (norm === 'client') set('client', colNumber, 10);
-    else if (has('client')) set('client', colNumber, 5);
-
-    if (norm === 'fls' || norm === 'nonfls') set('fls', colNumber, 10);
-    else if (has('fls')) set('fls', colNumber, 5);
-
-    if (norm === 'source') set('source', colNumber, 10);
-    else if (has('source')) set('source', colNumber, 5);
-
-    if (norm === 'remark' || norm === 'remarks' || norm === 'notes') set('remark', colNumber, 10);
-    else if (has('remark') || has('note')) set('remark', colNumber, 5);
-  });
-
-  const map = {};
-  Object.keys(candidates).forEach((k) => { map[k] = candidates[k].col; });
-  return map;
 }
 
 function jobSnapshot(job) {
@@ -123,7 +73,9 @@ function jobSnapshot(job) {
       : (job.status === 'done' ? 100 : 0);
   let message;
   if (job.status === 'done') {
-    message = `Done · ${job.created || 0} added · ${job.duplicates || 0} duplicates · ${job.duplicatesInFile || 0} in-file repeats · ${job.skipped || 0} failed/invalid`;
+    const backfilled = job.datesBackfilled || 0;
+    message = `Done · ${job.created || 0} added · ${job.duplicates || 0} duplicates · ${job.duplicatesInFile || 0} in-file repeats · ${job.skipped || 0} failed/invalid`
+      + (backfilled ? ` · ${backfilled} tracker dates filled` : '');
   } else if (job.status === 'error') {
     message = job.error || 'Import failed';
   } else if (job.status === 'parsing') {
@@ -143,9 +95,10 @@ function jobSnapshot(job) {
     created: job.created || 0,
     duplicates: job.duplicates || 0,
     duplicatesInFile: job.duplicatesInFile || 0,
+    datesBackfilled: job.datesBackfilled || 0,
     skipped: job.skipped || 0,
     blank: job.blank || 0,
-    updated: 0,
+    updated: job.datesBackfilled || 0,
     errors: (job.errors || []).slice(0, 40),
     error: job.error || null,
     message,
@@ -154,6 +107,110 @@ function jobSnapshot(job) {
 
 function scheduleJobCleanup(jobId) {
   setTimeout(() => { misUploadJobs.delete(jobId); }, MIS_JOB_TTL_MS);
+}
+
+function pushJobError(errors, sheetName, row, message) {
+  if (errors.length >= 50) return;
+  errors.push({
+    row,
+    sheet: sheetName || '',
+    message,
+  });
+}
+
+async function ingestSheet(sheet, { seenEmails, pending, errors, batchId }) {
+  const sheetName = String(sheet?.name || 'Sheet').trim() || 'Sheet';
+  let headerRow;
+  try {
+    headerRow = sheet.getRow(1);
+  } catch {
+    return { used: false, dataRows: 0, duplicatesInFile: 0, skipped: 0, blank: 0 };
+  }
+  const map = autoDetectHeaderMapping(headerRow);
+  if (!map.name || !map.email) {
+    return { used: false, dataRows: 0, duplicatesInFile: 0, skipped: 0, blank: 0 };
+  }
+
+  let duplicatesInFile = 0;
+  let skipped = 0;
+  let blank = 0;
+  const last = Number(sheet.rowCount) || 1;
+
+  for (let r = 2; r <= last; r += 1) {
+    const row = sheet.getRow(r);
+    const raw = {
+      name: cellStr(row, map.name),
+      email: cellStr(row, map.email),
+      contact: map.contact ? cellStr(row, map.contact) : '',
+      phone: '',
+      source: map.source ? cellStr(row, map.source) : '',
+    };
+    for (const key of ['position', 'companyName', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'location', 'skills', 'product', 'client', 'fls', 'remark']) {
+      raw[key] = map[key] ? cellStr(row, map[key]) : '';
+    }
+
+    if (!hasAnyRowValue(raw)) {
+      blank += 1;
+      continue;
+    }
+
+    const { row: fixed, fixes } = autoFixMisRow(raw);
+    const name = String(fixed.name || '').trim();
+    const email = String(fixed.email || '').trim().toLowerCase();
+
+    if (!name && !email) {
+      blank += 1;
+      continue;
+    }
+    if (!name || !looksLikeEmail(email)) {
+      skipped += 1;
+      pushJobError(
+        errors,
+        sheetName,
+        r,
+        fixes.length
+          ? `Name and valid email required (tried auto-fix: ${fixes.join(', ')})`
+          : 'Name and valid email required'
+      );
+      continue;
+    }
+    if (seenEmails.has(email)) {
+      duplicatesInFile += 1;
+      pushJobError(errors, sheetName, r, 'Duplicate email in this file — kept first row only');
+      continue;
+    }
+    seenEmails.add(email);
+
+    const phone = String(fixed.phone || fixed.contact || '').trim();
+    const payload = {
+      name: normalizeText(name),
+      email,
+      phone,
+      contact: phone,
+      uploadBatchId: batchId,
+      source: normalizeText(fixed.source) || 'MIS Upload',
+      marketingConsent: true,
+    };
+    for (const key of ['position', 'companyName', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'location', 'skills', 'product', 'client', 'fls', 'remark']) {
+      if (fixed[key]) payload[key] = normalizeText(fixed[key]);
+    }
+    const parsedDate = map.recordDate
+      ? parseRecordDate(cellValue(row, map.recordDate))
+      : null;
+    if (parsedDate) payload.recordDate = parsedDate;
+    pending.push({ row: r, sheet: sheetName, payload });
+    if (r % 500 === 0) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  }
+
+  return {
+    used: true,
+    dataRows: Math.max(0, last - 1),
+    duplicatesInFile,
+    skipped,
+    blank,
+  };
 }
 
 async function parseAndQueueRows(job) {
@@ -168,67 +225,48 @@ async function parseAndQueueRows(job) {
     throw httpError(err.message || 'Could not read spreadsheet', 400);
   }
 
-  const sheet = workbook.worksheets[0];
-  if (!sheet) {
+  const sheets = Array.isArray(workbook.worksheets) ? workbook.worksheets.filter(Boolean) : [];
+  if (!sheets.length) {
     try { fs.unlinkSync(filePath); } catch { /* ignore */ }
     throw httpError('Spreadsheet is empty');
   }
 
-  const headerRow = sheet.getRow(1);
-  const map = autoDetectHeaderMapping(headerRow);
-  if (!map.name || !map.email) {
-    try { fs.unlinkSync(filePath); } catch { /* ignore */ }
-    throw httpError('Spreadsheet must include Name and Email columns');
-  }
-
   const pending = [];
   const seenEmails = new Set();
+  const errors = [];
   let duplicatesInFile = 0;
   let skipped = 0;
   let blank = 0;
-  const errors = [];
+  let totalRows = 0;
+  let usedSheets = 0;
+  const skippedSheetNames = [];
 
-  for (let r = 2; r <= sheet.rowCount; r += 1) {
-    const row = sheet.getRow(r);
-    const name = cellStr(row, map.name);
-    const email = normalizeEmail(cellStr(row, map.email));
-    if (!name && !email) {
-      blank += 1;
+  for (let i = 0; i < sheets.length; i += 1) {
+    const stats = await ingestSheet(sheets[i], {
+      seenEmails,
+      pending,
+      errors,
+      batchId: job.batchId,
+    });
+    if (!stats.used) {
+      const rowCount = Number(sheets[i].rowCount) || 0;
+      if (rowCount > 1) skippedSheetNames.push(String(sheets[i].name || `Sheet ${i + 1}`));
       continue;
     }
-    if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-      skipped += 1;
-      if (errors.length < 50) errors.push({ row: r, message: 'Name and valid email required' });
-      continue;
-    }
-    if (seenEmails.has(email)) {
-      duplicatesInFile += 1;
-      if (errors.length < 50) {
-        errors.push({ row: r, message: 'Duplicate email in this file — kept first row only' });
-      }
-      continue;
-    }
-    seenEmails.add(email);
+    usedSheets += 1;
+    totalRows += stats.dataRows;
+    duplicatesInFile += stats.duplicatesInFile;
+    skipped += stats.skipped;
+    blank += stats.blank;
+  }
 
-    const phone = phoneDigits(cellStr(row, map.contact));
-    const payload = {
-      name: normalizeText(name),
-      email,
-      phone,
-      contact: phone,
-      uploadBatchId: job.batchId,
-      source: normalizeText(cellStr(row, map.source)) || 'MIS Upload',
-      marketingConsent: true,
-    };
-    for (const key of ['position', 'companyName', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'location', 'skills', 'product', 'client', 'fls', 'remark']) {
-      if (map[key]) payload[key] = normalizeText(cellStr(row, map[key]));
-    }
-    pending.push({ row: r, payload });
+  if (!usedSheets) {
+    try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+    throw httpError('Spreadsheet must include Name and Email columns on at least one sheet');
+  }
 
-    // Keep event loop responsive on huge sheets
-    if (r % 500 === 0) {
-      await new Promise((resolve) => setImmediate(resolve));
-    }
+  for (const name of skippedSheetNames) {
+    pushJobError(errors, name, 1, 'Sheet skipped — no Name and Email headers');
   }
 
   try { fs.unlinkSync(filePath); } catch { /* ignore */ }
@@ -236,7 +274,7 @@ async function parseAndQueueRows(job) {
 
   job.pending = pending;
   job.pendingTotal = pending.length;
-  job.totalRows = Math.max(0, sheet.rowCount - 1);
+  job.totalRows = totalRows;
   job.duplicatesInFile = duplicatesInFile;
   job.skipped = skipped;
   job.blank = blank;
@@ -270,31 +308,46 @@ async function processMisUploadJob(jobId) {
   if (!job || job.status !== 'processing') return;
 
   const CHUNK = 100;
-  const { organizationId, createdBy, pending } = job;
+  const { organizationId, createdBy, pending, deskScope } = job;
+  if (job.datesBackfilled == null) job.datesBackfilled = 0;
 
   try {
     for (let i = 0; i < pending.length; i += CHUNK) {
       const chunk = pending.slice(i, i + CHUNK);
       const emails = chunk.map((c) => c.payload.email);
-      let existingEmails = new Set();
+      let existingByEmail = new Map();
       try {
         const existingRows = await MisContact.find({
           organizationId,
           email: { $in: emails },
-        }).select('email').lean();
-        existingEmails = new Set(existingRows.map((e) => e.email));
+        }).select('email recordDate').lean();
+        existingByEmail = new Map(existingRows.map((e) => [e.email, e]));
       } catch (err) {
         job.skipped += chunk.length;
         if (job.errors.length < 50) {
-          job.errors.push({ row: chunk[0]?.row, message: err.message || 'Lookup failed' });
+          job.errors.push({ row: chunk[0]?.row, sheet: chunk[0]?.sheet, message: err.message || 'Lookup failed' });
         }
         continue;
       }
 
       const ops = [];
       for (const item of chunk) {
-        if (existingEmails.has(item.payload.email)) {
+        const existing = existingByEmail.get(item.payload.email);
+        if (existing) {
           job.duplicates += 1;
+          // Recover tracker dates on already-imported rows that never stored them
+          if (item.payload.recordDate && !existing.recordDate) {
+            ops.push({
+              updateOne: {
+                filter: {
+                  organizationId,
+                  email: item.payload.email,
+                  $or: [{ recordDate: null }, { recordDate: { $exists: false } }],
+                },
+                update: { $set: { recordDate: item.payload.recordDate } },
+              },
+            });
+          }
           continue;
         }
         ops.push({
@@ -302,6 +355,7 @@ async function processMisUploadJob(jobId) {
             document: {
               organizationId,
               createdBy,
+              deskScope: deskScope || 'personal',
               ...item.payload,
               unsubscribeSecret: crypto.randomBytes(16).toString('hex'),
             },
@@ -313,13 +367,30 @@ async function processMisUploadJob(jobId) {
         try {
           const result = await MisContact.bulkWrite(ops, { ordered: false });
           job.created += result.insertedCount || Number(result.nInserted || 0) || 0;
+          job.datesBackfilled += result.modifiedCount || Number(result.nModified || 0) || 0;
         } catch (err) {
           for (const item of chunk) {
-            if (existingEmails.has(item.payload.email)) continue;
+            if (existingByEmail.has(item.payload.email)) {
+              if (item.payload.recordDate) {
+                try {
+                  const upd = await MisContact.updateOne(
+                    {
+                      organizationId,
+                      email: item.payload.email,
+                      $or: [{ recordDate: null }, { recordDate: { $exists: false } }],
+                    },
+                    { $set: { recordDate: item.payload.recordDate } }
+                  );
+                  if (upd.modifiedCount) job.datesBackfilled += 1;
+                } catch { /* ignore */ }
+              }
+              continue;
+            }
             try {
               const doc = new MisContact({
                 organizationId,
                 createdBy,
+                deskScope: deskScope || 'personal',
                 ...item.payload,
               });
               doc.ensureUnsubscribeSecret();
@@ -331,7 +402,7 @@ async function processMisUploadJob(jobId) {
               } else {
                 job.skipped += 1;
                 if (job.errors.length < 50) {
-                  job.errors.push({ row: item.row, message: rowErr.message || 'Row failed' });
+                  job.errors.push({ row: item.row, sheet: item.sheet, message: rowErr.message || 'Row failed' });
                 }
               }
             }
@@ -357,8 +428,8 @@ async function processMisUploadJob(jobId) {
  * Parse + DB import run in the background so Railway/proxy does not time out.
  */
 async function startBulkUploadJob(user, file) {
-  if (!user || user.role !== 'owner') {
-    throw httpError('MIS is available to the company owner only', 403, { code: 'MIS_OWNER_ONLY' });
+  if (!user || !isMisCompanyRole(user)) {
+    throw httpError('MIS is available to company employees only', 403, { code: 'MIS_COMPANY_ONLY' });
   }
   if (!file) throw httpError('Excel file is required');
   const filePath = file.path
@@ -376,12 +447,14 @@ async function startBulkUploadJob(user, file) {
     status: 'parsing',
     batchId,
     createdBy: user.id || user._id,
+    deskScope: deskScopeForUser(user),
     pending: [],
     pendingTotal: 0,
     totalRows: 0,
     created: 0,
     duplicates: 0,
     duplicatesInFile: 0,
+    datesBackfilled: 0,
     skipped: 0,
     blank: 0,
     errors: [],
@@ -408,8 +481,8 @@ async function startBulkUploadJob(user, file) {
 }
 
 function getBulkUploadJob(user, jobId) {
-  if (!user || user.role !== 'owner') {
-    throw httpError('MIS is available to the company owner only', 403, { code: 'MIS_OWNER_ONLY' });
+  if (!user || !isMisCompanyRole(user)) {
+    throw httpError('MIS is available to company employees only', 403, { code: 'MIS_COMPANY_ONLY' });
   }
   const job = misUploadJobs.get(String(jobId || ''));
   if (!job) throw httpError('Upload job not found or expired', 404, { code: 'JOB_NOT_FOUND' });

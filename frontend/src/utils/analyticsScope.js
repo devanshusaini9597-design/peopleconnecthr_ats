@@ -10,7 +10,7 @@ export function appendUserId(url, userId) {
   return `${url}${joiner}userId=${encodeURIComponent(userId)}`;
 }
 
-export function appendAnalyticsParams(url, { userId, dateRange, customFrom, customTo } = {}) {
+export function appendAnalyticsParams(url, { userId, dateRange, customFrom, customTo, cohortMonth, refresh } = {}) {
   const params = new URLSearchParams();
   if (userId) params.set('userId', userId);
   if (dateRange) params.set('dateRange', dateRange);
@@ -18,6 +18,8 @@ export function appendAnalyticsParams(url, { userId, dateRange, customFrom, cust
     if (customFrom) params.set('customFrom', customFrom);
     if (customTo) params.set('customTo', customTo);
   }
+  if (cohortMonth) params.set('cohortMonth', cohortMonth);
+  if (refresh) params.set('refresh', '1');
   const qs = params.toString();
   if (!qs) return url;
   const joiner = url.includes('?') ? '&' : '?';

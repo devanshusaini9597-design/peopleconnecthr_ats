@@ -8,8 +8,8 @@ const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
 const { analyticsScope, analyticsScopeMeta, canViewOrgAnalytics, requestedAnalyticsUserId } = require('../utils/dataScope');
-const { foldStatusCounts, statusMatchValues, canonCandidateStatus } = require('../utils/statusCanon');
-const { buildDateFilter, getDateRangeLabel } = require('../utils/analyticsTime');
+const { foldStatusCounts, pipelineList, statusMatchValues, canonCandidateStatus } = require('../utils/statusCanon');
+const { buildDateFilter, getDateRangeLabel, chartBucketConfig, DEFAULT_TZ } = require('../utils/analyticsTime');
 const { withActivityDateRange, activityDateExpr } = require('../utils/candidateActivityDate');
 
 async function scopeFilter(req) {
@@ -370,21 +370,41 @@ function addPDFFooter(doc, orgName = '') {
 //  REPORT GENERATORS
 // ═══════════════════════════════════════════
 
+const CLOSED_STAGES = new Set(['Hired', 'Joined', 'Rejected', 'Dropped']);
+
+function stageRowsFromPipeline(pipeline) {
+  return pipelineList(pipeline, PIPELINE_STAGES, {
+    includeZero: true,
+    ensureStages: ['Rejected', 'Dropped'],
+  });
+}
+
+function recordDateLabel(candidate) {
+  if (candidate?.date) return String(candidate.date);
+  const when = candidate?.appliedAt || candidate?.createdAt;
+  if (!when) return '';
+  const parsed = new Date(when);
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleDateString('en-IN');
+}
+
 async function getRecruitmentData(scope, dateFilter) {
   const userFilter = withActivityDateRange({ ...scope }, dateFilter);
   const pipelineCounts = await Candidate.aggregate([{ $match: userFilter }, { $group: { _id: '$status', count: { $sum: 1 } } }]);
   const pipeline = foldStatusCounts(pipelineCounts);
-  const total = Object.values(pipeline).reduce((s, v) => s + v, 0);
+  const stages = stageRowsFromPipeline(pipeline);
+  const total = stages.reduce((sum, row) => sum + row.count, 0);
   const hired = (pipeline.Hired || 0) + (pipeline.Joined || 0);
   const rejected = (pipeline.Rejected || 0) + (pipeline.Dropped || 0);
-  const inProgress = (pipeline.Applied || 0) + (pipeline.Screening || 0) + (pipeline.Interview || 0) + (pipeline.Offer || 0);
-  return { pipeline, total, hired, rejected, inProgress };
+  const inProgress = stages
+    .filter((row) => !CLOSED_STAGES.has(row.stage))
+    .reduce((sum, row) => sum + row.count, 0);
+  return { pipeline, stages, total, hired, rejected, inProgress };
 }
 
 // Recruitment Summary - Excel
 async function recruitmentSummaryReport(wb, scope, dateFilter) {
   const ws = wb.addWorksheet('Recruitment Summary');
-  const { pipeline, total, hired, rejected, inProgress } = await getRecruitmentData(scope, dateFilter);
+  const { stages, total, hired, rejected, inProgress } = await getRecruitmentData(scope, dateFilter);
   // keys must NOT be "value" — ExcelJS reserves Cell.value
   ws.columns = [
     { header: 'Metric', key: 'metric', width: 32 },
@@ -397,11 +417,11 @@ async function recruitmentSummaryReport(wb, scope, dateFilter) {
   const rows = [
     { metric: 'Total Candidates', count: total, share: '100%' },
     { metric: '', count: '', share: '' },
-    { metric: 'Pipeline Breakdown', count: '', share: '' },
-    ...['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Joined', 'Rejected', 'Dropped'].map((s) => ({
-      metric: s,
-      count: pipeline[s] || 0,
-      share: pctStr(pipeline[s] || 0),
+    { metric: 'Pipeline Breakdown', count: 'Current stage of people added in this period', share: '' },
+    ...stages.map((row) => ({
+      metric: row.stage,
+      count: row.count,
+      share: pctStr(row.count),
     })),
     { metric: '', count: '', share: '' },
     { metric: 'Key Metrics', count: '', share: '' },
@@ -414,14 +434,16 @@ async function recruitmentSummaryReport(wb, scope, dateFilter) {
   rows.forEach((r) => ws.addRow(r));
   styleHeaderRow(ws);
   polishDataRows(ws);
-  // Section header rows (after ExcelJS header = row 1)
-  [4, 14].forEach((n) => styleSectionRow(ws, n));
+  ws.eachRow((row, rowNumber) => {
+    const label = String(row.getCell(1).value || '');
+    if (label === 'Pipeline Breakdown' || label === 'Key Metrics') styleSectionRow(ws, rowNumber);
+  });
 }
 
 // Recruitment Summary - PDF
 async function recruitmentSummaryPDF(doc, scope, dateFilter, label, meta = {}) {
   drawPDFHeader(doc, 'Recruitment Summary Report', label, meta);
-  const { pipeline, total, hired, rejected, inProgress } = await getRecruitmentData(scope, dateFilter);
+  const { stages, total, hired, rejected, inProgress } = await getRecruitmentData(scope, dateFilter);
   const conv = total ? Math.round((hired / total) * 100) : 0;
   drawPDFSummaryCards(doc, [
     { label: 'Total Candidates', value: total.toLocaleString() },
@@ -430,40 +452,27 @@ async function recruitmentSummaryPDF(doc, scope, dateFilter, label, meta = {}) {
     { label: 'Conversion Rate', value: `${conv}%` },
   ]);
 
-  const stages = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Joined', 'Rejected', 'Dropped'];
-  drawPDFBarChart(doc, stages.filter((s) => pipeline[s]).map((s) => ({
-    label: s,
-    value: pipeline[s] || 0,
-    color: PIPELINE_CHART_COLORS[s] || '#0d9488',
-  })), { title: 'Pipeline Distribution' });
+  drawPDFBarChart(doc, stages.filter((row) => row.count > 0).map((row) => ({
+    label: row.stage,
+    value: row.count,
+    color: PIPELINE_CHART_COLORS[row.stage] || '#0d9488',
+  })), { title: 'Current stage of people added in this period' });
 
-  const userFilter = withActivityDateRange({ ...scope }, dateFilter);
-  const trendRows = await Candidate.aggregate([
-    { $match: userFilter },
-    { $addFields: { activityDate: activityDateExpr() } },
-    {
-      $group: {
-        _id: { $dateToString: { format: '%Y-%m-%d', date: '$activityDate' } },
-        count: { $sum: 1 },
-      },
-    },
-    { $sort: { _id: 1 } },
-    { $limit: 30 },
-  ]);
-  if (trendRows.length > 1) {
-    drawPDFTrendChart(doc, trendRows.map((r) => ({ day: r._id, count: r.count })), { title: 'Application trend' });
+  const trendRows = await fetchTrendChart(scope, dateFilter, meta);
+  if (trendRows.some((row) => row.count > 0)) {
+    drawPDFTrendChart(doc, trendRows.map((r) => ({ day: r.label || r.date, count: r.count })), { title: 'Records added' });
   }
 
-  drawPDFInsights(doc, buildInsights({ total, hired, rejected, inProgress, pipeline }));
+  drawPDFInsights(doc, buildInsights({ total, hired, rejected, inProgress, pipeline: Object.fromEntries(stages.map((row) => [row.stage, row.count])) }));
 
   doc.fontSize(11).fillColor('#1E293B').font('Helvetica-Bold').text('Pipeline Breakdown', 40); doc.moveDown(0.5);
   drawPDFTable(
     doc,
     ['Stage', 'Count', 'Share'],
-    stages.filter((s) => pipeline[s]).map((s) => [
-      s,
-      pipeline[s] || 0,
-      total ? `${Math.round(((pipeline[s] || 0) / total) * 100)}%` : '0%',
+    stages.map((row) => [
+      row.stage,
+      row.count,
+      total ? `${Math.round((row.count / total) * 100)}%` : '0%',
     ]),
     [200, 160, 155],
   );
@@ -507,9 +516,9 @@ async function sourcePerformancePDF(doc, scope, dateFilter, label, meta = {}) {
   const data = await getSourceData(scope, dateFilter);
   const totalAll = data.reduce((s, d) => s + d.total, 0);
   const totalHired = data.reduce((s, d) => s + d.hired, 0);
-  drawPDFSummaryCards(doc, [{ label: 'Total Sources', value: data.length }, { label: 'Total Candidates', value: totalAll }, { label: 'Top Source', value: data.length > 0 ? data[0]._id : 'N/A' }, { label: 'Best Conversion', value: data.reduce((b, s) => { const r = s.total > 0 ? (s.hired / s.total) * 100 : 0; return r > b.rate ? { n: s._id, rate: r } : b; }, { n: 'N/A', rate: 0 }).n }]);
+  drawPDFSummaryCards(doc, [{ label: 'Total Sources', value: data.length }, { label: 'With a source', value: totalAll }, { label: 'Top Source', value: data.length > 0 ? data[0]._id : 'N/A' }, { label: 'Best Conversion', value: data.reduce((b, s) => { const r = s.total > 0 ? (s.hired / s.total) * 100 : 0; return r > b.rate ? { n: s._id, rate: r } : b; }, { n: 'N/A', rate: 0 }).n }]);
   drawPDFBarChart(doc, data.slice(0, 8).map((s) => ({ label: String(s._id), value: s.total })), { title: 'Top Sources by Volume' });
-  const trendChart = await fetchTrendChart(scope, dateFilter);
+  const trendChart = await fetchTrendChart(scope, dateFilter, meta);
   if (trendChart.length > 1) {
     drawPDFTrendChart(doc, trendChart.map((r) => ({ day: r.date || r.day || r._id, count: r.count })), { title: 'Application trend' });
   }
@@ -544,9 +553,9 @@ async function positionWisePDF(doc, scope, dateFilter, label, meta = {}) {
   const data = await getPositionData(scope, dateFilter);
   const totalAll = data.reduce((s, d) => s + d.total, 0);
   const totalHired = data.reduce((s, d) => s + d.hired, 0);
-  drawPDFSummaryCards(doc, [{ label: 'Total Positions', value: data.length }, { label: 'Total Candidates', value: totalAll }, { label: 'Avg per Position', value: data.length > 0 ? Math.round(totalAll / data.length) : 0 }, { label: 'Active Positions', value: data.filter(p => p.total > 0).length }]);
+  drawPDFSummaryCards(doc, [{ label: 'Total Positions', value: data.length }, { label: 'With a position', value: totalAll }, { label: 'Avg per Position', value: data.length > 0 ? Math.round(totalAll / data.length) : 0 }, { label: 'Active Positions', value: data.filter(p => p.total > 0).length }]);
   drawPDFBarChart(doc, data.slice(0, 8).map((p) => ({ label: String(p._id), value: p.total })), { title: 'Top Positions by Volume' });
-  const trendChart = await fetchTrendChart(scope, dateFilter);
+  const trendChart = await fetchTrendChart(scope, dateFilter, meta);
   if (trendChart.length > 1) {
     drawPDFTrendChart(doc, trendChart.map((r) => ({ day: r.date || r.day || r._id, count: r.count })), { title: 'Application trend' });
   }
@@ -580,9 +589,9 @@ async function clientReportPDF(doc, scope, dateFilter, label, meta = {}) {
   const data = await getClientData(scope, dateFilter);
   const totalAll = data.reduce((s, d) => s + d.total, 0);
   const totalHired = data.reduce((s, d) => s + d.hired, 0);
-  drawPDFSummaryCards(doc, [{ label: 'Total Clients', value: data.length }, { label: 'Total Candidates', value: totalAll }, { label: 'Total Hired', value: totalHired }, { label: 'Avg Success', value: totalAll > 0 ? Math.round((totalHired / totalAll) * 100) + '%' : '0%' }]);
+  drawPDFSummaryCards(doc, [{ label: 'Total Clients', value: data.length }, { label: 'With a client', value: totalAll }, { label: 'Total Hired', value: totalHired }, { label: 'Avg Success', value: totalAll > 0 ? Math.round((totalHired / totalAll) * 100) + '%' : '0%' }]);
   drawPDFBarChart(doc, data.slice(0, 8).map((c) => ({ label: String(c._id).slice(0, 20), value: c.total })), { title: 'Top Clients by Volume' });
-  const trendChart = await fetchTrendChart(scope, dateFilter);
+  const trendChart = await fetchTrendChart(scope, dateFilter, meta);
   if (trendChart.length > 1) {
     drawPDFTrendChart(doc, trendChart.map((r) => ({ day: r.date || r.day || r._id, count: r.count })), { title: 'Application trend' });
   }
@@ -609,7 +618,7 @@ async function pipelineStatusPDF(doc, scope, dateFilter, label, meta = {}) {
     value: c,
     color: PIPELINE_CHART_COLORS[s] || '#4338CA',
   })), { title: 'Status Distribution' });
-  const trendChart = await fetchTrendChart(scope, dateFilter);
+  const trendChart = await fetchTrendChart(scope, dateFilter, meta);
   if (trendChart.length > 1) {
     drawPDFTrendChart(doc, trendChart.map((r) => ({ day: r.date || r.day || r._id, count: r.count })), { title: 'Application trend' });
   }
@@ -660,11 +669,11 @@ async function generateReportBuffer({ reportType, format, organizationId, dateRa
     const done = new Promise((resolve) => doc.on('end', resolve));
 
     switch (reportType) {
-      case 'recruitment-summary': await recruitmentSummaryPDF(doc, scope, dateFilter, dateRangeLabel); break;
-      case 'source-performance': await sourcePerformancePDF(doc, scope, dateFilter, dateRangeLabel); break;
-      case 'position-report': await positionWisePDF(doc, scope, dateFilter, dateRangeLabel); break;
-      case 'client-report': await clientReportPDF(doc, scope, dateFilter, dateRangeLabel); break;
-      case 'pipeline-status': await pipelineStatusPDF(doc, scope, dateFilter, dateRangeLabel); break;
+      case 'recruitment-summary': await recruitmentSummaryPDF(doc, scope, dateFilter, dateRangeLabel, { dateRange, customFrom, customTo }); break;
+      case 'source-performance': await sourcePerformancePDF(doc, scope, dateFilter, dateRangeLabel, { dateRange, customFrom, customTo }); break;
+      case 'position-report': await positionWisePDF(doc, scope, dateFilter, dateRangeLabel, { dateRange, customFrom, customTo }); break;
+      case 'client-report': await clientReportPDF(doc, scope, dateFilter, dateRangeLabel, { dateRange, customFrom, customTo }); break;
+      case 'pipeline-status': await pipelineStatusPDF(doc, scope, dateFilter, dateRangeLabel, { dateRange, customFrom, customTo }); break;
     }
     let orgNameForFooter = '';
     if (organizationId) {
@@ -687,7 +696,7 @@ async function generateReportBuffer({ reportType, format, organizationId, dateRa
       const candidates = await Candidate.find(userFilter).sort({ status: 1, createdAt: -1 }).lean();
       const ws = wb.addWorksheet('Pipeline Status');
       ws.columns = [{ header: 'Name', key: 'name', width: 22 }, { header: 'Position', key: 'position', width: 22 }, { header: 'Status', key: 'status', width: 14 }, { header: 'Source', key: 'source', width: 14 }, { header: 'Client', key: 'client', width: 18 }, { header: 'Location', key: 'location', width: 16 }, { header: 'Experience', key: 'experience', width: 12 }, { header: 'CTC', key: 'ctc', width: 12 }, { header: 'Added On', key: 'createdAt', width: 14 }];
-      candidates.forEach(c => { ws.addRow({ name: c.name, position: c.position, status: c.status, source: c.source, client: c.client, location: c.location, experience: c.experience, ctc: c.ctc, createdAt: c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-IN') : '' }); });
+      candidates.forEach(c => { ws.addRow({ name: c.name, position: c.position, status: canonCandidateStatus(c.status), source: c.source, client: c.client, location: c.location, experience: c.experience, ctc: c.ctc, createdAt: recordDateLabel(c) }); });
       styleHeaderRow(ws);
       polishDataRows(ws);
       break;
@@ -701,25 +710,38 @@ exports.generateReportBuffer = generateReportBuffer;
 
 const PIPELINE_STAGES = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Joined', 'Rejected', 'Dropped'];
 
-async function fetchTrendChart(scope, dateFilter, limit = 30) {
+async function fetchTrendChart(scope, dateFilter, options = {}) {
+  const dateRange = options.dateRange || 'month';
+  const customFrom = options.customFrom || '';
+  const customTo = options.customTo || '';
+  const bucketCfg = chartBucketConfig(dateRange, customFrom, customTo);
   const userFilter = withActivityDateRange({ ...scope }, dateFilter);
   const rows = await Candidate.aggregate([
     { $match: userFilter },
     { $addFields: { activityDate: activityDateExpr() } },
     {
       $group: {
-        _id: { $dateToString: { format: '%Y-%m-%d', date: '$activityDate' } },
+        _id: {
+          $dateToString: {
+            format: '%Y-%m-%d',
+            date: '$activityDate',
+            timezone: DEFAULT_TZ,
+          },
+        },
         count: { $sum: 1 },
       },
     },
-    { $sort: { _id: 1 } },
-    { $limit: limit },
   ]);
-  return rows.map((r) => ({
-    date: r._id,
-    label: new Date(r._id).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
-    count: r.count,
-  }));
+  return (bucketCfg.dayKeys || []).map((bucket) => {
+    if (bucketCfg.rollup === 'week') {
+      const count = rows.reduce((sum, row) => (
+        row._id >= bucket.startKey && row._id <= bucket.endKey ? sum + row.count : sum
+      ), 0);
+      return { date: bucket.key, label: bucket.day, day: bucket.day, count };
+    }
+    const found = rows.find((row) => row._id === bucket.key);
+    return { date: bucket.key, label: bucket.day, day: bucket.day, count: found ? found.count : 0 };
+  });
 }
 
 function pipelineChartFromCounts(pipeline) {
@@ -732,6 +754,9 @@ function reportMeta(dateRange, customFrom, customTo) {
   return {
     subtitle: getDateRangeLabel(dateRange, customFrom, customTo),
     generatedAt: new Date().toISOString(),
+    dateRange,
+    customFrom,
+    customTo,
   };
 }
 
@@ -763,7 +788,7 @@ function buildInsights({ total, hired, rejected, inProgress, pipeline, topSource
   const rej = total > 0 ? Math.round((rejected / total) * 100) : 0;
   if (total > 0) {
     insights.push(
-      `Period volume: ${total.toLocaleString()} candidate${total === 1 ? '' : 's'}. Hire rate ${conv}%. Attrition rate ${rej}%.`
+      `${total.toLocaleString()} candidate${total === 1 ? '' : 's'} with a record date in this period. Hire rate ${conv}% is hired or joined now. Rejection rate ${rej}%.`
     );
   }
   if (inProgress > 0) {
@@ -795,10 +820,10 @@ exports.previewReport = async (req, res) => {
     switch (reportType) {
       case 'recruitment-summary': {
         preview.title = 'Recruitment Summary Report';
-        const { pipeline, total, hired, rejected, inProgress } = await getRecruitmentData(scope, dateFilter);
+        const { stages, total, hired, rejected, inProgress } = await getRecruitmentData(scope, dateFilter);
         const conv = total ? Math.round((hired / total) * 100) : 0;
         const rej = total ? Math.round((rejected / total) * 100) : 0;
-        const trendChart = await fetchTrendChart(scope, dateFilter);
+        const trendChart = await fetchTrendChart(scope, dateFilter, { dateRange, customFrom, customTo });
         preview.summary = [
           { label: 'Total candidates', value: total.toLocaleString() },
           { label: 'Active in pipeline', value: inProgress.toLocaleString() },
@@ -810,15 +835,23 @@ exports.previewReport = async (req, res) => {
           { label: 'Drop-off rate', value: rej + '%' },
           { label: 'Open pipeline', value: inProgress.toLocaleString() },
         ];
-        preview.pipelineChart = pipelineChartFromCounts(pipeline);
+        preview.pipelineChart = stages
+          .filter((row) => row.count > 0)
+          .map((row) => ({ label: row.stage, value: row.count, color: PIPELINE_CHART_COLORS[row.stage] }));
         preview.trendChart = trendChart;
-        preview.chartTitle = 'Pipeline by stage';
-        preview.insights = buildInsights({ total, hired, rejected, inProgress, pipeline });
+        preview.insights = buildInsights({
+          total,
+          hired,
+          rejected,
+          inProgress,
+          pipeline: Object.fromEntries(stages.map((row) => [row.stage, row.count])),
+        });
+        preview.chartTitle = 'Current stage of people added in this period';
         preview.headers = ['Stage', 'Count', 'Share'];
-        preview.rows = PIPELINE_STAGES.map((s) => [
-          s,
-          pipeline[s] || 0,
-          total ? Math.round(((pipeline[s] || 0) / total) * 100) + '%' : '0%',
+        preview.rows = stages.map((row) => [
+          row.stage,
+          row.count,
+          total ? Math.round((row.count / total) * 100) + '%' : '0%',
         ]);
         preview.totalCount = total;
         break;
@@ -830,12 +863,12 @@ exports.previewReport = async (req, res) => {
         const totalHired = data.reduce((s, d) => s + d.hired, 0);
         preview.summary = [
           { label: 'Total Sources', value: data.length },
-          { label: 'Total Candidates', value: totalAll.toLocaleString() },
+          { label: 'With a source', value: totalAll.toLocaleString() },
           { label: 'Hired / Joined', value: totalHired.toLocaleString() },
           { label: 'Overall Conversion', value: totalAll ? Math.round((totalHired / totalAll) * 100) + '%' : '0%' },
         ];
         preview.pipelineChart = data.slice(0, 8).map((s) => ({ label: s._id, value: s.total, fullLabel: s._id }));
-        preview.trendChart = await fetchTrendChart(scope, dateFilter);
+        preview.trendChart = await fetchTrendChart(scope, dateFilter, meta);
         preview.chartTitle = 'Top sources';
         preview.insights = buildInsights({
           total: totalAll,
@@ -861,12 +894,12 @@ exports.previewReport = async (req, res) => {
         const totalHired = data.reduce((s, d) => s + d.hired, 0);
         preview.summary = [
           { label: 'Positions', value: data.length },
-          { label: 'Total Candidates', value: totalAll.toLocaleString() },
+          { label: 'With a position', value: totalAll.toLocaleString() },
           { label: 'Hired / Joined', value: totalHired.toLocaleString() },
           { label: 'Avg Fill Rate', value: totalAll ? Math.round((totalHired / totalAll) * 100) + '%' : '0%' },
         ];
         preview.pipelineChart = data.slice(0, 8).map((p) => ({ label: displayLabel(p._id), value: p.total, fullLabel: p._id }));
-        preview.trendChart = await fetchTrendChart(scope, dateFilter);
+        preview.trendChart = await fetchTrendChart(scope, dateFilter, meta);
         preview.chartTitle = 'Top positions';
         preview.insights = buildInsights({
           total: totalAll,
@@ -892,12 +925,12 @@ exports.previewReport = async (req, res) => {
         const totalHired = data.reduce((s, d) => s + d.hired, 0);
         preview.summary = [
           { label: 'Clients', value: data.length },
-          { label: 'Total Candidates', value: totalAll.toLocaleString() },
+          { label: 'With a client', value: totalAll.toLocaleString() },
           { label: 'Hired / Joined', value: totalHired.toLocaleString() },
           { label: 'Success Rate', value: totalAll ? Math.round((totalHired / totalAll) * 100) + '%' : '0%' },
         ];
         preview.pipelineChart = data.slice(0, 8).map((c) => ({ label: String(c._id).slice(0, 22), value: c.total, fullLabel: c._id }));
-        preview.trendChart = await fetchTrendChart(scope, dateFilter);
+        preview.trendChart = await fetchTrendChart(scope, dateFilter, meta);
         preview.chartTitle = 'Top clients';
         preview.insights = buildInsights({
           total: totalAll,
@@ -936,7 +969,7 @@ exports.previewReport = async (req, res) => {
           .sort((a, b) => b[1] - a[1])
           .slice(0, 10)
           .map(([label, value]) => ({ label, value, color: PIPELINE_CHART_COLORS[label] }));
-        preview.trendChart = await fetchTrendChart(scope, dateFilter);
+        preview.trendChart = await fetchTrendChart(scope, dateFilter, meta);
         preview.chartTitle = 'Status distribution';
         preview.insights = buildInsights({
           total: candidates.length,
@@ -1024,7 +1057,7 @@ exports.exportReport = async (req, res) => {
         const candidates = await Candidate.find(userFilter).sort({ status: 1, createdAt: -1 }).lean();
         const ws = wb.addWorksheet('Pipeline Status');
         ws.columns = [{ header: 'Name', key: 'name', width: 22 }, { header: 'Position', key: 'position', width: 22 }, { header: 'Status', key: 'status', width: 14 }, { header: 'Source', key: 'source', width: 14 }, { header: 'Client', key: 'client', width: 18 }, { header: 'Location', key: 'location', width: 16 }, { header: 'Experience', key: 'experience', width: 12 }, { header: 'CTC', key: 'ctc', width: 12 }, { header: 'Added On', key: 'createdAt', width: 14 }];
-        candidates.forEach(c => { ws.addRow({ name: c.name, position: c.position, status: c.status, source: c.source, client: c.client, location: c.location, experience: c.experience, ctc: c.ctc, createdAt: c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-IN') : '' }); });
+        candidates.forEach(c => { ws.addRow({ name: c.name, position: c.position, status: canonCandidateStatus(c.status), source: c.source, client: c.client, location: c.location, experience: c.experience, ctc: c.ctc, createdAt: recordDateLabel(c) }); });
         styleHeaderRow(ws);
         polishDataRows(ws);
         ws.getColumn(2).width = 32;

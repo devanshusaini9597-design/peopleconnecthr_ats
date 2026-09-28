@@ -14,6 +14,7 @@ import {
   candidateName,
   jobName,
 } from './constants';
+import { guardTableCopy } from '../../utils/tableCopyGuard';
 
 export default function InterviewsResults({
   activeTab,
@@ -101,12 +102,13 @@ export default function InterviewsResults({
       <div
         ref={tableScrollRef}
         className="cand-table-scroll overflow-x-auto select-none rounded-xl border border-stone-200"
+        onCopy={guardTableCopy}
         onMouseDown={onTableDragScrollStart}
         onMouseMove={onTableDragScrollMove}
         onMouseUp={onTableDragScrollEnd}
         onMouseLeave={onTableDragScrollEnd}
       >
-        <table className="cand-table-drag w-full text-left border-collapse min-w-[860px] select-text border border-stone-200">
+        <table className="cand-table-drag w-full text-left border-collapse min-w-[860px] select-none border border-stone-200">
           <thead>
             <tr className="bg-stone-100">
               {['Candidate', 'Role', 'When', 'Type', 'Status', 'Actions'].map((label) => (

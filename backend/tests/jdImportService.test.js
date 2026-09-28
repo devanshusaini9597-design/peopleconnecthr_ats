@@ -61,4 +61,29 @@ Consistent performers preferred
     );
     expect(parsed.locations.join(' ').toUpperCase()).not.toMatch(/\bNA\b/);
   });
+
+  it('extracts Equitas Service & Operations Manager bank JD paste onto structured fields', () => {
+    const parsed = parseJdText(
+      'Prepared by: Sanju Singh Ref. No.: Role Description Designation: Service & Operations Manager Grade: DM/Manager Legal Entity: Equitas Small Finance Bank Business Unit: Retail Banking Division: Branch Banking Department: Branch Banking Travel required: Yes/No Level of travel: Moderate Level: Supervisory Job Dimension Reporting To Branch Manager Direct Reports 1 Purpose of the role: To ensure high quality delivery of all banking services and products to our clients in a fair and transparent manner. Key Responsibilities: Manage a team of branch operations staff (Teller/Customer Support Officer) and ensure smooth running of the branch. Ensure compliance with KYC, AML, audit and other regulations in all branch banking operations. Key Results Area KRA KEY PERFORMANCE INDICATOR Audit Ratings: Branch Low Risk or below Desired Experience & Qualification: Number of years of experience (range): 5-8 years Type of companies/sector worked for: Banking – private sector banks, cooperative banks, PSU banks, rural banks. Responsibilities managed in the previous organizations: The applicant should have been in a customer-facing role in a bank branch, with experience in branch operations. Languages: Fluency in English and regional language of the state applying for. Computer/technical skills (if any): Good in MS Office, Banking Software'
+    );
+    expect(parsed.role).toMatch(/Service & Operations Manager/i);
+    expect(parsed.grade).toMatch(/DM\/Manager/i);
+    expect(parsed.clientName).toMatch(/Equitas Small Finance Bank/i);
+    expect(parsed.department).toMatch(/Branch Banking/i);
+    expect(parsed.reportingTo).toMatch(/Branch Manager/i);
+    expect(parsed.directReports).toBe('1');
+    expect(parsed.experience).toMatch(/5-8/i);
+    expect(parsed.industry).toMatch(/BFSI|BANKING/i);
+    expect(parsed.skills.join(' ')).toMatch(/MS Office/i);
+    expect(parsed.skills.join(' ')).toMatch(/Banking Software/i);
+    expect(parsed.skills.join(' ')).toMatch(/KYC/i);
+    expect(parsed.skills.some((s) => s.length > 80)).toBe(false);
+    expect(parsed.languages).toMatch(/English/i);
+    expect(parsed.responsibilities).toMatch(/branch operations staff/i);
+    expect(parsed.requirements).toMatch(/customer-facing role|branch operations/i);
+    expect(parsed.kpis).toMatch(/Audit Ratings/i);
+    expect(parsed.internalNotes).toMatch(/Retail Banking/i);
+    expect(parsed.locations).toEqual([]);
+    expect(parsed.employmentType).toBe('full_time');
+  });
 });

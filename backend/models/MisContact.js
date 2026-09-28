@@ -19,6 +19,16 @@ const MisContactSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
+  /**
+   * org = shared company desk (owner uploads + legacy rows) — visible to all company employees.
+   * personal = employee-owned — visible only to that employee and the owner.
+   */
+  deskScope: {
+    type: String,
+    enum: ['org', 'personal'],
+    default: 'org',
+    index: true,
+  },
 
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, lowercase: true, trim: true },
@@ -39,6 +49,12 @@ const MisContactSchema = new mongoose.Schema({
   source: { type: String, default: 'MIS Upload', trim: true },
   remark: { type: String, default: '' },
 
+  /**
+   * Date from the tracker Excel "Date" column (when the lead was originally logged).
+   * Falls back to createdAt (import time) in the UI when missing — older uploads never stored this.
+   */
+  recordDate: { type: Date, default: null, index: true },
+
   marketingConsent: { type: Boolean, default: true },
   unsubscribedAt: { type: Date, default: null },
   /** Random secret for public unsubscribe links (store raw; treat as capability URL). */
@@ -49,6 +65,10 @@ const MisContactSchema = new mongoose.Schema({
 
 MisContactSchema.index({ organizationId: 1, email: 1 }, { unique: true });
 MisContactSchema.index({ organizationId: 1, createdBy: 1, createdAt: -1 });
+MisContactSchema.index({ organizationId: 1, deskScope: 1, createdAt: -1 });
+MisContactSchema.index({ organizationId: 1, recordDate: -1, createdAt: -1 });
+MisContactSchema.index({ organizationId: 1, updatedAt: -1 });
+MisContactSchema.index({ organizationId: 1, name: 1 });
 
 MisContactSchema.methods.ensureUnsubscribeSecret = function ensureUnsubscribeSecret() {
   if (!this.unsubscribeSecret) {

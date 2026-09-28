@@ -79,6 +79,8 @@ const userSchema = new mongoose.Schema({
    */
   emailSettings: { type: mongoose.Schema.Types.Mixed, default: undefined },
   isActive: { type: Boolean, default: true },
+  /** Sales demo account. Public /demo can enter only these users, never a real tenant. */
+  isDemo: { type: Boolean, default: false, index: true },
   /** Set when an owner/admin issues a temporary password. User must change it after login. */
   mustChangePassword: { type: Boolean, default: false },
   invitedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

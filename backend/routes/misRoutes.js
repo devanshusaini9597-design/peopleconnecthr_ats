@@ -1,14 +1,15 @@
 /**
  * MIS / Marketing contacts routes.
- * Public: GET /unsubscribe
- * Auth: company owner only (requireOwner)
+ * Public: GET /unsubscribe, GET /export/download (signed token)
+ * Auth: company employees (not freelancers). Export: owner only.
  */
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const multer = require('multer');
 const router = express.Router();
 const { verifyToken } = require('../middleware/authMiddleware');
-const { requireOwner } = require('../middleware/rbacMiddleware');
+const { requireOwner, requireMisCompany } = require('../middleware/rbacMiddleware');
 const { multerFileFilter } = require('../utils/uploadAllowlist');
 const svc = require('../services/misService');
 
@@ -57,7 +58,25 @@ router.get('/unsubscribe', async (req, res) => {
   }
 });
 
-router.use(verifyToken, requireOwner);
+/**
+ * Signed export download — streams directly from Railway (bypasses Vercel body limits).
+ * Token is short-lived and owner-bound.
+ */
+router.get('/export/download', async (req, res) => {
+  try {
+    const file = svc.resolveExportDownload(req.query.token);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
+    res.setHeader('X-Export-Count', String(file.count));
+    if (file.capped) res.setHeader('X-Export-Capped', '1');
+    res.setHeader('Cache-Control', 'no-store');
+    return fs.createReadStream(file.filePath).pipe(res);
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
+router.use(verifyToken, requireMisCompany);
 
 router.get('/', async (req, res) => {
   try {
@@ -113,11 +132,30 @@ router.post('/bulk-update', async (req, res) => {
   }
 });
 
-router.post('/move-to-candidates', async (req, res) => {
+router.post('/move-to-candidates', requireOwner, async (req, res) => {
   try {
     const data = await svc.moveToCandidates(req.user, req.body?.ids || [], {
       removeFromMis: req.body?.removeFromMis !== false,
     });
+    res.json({ success: true, ...data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
+/** Owner-only: start async export job (returns jobId immediately). */
+router.post('/export', requireOwner, async (req, res) => {
+  try {
+    const data = await svc.startExportContacts(req.user, req.body || {});
+    res.json({ success: true, ...data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
+router.get('/export/jobs/:jobId', requireOwner, async (req, res) => {
+  try {
+    const data = svc.getExportJob(req.user, req.params.jobId);
     res.json({ success: true, ...data });
   } catch (error) {
     handle(res, error);

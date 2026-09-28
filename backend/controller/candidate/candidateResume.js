@@ -5,6 +5,7 @@ const logger = require('../../utils/logger');
 const { orgOrOwnerScope, candidateResumeScope } = require('./candidateValidation');
 const { parseResume } = require('../../services/resumeParser');
 const { parseResumeViaQueueOrInline, queuesEnabled } = require('../../jobs/queue');
+const { stampUploaderSpoc } = require('../../utils/spocIdentity');
 
 async function checkEmail(req, res) {
     try {
@@ -148,6 +149,8 @@ async function parseLogic(req, res) {
             parseResume,
         });
 
+        const uploaderSpoc = req.user ? await stampUploaderSpoc(req.user) : '';
+
         // Enhanced response with confidence scores and metadata
         const response = {
             success: true,
@@ -160,6 +163,7 @@ async function parseLogic(req, res) {
             location: parsed.location,
             skills: parsed.skills,
             education: parsed.education,
+            spoc: uploaderSpoc,
             parsed: parsed,
             confidence: parsed.confidence,
             metadata: {
@@ -167,6 +171,7 @@ async function parseLogic(req, res) {
                 mimetype,
                 parsedAt: new Date().toISOString(),
                 viaQueue: queuesEnabled,
+                uploaderSpoc,
                 extractedFields: Object.keys(parsed).filter(k => parsed[k] && k !== 'confidence'),
                 averageConfidence: parsed.confidence ? Object.values(parsed.confidence).reduce((a, b) => a + b, 0) / Object.keys(parsed.confidence).length : 0
             }

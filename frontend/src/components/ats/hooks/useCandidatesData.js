@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import BASE_API_URL from '../../../config';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../../../utils/fetchUtils';
 import { PAGE_SIZE } from '../atsConstants';
@@ -43,6 +43,8 @@ export function useCandidatesData({ candidatesViewMode = 'all', scopeUserId = ''
     append('dateRange', options.dateRange);
     append('customFrom', options.customFrom);
     append('customTo', options.customTo);
+    append('list', options.list);
+    append('cohort', options.cohort);
     append('expMin', options.expMin);
     append('expMax', options.expMax);
     append('ctcMin', options.ctcMin);
@@ -53,6 +55,8 @@ export function useCandidatesData({ candidatesViewMode = 'all', scopeUserId = ''
     append('sortOrder', options.sortOrder || 'desc');
     if (options.freelanceOnly) params.append('freelanceOnly', '1');
     if (options.idsOnly) params.append('idsOnly', '1');
+    if (options.idSkip) params.append('idSkip', String(options.idSkip));
+    if (options.idLimit) params.append('idLimit', String(options.idLimit));
     if (options.ids) {
       const idList = Array.isArray(options.ids)
         ? options.ids
@@ -60,6 +64,10 @@ export function useCandidatesData({ candidatesViewMode = 'all', scopeUserId = ''
       const cleaned = [...new Set(idList.map((id) => String(id || '').trim()).filter(Boolean))];
       if (cleaned.length) params.append('ids', cleaned.join(','));
     }
+    append('jobId', options.jobId);
+    append('appSource', options.appSource);
+    append('candidateCode', options.candidateCode);
+    append('applicationCode', options.applicationCode);
 
     const effectiveView = scopeUserId ? 'mine' : candidatesViewMode;
     params.append('view', effectiveView);
@@ -97,9 +105,8 @@ export function useCandidatesData({ candidatesViewMode = 'all', scopeUserId = ''
     return { candidatesData, pages, total };
   };
 
-  const fetchJobsOnce = async () => {
-    if (jobsLoadedRef.current) return;
-    // Freelancers use mandates, not the company jobs catalog — skip extra round-trip.
+  const fetchJobsList = useCallback(async ({ force = false } = {}) => {
+    if (!force && jobsLoadedRef.current) return;
     try {
       const raw = localStorage.getItem('userData');
       const role = raw ? JSON.parse(raw)?.role : '';
@@ -122,17 +129,20 @@ export function useCandidatesData({ candidatesViewMode = 'all', scopeUserId = ''
     } catch (jobError) {
       console.warn('⚠️ Failed to load jobs:', jobError.message);
     }
-  };
+  }, [JOBS_URL]);
 
   /** Server-side page fetch — filters/search run in Mongo, not in the browser. */
-  const fetchData = async (page = 1, options = {}) => {
+  const fetchData = useCallback(async (page = 1, options = {}) => {
+    const { silent = false, refreshJobs = false, ...queryOptions } = options;
     const gen = ++loadGenRef.current;
     const pageNum = Math.max(1, Number(page) || 1);
     try {
-      setIsLoadingInitial(true);
-      setIsLoadingMore(pageNum > 1);
+      if (!silent) {
+        setIsLoadingInitial(true);
+        setIsLoadingMore(pageNum > 1);
+      }
 
-      const params = buildParams(pageNum, PAGE_SIZE, options);
+      const params = buildParams(pageNum, PAGE_SIZE, queryOptions);
       const res = await authenticatedFetch(`${API_URL}?${params.toString()}`, { cache: 'no-store' });
       if (gen !== loadGenRef.current) return;
 
@@ -146,15 +156,15 @@ export function useCandidatesData({ candidatesViewMode = 'all', scopeUserId = ''
         response = await res.json();
       } catch (parseErr) {
         console.error('❌ Failed to parse JSON response:', parseErr);
-        toast.error('Invalid response from server');
-        setCandidates([]);
+        if (!silent) toast.error('Invalid response from server');
+        if (!silent) setCandidates([]);
         return;
       }
 
       const parsed = parseCandidatesResponse(res, response);
       if (parsed.error) {
-        toast.error(parsed.error);
-        setCandidates([]);
+        if (!silent) toast.error(parsed.error);
+        if (!silent) setCandidates([]);
       } else if (Array.isArray(parsed.candidatesData)) {
         setCandidates(parsed.candidatesData);
         setTotalPages(Math.max(1, parsed.pages || 1));
@@ -162,36 +172,49 @@ export function useCandidatesData({ candidatesViewMode = 'all', scopeUserId = ''
         setCurrentPage(pageNum);
       }
 
-      void fetchJobsOnce();
+      void fetchJobsList({ force: silent || refreshJobs });
     } catch (error) {
       console.error('❌ Error fetching data:', error);
-      toast.error('Failed to load candidates. Please refresh page or check your connection.');
+      if (!silent) toast.error('Failed to load candidates. Please refresh page or check your connection.');
     } finally {
       if (gen === loadGenRef.current) {
         setIsLoadingMore(false);
         setIsLoadingInitial(false);
       }
     }
-  };
+  }, [API_URL, buildParams, fetchJobsList, toast]);
 
-  /** IDs for "select all matching" (capped server-side). */
+  useEffect(() => () => {
+    loadGenRef.current += 1;
+  }, []);
+
+  /** IDs for "select all matching". */
   const fetchMatchingIds = async (options = {}) => {
-    const params = buildParams(1, PAGE_SIZE, { ...options, idsOnly: true });
-    const res = await authenticatedFetch(`${API_URL}?${params.toString()}`, { cache: 'no-store' });
-    if (isUnauthorized(res)) {
-      handleUnauthorized();
-      return { ids: [], totalCount: 0, capped: false };
+    const ids = [];
+    let skip = 0;
+    let totalCount = 0;
+    let capped = false;
+    const batch = 3000;
+    for (let guard = 0; guard < 80; guard += 1) {
+      const params = buildParams(1, PAGE_SIZE, { ...options, idsOnly: true, idSkip: skip, idLimit: batch });
+      const res = await authenticatedFetch(`${API_URL}?${params.toString()}`, { cache: 'no-store' });
+      if (isUnauthorized(res)) {
+        handleUnauthorized();
+        return { ids: [], totalCount: 0, capped: false };
+      }
+      const json = await res.json();
+      if (!res.ok || json?.success === false) {
+        throw new Error(json?.message || 'Failed to load matching IDs');
+      }
+      const chunk = Array.isArray(json?.ids) ? json.ids.map(String) : [];
+      ids.push(...chunk);
+      totalCount = Number(json?.pagination?.totalCount) || ids.length;
+      capped = capped || Boolean(json?.pagination?.capped);
+      const hasMore = Boolean(json?.pagination?.hasMore);
+      if (!hasMore || !chunk.length) break;
+      skip += chunk.length;
     }
-    const json = await res.json();
-    if (!res.ok || json?.success === false) {
-      throw new Error(json?.message || 'Failed to load matching IDs');
-    }
-    const ids = Array.isArray(json?.ids) ? json.ids.map(String) : [];
-    return {
-      ids,
-      totalCount: Number(json?.pagination?.totalCount) || ids.length,
-      capped: Boolean(json?.pagination?.capped),
-    };
+    return { ids, totalCount: totalCount || ids.length, capped };
   };
 
   return {

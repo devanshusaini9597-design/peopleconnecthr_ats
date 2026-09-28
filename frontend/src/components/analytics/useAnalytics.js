@@ -19,6 +19,8 @@ export default function useAnalytics() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [isExporting, setIsExporting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState(null);
+  const loadedRef = useRef(false);
   const employeeScope = useEmployeeAnalyticsScope();
 
   const activeTab = searchParams.get('tab') || 'analytics';
@@ -61,6 +63,14 @@ export default function useAnalytics() {
   const periodLabel = dateRange === 'custom' && customFrom && customTo && customFrom <= customTo
     ? `${new Date(customFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} – ${new Date(customTo).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
     : DATE_RANGE_LABELS[dateRange] || DATE_RANGE_LABELS.month;
+
+  const cohortMonth = searchParams.get('cohort') || '';
+  const setCohortMonth = (month) => {
+    const next = new URLSearchParams(searchParams);
+    if (month) next.set('cohort', month);
+    else next.delete('cohort');
+    setSearchParams(next, { replace: true });
+  };
 
   const customRangeInvalid = dateRange === 'custom' && Boolean(customFrom && customTo && customFrom > customTo);
   const periodReady = dateRange !== 'custom'
@@ -178,7 +188,7 @@ export default function useAnalytics() {
       setStatsLoading(false);
       return;
     }
-    const isRefetch = Boolean(stats);
+    const isRefetch = loadedRef.current;
     if (showRefresh) setRefreshing(true);
     else if (isRefetch) setStatsLoading(true);
     else setLoading(true);
@@ -188,6 +198,8 @@ export default function useAnalytics() {
         dateRange,
         customFrom: dateRange === 'custom' ? customFrom : undefined,
         customTo: dateRange === 'custom' ? customTo : undefined,
+        cohortMonth: cohortMonth || undefined,
+        refresh: showRefresh,
       });
       const response = await authenticatedFetch(url, {
         cache: 'no-store',
@@ -196,6 +208,8 @@ export default function useAnalytics() {
       if (!response.ok) throw new Error('Analytics unavailable');
       const data = await response.json();
       setStats(data);
+      loadedRef.current = true;
+      setUpdatedAt(new Date());
       setError(null);
     } catch (err) {
       console.error('Error fetching analytics:', err);
@@ -210,7 +224,20 @@ export default function useAnalytics() {
     }
   };
 
-  useEffect(() => { fetchStats(loading === false); }, [employeeScope.userId, dateRange, customFrom, customTo]);
+  useEffect(() => { fetchStats(false); }, [employeeScope.userId, dateRange, customFrom, customTo, cohortMonth]);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'visible') fetchStats(false);
+    };
+    const onChanged = () => fetchStats(true);
+    const id = window.setInterval(refresh, 60 * 60 * 1000);
+    window.addEventListener('candidates:changed', onChanged);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('candidates:changed', onChanged);
+    };
+  }, [employeeScope.userId, dateRange, customFrom, customTo, cohortMonth]);
 
   // Computed values
   const activePipeline = useMemo(() => {
@@ -413,6 +440,7 @@ export default function useAnalytics() {
     employeeScope,
     isExporting,
     refreshing,
+    updatedAt,
     activeTab,
     exportFormat,
     setExportFormat,
@@ -427,6 +455,8 @@ export default function useAnalytics() {
     customTo,
     setCustomTo,
     dateRange,
+    cohortMonth,
+    setCohortMonth,
     exportSuccess,
     previewData,
     previewLoading,

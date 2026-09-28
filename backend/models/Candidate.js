@@ -36,6 +36,8 @@ const CandidateSchema = new mongoose.Schema({
 
   // ── Core fields ────────────────────────────────────────────────────
   srNo: { type: String },
+  /** Public unique Candidate ID (e.g. SKILLNIX-C-2026-0001), never the Mongo _id. */
+  candidateCode: { type: String, trim: true, uppercase: true },
   date: { type: String },
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, lowercase: true, trim: true },
@@ -71,8 +73,10 @@ const CandidateSchema = new mongoose.Schema({
     updatedAt: { type: Date, default: Date.now },
     updatedBy: { type: String, default: 'Recruiter' }
   }],
-  /** When the candidate entered their *current* status (enterprise stage-entry analytics). */
+  /** When the candidate entered their *current* status (operational field, not the event log). */
   statusEnteredAt: { type: Date, index: true },
+  /** Set once embedded history has been copied into StageHistory, or on create. */
+  stageLogBackfilledAt: { type: Date, default: null },
   hiredDate: { type: Date },
 
   // ── Metadata ───────────────────────────────────────────────────────
@@ -184,8 +188,13 @@ const CandidateSchema = new mongoose.Schema({
 // Primary tenant-scoped queries
 CandidateSchema.index({ organizationId: 1, appliedAt: -1 });
 CandidateSchema.index({ organizationId: 1, createdAt: -1 });
+CandidateSchema.index({ organizationId: 1, name: 1 });
 CandidateSchema.index({ organizationId: 1, position: 1 });
 CandidateSchema.index({ organizationId: 1, email: 1 }, { unique: true, partialFilterExpression: { organizationId: { $exists: true } } });
+CandidateSchema.index(
+  { organizationId: 1, candidateCode: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { candidateCode: { $exists: true, $type: 'string' } } },
+);
 CandidateSchema.index({ organizationId: 1, status: 1 });
 CandidateSchema.index({ organizationId: 1, status: 1, statusEnteredAt: -1 });
 CandidateSchema.index({ organizationId: 1, statusEnteredAt: -1 });
@@ -278,5 +287,7 @@ CandidateSchema.pre('findOneAndUpdate', function(next) {
 });
 
 CandidateSchema.plugin(require('../utils/tenantPlugin'));
+
+require('../services/stageHistoryService').attachStageHistoryHooks(CandidateSchema);
 
 module.exports = mongoose.model('Candidate', CandidateSchema);

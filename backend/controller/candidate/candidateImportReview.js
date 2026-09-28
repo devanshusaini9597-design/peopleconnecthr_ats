@@ -295,6 +295,12 @@ async function importReviewedCandidates(req, res) {
         let matchedCount = 0;
         let writeErrors = 0;
         const errorSamples = [];
+        const importEmails = [...new Set(ops.map((op) => op.updateOne?.filter?.email).filter(Boolean))];
+        const statusSelect = '_id status organizationId createdBy spoc source';
+        const statusFilter = { organizationId: orgIdObj, email: { $in: importEmails } };
+        const beforeStatus = importEmails.length
+            ? await Candidate.find(statusFilter).select(statusSelect).lean()
+            : [];
 
         for (let i = 0; i < ops.length; i += WRITE_CHUNK) {
             const slice = ops.slice(i, i + WRITE_CHUNK);
@@ -320,6 +326,14 @@ async function importReviewedCandidates(req, res) {
                     sample: errorSamples[0] || bulkErr.message,
                 }, '[IMPORT] bulkWrite partial failure');
             }
+        }
+
+        if (importEmails.length) {
+            const { recordCandidateStatusDiff } = require('../../services/stageHistoryService');
+            const afterStatus = await Candidate.find(statusFilter).select(statusSelect).lean();
+            await recordCandidateStatusDiff(beforeStatus, afterStatus, {
+                changedBy: req.user?.name || req.user?.email || 'Import',
+            });
         }
 
         // Remove leftover orphan copies for emails we just wrote into the org

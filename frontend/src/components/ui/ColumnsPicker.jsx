@@ -15,6 +15,7 @@ export default function ColumnsPicker({
   onReset,
   buttonClassName = '',
   menuWidth = 288,
+  iconOnly = false,
   'data-tour': dataTour,
 }) {
   const [open, setOpen] = useState(false);
@@ -102,9 +103,11 @@ export default function ColumnsPicker({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="menu"
+        aria-label="Columns"
+        title="Columns"
       >
         <Columns3 size={15} strokeWidth={1.75} />
-        Columns
+        {iconOnly ? null : 'Columns'}
       </button>
 
       {open &&

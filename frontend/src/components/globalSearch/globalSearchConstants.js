@@ -1,35 +1,28 @@
-export const SEARCH_TOUR_KEY = 'skillnix_tour_global_search_v1';
+export const SEARCH_TOUR_KEY = 'skillnix_tour_global_search_v6';
 
 export const SEARCH_TOUR_STEPS = [
   {
     title: 'Global Search',
-    body: 'Search candidates, jobs, and applications from one place across your workspace.',
+    body: 'Search candidates and MIS contacts together. Results stay on this page until you run a new search or leave.',
   },
   {
     target: '[data-tour="search-kpis"]',
-    title: 'Match counts',
-    body: 'See how many hits you have overall and by entity type. Click a card to filter results.',
+    title: 'Workspace totals',
+    body: 'These figures are organisation counts and refresh automatically. They are independent of the current search. Select a card to open that list.',
     placement: 'bottom',
   },
   {
-    target: '[data-tour="search-toolbar"]',
-    title: 'Search bar',
-    body: 'Type a name, email, or keyword. Use entity chips to narrow to candidates, jobs, or applications.',
+    target: '[data-tour="search-workbench"]',
+    title: 'Search and filters',
+    body: 'Choose a field from the scope menu, or search across all fields. Open Filters for role, location, product, and compensation criteria.',
     placement: 'bottom',
-  },
-  {
-    target: '[data-tour="search-results"]',
-    title: 'Results',
-    body: 'Open any row to jump into that record. Try an example query if you are not sure where to start.',
-    placement: 'top',
   },
 ];
 
 export const ENTITY_FILTERS = [
-  { key: 'all', label: 'All', icon: 'Search' },
-  { key: 'candidates', label: 'Candidates', icon: 'Users' },
-  { key: 'jobs', label: 'Jobs', icon: 'Briefcase' },
-  { key: 'applications', label: 'Applications', icon: 'GitPullRequest' }
+  { key: 'all', label: 'All' },
+  { key: 'candidates', label: 'Candidates' },
+  { key: 'mis', label: 'MIS' },
 ];
 
 export const STATUS_BADGE = {
@@ -44,14 +37,15 @@ export const STATUS_BADGE = {
   closed: 'badge-neutral',
   draft: 'badge-warning',
   on_hold: 'badge-warning',
-  pending: 'badge-warning'
+  pending: 'badge-warning',
+  scheduled: 'badge-info',
 };
 
 export const EXAMPLE_QUERIES = [
-  { q: 'React', hint: 'Skill or role' },
-  { q: 'Bangalore', hint: 'Location' },
-  { q: 'Engineering', hint: 'Department' },
-  { q: '@gmail.com', hint: 'Email domain' }
+  { q: 'SKILLNIX-', hint: 'Job ID — also returns people who match that role' },
+  { q: 'HR Recruiter', hint: 'Position or job title' },
+  { q: 'Pune', hint: 'Location across candidates and MIS contacts' },
+  { q: 'Banking', hint: 'Skill or industry' },
 ];
 
 export function initials(text) {
@@ -68,4 +62,23 @@ export function statusBadgeClass(status) {
   if (!status) return null;
   const key = String(status).toLowerCase().replace(/\s+/g, '_');
   return STATUS_BADGE[key] || 'badge-neutral';
+}
+
+export function emptySearchData() {
+  return {
+    candidates: [],
+    jobs: [],
+    applications: [],
+    mis: [],
+    people: [],
+    interviews: [],
+    jobFit: [],
+    related: [],
+    talentPools: [],
+    relatedJob: null,
+    aiEnabled: false,
+    totals: null,
+    floors: null,
+    countsExact: false,
+  };
 }

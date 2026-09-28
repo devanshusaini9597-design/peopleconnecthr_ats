@@ -31,13 +31,14 @@ const DashboardPage = () => {
   const userName = user?.name || '';
   const displayName = userName || (userEmail.includes('@') ? userEmail.split('@')[0] : userEmail);
   const isFreelancer = user?.role === 'freelancer';
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const unreadAnnouncements = useAnnouncementNavUpdates();
   const newJobsCount = useJobNavUpdates();
 
   const dateRange = searchParams.get('period') || 'month';
   const customFrom = searchParams.get('from') || '';
   const customTo = searchParams.get('to') || '';
+  const cohortMonth = searchParams.get('cohort') || '';
   const periodReady = dateRange !== 'custom' || (customFrom && customTo);
 
   const periodLabel = dateRange === 'custom' && customFrom && customTo
@@ -53,8 +54,11 @@ const DashboardPage = () => {
   const [tourOpen, setTourOpen] = useState(false);
   const [updatedAt, setUpdatedAt] = useState(null);
   const hasLoadedRef = useRef(false);
+  const cohortMonthRef = useRef(cohortMonth);
+  cohortMonthRef.current = cohortMonth;
+  const [cohortLoading, setCohortLoading] = useState(false);
 
-  const fetchDashboardData = useCallback(async ({ silent = false } = {}) => {
+  const fetchDashboardData = useCallback(async ({ silent = false, force = false, cohortOnly = false } = {}) => {
     if (isFreelancer) {
       setLoading(false);
       setRefreshing(true);
@@ -71,6 +75,32 @@ const DashboardPage = () => {
     }
 
     const isRefetch = hasLoadedRef.current;
+    const month = cohortMonthRef.current;
+    if (cohortOnly && isRefetch) {
+      setCohortLoading(true);
+      try {
+        const url = appendAnalyticsParams(`${BASE_API_URL}/api/analytics/dashboard-stats`, {
+          dateRange,
+          customFrom: dateRange === 'custom' ? customFrom : undefined,
+          customTo: dateRange === 'custom' ? customTo : undefined,
+          cohortMonth: month || undefined,
+        });
+        const res = await authenticatedFetch(url, { cache: 'no-store' });
+        if (isUnauthorized(res)) return handleUnauthorized();
+        if (!res.ok) throw new Error('Cohort refresh failed');
+        const data = await res.json();
+        setDashData((prev) => (prev ? {
+          ...prev,
+          cohortMonth: data.cohortMonth,
+          metrics: { ...(prev.metrics || {}), cohort: data.metrics?.cohort },
+        } : data));
+      } catch (err) {
+        console.error('Cohort fetch error:', err);
+      } finally {
+        setCohortLoading(false);
+      }
+      return;
+    }
     if (silent) setRefreshing(true);
     else if (isRefetch) setStatsLoading(true);
     else setLoading(true);
@@ -80,6 +110,8 @@ const DashboardPage = () => {
         dateRange,
         customFrom: dateRange === 'custom' ? customFrom : undefined,
         customTo: dateRange === 'custom' ? customTo : undefined,
+        cohortMonth: cohortMonthRef.current || undefined,
+        refresh: force,
       });
       const res = await authenticatedFetch(url, {
         cache: 'no-store',
@@ -217,7 +249,7 @@ const DashboardPage = () => {
       >
         <button
           type="button"
-          onClick={() => fetchDashboardData({ silent: true })}
+          onClick={() => fetchDashboardData({ silent: true, force: true })}
           disabled={refreshing || statsLoading}
           className="btn-secondary flex-1 sm:flex-none"
           title="Refresh dashboard"
@@ -248,7 +280,7 @@ const DashboardPage = () => {
         {' · '}
         {isFreelancer
           ? 'Refreshes automatically every 20 seconds · Your private desk'
-          : `Refreshes automatically every 45 seconds${d.scope === 'employee' ? ' · Your assigned candidates' : ''}`}
+          : `Metrics refresh hourly${d.scope === 'employee' ? ' · Assigned candidates' : ''}`}
         {!isFreelancer && uiPeriodLabel ? ` · ${uiPeriodLabel}` : ''}
       </p>
 
@@ -343,6 +375,15 @@ const DashboardPage = () => {
                 customFrom={customFrom}
                 customTo={customTo}
                 dataFresh={dataFresh && !statsLoading}
+                cohortMonth={cohortMonth || d.cohortMonth || ''}
+                cohortLoading={cohortLoading}
+                onCohortMonth={(month) => {
+                  cohortMonthRef.current = month;
+                  const next = new URLSearchParams(searchParams);
+                  next.set('cohort', month);
+                  setSearchParams(next, { replace: true });
+                  fetchDashboardData({ cohortOnly: true });
+                }}
               />
               <DashboardMainGrid d={d} navigate={navigate} isFreelancer={false} />
               <CallbackRemindersWidget />

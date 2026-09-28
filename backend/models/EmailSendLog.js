@@ -61,6 +61,9 @@ const emailSendLogSchema = new mongoose.Schema(
     },
     emailType: { type: String, default: '' }, // interview, rejection, custom, otp, campaign, …
     subject: { type: String, default: '' },
+    /** Snapshot of HTML at send time — used for Email Reports preview (Zepto/Zoho style). */
+    htmlBody: { type: String, default: '' },
+    textBody: { type: String, default: '' },
     fromEmail: { type: String, default: '' },
     replyToEmail: { type: String, default: '' },
     campaignName: { type: String, default: '' },

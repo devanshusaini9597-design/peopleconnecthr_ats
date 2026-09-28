@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  Plus, MapPin, BookOpen, UserCheck, Briefcase, IndianRupee, Loader2,
-  Search, Pencil, Filter, Building2, Share2, Eye, Copy, ExternalLink,
+  Plus, BookOpen, Briefcase, Loader2, Search, Share2, Copy, ExternalLink,
   ChevronLeft, ChevronRight, AlertTriangle, Globe2, Trash2,
 } from 'lucide-react';
 import JDLibraryModal from '../components/JDLibraryModal';
@@ -18,18 +17,21 @@ import BASE_API_URL from '../config';
 import { useAuth } from '../context/AuthContext';
 import { planHasFeature } from '../config/planFeatures';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized, planLimitErrorMessage } from '../utils/fetchUtils';
+import { buildAtsHref } from '../utils/atsLinks';
 import {
-  JOBS_TOUR_KEY, JOBS_TOUR_STEPS, FILTER_OPTIONS, JOBS_PAGE_SIZE,
-  JOB_BOARD_OPTIONS, STATUS_STYLES, DOT_STYLES, initialForm,
+  JOBS_TOUR_KEY, JOBS_TOUR_STEPS, JOBS_PAGE_SIZE,
+  JOB_BOARD_OPTIONS, initialForm,
   jobFromRecord, composeJobDescriptionHtml, htmlToList, splitLocations,
 } from '../components/jobs/jobsConstants';
 import JobFormModal from '../components/jobs/JobFormModal';
 import JobViewModal from '../components/jobs/JobViewModal';
-import JobCardActionsMenu from '../components/jobs/JobCardActionsMenu';
+import JobListCard from '../components/jobs/JobListCard';
 import { ensureJobsBadge, markJobSeen } from '../hooks/useJobNavUpdates';
+import { careersApplyUrl as buildCareersApplyUrl } from '../utils/careersApplyUrl';
 
 const Jobs = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const API_URL = `${BASE_API_URL}/api/jobs`;
   const toast = useToast();
   const [tourOpen, setTourOpen] = usePageTour(JOBS_TOUR_KEY);
@@ -46,6 +48,7 @@ const Jobs = () => {
   const [showLibrary, setShowLibrary] = useState(false);
   const [editingJob, setEditingJob] = useState(null);
   const [viewingJob, setViewingJob] = useState(null);
+  const [talentFirst, setTalentFirst] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState(null);
@@ -63,12 +66,7 @@ const Jobs = () => {
 
   const orgSlug = organization?.slug || '';
 
-  const careersApplyUrl = (job) => {
-    if (!orgSlug || !job) return '';
-    const key = job.publicId || job.jobCode || job._id;
-    if (!key) return '';
-    return `${window.location.origin}/careers/${orgSlug}/jobs/${key}`;
-  };
+  const careersApplyUrl = (job) => buildCareersApplyUrl(job, orgSlug);
 
   const managerOptions = useMemo(
     () => teamMembers.map((m) => ({
@@ -79,8 +77,8 @@ const Jobs = () => {
     [teamMembers],
   );
 
-  const fetchJobs = async () => {
-    setLoading(true);
+  const fetchJobs = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const res = await authenticatedFetch(`${API_URL}?isTemplate=false`);
       if (isUnauthorized(res)) return handleUnauthorized();
@@ -91,12 +89,14 @@ const Jobs = () => {
       else setJobs([]);
     } catch (error) {
       console.error('Error fetching jobs:', error);
-      setJobs([]);
-      toast.error('Jobs are unavailable right now. Retry when the API is back.');
+      if (!silent) {
+        setJobs([]);
+        toast.error('Jobs are unavailable right now. Retry when the API is back.');
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, [API_URL, toast]);
 
   /** Real org staff (+ team directory) — never show placeholder sample managers. */
   const fetchTeamMembers = async () => {
@@ -157,7 +157,23 @@ const Jobs = () => {
     }
   };
 
-  useEffect(() => { fetchJobs(); }, []);
+  useEffect(() => { fetchJobs(); }, [fetchJobs]);
+
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
+      fetchJobs({ silent: true }).catch(() => {});
+    };
+    const id = window.setInterval(tick, 30_000);
+    const onFocus = () => tick();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [fetchJobs]);
 
   useEffect(() => {
     if (!menuOpenId) return undefined;
@@ -230,6 +246,7 @@ const Jobs = () => {
   };
 
   const openView = (job) => {
+    setTalentFirst(false);
     setViewingJob(job);
     setMenuOpenId(null);
     markJobOpened(job);
@@ -306,6 +323,9 @@ const Jobs = () => {
       grade: formData.grade,
       clientName: formData.clientName,
       industry: formData.industry,
+      department: formData.department || '',
+      reportingTo: formData.reportingTo || '',
+      languages: formData.languages || '',
       locations,
       location: locations.join(', '),
       ctc: formData.ctc,
@@ -318,6 +338,7 @@ const Jobs = () => {
       responsibilities: htmlToList(formData.responsibilitiesText),
       requirements: htmlToList(formData.requirementsText),
       preferredProfile: formData.preferredProfile,
+      kpis: formData.kpisText || '',
       description: composeJobDescriptionHtml({ ...formData, locations, location: locations.join(', ') }),
       hiringManagers: formData.hiringManagers,
       status: asDraft ? 'Draft' : (formData.status || 'Open'),
@@ -370,7 +391,10 @@ const Jobs = () => {
           window.dispatchEvent(new CustomEvent('jobs:changed'));
         }
         window.dispatchEvent(new CustomEvent('notifications:refresh'));
-        if (saved && saved._id && !asDraft) setViewingJob(saved);
+        if (saved && saved._id && !asDraft) {
+          setTalentFirst(!editingJob);
+          setViewingJob(saved);
+        }
       } else {
         toast.error(planLimitErrorMessage(saved || {}, 'jobs'));
       }
@@ -569,6 +593,10 @@ const Jobs = () => {
           responsibilities: job.responsibilities || [],
           requirements: job.requirements || [],
           preferredProfile: job.preferredProfile || '',
+          kpis: job.kpis || '',
+          department: job.department || '',
+          reportingTo: job.reportingTo || '',
+          languages: job.languages || '',
           spocName: job.spocName || '',
           spocContact: job.spocContact || '',
           spocEmail: job.spocEmail || '',
@@ -637,346 +665,155 @@ const Jobs = () => {
         </div>
       </div>
 
-      {/* Filters */}
-      <div data-tour="jobs-filters" className="card-ats-bordered p-4 sm:p-5 relative overflow-hidden">
-        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-        <div className="flex items-center gap-2 mb-4">
-          <span className="h-7 w-7 rounded-lg bg-brand-50 text-brand-700 border border-brand-100 inline-flex items-center justify-center">
-            <Filter size={13} strokeWidth={2} />
-          </span>
-          <div>
-            <p className="text-xs font-bold text-stone-800">Search & filters</p>
-            <p className="text-[11px] text-stone-400">Results include every page — search and filter first, then browse pages</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          <div className="sm:col-span-2 lg:col-span-2 min-w-0">
-            <label className="label-ats">Search</label>
-            <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none z-[1]" />
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search title, client, location, job ID, skills…"
-                className="input-ats input-ats-icon"
-              />
-            </div>
-          </div>
-          <div className="min-w-0">
-            <label className="label-ats">Status</label>
-            <PremiumSelect
-              variant="list"
-              value={statusFilter}
-              onChange={setStatusFilter}
-              options={FILTER_OPTIONS}
-              placeholder="All statuses"
+      <div
+        data-tour="jobs-filters"
+        className="rounded-2xl border border-stone-200/90 bg-white shadow-[var(--shadow-card)] overflow-hidden"
+      >
+        <div className="px-4 sm:px-5 py-4 border-b border-stone-100 space-y-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-600 pointer-events-none" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Find by job ID, title, client, location, or skills"
+              className="input-ats input-ats-icon !pr-9 !h-10 rounded-xl w-full"
+              aria-label="Find job"
             />
           </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-stone-100">
-          {[
-            { key: 'All', label: 'All', count: counts.all },
-            { key: 'Draft', label: 'Draft', count: counts.draft },
-            { key: 'Open', label: 'Open', count: counts.open },
-            { key: 'On Hold', label: 'On Hold', count: counts.hold },
-            { key: 'Closed', label: 'Closed', count: counts.closed },
-            { key: 'Urgent', label: 'Urgent', count: counts.urgent },
-          ].map((s) => (
-            <button
-              key={s.key}
-              type="button"
-              onClick={() => setStatusFilter(s.key)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                statusFilter === s.key
-                  ? s.key === 'Urgent'
-                    ? 'bg-red-50 text-red-800 border-red-200'
-                    : 'bg-brand-50 text-brand-800 border-brand-200'
-                  : 'bg-white text-stone-600 border-stone-200 hover:border-stone-300 hover:bg-stone-50'
-              }`}
-            >
-              {s.key === 'Urgent' ? <AlertTriangle size={11} /> : null}
-              {s.label}
-              <span className={`tabular-nums ${statusFilter === s.key ? (s.key === 'Urgent' ? 'text-red-600' : 'text-brand-600') : 'text-stone-400'}`}>{s.count}</span>
-            </button>
-          ))}
-          {(searchQuery || statusFilter !== 'All') && (
-            <button
-              type="button"
-              onClick={() => { setSearchQuery(''); setStatusFilter('All'); }}
-              className="text-xs font-semibold text-stone-500 hover:text-brand-700 ml-auto"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      </div>
-
-      {loading ? (
-        <div data-tour="jobs-list" className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="rounded-2xl border border-stone-300/90 bg-white p-5 space-y-3">
-              <div className="h-5 w-2/3 skeleton-ats rounded-lg" />
-              <div className="h-4 w-full skeleton-ats rounded-lg" />
-              <div className="h-4 w-4/5 skeleton-ats rounded-lg" />
-            </div>
-          ))}
-        </div>
-      ) : jobs.length === 0 ? (
-        <div data-tour="jobs-list" className="card-ats-bordered">
-          <EmptyState
-            icon={Briefcase}
-            tone="brand"
-            message="No job openings yet"
-            subMessage="Post your first requisition to start receiving applications."
-            action={
-              <button type="button" onClick={openCreate} className="btn-primary">
-                <Plus size={16} /> Post new job
-              </button>
-            }
-          />
-        </div>
-      ) : filteredJobs.length === 0 ? (
-        <div data-tour="jobs-list" className="card-ats-bordered">
-          <EmptyState
-            icon={Search}
-            tone="amber"
-            message="No matching jobs"
-            subMessage="Try adjusting your search or filter. Search covers every page of results."
-            action={
-              <button
-                type="button"
-                onClick={() => { setSearchQuery(''); setStatusFilter('All'); }}
-                className="btn-secondary"
-              >
-                Clear filters
-              </button>
-            }
-          />
-        </div>
-      ) : (
-        <>
-          <div data-tour="jobs-list" className="space-y-3">
-            {pageJobs.map((job) => {
-              const title = job.role || job.title || 'Untitled role';
-              const status = job.status || 'Open';
-              const urgent = String(job.priority || '').toLowerCase() === 'urgent';
-              const unread = isJobUnread(job);
-              return (
-                <article
-                  key={job._id}
-                  className={[
-                    'relative overflow-hidden group px-4 sm:px-5 py-3.5 sm:py-4 rounded-2xl border transition-all duration-200',
-                    unread
-                      ? 'border-brand-300/80 bg-brand-50/40 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_0_0_1px_rgba(13,148,136,0.08)]'
-                      : 'border-stone-300/90 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-stone-400/90 hover:shadow-[0_8px_24px_-8px_rgba(15,23,42,0.12)]',
-                  ].join(' ')}
-                >
-                  <div
-                    className={`absolute inset-y-0 left-0 w-[3px] rounded-l-2xl ${
-                      urgent
-                        ? 'bg-gradient-to-b from-red-500 to-rose-400'
-                        : unread
-                          ? 'bg-gradient-to-b from-brand-600 to-teal-400'
-                          : 'bg-gradient-to-b from-brand-500 via-teal-400 to-brand-600 opacity-80'
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div className="inline-flex flex-wrap rounded-xl border border-stone-200 bg-stone-50/80 p-1 gap-0.5">
+              {[
+                { key: 'All', label: 'All', count: counts.all },
+                { key: 'Draft', label: 'Draft', count: counts.draft },
+                { key: 'Open', label: 'Open', count: counts.open },
+                { key: 'On Hold', label: 'On Hold', count: counts.hold },
+                { key: 'Closed', label: 'Closed', count: counts.closed },
+                { key: 'Urgent', label: 'Urgent', count: counts.urgent },
+              ].map((s) => {
+                const active = statusFilter === s.key;
+                return (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => setStatusFilter(s.key)}
+                    className={`h-8 px-3 text-[12px] font-semibold rounded-lg inline-flex items-center gap-1.5 transition-colors ${
+                      active
+                        ? s.key === 'Urgent'
+                          ? 'bg-red-600 text-white shadow-sm shadow-red-600/25'
+                          : 'bg-brand-600 text-white shadow-sm shadow-brand-600/20'
+                        : s.key === 'Urgent'
+                          ? 'text-red-700 hover:bg-red-50 hover:text-red-800'
+                          : 'text-stone-600 hover:bg-white hover:text-stone-900'
                     }`}
-                  />
-
-                  <div className="pl-2.5 sm:pl-3 flex flex-col gap-3">
-                    <div className="flex flex-col sm:flex-row sm:items-start gap-3 min-w-0">
-                      <div className="hidden sm:flex w-10 h-10 rounded-xl bg-stone-100 border border-stone-200/80 items-center justify-center flex-shrink-0">
-                        <Briefcase className="text-brand-700" size={18} />
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2 gap-y-1.5">
-                          <h3 className={`text-[15px] sm:text-base tracking-tight leading-snug uppercase ${unread ? 'font-extrabold text-stone-950' : 'font-bold text-stone-900'}`}>
-                            <button
-                              type="button"
-                              onClick={() => openView(job)}
-                              className="text-left hover:text-brand-700 transition-colors"
-                            >
-                              {title}
-                            </button>
-                          </h3>
-                          {unread ? (
-                            <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-brand-600 text-white">
-                              New
-                            </span>
-                          ) : null}
-                          {urgent ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md border border-red-200 bg-red-50 text-red-700">
-                              <AlertTriangle size={10} /> Urgent
-                            </span>
-                          ) : null}
-                          {job.jobCode && (
-                            <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-200 bg-stone-50 text-stone-600 tabular-nums tracking-wide">
-                              {job.jobCode}
-                            </span>
-                          )}
-                          <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md border whitespace-nowrap ${STATUS_STYLES[status] || STATUS_STYLES.Open}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${DOT_STYLES[status] || DOT_STYLES.Open}`} />
-                            {status}
-                          </span>
-                        </div>
-                        {(job.clientName || job.grade) && (
-                          <p className="mt-0.5 text-[12px] text-stone-500 truncate">
-                            {[job.clientName, job.grade ? `Grade ${job.grade}` : ''].filter(Boolean).join(' · ')}
-                          </p>
-                        )}
-
-                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] sm:text-[13px] text-stone-600">
-                          <span className="inline-flex items-center gap-1 min-w-0">
-                            <MapPin size={13} className="text-stone-400 flex-shrink-0" />
-                            <span className="truncate font-medium">{job.location || 'Location TBD'}</span>
-                          </span>
-                          <span className="inline-flex items-center gap-1 min-w-0">
-                            <Building2 size={13} className="text-stone-400 flex-shrink-0" />
-                            <span className="truncate">{job.experience || 'Exp TBD'}</span>
-                          </span>
-                          <span className="inline-flex items-center gap-1 min-w-0 font-semibold text-stone-800">
-                            <IndianRupee size={13} className="text-stone-400 flex-shrink-0" />
-                            <span className="truncate">{job.ctc || 'CTC TBD'}</span>
-                          </span>
-                        </div>
-
-                        {(job.skills?.length > 0 || job.hiringManagers?.length > 0) && (
-                          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                            {(job.skills || []).slice(0, 5).map((skill) => (
-                              <span key={skill} className="inline-flex max-w-[14rem] truncate px-2 py-0.5 rounded-md text-[10px] font-semibold bg-brand-50 text-brand-800 border border-brand-100">
-                                {skill}
-                              </span>
-                            ))}
-                            {(job.skills || []).length > 5 && (
-                              <span className="text-[10px] font-semibold text-stone-500">+{job.skills.length - 5}</span>
-                            )}
-                            {job.hiringManagers?.length > 0 && (
-                              <>
-                                <span className="text-stone-300 mx-0.5" aria-hidden="true">|</span>
-                                {job.hiringManagers.slice(0, 3).map((email, idx) => (
-                                  <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-stone-100 text-stone-700 border border-stone-200">
-                                    <UserCheck size={10} /> {String(email).split('@')[0]}
-                                  </span>
-                                ))}
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1.5 flex-shrink-0 self-end sm:self-start">
-                        <button
-                          type="button"
-                          onClick={() => openView(job)}
-                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-colors shadow-sm"
-                          title="View job"
-                        >
-                          <Eye size={14} strokeWidth={2} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openEdit(job)}
-                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-colors shadow-sm"
-                          title="Edit job"
-                        >
-                          <Pencil size={14} strokeWidth={2} />
-                        </button>
-                        {status === 'Draft' || status === 'On Hold' ? (
-                          <button
-                            type="button"
-                            onClick={() => handleStatusChange(job, 'Open')}
-                            className="h-8 px-2.5 inline-flex items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition-colors text-[11px] font-bold uppercase tracking-wide shadow-sm"
-                            title="Publish & open — live on careers"
-                          >
-                            Publish
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => openShareModal(job)}
-                            className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:border-teal-300 hover:text-teal-700 hover:bg-teal-50 transition-colors shadow-sm"
-                            title="Share apply link"
-                          >
-                            <Share2 size={14} strokeWidth={2} />
-                          </button>
-                        )}
-                        <JobCardActionsMenu
-                          open={menuOpenId === job._id}
-                          onToggle={() => setMenuOpenId(menuOpenId === job._id ? null : job._id)}
-                          job={job}
-                          status={status}
-                          onMarkOpen={() => { setMenuOpenId(null); handleStatusChange(job, 'Open'); }}
-                          onHold={() => { setMenuOpenId(null); handleStatusChange(job, 'On Hold'); }}
-                          onClose={() => { setMenuOpenId(null); handleStatusChange(job, 'Closed'); }}
-                          onToggleUrgent={() => handleToggleUrgent(job)}
-                          onSaveTemplate={() => { setMenuOpenId(null); handleSaveAsTemplate(job); }}
-                          onDelete={() => {
-                            setMenuOpenId(null);
-                            setDeleteTarget(job);
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
+                  >
+                    {s.key === 'Urgent' ? <AlertTriangle size={13} strokeWidth={2.25} /> : null}
+                    {s.label}
+                    <span className={active ? 'text-white/80' : s.key === 'Urgent' ? 'text-red-400' : 'text-stone-400'}>{s.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {(searchQuery || statusFilter !== 'All') ? (
+              <button type="button" onClick={() => { setSearchQuery(''); setStatusFilter('All'); }} className="text-[12px] font-semibold text-brand-700 hover:text-brand-800">
+                Reset
+              </button>
+            ) : null}
           </div>
+        </div>
 
-          {totalPages > 1 ? (
-            <div className="card-ats-bordered px-4 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <p className="text-sm text-stone-500">
-                Showing{' '}
-                <span className="font-semibold text-stone-800">
-                  {(currentPage - 1) * JOBS_PAGE_SIZE + 1}–{Math.min(currentPage * JOBS_PAGE_SIZE, filteredJobs.length)}
-                </span>
-                {' '}of <span className="font-semibold text-stone-800">{filteredJobs.length}</span>
-              </p>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  disabled={currentPage <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className="h-9 px-3 inline-flex items-center gap-1 rounded-xl border border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-40 disabled:pointer-events-none"
-                >
-                  <ChevronLeft size={16} /> Prev
+        {loading ? (
+          <div data-tour="jobs-list" className="p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {[1, 2, 3, 4].map((i) => <div key={i} className="h-48 rounded-xl border border-stone-200 skeleton-ats" />)}
+          </div>
+        ) : jobs.length === 0 ? (
+          <div data-tour="jobs-list">
+            <EmptyState
+              icon={Briefcase}
+              tone="brand"
+              message="No job openings yet"
+              subMessage="Post your first requisition to start receiving applications."
+              action={(
+                <button type="button" onClick={openCreate} className="btn-primary">
+                  <Plus size={16} /> Post new job
                 </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1)
-                  .filter((n) => n === 1 || n === totalPages || Math.abs(n - currentPage) <= 1)
-                  .reduce((acc, n, idx, arr) => {
-                    if (idx > 0 && n - arr[idx - 1] > 1) acc.push('…');
-                    acc.push(n);
-                    return acc;
-                  }, [])
-                  .map((n, idx) => (
-                    n === '…' ? (
-                      <span key={`e-${idx}`} className="px-1 text-stone-400 text-sm">…</span>
-                    ) : (
-                      <button
-                        key={n}
-                        type="button"
-                        onClick={() => setPage(n)}
-                        className={`h-9 min-w-[2.25rem] px-2 rounded-xl text-sm font-bold border transition ${
-                          n === currentPage ? 'bg-brand-600 text-white border-transparent shadow-sm' : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
-                        }`}
-                      >
-                        {n}
-                      </button>
-                    )
-                  ))}
+              )}
+            />
+          </div>
+        ) : filteredJobs.length === 0 ? (
+          <div data-tour="jobs-list">
+            <EmptyState
+              icon={Search}
+              tone="amber"
+              message="No matching jobs"
+              subMessage="Change status or search terms. Search covers every page of results."
+              action={(
+                <button type="button" className="btn-secondary" onClick={() => { setSearchQuery(''); setStatusFilter('All'); }}>
+                  Reset criteria
+                </button>
+              )}
+            />
+          </div>
+        ) : (
+          <>
+            <div data-tour="jobs-list" className="p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-4 items-stretch">
+              {pageJobs.map((job) => (
+                <JobListCard
+                  key={job._id}
+                  job={job}
+                  unread={isJobUnread(job)}
+                  menuOpen={menuOpenId === job._id}
+                  onToggleMenu={() => setMenuOpenId(menuOpenId === job._id ? null : job._id)}
+                  onView={openView}
+                  onEdit={openEdit}
+                  onPublish={(j) => handleStatusChange(j, 'Open')}
+                  onShare={openShareModal}
+                  onOpenApplicants={(j, kind) => navigate(buildAtsHref({
+                    jobId: j.jobCode || j._id,
+                    appSource: kind === 'added' ? 'added' : kind === 'duplicates' ? 'duplicates' : 'careers',
+                  }))}
+                  onMarkOpen={() => { setMenuOpenId(null); handleStatusChange(job, 'Open'); }}
+                  onHold={() => { setMenuOpenId(null); handleStatusChange(job, 'On Hold'); }}
+                  onClose={() => { setMenuOpenId(null); handleStatusChange(job, 'Closed'); }}
+                  onToggleUrgent={() => handleToggleUrgent(job)}
+                  onSaveTemplate={() => { setMenuOpenId(null); handleSaveAsTemplate(job); }}
+                  onDelete={() => {
+                    setMenuOpenId(null);
+                    setDeleteTarget(job);
+                  }}
+                  onCopiedJobId={(code) => toast.success(`Job ID copied · ${code}`)}
+                />
+              ))}
+            </div>
+            <div className="px-3 py-2 border-t border-stone-200 bg-stone-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <p className="text-[12px] text-stone-500">
+                {pageJobs.length > 0 ? (currentPage - 1) * JOBS_PAGE_SIZE + 1 : 0}–{(currentPage - 1) * JOBS_PAGE_SIZE + pageJobs.length}
+                {' of '}
+                {filteredJobs.length.toLocaleString()} jobs
+                <span className="text-stone-400"> · {JOBS_PAGE_SIZE} per page</span>
+              </p>
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  disabled={currentPage >= totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  className="h-9 px-3 inline-flex items-center gap-1 rounded-xl border border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-40 disabled:pointer-events-none"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage <= 1}
+                  className="h-8 px-2.5 border border-stone-300 bg-white text-[12px] font-semibold text-stone-700 disabled:opacity-40 inline-flex items-center gap-1"
                 >
-                  Next <ChevronRight size={16} />
+                  <ChevronLeft size={14} /> Prev
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                  className="h-8 px-2.5 border border-stone-300 bg-white text-[12px] font-semibold text-stone-700 disabled:opacity-40 inline-flex items-center gap-1"
+                >
+                  Next <ChevronRight size={14} />
                 </button>
               </div>
             </div>
-          ) : null}
-        </>
-      )}
+          </>
+        )}
+      </div>
 
       <TourHelpFab onClick={() => setTourOpen(true)} label="Take a tour" title="Take a tour of Jobs" />
       <ProductTour
@@ -1007,9 +844,19 @@ const Jobs = () => {
       <JobViewModal
         open={!!viewingJob}
         job={viewingJob}
+        startOnTalent={talentFirst}
         allowCopyJobId
         onCopiedJobId={(code) => toast.success(`Job ID copied · ${code}`)}
-        onClose={() => setViewingJob(null)}
+        onClose={() => { setViewingJob(null); setTalentFirst(false); }}
+        onViewPipeline={(job, kind) => {
+          setViewingJob(null);
+          if (job?.jobCode || job?._id) {
+            navigate(buildAtsHref({
+              jobId: job.jobCode || job._id,
+              appSource: kind === 'added' ? 'added' : kind === 'duplicates' ? 'duplicates' : kind === 'applied' ? 'careers' : undefined,
+            }));
+          }
+        }}
         onEdit={(job) => {
           setViewingJob(null);
           openEdit(job);

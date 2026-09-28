@@ -102,6 +102,99 @@ function blankSpocCreatedByClause(user) {
   };
 }
 
+/**
+ * Careers-page applicants are stamped source "Careers Page".
+ * Older rows used spoc "Careers Page", which never matches a recruiter name,
+ * so createdBy ownership must still put them on that desk.
+ */
+function careersCreatedByClause(user) {
+  return {
+    $and: [
+      createdByFilter(user),
+      {
+        $or: [
+          { source: /careers\s*page/i },
+          { spoc: /^\s*Careers Page\s*$/i },
+        ],
+      },
+    ],
+  };
+}
+
+/** Unowned careers applicants (no createdBy) should still appear on company desks. */
+function orphanCareersClause() {
+  return {
+    $and: [
+      {
+        $or: [
+          { source: /careers\s*page/i },
+          { spoc: /^\s*Careers Page\s*$/i },
+        ],
+      },
+      {
+        $or: [
+          { createdBy: { $exists: false } },
+          { createdBy: null },
+          { createdBy: '' },
+        ],
+      },
+    ],
+  };
+}
+
+/** Jobs this user owns or is assigned to (ATS Applications + careers intake). */
+function jobOwnershipClauses(user) {
+  const { userIdStr, userIdObj } = userIdParts(user);
+  const email = String(user?.email || '').trim().toLowerCase();
+  const orClauses = [];
+  const idMatch = userIdObj ? { $in: [userIdObj, userIdStr] } : (userIdStr || null);
+  if (idMatch) {
+    orClauses.push({ createdBy: idMatch });
+    orClauses.push({ hiringManager: idMatch });
+    orClauses.push({ assignedRecruiters: idMatch });
+  }
+  if (email) {
+    orClauses.push({ hiringManagers: { $regex: new RegExp(`^\\s*${escapeRegex(email)}\\s*$`, 'i') } });
+  }
+  return orClauses;
+}
+
+async function candidateIdsOnOwnedJobs(organizationId, user) {
+  if (!organizationId || isFreelancer(user)) return [];
+  if (mongoose.connection.readyState !== 1) return [];
+  const orClauses = jobOwnershipClauses(user);
+  if (!orClauses.length) return [];
+  try {
+    const Job = require('../models/Job');
+    const Application = require('../models/Application');
+    const jobQuery = Job.find({ organizationId, $or: orClauses }).distinct('_id').maxTimeMS(4000);
+    const jobIds = await Promise.race([
+      jobQuery,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('job desk timeout')), 4500)),
+    ]);
+    if (!jobIds.length) return [];
+    return await Promise.race([
+      Application.find({
+        organizationId,
+        jobId: { $in: jobIds },
+      }).distinct('candidateId').maxTimeMS(4000),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('application desk timeout')), 4500)),
+    ]);
+  } catch {
+    return [];
+  }
+}
+
+async function mergeDeskWithJobApplicants(user, organizationId, baseFilter) {
+  const ids = await candidateIdsOnOwnedJobs(organizationId, user);
+  if (!ids.length) return baseFilter;
+  const orgMatch = organizationIdMatch(organizationId);
+  const extra = orgMatch
+    ? { $and: [orgMatch, { _id: { $in: ids } }] }
+    : { _id: { $in: ids } };
+  return { $or: [baseFilter, extra] };
+}
+
 /** Match organizationId whether stored as ObjectId or string. */
 function organizationIdMatch(organizationId) {
   if (!organizationId) return null;
@@ -121,40 +214,40 @@ function organizationIdMatch(organizationId) {
 }
 
 /**
- * Employee dashboard desk = SPOC name (with light typo tolerance)
- * plus own createdBy rows that have no SPOC yet.
- * Does NOT take createdBy rows stamped with another person's SPOC
- * (managers often import for teammates).
+ * Employee desk = SPOC name (with light typo tolerance) OR rows this user created.
+ * Recruiters keep their own intake even when SPOC is a client / teammate name.
+ * OrganizationId stays a top-level $and so Mongo can use the tenant index.
  */
+function freelancerDeskFilter(user, organizationId) {
+  const own = createdByFilter(user);
+  const { userIdStr, userIdObj } = userIdParts(user);
+  const shared = userIdObj
+    ? { 'sharedWith.userId': { $in: [userIdObj, userIdStr] } }
+    : { 'sharedWith.userId': userIdStr };
+  const notHidden = userIdObj
+    ? { hiddenFromFreelancerIds: { $nin: [userIdObj, userIdStr] } }
+    : { hiddenFromFreelancerIds: { $nin: [userIdStr] } };
+  const desk = { $and: [{ $or: [own, shared] }, notHidden] };
+  const orgMatch = organizationIdMatch(organizationId);
+  return orgMatch ? { $and: [orgMatch, desk] } : desk;
+}
+
 function employeeDeskFilter(user, organizationId) {
   if (isFreelancer(user)) {
-    const own = createdByFilter(user);
-    const orgMatch = organizationIdMatch(organizationId);
-    return orgMatch ? { ...orgMatch, ...own } : own;
+    return freelancerDeskFilter(user, organizationId);
   }
 
   const spocClauses = spocOwnershipClauses(user);
   const deskOr = [];
   if (spocClauses.length) deskOr.push({ $or: spocClauses });
-  deskOr.push(blankSpocCreatedByClause(user));
+  const own = createdByFilter(user);
+  if (own && own.createdBy !== null) deskOr.push(own);
 
-  const desk = deskOr.length === 1 ? deskOr[0] : { $or: deskOr };
+  const desk = deskOr.length === 1 ? deskOr[0] : (deskOr.length ? { $or: deskOr } : own);
 
   const orgMatch = organizationIdMatch(organizationId);
   if (!orgMatch) return desk;
-
-  return {
-    $and: [
-      desk,
-      {
-        $or: [
-          orgMatch,
-          { organizationId: { $exists: false } },
-          { organizationId: null },
-        ],
-      },
-    ],
-  };
+  return { $and: [orgMatch, desk] };
 }
 
 /** Owner / admin / HR manager may view org-wide dashboard & analytics. */
@@ -198,7 +291,9 @@ async function analyticsScope(req) {
   const requestedId = requestedAnalyticsUserId(req);
 
   if (!canViewOrgAnalytics(user)) {
-    return employeeDeskFilter(user, user.organizationId);
+    const desk = employeeDeskFilter(user, user.organizationId);
+    const merged = await mergeDeskWithJobApplicants(user, user.organizationId, desk);
+    return withoutUnsharedFreelancerDesks({ user }, merged);
   }
 
   if (!requestedId) {
@@ -308,50 +403,90 @@ function candidateWriteScope(req) {
   return { $or: [desk, sharedFilter] };
 }
 
+function sharedWithClause(user) {
+  const { userIdStr, userIdObj } = userIdParts(user);
+  return userIdObj
+    ? { 'sharedWith.userId': { $in: [userIdObj, userIdStr] } }
+    : { 'sharedWith.userId': userIdStr };
+}
+
+function queryFlag(req, key) {
+  return ['1', 'true', 'yes'].includes(String(req?.query?.[key] || '').toLowerCase());
+}
+
+async function orgFreelancerCreatorIds(organizationId) {
+  if (!organizationId || mongoose.connection.readyState !== 1) return [];
+  try {
+    const User = require('../models/User');
+    return await User.find({ organizationId, role: 'freelancer' }).distinct('_id');
+  } catch {
+    return [];
+  }
+}
+
+/** Company employee desk only — freelancer-created rows are not mixed in. */
+async function excludeFreelancerCreated(organizationId, baseFilter) {
+  const ids = await orgFreelancerCreatorIds(organizationId);
+  if (!ids.length || !baseFilter) return baseFilter;
+  return { $and: [baseFilter, { createdBy: { $nin: ids } }] };
+}
+
+/** Freelancer records explicitly shared with this staff member. */
+async function freelancerHandoffsTo(user, organizationId) {
+  const orgMatch = organizationIdMatch(organizationId);
+  const ids = await orgFreelancerCreatorIds(organizationId);
+  const created = ids.length ? { createdBy: { $in: ids } } : { _id: { $in: [] } };
+  const parts = [sharedWithClause(user), created];
+  if (orgMatch) parts.unshift(orgMatch);
+  return { $and: parts };
+}
+
+async function freelancerCreatedInOrg(organizationId) {
+  const orgMatch = organizationIdMatch(organizationId);
+  const ids = await orgFreelancerCreatorIds(organizationId);
+  const created = ids.length ? { createdBy: { $in: ids } } : { _id: { $in: [] } };
+  return orgMatch ? { $and: [orgMatch, created] } : created;
+}
+
+async function companyEmployeeDesk(user, organizationId) {
+  if (isFreelancer(user)) return freelancerDeskFilter(user, organizationId);
+  const desk = employeeDeskFilter(user, organizationId);
+  const merged = await mergeDeskWithJobApplicants(user, organizationId, desk);
+  return excludeFreelancerCreated(organizationId, merged);
+}
+
 /**
- * Candidate list filter.
+ * Candidate list filter (sync).
  * Freelancer always own-only (view=all is ignored).
- * Other roles: view=all → org; shared → sharedWith; else SPOC desk OR shared with me
- * (so hiring-manager SPOCs see freelancer handoffs without switching views).
+ * Staff mine/all: company desk only. Shared / freelanceOnly: separate handoff list.
  */
 function candidateListFilter(req, viewMode) {
   const user = req.user || {};
   const own = createdByFilter(user);
-  const { userIdStr, userIdObj } = userIdParts(user);
-  const sharedClause = userIdObj
-    ? { 'sharedWith.userId': { $in: [userIdObj, userIdStr] } }
-    : { 'sharedWith.userId': userIdStr };
+  const sharedClause = sharedWithClause(user);
 
   if (isFreelancer(user)) {
-    const { userIdStr, userIdObj } = userIdParts(user);
-    const notHidden = userIdObj
-      ? { hiddenFromFreelancerIds: { $nin: [userIdObj, userIdStr] } }
-      : { hiddenFromFreelancerIds: { $nin: [userIdStr] } };
-    const base = user.organizationId
-      ? { organizationId: user.organizationId, ...own }
-      : own;
-    return { ...base, ...notHidden };
+    return freelancerDeskFilter(user, user.organizationId);
   }
 
   if (viewMode === 'all') {
-    return user.organizationId ? { organizationId: user.organizationId } : own;
+    if (canViewOrgAnalytics(user)) {
+      return user.organizationId ? { organizationId: user.organizationId } : own;
+    }
+    return employeeDeskFilter(user, user.organizationId);
   }
   if (viewMode === 'shared') {
     return user.organizationId
       ? { organizationId: user.organizationId, ...sharedClause }
       : sharedClause;
   }
-  // mine / default — SPOC desk + candidates shared with this user (freelancer handoffs)
-  return deskOrSharedWithMe(user, user.organizationId);
+  return employeeDeskFilter(user, user.organizationId);
 }
 
-/** SPOC desk OR rows explicitly shared with this user. */
+/** SPOC desk OR rows explicitly shared with this user (writes / optional views). */
 function deskOrSharedWithMe(user, organizationId) {
   const desk = employeeDeskFilter(user, organizationId);
-  const { userIdStr, userIdObj } = userIdParts(user);
-  const shared = userIdObj
-    ? { 'sharedWith.userId': { $in: [userIdObj, userIdStr] } }
-    : { 'sharedWith.userId': userIdStr };
+  const shared = sharedWithClause(user);
   const orgMatch = organizationIdMatch(organizationId);
   const sharedFilter = orgMatch ? { $and: [orgMatch, shared] } : shared;
   return { $or: [desk, sharedFilter] };
@@ -364,10 +499,12 @@ function candidateResumeScope(req) {
 
 /**
  * Full candidates list scope (async).
- * Managers may pass ?userId= to load that employee's SPOC desk (same as analytics).
+ * Managers may pass ?userId= for that employee's company desk.
+ * freelanceOnly / view=shared is a separate freelancer-handoff list.
  */
 async function candidateListScope(req, viewMode) {
   const user = req.user || {};
+  const freelanceOnly = queryFlag(req, 'freelanceOnly');
 
   if (isFreelancer(user)) {
     return candidateListFilter(req, viewMode);
@@ -376,47 +513,45 @@ async function candidateListScope(req, viewMode) {
   if (canViewOrgAnalytics(user)) {
     const requestedId = requestedAnalyticsUserId(req);
     if (requestedId) {
-      if (String(requestedId) === String(user.id || user._id || '')) {
-        return deskOrSharedWithMe(user, user.organizationId);
+      let targetUser = user;
+      if (String(requestedId) !== String(user.id || user._id || '')) {
+        if (!user.organizationId) {
+          throw scopeError('Employee filter requires an organization', 400);
+        }
+        const target = await assertOrgEmployee(user.organizationId, requestedId);
+        targetUser = {
+          id: target._id,
+          role: target.role,
+          name: target.name,
+          email: target.email,
+          organizationId: user.organizationId,
+        };
       }
-      if (!user.organizationId) {
-        throw scopeError('Employee filter requires an organization', 400);
+      if (isFreelancer(targetUser)) {
+        return freelancerDeskFilter(targetUser, user.organizationId);
       }
-      const target = await assertOrgEmployee(user.organizationId, requestedId);
-      return deskOrSharedWithMe(
-        { id: target._id, role: target.role, name: target.name, email: target.email },
-        user.organizationId
-      );
+      if (freelanceOnly || viewMode === 'shared') {
+        return freelancerHandoffsTo(targetUser, user.organizationId);
+      }
+      return companyEmployeeDesk(targetUser, user.organizationId);
     }
 
+    if (freelanceOnly) {
+      return freelancerCreatedInOrg(user.organizationId);
+    }
     if (viewMode === 'all' || !viewMode) {
-      // Owner / admin / manager: full organization, including all freelancer candidates
       return organizationIdMatch(user.organizationId) || createdByFilter(user);
     }
     if (viewMode === 'shared') {
-      const { userIdStr, userIdObj } = userIdParts(user);
-      const shared = userIdObj
-        ? { 'sharedWith.userId': { $in: [userIdObj, userIdStr] } }
-        : { 'sharedWith.userId': userIdStr };
-      return user.organizationId
-        ? { organizationId: user.organizationId, ...shared }
-        : shared;
+      return freelancerHandoffsTo(user, user.organizationId);
     }
-    // Manager "mine" = own desk + shared handoffs
-    return deskOrSharedWithMe(user, user.organizationId);
+    return companyEmployeeDesk(user, user.organizationId);
   }
 
-  // Recruiters: desk + sharedWith (freelancer → hiring-manager handoffs). Never full org.
-  if (viewMode === 'shared') {
-    const { userIdStr, userIdObj } = userIdParts(user);
-    const shared = userIdObj
-      ? { 'sharedWith.userId': { $in: [userIdObj, userIdStr] } }
-      : { 'sharedWith.userId': userIdStr };
-    return user.organizationId
-      ? { organizationId: user.organizationId, ...shared }
-      : shared;
+  if (freelanceOnly || viewMode === 'shared') {
+    return freelancerHandoffsTo(user, user.organizationId);
   }
-  return deskOrSharedWithMe(user, user.organizationId);
+  return companyEmployeeDesk(user, user.organizationId);
 }
 
 /** Jobs: freelancer sees Open (non-template) mandates only. */
@@ -441,61 +576,110 @@ function jobListFilter(req, { isTemplate } = {}) {
 
 /** Applications: leadership sees org-wide; others only jobs they created or SPOC; freelancer = own submissions. */
 async function applicationListFilter(organizationId, user, extra = {}) {
-  const filter = { organizationId, ...extra };
+  const { jobId: extraJobId, ...restExtra } = extra || {};
+  const filter = { organizationId, ...restExtra };
   if (isFreelancer(user)) {
     filter['metadata.submittedBy'] = String(user.id || user._id);
+    if (extraJobId != null && extraJobId !== 'all') filter.jobId = extraJobId;
     return filter;
   }
   if (canViewOrgAnalytics(user)) {
+    if (extraJobId != null && extraJobId !== 'all') filter.jobId = extraJobId;
     return filter;
   }
 
   const Job = require('../models/Job');
   const { userIdStr, userIdObj } = userIdParts(user);
-  const email = String(user?.email || '').trim().toLowerCase();
-  const orClauses = [];
-  if (userIdObj) {
-    orClauses.push({ createdBy: { $in: [userIdObj, userIdStr] } });
-    orClauses.push({ hiringManager: { $in: [userIdObj, userIdStr] } });
-  } else if (userIdStr) {
-    orClauses.push({ createdBy: userIdStr });
-    orClauses.push({ hiringManager: userIdStr });
-  }
-  if (email) {
-    orClauses.push({ hiringManagers: { $regex: new RegExp(`^\\s*${escapeRegex(email)}\\s*$`, 'i') } });
-  }
+  const orClauses = jobOwnershipClauses(user);
+  const assignedTo = userIdObj
+    ? { assignedTo: { $in: [userIdObj, userIdStr] } }
+    : (userIdStr ? { assignedTo: userIdStr } : null);
 
-  if (!orClauses.length) {
+  if (!orClauses.length && !assignedTo) {
     filter.jobId = { $in: [] };
     return filter;
   }
 
-  const scopedJobIds = await Job.find({
-    organizationId,
-    $or: orClauses,
-  }).distinct('_id');
+  const scopedJobIds = orClauses.length
+    ? await Job.find({
+      organizationId,
+      $or: orClauses,
+    }).distinct('_id')
+    : [];
 
-  if (extra.jobId != null && extra.jobId !== 'all') {
-    const requested = String(extra.jobId);
+  if (extraJobId != null && extraJobId !== 'all') {
+    const requested = String(extraJobId);
     const allowed = scopedJobIds.some((id) => String(id) === requested);
-    filter.jobId = allowed ? extra.jobId : { $in: [] };
-  } else {
-    filter.jobId = { $in: scopedJobIds };
+    filter.jobId = extraJobId;
+    if (!allowed && assignedTo) {
+      Object.assign(filter, assignedTo);
+    } else if (!allowed) {
+      filter.jobId = { $in: [] };
+    }
+    return filter;
   }
+
+  const visibility = [{ jobId: { $in: scopedJobIds } }];
+  if (assignedTo) visibility.push(assignedTo);
+  filter.$or = visibility;
+  return filter;
+}
+
+/** Company employees who may open MIS (never freelancers / interviewers / readonly). */
+const MIS_COMPANY_ROLES = new Set([
+  'owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales',
+]);
+
+function isMisCompanyRole(user) {
+  return Boolean(user && MIS_COMPANY_ROLES.has(user.role));
+}
+
+/**
+ * MIS list visibility:
+ * - Owner: all org contacts
+ * - Company employees: org-shared (deskScope !== personal, including legacy) + own personal rows
+ * - Freelancer / other roles: empty
+ */
+function misListFilter(organizationId, user, extra = {}) {
+  const { $and: extraAnd, ...restExtra } = extra || {};
+  const filter = { organizationId, ...restExtra };
+
+  if (!user || isFreelancer(user) || !isMisCompanyRole(user)) {
+    filter._id = { $in: [] };
+    return filter;
+  }
+  if (user.role === 'owner') {
+    if (Array.isArray(extraAnd) && extraAnd.length) {
+      filter.$and = extraAnd;
+    }
+    return filter;
+  }
+
+  const { userIdStr, userIdObj } = userIdParts(user);
+  const me = userIdObj ? [userIdObj, userIdStr] : [userIdStr];
+  const visibility = {
+    $or: [
+      { deskScope: { $ne: 'personal' } },
+      { createdBy: { $in: me } },
+    ],
+  };
+  filter.$and = [...(Array.isArray(extraAnd) ? extraAnd : []), visibility];
   return filter;
 }
 
 /**
- * MIS marketing contacts: company owner only (org-wide).
- * All other roles get an empty scope — APIs also enforce requireOwner.
+ * MIS mutate scope: owner = all; employees = only rows they created (personal desk).
  */
-function misListFilter(organizationId, user, extra = {}) {
-  const filter = { organizationId, ...extra };
-  if (!user || user.role !== 'owner') {
-    filter._id = { $in: [] };
-    return filter;
+function misWriteFilter(organizationId, user, extra = {}) {
+  if (!user || isFreelancer(user) || !isMisCompanyRole(user)) {
+    return { organizationId, _id: { $in: [] }, ...extra };
   }
-  return filter;
+  if (user.role === 'owner') {
+    return misListFilter(organizationId, user, extra);
+  }
+  const { userIdStr, userIdObj } = userIdParts(user);
+  const me = userIdObj ? [userIdObj, userIdStr] : [userIdStr];
+  return { organizationId, createdBy: { $in: me }, ...extra };
 }
 
 /** Picklists / master data: freelancer sees only values they created. */
@@ -515,12 +699,18 @@ async function withoutUnsharedFreelancerDesks(req, baseFilter) {
   if (canViewOrgAnalytics(req.user)) {
     return baseFilter;
   }
+  if (mongoose.connection.readyState !== 1) return baseFilter;
 
   const User = require('../models/User');
-  const freelancerIds = await User.find({
-    organizationId: req.user.organizationId,
-    role: 'freelancer',
-  }).distinct('_id');
+  let freelancerIds = [];
+  try {
+    freelancerIds = await User.find({
+      organizationId: req.user.organizationId,
+      role: 'freelancer',
+    }).distinct('_id');
+  } catch {
+    return baseFilter;
+  }
   if (!freelancerIds.length) return baseFilter;
 
   const { userIdStr, userIdObj } = userIdParts(req.user);
@@ -553,7 +743,9 @@ module.exports = {
   userIdParts,
   rejectFreelancerCompanyMail,
   createdByFilter,
+  jobOwnershipClauses,
   employeeDeskFilter,
+  freelancerDeskFilter,
   deskOrSharedWithMe,
   spocOwnershipClauses,
   organizationIdMatch,
@@ -565,7 +757,10 @@ module.exports = {
   candidateListScope,
   jobListFilter,
   applicationListFilter,
+  MIS_COMPANY_ROLES,
+  isMisCompanyRole,
   misListFilter,
+  misWriteFilter,
   withoutUnsharedFreelancerDesks,
   ORG_WIDE_ANALYTICS_ROLES,
   canViewOrgAnalytics,

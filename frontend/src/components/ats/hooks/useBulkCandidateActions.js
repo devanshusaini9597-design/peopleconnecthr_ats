@@ -17,6 +17,7 @@ export function useBulkCandidateActions({
   setCurrentPage,
   fetchData,
   isFreelancer = false,
+  resolveSelectedPeople,
 }) {
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
@@ -50,13 +51,22 @@ export function useBulkCandidateActions({
     window.open(`https://wa.me/${cleanPhone}`, '_blank');
   }, []);
 
-  const handleBulkWhatsApp = useCallback(() => {
+  const handleBulkWhatsApp = useCallback(async () => {
     if (selectedIds.length === 0) {
       toast.warning('Please select at least one candidate.');
       return;
     }
-    const selected = candidates.filter((c) => selectedIds.includes(c._id));
-    const withPhone = selected.filter((c) => c.contact && c.contact.replace(/\D/g, '').length >= 7);
+    let selected = (candidates || []).filter((c) => selectedIds.map(String).includes(String(c._id)));
+    if (typeof resolveSelectedPeople === 'function') {
+      try {
+        const extra = await resolveSelectedPeople();
+        if (Array.isArray(extra) && extra.length) selected = extra;
+      } catch (err) {
+        toast.error(err?.message || 'Could not load all selected people.');
+        return;
+      }
+    }
+    const withPhone = selected.filter((c) => String(c.contact || c.phone || '').replace(/\D/g, '').length >= 7);
     if (withPhone.length === 0) {
       toast.warning('No valid phone numbers found in selected candidates.');
       return;
@@ -71,12 +81,12 @@ export function useBulkCandidateActions({
         setConfirmModal((prev) => ({ ...prev, isOpen: false }));
         withPhone.forEach((c, i) => {
           setTimeout(() => {
-            window.open(`https://wa.me/${c.contact.replace(/\D/g, '')}`, '_blank');
+            window.open(`https://wa.me/${String(c.contact || c.phone || '').replace(/\D/g, '')}`, '_blank');
           }, i * 500);
         });
       },
     });
-  }, [selectedIds, candidates, toast]);
+  }, [selectedIds, candidates, toast, resolveSelectedPeople]);
 
   const handleBulkDelete = useCallback(() => {
     if (selectedIds.length === 0) {

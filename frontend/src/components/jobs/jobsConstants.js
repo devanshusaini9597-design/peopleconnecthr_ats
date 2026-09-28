@@ -21,7 +21,7 @@ export const JOBS_TOUR_STEPS = [
   {
     target: '[data-tour="jobs-list"]',
     title: 'Job cards',
-    body: 'View, edit, or share from the toolbar. Overflow actions cover hold, close, urgent, templates, and delete.',
+    body: 'Openings sit in a two-column workbench like Open Mandates. View, edit, share, and applicant counts live on each card.',
     placement: 'top',
   },
 ];
@@ -81,7 +81,7 @@ export const GRADE_STARTERS = [
 ];
 
 export const INDUSTRY_STARTERS = [
-  'LIFE INSURANCE', 'GENERAL INSURANCE', 'HEALTH INSURANCE', 'BFSI', 'IT / SOFTWARE',
+  'BFSI', 'BANKING', 'LIFE INSURANCE', 'GENERAL INSURANCE', 'HEALTH INSURANCE', 'IT / SOFTWARE',
   'ITES / BPO', 'MANUFACTURING', 'PHARMA / HEALTHCARE', 'FMCG', 'RETAIL',
   'REAL ESTATE', 'EDUCATION', 'TELECOM',
 ];
@@ -119,7 +119,11 @@ export const initialForm = {
   responsibilitiesText: '',
   requirementsText: '',
   preferredProfile: '',
+  kpisText: '',
   description: '',
+  department: '',
+  reportingTo: '',
+  languages: '',
   hiringManagers: [],
   status: 'Open',
   spocName: '',
@@ -213,6 +217,8 @@ export function composeJobDescriptionHtml(form) {
     title ? `<p><strong>Job Title:</strong> ${esc(title)}${form.grade ? ` , Grade ${esc(form.grade)}` : ''}</p>` : '',
     form.clientName ? `<p><strong>Client Name:</strong> ${esc(form.clientName)}</p>` : '',
     form.industry ? `<p><strong>Industry:</strong> ${esc(form.industry)}</p>` : '',
+    form.department ? `<p><strong>Department:</strong> ${esc(form.department)}</p>` : '',
+    form.reportingTo ? `<p><strong>Reports To:</strong> ${esc(form.reportingTo)}</p>` : '',
     form.ctc ? `<p><strong>CTC:</strong> ${esc(form.ctc)}</p>` : '',
     form.experience ? `<p><strong>Experience:</strong> ${esc(form.experience)}</p>` : '',
     form.employmentType ? `<p><strong>Employment Type:</strong> ${esc(EMPLOYMENT_LABELS[form.employmentType] || form.employmentType)}</p>` : '',
@@ -232,8 +238,11 @@ export function composeJobDescriptionHtml(form) {
       ? `<h3>Key Responsibilities</h3>${responsibilitiesHtml}` : '',
     htmlToList(form.requirementsText || form.requirements).length || looksLikeHtml(form.requirementsText)
       ? `<h3>Candidate Requirements</h3>${requirementsHtml}` : '',
+    looksLikeHtml(form.kpisText) || htmlToList(form.kpisText).length
+      ? `<h3>Key Results / KPIs</h3>${looksLikeHtml(form.kpisText) ? form.kpisText : bulletsHtml(htmlToList(form.kpisText))}` : '',
     form.ctc ? `<h3>Compensation</h3><p><strong>CTC: ${esc(form.ctc)}</strong>, depending on experience, performance, and current compensation.</p>` : '',
     form.preferredProfile ? `<h3>Preferred Candidate Profile</h3>${injectRich(form.preferredProfile)}` : '',
+    form.languages ? `<h3>Languages</h3><p>${esc(form.languages)}</p>` : '',
   ].filter(Boolean);
 
   return sections.join('\n');
@@ -247,6 +256,8 @@ export function composeJobDescriptionText(form) {
   lines.push(`Job Title: ${title}${form.grade ? ` , Grade ${form.grade}` : ''}`);
   if (form.clientName) lines.push(`Client Name - ${form.clientName}`);
   if (form.industry) lines.push(`Industry: ${form.industry}`);
+  if (form.department) lines.push(`Department: ${form.department}`);
+  if (form.reportingTo) lines.push(`Reports To: ${form.reportingTo}`);
   if (form.ctc) lines.push(`CTC: ${form.ctc}`);
   if (form.experience) lines.push(`Experience: ${form.experience}`);
   if (type) lines.push(`Employment Type: ${type}`);
@@ -267,10 +278,15 @@ export function composeJobDescriptionText(form) {
   if (requirements.length) {
     lines.push('', '## Candidate Requirements', '', ...requirements.map((item) => `* ${item}`));
   }
+  const kpis = htmlToList(form.kpisText);
+  if (kpis.length) {
+    lines.push('', '## Key Results / KPIs', '', ...kpis.map((item) => `* ${item}`));
+  }
   if (form.ctc) {
     lines.push('', '## Compensation', '', `CTC: ${form.ctc}, depending on experience, performance, and current compensation.`);
   }
   pushSection('Preferred Candidate Profile', stripHtml(form.preferredProfile || '').trim());
+  if (form.languages) lines.push('', '## Languages', '', String(form.languages));
   return lines.filter((line, i, arr) => !(line === '' && arr[i - 1] === '')).join('\n').trim();
 }
 
@@ -300,7 +316,11 @@ export function jobFromRecord(job) {
     responsibilitiesText: job.responsibilitiesHtml || listToLines(job.responsibilities),
     requirementsText: job.requirementsHtml || listToLines(job.requirements),
     preferredProfile: job.preferredProfile || '',
+    kpisText: job.kpis || '',
     description: hasStructured ? '' : (job.description || ''),
+    department: String(job.department || '').toUpperCase(),
+    reportingTo: String(job.reportingTo || '').toUpperCase(),
+    languages: String(job.languages || ''),
     hiringManagers: job.hiringManagers || [],
     status: job.status || 'Open',
     spocName: String(job.spocName || '').toUpperCase(),

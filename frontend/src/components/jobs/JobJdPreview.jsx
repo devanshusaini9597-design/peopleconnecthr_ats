@@ -110,17 +110,19 @@ export default function JobJdPreview({
   const grade = titleCase(form.grade);
   const experience = String(form.experience || '').trim();
   const ctc = String(form.ctc || '').trim();
-  const hasFacts = Boolean(client || industry || ctc || experience || locationLine || typeLabel);
+  const hasFacts = Boolean(client || industry || ctc || experience || locationLine || typeLabel || form.department || form.reportingTo);
   const hasSummary = hasJdText(form.summary);
   const hasResponsibilities = htmlToList(form.responsibilitiesText).length > 0;
   const hasRequirements = htmlToList(form.requirementsText).length > 0;
   const hasPreferred = hasJdText(form.preferredProfile);
+  const hasKpis = htmlToList(form.kpisText).length > 0 || hasJdText(form.kpisText);
+  const hasLanguages = hasJdText(form.languages);
   const hasSpocName = hasJdText(form.spocName);
   const hasSpocContact = hasJdText(form.spocContact);
   const hasSpocEmail = hasJdText(form.spocEmail);
   const hasInternalNotes = hasJdText(form.internalNotes);
   const hasNotes = hasSpocName || hasSpocContact || hasSpocEmail || hasInternalNotes;
-  const hasBody = hasSummary || hasResponsibilities || hasRequirements || hasPreferred;
+  const hasBody = hasSummary || hasResponsibilities || hasRequirements || hasPreferred || hasKpis || hasLanguages;
   const isEmptyPreview = !String(form.role || '').trim() && !hasFacts && !hasBody && !hasNotes;
   const pad = embedded ? 'px-6 sm:px-8' : 'px-5 sm:px-7';
 
@@ -212,6 +214,8 @@ export default function JobJdPreview({
             >
               <Fact icon={Building2} label="Client" value={client} tone="client" />
               <Fact icon={Briefcase} label="Industry" value={industry} tone="industry" />
+              <Fact icon={Layers} label="Department" value={titleCase(form.department)} tone="employment" />
+              <Fact icon={User} label="Reports to" value={titleCase(form.reportingTo)} tone="client" />
               <Fact icon={MapPin} label="Locations" value={locationLine} tone="locations" />
               <Fact icon={Clock} label="Experience" value={experience} tone="experience" />
               <Fact icon={IndianRupee} label="Compensation" value={ctc} tone="compensation" />
@@ -236,9 +240,19 @@ export default function JobJdPreview({
                   <BulletList text={form.requirementsText} />
                 </Section>
               ) : null}
+              {hasKpis ? (
+                <Section id="kpis" title="Key results / KPIs" active={activeSection === 'kpis'}>
+                  <BulletList text={form.kpisText} />
+                </Section>
+              ) : null}
               {hasPreferred ? (
                 <Section id="preferred" title="Preferred profile" active={activeSection === 'preferred'}>
                   <Rich html={form.preferredProfile} />
+                </Section>
+              ) : null}
+              {hasLanguages ? (
+                <Section id="languages" title="Languages" active={activeSection === 'languages'}>
+                  <p className="text-[15px] text-stone-600 leading-relaxed">{form.languages}</p>
                 </Section>
               ) : null}
               {hasNotes ? (

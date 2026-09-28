@@ -8,13 +8,14 @@ const {
   canViewOrgAnalytics,
   requestedAnalyticsUserId,
 } = require('../utils/dataScope');
-const { foldStatusCounts, pipelineList, statusMatchValues, canonCandidateStatus } = require('../utils/statusCanon');
+const { statusMatchValues, canonCandidateStatus, foldStatusCounts, pipelineList } = require('../utils/statusCanon');
 const { monthRanges, lastNDaysRange, DEFAULT_TZ, buildDateFilter, previousPeriodFilter, getDateRangeLabel, chartBucketConfig } = require('../utils/analyticsTime');
 const { withActivityDateRange, activityDateExpr, backfillAppliedAtForOrg } = require('../utils/candidateActivityDate');
 const {
-  buildCurrentStageEntryAgg,
   backfillStatusEnteredAtForOrg,
 } = require('../utils/candidateStatusHistory');
+const { backfillStageHistoryForOrg } = require('../services/stageHistoryService');
+const { getDashboardPipelineMetrics } = require('../services/pipelineMetricsService');
 
 async function scopedFilter(req, res) {
   try {
@@ -207,7 +208,10 @@ exports.getDashboardStats = async (req, res) => {
     if (req.user?.organizationId) {
       setImmediate(() => {
         backfillAppliedAtForOrg(req.user.organizationId, Candidate).catch(() => {});
-        backfillStatusEnteredAtForOrg(req.user.organizationId, Candidate).catch(() => {});
+        backfillStatusEnteredAtForOrg(req.user.organizationId, Candidate)
+          .catch(() => {})
+          .then(() => backfillStageHistoryForOrg(req.user.organizationId, Candidate))
+          .catch(() => {});
       });
     }
 
@@ -240,12 +244,14 @@ exports.getDashboardStats = async (req, res) => {
     const thisPeriodFallback = dateFilter
       ? null
       : Candidate.countDocuments(
-          withActivityDateRange(userFilter, { $gte: startOfMonth, $lt: startOfNextMonth })
+          withActivityDateRange(userFilter, { $gte: startOfMonth, $lt: startOfNextMonth }),
+          { maxTimeMS: 12000 }
         );
     const lastPeriodFallback = scopedPrev
-      ? Candidate.countDocuments(scopedPrev)
+      ? Candidate.countDocuments(scopedPrev, { maxTimeMS: 12000 })
       : Candidate.countDocuments(
-          withActivityDateRange(userFilter, { $gte: startOfLastMonth, $lt: startOfMonth })
+          withActivityDateRange(userFilter, { $gte: startOfLastMonth, $lt: startOfMonth }),
+          { maxTimeMS: 12000 }
         );
 
     const bucketCfg = chartBucketConfig(dateRange, customFrom, customTo, now, timeZone);
@@ -253,37 +259,42 @@ exports.getDashboardStats = async (req, res) => {
     if (dateFilter?.$lte) chartRange.$lte = dateFilter.$lte;
     else if (dateFilter?.$lt) chartRange.$lt = dateFilter.$lt;
 
-    const [
-      totalCandidatesAllTime,
-      totalCandidates,
-      thisPeriodCountRaw,
-      lastPeriodCount,
-      pipelineCounts,
-      org,
-      topPositions,
-      topSources,
-      recentRows,
-      dailySubmissions,
-      locationBreakdown,
-    ] = await Promise.all([
-      Candidate.countDocuments(userFilter),
-      Candidate.countDocuments(scopedWithDate),
+    const queryOpts = { maxTimeMS: 12000 };
+    const forceRefresh = String(req.query.refresh || '') === '1';
+    const settled = await Promise.allSettled([
+      Candidate.countDocuments(userFilter, queryOpts),
+      Candidate.countDocuments(scopedWithDate, queryOpts),
       thisPeriodFallback,
       lastPeriodFallback,
-      Candidate.aggregate(buildCurrentStageEntryAgg(userFilter, dateFilter)),
-      orgStagesPromise,
+      (async () => {
+        const orgDoc = await orgStagesPromise;
+        let preferredStages = DEFAULT_STAGES;
+        if (Array.isArray(orgDoc?.atsSettings?.pipelineStages) && orgDoc.atsSettings.pipelineStages.length) {
+          preferredStages = orgDoc.atsSettings.pipelineStages;
+        }
+        return getDashboardPipelineMetrics({
+          userFilter,
+          dateRange,
+          dateFilter,
+          cohortMonth: req.query.cohortMonth,
+          now,
+          timeZone,
+          preferredStages,
+          force: forceRefresh,
+        });
+      })(),
       Candidate.aggregate([
-        { $match: { ...scopedWithDate, position: { $exists: true, $ne: '' } } },
+        { $match: { $and: [scopedWithDate, { position: { $exists: true, $ne: '' } }] } },
         { $group: { _id: '$position', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
         { $limit: 5 },
-      ]),
+      ], queryOpts),
       Candidate.aggregate([
-        { $match: { ...scopedWithDate, source: { $exists: true, $ne: '' } } },
+        { $match: { $and: [scopedWithDate, { source: { $exists: true, $ne: '' } }] } },
         { $group: { _id: '$source', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
         { $limit: 5 },
-      ]),
+      ], queryOpts),
       Candidate.aggregate([
         { $match: scopedWithDate },
         { $addFields: { activityDate: activityDateExpr() } },
@@ -298,7 +309,7 @@ exports.getDashboardStats = async (req, res) => {
             createdAt: '$activityDate',
           },
         },
-      ]),
+      ], queryOpts),
       Candidate.aggregate([
         { $match: userFilter },
         { $addFields: { activityDate: activityDateExpr() } },
@@ -316,61 +327,175 @@ exports.getDashboardStats = async (req, res) => {
           },
         },
         { $sort: { _id: 1 } },
-      ]),
+      ], queryOpts),
       Candidate.aggregate([
-        { $match: { ...scopedWithDate, location: { $exists: true, $ne: '' } } },
+        { $match: { $and: [scopedWithDate, { location: { $exists: true, $ne: '' } }] } },
         { $group: { _id: '$location', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
         { $limit: 6 },
-      ]),
+      ], queryOpts),
+      Candidate.aggregate([
+        { $match: scopedWithDate },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ], queryOpts),
+      Candidate.aggregate([
+        { $match: { $and: [scopedWithDate, { source: { $exists: true, $ne: '' } }] } },
+        {
+          $group: {
+            _id: '$source',
+            total: { $sum: 1 },
+            hired: { $sum: { $cond: [{ $in: ['$status', statusMatchValues(['Hired', 'Joined'])] }, 1, 0] } },
+          },
+        },
+        { $sort: { total: -1 } },
+        { $limit: 8 },
+      ], queryOpts),
+      Candidate.aggregate([
+        { $match: { $and: [scopedWithDate, { position: { $exists: true, $ne: '' } }] } },
+        {
+          $group: {
+            _id: '$position',
+            total: { $sum: 1 },
+            hired: { $sum: { $cond: [{ $in: ['$status', statusMatchValues(['Hired', 'Joined'])] }, 1, 0] } },
+          },
+        },
+        { $sort: { total: -1 } },
+        { $limit: 8 },
+      ], queryOpts),
+      Candidate.aggregate([
+        {
+          $match: {
+            $and: [
+              scopedWithDate,
+              { status: { $in: statusMatchValues(['Hired', 'Joined']) } },
+              { statusEnteredAt: { $type: 'date' } },
+            ],
+          },
+        },
+        { $addFields: { activityDate: activityDateExpr() } },
+        {
+          $project: {
+            days: { $divide: [{ $subtract: ['$statusEnteredAt', '$activityDate'] }, 1000 * 60 * 60 * 24] },
+          },
+        },
+        { $match: { days: { $gte: 0, $lte: 3650 } } },
+        { $group: { _id: null, avgDays: { $avg: '$days' }, samples: { $sum: 1 } } },
+      ], queryOpts),
+      Candidate.aggregate([
+        {
+          $match: {
+            ...userFilter,
+            status: { $nin: statusMatchValues(['Hired', 'Joined', 'Rejected', 'Dropped']) },
+            statusEnteredAt: { $type: 'date' },
+          },
+        },
+        {
+          $project: {
+            days: { $divide: [{ $subtract: [now, '$statusEnteredAt'] }, 1000 * 60 * 60 * 24] },
+          },
+        },
+        {
+          $bucket: {
+            groupBy: '$days',
+            boundaries: [0, 8, 15, 31, 100000],
+            default: 'other',
+            output: { count: { $sum: 1 } },
+          },
+        },
+      ], queryOpts),
     ]);
 
-    const thisPeriodCount = dateFilter ? totalCandidates : (thisPeriodCountRaw || 0);
-    let pipeline = foldStatusCounts(pipelineCounts);
-    let periodByStatus = pipeline; // same period match as status cards
+    const pick = (index, fallback) => {
+      const row = settled[index];
+      if (row.status === 'fulfilled') return row.value;
+      console.error('Dashboard stats partial failure:', row.reason?.message || row.reason);
+      return fallback;
+    };
 
-    let preferredStages = DEFAULT_STAGES;
-    if (Array.isArray(org?.atsSettings?.pipelineStages) && org.atsSettings.pipelineStages.length) {
-      preferredStages = org.atsSettings.pipelineStages;
-    }
-    // KPI cards: every org pipeline stage (including zeros)
-    const statusCards = pipelineList(pipeline, preferredStages, {
-      includeZero: true,
-      ensureStages: ['Rejected', 'Dropped'],
-    }).map((row) => ({
+    const totalCandidatesAllTimeRaw = pick(0, 0);
+    const totalCandidates = pick(1, 0);
+    const thisPeriodCountRaw = pick(2, 0);
+    const lastPeriodCount = pick(3, 0);
+    const metrics = pick(4, null) || {
+      snapshot: { total: totalCandidatesAllTimeRaw, sum: 0, reconciles: false, stages: [], asOf: 'now' },
+      activity: { total: 0, stages: [] },
+      cohort: { month: '', label: '', size: 0, stages: [] },
+      velocity: [],
+      coverage: { candidates: 0, withEvents: 0 },
+      fromRollup: false,
+      computedAt: now,
+    };
+    const topPositions = pick(5, []);
+    const topSources = pick(6, []);
+    const recentRows = pick(7, []);
+    const dailySubmissions = pick(8, []);
+    const locationBreakdown = pick(9, []);
+    const periodStatusRows = pick(10, []);
+    const sourceQuality = pick(11, []);
+    const positionQuality = pick(12, []);
+    const timeToHireRows = pick(13, []);
+    const agingRows = pick(14, []);
+
+    const thisPeriodCount = dateFilter ? totalCandidates : (thisPeriodCountRaw || 0);
+    const statusCards = (metrics.snapshot?.stages || []).map((row) => ({
       stage: row.stage,
       count: row.count,
-      thisMonth: periodByStatus[row.stage] || 0,
     }));
+    const stageCount = (name) => statusCards.find((row) => row.stage === name)?.count || 0;
+    const totalCandidatesAllTime = Number(metrics.snapshot?.total ?? totalCandidatesAllTimeRaw) || 0;
 
-    // Pending review (Applied + Screening) — matches Candidates page after ALL-CAPS save
-    const pendingReview = (pipeline.Applied || 0) + (pipeline.Screening || 0);
+    const pendingReview = stageCount('Applied') + stageCount('Screening');
 
-    // Period trend (percentage vs previous period)
-    const candidateTrend =
-      lastPeriodCount > 0
+    // Period trend (percentage vs the previous period of the same length).
+    // All-time has no comparable window, so the trend stays unset.
+    const candidateTrend = !dateFilter
+      ? null
+      : lastPeriodCount > 0
         ? Math.round(((thisPeriodCount - lastPeriodCount) / lastPeriodCount) * 100)
         : thisPeriodCount > 0
           ? 100
           : 0;
 
-    const dailyData = bucketCfg.dayKeys.map(({ key, day }) => {
-      const found = dailySubmissions.find((ds) => ds._id === key);
-      return { date: key, day, count: found ? found.count : 0 };
+    const dailyData = (bucketCfg.dayKeys || []).map((bucket) => {
+      if (bucketCfg.rollup === 'week') {
+        const count = dailySubmissions.reduce((sum, row) => (
+          row._id >= bucket.startKey && row._id <= bucket.endKey ? sum + row.count : sum
+        ), 0);
+        return { date: bucket.key, day: bucket.day, count };
+      }
+      const found = dailySubmissions.find((ds) => ds._id === bucket.key);
+      return { date: bucket.key, day: bucket.day, count: found ? found.count : 0 };
     });
 
     // Offer-to-Join ratio — Hired + Joined (aligned with export definition)
-    const joinedCount = pipeline.Joined || 0;
-    const hiredCount = pipeline.Hired || 0;
-    const rejectedCount = pipeline.Rejected || 0;
-    const droppedCount = pipeline.Dropped || 0;
+    const joinedCount = stageCount('Joined');
+    const hiredCount = stageCount('Hired');
+    const rejectedCount = stageCount('Rejected');
+    const droppedCount = stageCount('Dropped');
     const totalOfferPlusJoined = hiredCount + joinedCount;
     const conversionRate =
-      totalCandidates > 0 ? Math.round((totalOfferPlusJoined / totalCandidates) * 100) : 0;
+      totalCandidatesAllTime > 0 ? Math.round((totalOfferPlusJoined / totalCandidatesAllTime) * 100) : 0;
     const rejectionRate =
-      totalCandidates > 0
-        ? Math.round(((rejectedCount + droppedCount) / totalCandidates) * 100)
+      totalCandidatesAllTime > 0
+        ? Math.round(((rejectedCount + droppedCount) / totalCandidatesAllTime) * 100)
         : 0;
+
+    const periodPipeline = foldStatusCounts(periodStatusRows);
+    const periodStages = pipelineList(periodPipeline, DEFAULT_STAGES, {
+      includeZero: true,
+      ensureStages: ['Rejected', 'Dropped'],
+    });
+    const periodHired = (periodPipeline.Hired || 0) + (periodPipeline.Joined || 0);
+    const periodRejected = (periodPipeline.Rejected || 0) + (periodPipeline.Dropped || 0);
+    const periodHireRate = totalCandidates > 0 ? Math.round((periodHired / totalCandidates) * 100) : 0;
+    const periodRejectionRate = totalCandidates > 0 ? Math.round((periodRejected / totalCandidates) * 100) : 0;
+    const timeToHire = Array.isArray(timeToHireRows) ? timeToHireRows[0] : null;
+    const agingLabels = { 0: '0–7 days', 8: '8–14 days', 15: '15–30 days', 31: '31+ days' };
+    const aging = [0, 8, 15, 31].map((boundary) => ({
+      label: agingLabels[boundary],
+      days: boundary,
+      count: (Array.isArray(agingRows) ? agingRows : []).find((row) => row._id === boundary)?.count || 0,
+    }));
 
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.status(200).json({
@@ -381,13 +506,16 @@ exports.getDashboardStats = async (req, res) => {
       customTo: customTo || undefined,
       // ATS list view that matches these cards
       atsView: scopeMeta.scope === 'organization' ? 'all' : 'mine',
-      // Enterprise attribution: intake vs stage-entry
       attribution: {
+        snapshot: 'currentStage',
         intake: 'appliedAt',
-        stages: 'statusEnteredAt',
-        stagesCaption: 'Entered this stage in the selected period',
-        intakeCaption: 'Added / applied in the selected period',
+        activity: 'stageHistory.changedAt',
+        cohort: 'record date month, current stage today',
+        snapshotCaption: 'As of now',
+        intakeCaption: 'Added in the selected period, any current stage',
+        activityCaption: 'Stage moves recorded in the selected period',
       },
+      cohortMonth: metrics.cohort?.month,
       totalCandidates,
       totalCandidatesAllTime,
       thisMonth: thisPeriodCount,
@@ -400,9 +528,18 @@ exports.getDashboardStats = async (req, res) => {
       timezone: timeZone || DEFAULT_TZ,
       pipeline: statusCards,
       statusCards,
-      topPositions: topPositions.map((p) => ({ position: p._id, count: p.count })),
-      topSources: topSources.map((s) => ({ source: s._id, count: s.count })),
-      recentCandidates: recentRows.map((c) => ({
+      metrics: {
+        snapshot: metrics.snapshot,
+        activity: metrics.activity,
+        cohort: metrics.cohort,
+        velocity: metrics.velocity,
+        coverage: metrics.coverage,
+        computedAt: metrics.computedAt,
+        fromRollup: Boolean(metrics.fromRollup),
+      },
+      topPositions: (Array.isArray(topPositions) ? topPositions : []).map((p) => ({ position: p._id, count: p.count })),
+      topSources: (Array.isArray(topSources) ? topSources : []).map((s) => ({ source: s._id, count: s.count })),
+      recentCandidates: (Array.isArray(recentRows) ? recentRows : []).map((c) => ({
         id: c._id,
         name: c.name,
         position: c.position,
@@ -413,7 +550,35 @@ exports.getDashboardStats = async (req, res) => {
       dailySubmissions: dailyData,
       chartLabel: bucketCfg.chartLabel,
       chartDays: bucketCfg.days,
-      locationBreakdown: locationBreakdown.map((l) => ({ location: l._id, count: l.count })),
+      locationBreakdown: (Array.isArray(locationBreakdown) ? locationBreakdown : []).map((l) => ({ location: l._id, count: l.count })),
+      analysis: {
+        intake: totalCandidates,
+        hired: periodHired,
+        rejected: periodRejected,
+        hireRate: periodHireRate,
+        rejectionRate: periodRejectionRate,
+        timeToHireDays: timeToHire?.samples ? Math.round(timeToHire.avgDays * 10) / 10 : null,
+        timeToHireSamples: timeToHire?.samples || 0,
+        funnel: periodStages.map((row) => ({
+          stage: row.stage,
+          count: row.count,
+          share: totalCandidates > 0 ? Math.round((row.count / totalCandidates) * 100) : 0,
+        })),
+        sources: (Array.isArray(sourceQuality) ? sourceQuality : []).map((row) => ({
+          source: row._id,
+          total: row.total,
+          hired: row.hired,
+          hireRate: row.total > 0 ? Math.round((row.hired / row.total) * 100) : 0,
+        })),
+        positions: (Array.isArray(positionQuality) ? positionQuality : []).map((row) => ({
+          position: row._id,
+          total: row.total,
+          hired: row.hired,
+          hireRate: row.total > 0 ? Math.round((row.hired / row.total) * 100) : 0,
+        })),
+        aging,
+        velocity: metrics.velocity || [],
+      },
     });
   } catch (err) {
     console.error('Dashboard stats error:', err);

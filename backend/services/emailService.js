@@ -322,7 +322,13 @@ const sendViaZohoZeptomail = async (to, subject, htmlBody, textBody, options = {
   }
 
   const displayName = senderName || platformFromName(fromEmail);
-  const preferredReply = (replyToEmail || fromEmail).trim();
+  const preferredReply = (() => {
+    const from = String(fromEmail || '').trim();
+    const reply = String(replyToEmail || from).trim();
+    // noreply@* must never Reply-To a different domain (platform fallback leak).
+    if (/^noreply@/i.test(from)) return from;
+    return reply || from;
+  })();
   const recipients = Array.isArray(to) ? to : [to];
 
   const toList = recipients.map((email) => ({
@@ -361,6 +367,9 @@ const sendViaZohoZeptomail = async (to, subject, htmlBody, textBody, options = {
     };
     if (ccList.length > 0) payload.cc = ccList;
     if (bccList.length > 0) payload.bcc = bccList;
+    if (Array.isArray(options.attachments) && options.attachments.length) {
+      payload.attachments = options.attachments;
+    }
     if (String(htmlBody || '').includes(`cid:${SKILLNIX_LOGO_CID}`)) {
       const inline = skillnixInlineImage();
       if (inline) payload.inline_images = [inline];
@@ -526,10 +535,14 @@ const getUserTransporter = async (userId, hints = {}) => {
         const fromEmail = systemMail
           ? resolveSystemFromAddress({ mailbox, userEmail, orgDomain })
           : mailbox.fromEmail;
+        // System mail (OTP / verify / invite): Reply-To must match From (org noreply), never a different mailbox.
+        const replyToEmail = systemMail
+          ? fromEmail
+          : (hints.replyToEmail || fromEmail).trim();
         return {
           transporter: null,
           fromEmail,
-          replyToEmail: (hints.replyToEmail || fromEmail).trim(),
+          replyToEmail,
           userName,
           mailboxDisplayName: String(mailbox.displayName || '').trim(),
           configured: true,
@@ -690,7 +703,7 @@ const getUserTransporter = async (userId, hints = {}) => {
         return {
           transporter: defaultTransporter,
           fromEmail: envFrom,
-          replyToEmail: (hints.replyToEmail || envFrom).trim(),
+          replyToEmail: hints.system ? envFrom : (hints.replyToEmail || envFrom).trim(),
           userName: PLATFORM_FROM_NAME,
           configured: true,
           provider: 'smtp',
@@ -770,6 +783,13 @@ const createSmtpTransporter = (emailSettings) => {
 // Generic email sender — uses per-user transporter if userId provided
 const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
   const { cc, bcc, senderName, senderEmail, userId, organizationId, system } = options;
+  if (!system && userId) {
+    const { isDemoUserId } = require('./demoWorkspaceService');
+    if (await isDemoUserId(userId)) {
+      const { demoEmailBlockedError } = require('../config/demoRoles');
+      throw demoEmailBlockedError();
+    }
+  }
   const recipientEmail = Array.isArray(to) ? to[0] : to;
   
   const {
@@ -786,15 +806,22 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
     organizationId,
     senderName,
     system,
-    replyToEmail: senderEmail,
+    // Never hint a different Reply-To for system/noreply mail — it leaks platform mailbox addresses.
+    replyToEmail: system ? undefined : senderEmail,
   });
 
   // Candidate mail: recruiter work address. System mail (OTP / reset / invite): noreply@org-domain.
   let fromEmail = (transporterFrom || '').trim();
-  let replyToEmail = (transporterReplyTo || senderEmail || fromEmail || '').trim();
+  // System / noreply: Reply-To must equal From (org mailbox), never platform fallback.
+  let replyToEmail = system || /^noreply@/i.test(fromEmail)
+    ? fromEmail
+    : (transporterReplyTo || senderEmail || fromEmail || '').trim();
   
   if (!configured || !fromEmail) {
     throw new Error('EMAIL_NOT_CONFIGURED');
+  }
+  if (/^noreply@/i.test(fromEmail)) {
+    replyToEmail = fromEmail;
   }
   
   if (provider === 'zoho-zeptomail' && userId && !system) {
@@ -821,6 +848,7 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
       trackOpens: options.trackOpens,
       trackClicks: options.trackClicks,
       clientReference: options.clientReference,
+      attachments: options.zeptoAttachments,
     });
     try {
       const { recordEmailSend } = require('./emailReportService');
@@ -831,6 +859,8 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
         provider: 'zeptomail',
         emailType: options.emailType || '',
         subject,
+        htmlBody,
+        textBody,
         fromEmail: zeptoResult.fromEmail || fromEmail,
         replyToEmail: zeptoResult.replyTo || replyToEmail,
         to: Array.isArray(to) ? to : [to],
@@ -877,6 +907,9 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
   if (bcc) {
     mailOptions.bcc = Array.isArray(bcc) ? bcc : [bcc];
   }
+  if (Array.isArray(options.smtpAttachments) && options.smtpAttachments.length) {
+    mailOptions.attachments = options.smtpAttachments;
+  }
 
   try {
     const info = await activeTransporter.sendMail(mailOptions);
@@ -900,6 +933,8 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
         provider: 'smtp',
         emailType: options.emailType || '',
         subject,
+        htmlBody,
+        textBody,
         fromEmail,
         replyToEmail,
         to: Array.isArray(to) ? to : [to],

@@ -5,6 +5,7 @@ import SendWhatsAppButton from '../SendWhatsAppButton';
 import CandidateRemarkIndicator from './CandidateRemarkIndicator';
 import { openNativeMail, freelancerCandidateMailDraft } from '../ui/ContactActionButtons';
 import { PAGE_SIZE } from './atsConstants';
+import DateSortHeader from '../globalSearch/DateSortHeader';
 
 function formatStatusLabel(status) {
   const raw = String(status || '').trim();
@@ -31,39 +32,56 @@ export function buildCandidateTableColumns(ctx) {
   const {
     handleEdit, handleShareClick, handleDelete, handleResumePreview, handleResumeDownload,
     handleSendEmail, sendWhatsApp, blindMode, currentPage,
-    orgCandidateFields, candidates, isFreelancer,
+    orgCandidateFields, candidates, isFreelancer, jobIdFilter,
+    dateSort, onDateSort,
   } = ctx;
 
-  const nameColumn = { key: 'name', label: blindMode ? 'Candidate' : 'Name', className: 'w-auto', render: (candidate) => (
-      <div className="flex items-center gap-2.5 whitespace-nowrap">
+  const nameColumn = { key: 'name', label: blindMode ? 'Candidate' : 'Name', className: 'w-auto', render: (candidate) => {
+      const linked = Number(candidate.applicationCount) > 0 || candidate.jobApplicationCode;
+      const candId = linked ? String(candidate.candidateCode || '').trim() : '';
+      const appId = String(candidate.jobApplicationCode || '').trim();
+      const extra = Number(candidate.applicationCount) > 1 ? Number(candidate.applicationCount) - 1 : 0;
+      return (
+      <div className="flex items-center gap-2.5 min-w-0">
         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-teal-700 text-white flex items-center justify-center text-[11px] font-bold flex-shrink-0 shadow-sm shadow-brand-500/20">
           {blindMode ? '#' : (candidate.name || '?').charAt(0).toUpperCase()}
         </div>
-        <div className="flex items-center gap-1.5 whitespace-nowrap">
-          <span className="text-sm font-semibold text-stone-900 whitespace-nowrap">
-            {blindMode ? `Candidate ${String(candidate._id).slice(-6).toUpperCase()}` : candidate.name}
-          </span>
-          {blindMode && (
-            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-50 text-violet-700 whitespace-nowrap flex-shrink-0" title="Blind screening hides PII">
-              Blind
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 whitespace-nowrap">
+            <span className="text-sm font-semibold text-stone-900 whitespace-nowrap">
+              {blindMode ? `Candidate ${String(candidate._id).slice(-6).toUpperCase()}` : candidate.name}
             </span>
-          )}
-          {!blindMode && candidate._isShared && (
-            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 whitespace-nowrap flex-shrink-0" title={`Shared by ${candidate._sharedByOwner || 'team member'}`}>
-              Shared
-            </span>
-          )}
-          {!blindMode && (candidate._createdByRole === 'freelancer' || /freelance/i.test(String(candidate.source || ''))) && (
-            <span
-              className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-50 text-indigo-700 whitespace-nowrap flex-shrink-0"
-              title={candidate._createdByName ? `Sourced by ${candidate._createdByName}` : 'Freelance recruiter'}
-            >
-              Freelance
-            </span>
-          )}
+            {blindMode && (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-50 text-violet-700 whitespace-nowrap flex-shrink-0" title="Blind screening hides PII">
+                Blind
+              </span>
+            )}
+            {!blindMode && candidate._isShared && (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 whitespace-nowrap flex-shrink-0" title={`Shared by ${candidate._sharedByOwner || 'team member'}`}>
+                Shared
+              </span>
+            )}
+            {!blindMode && (candidate._createdByRole === 'freelancer' || /freelance/i.test(String(candidate.source || ''))) && (
+              <span
+                className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-50 text-indigo-700 whitespace-nowrap flex-shrink-0"
+                title={candidate._createdByName ? `Sourced by ${candidate._createdByName}` : 'Freelance recruiter'}
+              >
+                Freelance
+              </span>
+            )}
+          </div>
+          {!blindMode && (candId || appId) ? (
+            <p className="mt-0.5 font-mono text-[10px] font-semibold tabular-nums tracking-wide text-stone-400 whitespace-nowrap" title="Search the toolbar by Candidate ID or Application ID">
+              {candId || null}
+              {candId && appId ? <span className="mx-1 font-sans font-medium text-stone-300">·</span> : null}
+              {appId || null}
+              {extra > 0 ? <span className="ml-1 font-sans font-semibold text-stone-400">+{extra}</span> : null}
+            </p>
+          ) : null}
         </div>
       </div>
-    )};
+      );
+    }};
 
   const contactToolsColumn = {
       key: 'tools',
@@ -116,7 +134,8 @@ export function buildCandidateTableColumns(ctx) {
         <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
               <button
                 type="button"
-                onClick={() => handleSendEmail(candidate)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); handleSendEmail(candidate); }}
                 className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-brand-100 bg-brand-50/80 text-brand-700 shadow-sm hover:bg-brand-100 hover:border-brand-200 transition-all"
                 title="Send email"
               >
@@ -124,7 +143,8 @@ export function buildCandidateTableColumns(ctx) {
               </button>
               <button
                 type="button"
-                onClick={() => sendWhatsApp(candidate.contact)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); sendWhatsApp(candidate.contact); }}
                 className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-emerald-200 bg-[#25D366]/12 text-[#128C7E] shadow-sm hover:bg-[#25D366]/20 hover:border-emerald-300 transition-all"
                 title="Open WhatsApp chat"
               >
@@ -144,16 +164,31 @@ export function buildCandidateTableColumns(ctx) {
   const emailColumn = { key: 'email', label: 'Email', className: 'w-auto', render: (candidate) => <span className="text-sm text-stone-600 whitespace-nowrap">{blindMode ? '••••@••••' : (candidate.email || '—')}</span> };
   const dateColumn = {
     key: 'date',
-    label: 'Date',
+    label: typeof onDateSort === 'function'
+      ? <DateSortHeader value={dateSort || 'latest'} onChange={onDateSort} />
+      : (jobIdFilter ? 'Applied' : 'Date'),
     className: 'w-auto',
     render: (candidate) => {
-      const raw = candidate.appliedAt || candidate.date || candidate.createdAt;
+      const raw = candidate.jobAppliedAt || candidate.appliedAt || candidate.date || candidate.createdAt;
       const d = raw ? new Date(raw) : null;
       const valid = d && !Number.isNaN(d.getTime());
+      const firstSeen = candidate.appliedAt || candidate.date || candidate.createdAt;
+      const firstDate = firstSeen ? new Date(firstSeen) : null;
+      const firstValid = firstDate && !Number.isNaN(firstDate.getTime());
+      const showFirstSeen = Boolean(
+        jobIdFilter
+        && valid
+        && firstValid
+        && firstDate.toDateString() !== d.toDateString()
+      );
       return (
         <span
           className="text-sm text-stone-600 whitespace-nowrap tabular-nums"
-          title="Date added / applied"
+          title={jobIdFilter
+            ? (showFirstSeen
+              ? `Applied to this job ${d.toLocaleDateString('en-IN')} · first in ATS ${firstDate.toLocaleDateString('en-IN')}`
+              : 'Date they applied to this job')
+            : 'Date added / first applied in ATS'}
         >
           {valid ? d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
         </span>
@@ -229,7 +264,8 @@ export function buildCandidateTableColumns(ctx) {
         <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
           <button
             type="button"
-            onClick={() => handleEdit(candidate)}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); handleEdit(candidate); }}
             className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-brand-100 bg-brand-50/80 text-brand-700 shadow-sm hover:bg-brand-100 hover:border-brand-200 transition-all"
             title="Edit candidate"
           >
@@ -238,7 +274,8 @@ export function buildCandidateTableColumns(ctx) {
           {!isFreelancer && (
           <button
             type="button"
-            onClick={() => handleShareClick(candidate)}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); handleShareClick(candidate); }}
             className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-teal-100 bg-teal-50/80 text-teal-700 shadow-sm hover:bg-teal-100 hover:border-teal-200 transition-all"
             title="Share with team"
           >
@@ -247,7 +284,8 @@ export function buildCandidateTableColumns(ctx) {
           )}
           <button
             type="button"
-            onClick={() => handleDelete(candidate._id)}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); handleDelete(candidate._id); }}
             className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-red-100 bg-red-50/70 text-red-600 shadow-sm hover:bg-red-100 hover:border-red-200 transition-all"
             title={isFreelancer ? 'Remove candidate' : 'Delete candidate'}
           >

@@ -6,6 +6,7 @@ import {
 import EmptyState from '../ui/EmptyState';
 import { PAGE_SIZE, rowKey } from './constants';
 import CategoryBadge from './CategoryBadge';
+import { guardTableCopy } from '../../utils/tableCopyGuard';
 
 export default function ReviewStep({
   readyCount,
@@ -160,6 +161,7 @@ export default function ReviewStep({
         <div
           ref={tableScrollRef}
           className="cand-table-scroll overflow-x-auto select-none"
+          onCopy={guardTableCopy}
           onMouseDown={onTableDragScrollStart}
           onMouseMove={onTableDragScrollMove}
           onMouseUp={onTableDragScrollEnd}
@@ -168,7 +170,7 @@ export default function ReviewStep({
           {pageRows.length === 0 ? (
             <EmptyState icon={FileSpreadsheet} tone="sky" compact message="No rows in this view" subMessage="Switch bucket or clear search." />
           ) : (
-            <table className="cand-table-drag w-full text-left border-collapse min-w-[1280px] select-text border border-stone-200">
+            <table className="cand-table-drag w-full text-left border-collapse min-w-[1280px] select-none border border-stone-200">
               <thead>
                 <tr className="bg-stone-100">
                   <th className="px-3.5 py-3.5 w-[52px] text-center border border-stone-200 bg-stone-100">

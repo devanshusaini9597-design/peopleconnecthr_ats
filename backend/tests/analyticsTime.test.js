@@ -1,4 +1,4 @@
-const { monthRanges, lastNDaysRange, zonedYmd, zonedTimeToUtc, buildDateFilter, getDateRangeLabel, previousPeriodFilter } = require('../utils/analyticsTime');
+const { monthRanges, lastNDaysRange, zonedYmd, zonedTimeToUtc, buildDateFilter, getDateRangeLabel, previousPeriodFilter, chartBucketConfig } = require('../utils/analyticsTime');
 
 describe('analyticsTime', () => {
   it('builds IST month windows that do not use UTC midnight', () => {
@@ -43,6 +43,29 @@ describe('analyticsTime', () => {
   it('getDateRangeLabel returns human labels', () => {
     expect(getDateRangeLabel('quarter')).toBe('This Quarter');
     expect(getDateRangeLabel('custom', '2024-01-01', '2024-06-30')).toMatch(/2024/);
+  });
+
+  it('chart buckets for a month stay inside that calendar month', () => {
+    const now = zonedTimeToUtc(2026, 8, 20, 15, 0, 0, 'Asia/Kolkata');
+    const chart = chartBucketConfig('month', null, null, now, 'Asia/Kolkata');
+    expect(chart.dayKeys[0].key).toBe('2026-08-01');
+    expect(chart.dayKeys[chart.dayKeys.length - 1].key).toBe('2026-08-20');
+    expect(chart.days).toBe(20);
+    expect(chart.rollup).toBe('day');
+    expect(chart.chartLabel).toBe('This Month');
+  });
+
+  it('all-time submissions chart is labeled as the last 30 days', () => {
+    const now = zonedTimeToUtc(2026, 8, 20, 15, 0, 0, 'Asia/Kolkata');
+    const chart = chartBucketConfig('all', null, null, now, 'Asia/Kolkata');
+    expect(chart.chartLabel).toBe('Last 30 days');
+    expect(chart.days).toBe(30);
+    expect(chart.dayKeys[0].key).toBe('2026-07-22');
+    expect(chart.dayKeys[29].key).toBe('2026-08-20');
+  });
+
+  it('previousPeriodFilter has no comparison window for all time', () => {
+    expect(previousPeriodFilter('all', null, null, new Date(), 'Asia/Kolkata')).toBeNull();
   });
 
   it('previousPeriodFilter returns prior month for month range', () => {
