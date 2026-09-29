@@ -340,6 +340,32 @@ async function sendTemplateEmail(user, body) {
       ? `&orgId=${encodeURIComponent(String(user.organizationId))}`
       : '';
 
+  // Resolve sender once for the whole chunk — avoids N× DB lookups that held the HTTP response open after Zepto already accepted mail.
+  let mailSession = null;
+  if (!isMarketing) {
+    try {
+      const { getUserTransporter, canUserSendViaZepto } = require('./emailService');
+      const [transporter, senderStatus] = await Promise.all([
+        getUserTransporter(user.id || user._id, {
+          organizationId: user.organizationId,
+          senderName: user.name || 'HR Team',
+          replyToEmail: user.email,
+        }),
+        canUserSendViaZepto(user.id || user._id),
+      ]);
+      if (!senderStatus.canSend) {
+        throw httpError(senderStatus.reason || 'USE_VERIFIED_DOMAIN', 400, {
+          code: 'USE_VERIFIED_DOMAIN',
+          displayMessage: senderStatus.reason || 'Please use your company verified email to send.',
+        });
+      }
+      mailSession = { demoChecked: true, transporter, senderStatus };
+    } catch (err) {
+      if (err.code === 'USE_VERIFIED_DOMAIN' || err.statusCode) throw err;
+      logger.warn({ err: err.message }, '[EmailTemplate] mailSession warm-up failed — falling back per recipient');
+    }
+  }
+
   for (const recipient of recipientList) {
     try {
       const vars = {
@@ -525,8 +551,9 @@ async function sendTemplateEmail(user, body) {
 
       // Consent for CTA: only hide Subscribe when Zoho actually enrolled them.
       // Soft-ok / Zoho contact-from-send must still show Subscribe.
+      // Skip the DB hit on bulk transactional chunks — CTA is still OK if already subscribed.
       let isSubscribed = false;
-      if (recipient.email && user.organizationId) {
+      if (recipient.email && user.organizationId && (isMarketing || !isBulkSend)) {
         try {
           const Candidate = require('../models/Candidate');
           const row = await Candidate.findOne({
@@ -638,6 +665,7 @@ async function sendTemplateEmail(user, body) {
       });
 
       const emailOptions = { senderName, senderEmail, userId: user.id };
+      if (mailSession) emailOptions.mailSession = mailSession;
       if (cc) {
         emailOptions.cc = Array.isArray(cc)
           ? cc
@@ -685,16 +713,19 @@ async function sendTemplateEmail(user, body) {
         );
       }
       results.success.push(recipient.email);
+      // Never block the HTTP response on inbox copy — emails already accepted by provider.
       try {
         const { recordSentMail } = require('./inboxService');
-        await recordSentMail(user.organizationId, user, {
-          toAddress: recipient.email,
-          candidateName: recipient.name || '',
-          candidateId: recipient.candidateId || recipient._id || null,
-          subject: emailSubject,
-          bodyHtml: htmlBody,
-          body: emailBody,
-        });
+        Promise.resolve(
+          recordSentMail(user.organizationId, user, {
+            toAddress: recipient.email,
+            candidateName: recipient.name || '',
+            candidateId: recipient.candidateId || recipient._id || null,
+            subject: emailSubject,
+            bodyHtml: htmlBody,
+            body: emailBody,
+          })
+        ).catch(() => {});
       } catch (_) { /* inbox copy is best-effort */ }
     } catch (err) {
       if (err.code === 'USE_VERIFIED_DOMAIN') throw err;

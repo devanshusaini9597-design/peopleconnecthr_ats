@@ -9,12 +9,53 @@ import {
   showSendOutcomeToast,
 } from '../../../utils/emailSendReport';
 
-const SEND_CHUNK = 400;
+/** Keep chunks small so each HTTP call returns before proxy/browser timeouts. */
+const SEND_CHUNK = 20;
+const CHUNK_TIMEOUT_MS = 55_000;
 
 function chunkList(list, size) {
   const out = [];
   for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
   return out;
+}
+
+async function fetchJsonWithTimeout(url, options = {}, timeoutMs = CHUNK_TIMEOUT_MS) {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller
+    ? setTimeout(() => {
+        try {
+          controller.abort();
+        } catch (_) { /* ignore */ }
+      }, timeoutMs)
+    : null;
+  try {
+    const response = await authenticatedFetch(url, {
+      ...options,
+      signal: controller?.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    return { response, data, timedOut: false };
+  } catch (err) {
+    const aborted =
+      err?.name === 'AbortError' ||
+      /aborted|timeout|networkerror|failed to fetch/i.test(String(err?.message || ''));
+    if (aborted) {
+      return {
+        response: null,
+        data: {
+          success: false,
+          message: 'Send request timed out. Some messages may still have been delivered — check Email Reports.',
+          displayMessage:
+            'Send request timed out waiting for the server. Messages already accepted by the provider may still arrive.',
+        },
+        timedOut: true,
+        error: err,
+      };
+    }
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function escapeRegExp(value) {
@@ -169,22 +210,33 @@ export function useCandidateEmailSend(deps) {
     skipped = 0,
     selectedTotal = null,
   }) => {
-    const payload = buildSendReportPayload({
-      title,
-      channel,
-      provider,
-      successList,
-      failedList,
-      skipped,
-      selectedTotal,
-    });
-    showCampaignResult(payload);
-    showSendOutcomeToast(toast, {
-      sent: payload.sent,
-      failed: payload.failed,
-      skipped: payload.skipped,
-      channel,
-    });
+    try {
+      const payload = buildSendReportPayload({
+        title,
+        channel,
+        provider,
+        successList,
+        failedList,
+        skipped,
+        selectedTotal,
+      });
+      showCampaignResult(payload);
+      showSendOutcomeToast(toast, {
+        sent: payload.sent,
+        failed: payload.failed,
+        skipped: payload.skipped,
+        channel,
+      });
+    } catch (err) {
+      console.error('[email] presentSendOutcome failed:', err);
+      const sent = Array.isArray(successList) ? successList.length : 0;
+      const failed = Array.isArray(failedList) ? failedList.length : 0;
+      try {
+        showSendOutcomeToast(toast, { sent, failed, skipped, channel });
+      } catch (_) {
+        toast?.success?.(`${sent} accepted, ${failed} failed`);
+      }
+    }
   };
 
   const clearJobTag = () => {
@@ -447,25 +499,41 @@ export function useCandidateEmailSend(deps) {
       const successList = [];
       let lastError = null;
       let anySuccess = false;
+      let timedOut = false;
       const recipientChunks = chunkList(recipients, SEND_CHUNK);
       for (let chunkIndex = 0; chunkIndex < recipientChunks.length; chunkIndex += 1) {
         const part = recipientChunks[chunkIndex];
-        if (recipientChunks.length > 1) {
-          toast.info(`Sending batch ${chunkIndex + 1} of ${recipientChunks.length} (${recipients.length.toLocaleString()} people)…`);
+        if (recipientChunks.length > 1 || recipients.length > 1) {
+          toast?.info?.(
+            `Sending ${Math.min((chunkIndex + 1) * SEND_CHUNK, recipients.length).toLocaleString()} of ${recipients.length.toLocaleString()}…`
+          );
         }
-        const response = await authenticatedFetch(`${BASE_API_URL}/api/email-templates/send`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...bodyBase, recipients: part }),
-        });
-        const data = await response.json().catch(() => ({}));
-      if (data.success) {
-        anySuccess = true;
+        const { data, timedOut: chunkTimedOut } = await fetchJsonWithTimeout(
+          `${BASE_API_URL}/api/email-templates/send`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...bodyBase, recipients: part }),
+          }
+        );
+        if (chunkTimedOut) {
+          timedOut = true;
+          // Don't mark the whole chunk failed if some may have been accepted already —
+          // still keep prior successes and stop waiting so the UI can finish.
+          lastError = data;
+          break;
+        }
+        if (data.success) {
+          anySuccess = true;
           failedList.push(...(data.data?.failed || []).map(normalizeFailureEntry));
           successList.push(...(data.data?.success || []));
         } else {
           lastError = data;
-          if (data.message === 'EMAIL_NOT_CONFIGURED' || data.code === 'CAMPAIGNS_NOT_CONFIGURED' || data.code === 'USE_VERIFIED_DOMAIN') {
+          if (
+            data.message === 'EMAIL_NOT_CONFIGURED' ||
+            data.code === 'CAMPAIGNS_NOT_CONFIGURED' ||
+            data.code === 'USE_VERIFIED_DOMAIN'
+          ) {
             break;
           }
           failedList.push(
@@ -480,16 +548,30 @@ export function useCandidateEmailSend(deps) {
           );
         }
       }
-      const data = anySuccess
+      const data = anySuccess || successList.length > 0 || failedList.length > 0
         ? { success: true, data: { failed: failedList, success: successList } }
         : (lastError || { success: false, message: 'Failed to send email' });
       const failedCount = failedList.length;
       const successCount = successList.length;
-      // Always surface a report after any bulk / multi / mixed / failed attempt.
-      // Never treat "1 failed among many" as a total failure toast only.
-      if (data.success || successCount > 0 || failedCount > 0) {
-        const isBulk = bulkEmailRecipients.length > 0 || Boolean(bulkAudience?.active);
-        const shouldShowReport = isBulk || failedCount > 0 || successCount > 1 || !data.success;
+
+      // Clear spinner BEFORE opening report so the UI never sticks on "Sending…"
+      setIsSendingEmail(false);
+
+      if (timedOut && successCount === 0 && failedCount === 0) {
+        toast?.warning?.(
+          lastError?.displayMessage ||
+            'Send is taking longer than expected. Emails may still be delivering — check Email Reports.',
+          10000
+        );
+        setShowEmailModal(false);
+        setBulkEmailRecipients([]);
+        setBulkAudience?.(null);
+        setSelectedIds?.([]);
+        setEmailRecipient(null);
+        clearJobTag();
+      } else if (data.success || successCount > 0 || failedCount > 0) {
+        const isBulkSend = bulkEmailRecipients.length > 0 || Boolean(bulkAudience?.active) || recipients.length > 1;
+        const shouldShowReport = isBulkSend || failedCount > 0 || successCount > 1 || timedOut || !data.success;
         if (shouldShowReport) {
           const skippedFromAudience =
             Number(bulkAudience?.count) > 0
@@ -501,7 +583,7 @@ export function useCandidateEmailSend(deps) {
             title:
               channel === 'marketing'
                 ? 'Campaign delivery report'
-                : isBulk
+                : isBulkSend
                   ? 'Bulk email delivery report'
                   : 'Email delivery report',
             channel,
@@ -513,6 +595,9 @@ export function useCandidateEmailSend(deps) {
               Number(bulkAudience?.count) ||
               successCount + failedCount + skipped,
           });
+          if (timedOut) {
+            toast?.info?.('Some requests timed out — report shows what finished. Check Email Reports for the rest.', 8000);
+          }
           setShowEmailModal(false);
           setBulkEmailRecipients([]);
           setBulkAudience?.(null);
@@ -592,52 +677,75 @@ export function useCandidateEmailSend(deps) {
         bulkSubject = polishMergedSubject(bulkSubject, { preserveTokens: ['candidateName'] });
         bulkBody = polishMergedBody(bulkBody, { preserveTokens: ['candidateName'] });
         const mappedChunks = chunkList(mapped, SEND_CHUNK);
+        let timedOut = false;
         for (let chunkIndex = 0; chunkIndex < mappedChunks.length; chunkIndex += 1) {
           const part = mappedChunks[chunkIndex];
-          if (mappedChunks.length > 1) {
-            toast.info(`Sending batch ${chunkIndex + 1} of ${mappedChunks.length} (${mapped.length.toLocaleString()} people)…`);
+          if (mappedChunks.length > 1 || mapped.length > 1) {
+            toast?.info?.(
+              `Sending ${Math.min((chunkIndex + 1) * SEND_CHUNK, mapped.length).toLocaleString()} of ${mapped.length.toLocaleString()}…`
+            );
           }
-          const response = await authenticatedFetch(`${BASE_API_URL}/api/email/send-bulk`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              candidates: part,
-              emailType: 'custom',
-              subject: bulkSubject,
-              customMessage: bulkBody,
-              cc: emailCC,
-              bcc: emailBCC,
-            }),
-          });
-          const data = await response.json().catch(() => ({}));
-          if (data.success) {
+          const { data: chunkData, timedOut: chunkTimedOut } = await fetchJsonWithTimeout(
+            `${BASE_API_URL}/api/email/send-bulk`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                candidates: part,
+                emailType: 'custom',
+                subject: bulkSubject,
+                customMessage: bulkBody,
+                cc: emailCC,
+                bcc: emailBCC,
+              }),
+            }
+          );
+          if (chunkTimedOut) {
+            timedOut = true;
+            lastError = chunkData;
+            break;
+          }
+          if (chunkData.success) {
             anySuccess = true;
-            sent += data.data?.sent ?? 0;
-            failed += data.data?.failed ?? 0;
-            failedEmails.push(...(data.data?.failedEmails || []).map(normalizeFailureEntry));
-            successEmails.push(...(data.data?.successEmails || []));
+            sent += chunkData.data?.sent ?? 0;
+            failed += chunkData.data?.failed ?? 0;
+            failedEmails.push(...(chunkData.data?.failedEmails || []).map(normalizeFailureEntry));
+            successEmails.push(...(chunkData.data?.successEmails || []));
           } else {
-            lastError = data;
-            if (data.message === 'EMAIL_NOT_CONFIGURED' || data.code === 'USE_VERIFIED_DOMAIN') break;
+            lastError = chunkData;
+            if (chunkData.message === 'EMAIL_NOT_CONFIGURED' || chunkData.code === 'USE_VERIFIED_DOMAIN') break;
             failed += part.length;
             failedEmails.push(
               ...part.map((r) =>
                 normalizeFailureEntry({
                   email: r.email,
-                  error: data.displayMessage || data.message || 'Failed to send',
-                  displayMessage: data.displayMessage || data.message || 'Failed to send',
-                  reasonCode: data.reasonCode,
+                  error: chunkData.displayMessage || chunkData.message || 'Failed to send',
+                  displayMessage: chunkData.displayMessage || chunkData.message || 'Failed to send',
+                  reasonCode: chunkData.reasonCode,
                 })
               )
             );
           }
         }
-        const data = anySuccess
+        const data = anySuccess || successEmails.length > 0 || failedEmails.length > 0
           ? { success: true, data: { sent, failed, total: sent + failed, failedEmails, successEmails } }
           : (lastError || { success: false, message: 'Failed to send emails' });
 
-        if (data.success || successEmails.length > 0 || failedEmails.length > 0) {
-          // Prefer list lengths — authoritative over counter fields if they drift
+        setIsSendingEmail(false);
+
+        if (timedOut && successEmails.length === 0 && failedEmails.length === 0) {
+          toast?.warning?.(
+            lastError?.displayMessage ||
+              'Send is taking longer than expected. Emails may still be delivering — check Email Reports.',
+            10000
+          );
+          setShowEmailModal(false);
+          setBulkEmailRecipients([]);
+          setBulkAudience?.(null);
+          setSelectedIds?.([]);
+          setEmailRecipient(null);
+          clearJobTag();
+        } else if (data.success || successEmails.length > 0 || failedEmails.length > 0) {
           const successCount = successEmails.length || sent;
           const failedCount = failedEmails.length || failed;
           const skippedFromAudience =
@@ -654,6 +762,9 @@ export function useCandidateEmailSend(deps) {
             skipped,
             selectedTotal: Number(bulkAudience?.count) || successCount + failedCount + skipped,
           });
+          if (timedOut) {
+            toast?.info?.('Some requests timed out — report shows what finished. Check Email Reports for the rest.', 8000);
+          }
           setShowEmailModal(false);
           setBulkEmailRecipients([]);
           setBulkAudience?.(null);

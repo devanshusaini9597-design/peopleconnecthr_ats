@@ -11,6 +11,7 @@ const {
   sendCustomEmail,
   checkUserEmailConfigured,
   canUserSendViaZepto,
+  getUserTransporter,
 } = require('./emailService');
 const { buildQuickEmailContent } = require('./quickEmailContent');
 const { loadOrgEmailBrand } = require('./emailBrandLayout');
@@ -58,7 +59,7 @@ function classifyBulkFailureReason(message = '', code = '') {
 }
 
 async function bumpEmailUsage(organizationId, count = 1) {
-  if (!organizationId) return;
+  if (!organizationId || !count) return;
   try {
     await Organization.findByIdAndUpdate(organizationId, {
       $inc: { 'usageCurrent.emailsSent': count },
@@ -68,29 +69,51 @@ async function bumpEmailUsage(organizationId, count = 1) {
   }
 }
 
+/** Non-blocking usage bump — never delay the HTTP response after mail is accepted. */
+function bumpEmailUsageAsync(organizationId, count = 1) {
+  Promise.resolve(bumpEmailUsage(organizationId, count)).catch(() => {});
+}
+
+const orgSlugCache = new Map();
+
+async function getOrgSlugCached(organizationId) {
+  const key = String(organizationId || '');
+  if (!key) return '';
+  if (orgSlugCache.has(key)) return orgSlugCache.get(key);
+  try {
+    const org = await Organization.findById(organizationId).select('slug').lean();
+    const slug = String(org?.slug || '').trim();
+    orgSlugCache.set(key, slug);
+    return slug;
+  } catch (_) {
+    orgSlugCache.set(key, '');
+    return '';
+  }
+}
+
 async function getSenderStatus(userId) {
   return canUserSendViaZepto(userId);
 }
 
-async function resolveDirectSubscribeUrl(organizationId, email) {
+async function resolveDirectSubscribeUrl(organizationId, email, opts = {}) {
   const emailNorm = String(email || '').trim().toLowerCase();
   if (!emailNorm || !emailNorm.includes('@') || !organizationId) return '';
 
-  try {
-    const Candidate = require('../models/Candidate');
-    const row = await Candidate.findOne({ organizationId, email: emailNorm })
-      .select('marketingConsent.optedIn')
-      .lean();
-    if (row?.marketingConsent?.optedIn === true) return ''; // already subscribed — no CTA
-  } catch (_) {
-    /* show subscribe if lookup fails */
+  // Bulk sends can skip the per-recipient consent DB hit — show subscribe CTA (harmless if already in).
+  if (!opts.skipConsentLookup) {
+    try {
+      const Candidate = require('../models/Candidate');
+      const row = await Candidate.findOne({ organizationId, email: emailNorm })
+        .select('marketingConsent.optedIn')
+        .lean();
+      if (row?.marketingConsent?.optedIn === true) return ''; // already subscribed — no CTA
+    } catch (_) {
+      /* show subscribe if lookup fails */
+    }
   }
 
-  let orgSlug = '';
-  try {
-    const org = await Organization.findById(organizationId).select('slug').lean();
-    orgSlug = String(org?.slug || '').trim();
-  } catch (_) {}
+  const orgSlug =
+    opts.orgSlug != null ? String(opts.orgSlug || '').trim() : await getOrgSlugCached(organizationId);
 
   const backendBase = (
     process.env.EMAIL_LINKS_BACKEND_URL ||
@@ -180,7 +203,7 @@ async function sendTypedEmail(user, body) {
   }
 
   logger.info(`✅ Email sent successfully to ${email} (Type: ${emailType})`);
-  await bumpEmailUsage(user.organizationId, 1);
+  bumpEmailUsageAsync(user.organizationId, 1);
   return { message: `Email sent successfully to ${email}`, data: result };
 }
 
@@ -206,14 +229,39 @@ async function sendBulkTypedEmails(user, body) {
   logger.info(`   Type: ${emailType}`);
   logger.info(`   Total Recipients: ${candidates.length}`);
 
+  const orgSlug = await getOrgSlugCached(user.organizationId);
+  const [brand, transporter, senderStatus] = await Promise.all([
+    loadOrgEmailBrand(user.organizationId),
+    getUserTransporter(user.id, {
+      organizationId: user.organizationId,
+      senderName: user.name || 'HR Team',
+      replyToEmail: user.email,
+    }),
+    canUserSendViaZepto(user.id),
+  ]);
+
+  if (!senderStatus.canSend) {
+    throw httpError(senderStatus.reason || 'USE_VERIFIED_DOMAIN', 400, {
+      code: 'USE_VERIFIED_DOMAIN',
+      displayMessage: senderStatus.reason || 'Please use your company verified email to send.',
+    });
+  }
+
+  const mailSession = {
+    demoChecked: true,
+    transporter,
+    senderStatus,
+  };
+
   const emailOptions = {
     userId: user.id,
     customMessage: customMessage || '',
     senderName: user.name || 'HR Team',
-    brand: await loadOrgEmailBrand(user.organizationId),
+    brand,
     organizationId: user.organizationId,
     emailType,
     channel: 'transactional',
+    mailSession,
   };
   if (cc) emailOptions.cc = cc;
   if (bcc) emailOptions.bcc = bcc;
@@ -250,7 +298,11 @@ async function sendBulkTypedEmails(user, body) {
     try {
       const perRecipientOptions = {
         ...emailOptions,
-        subscribeUrl: await resolveDirectSubscribeUrl(user.organizationId, email),
+        // Skip per-recipient consent DB lookup — CTA is fine if already subscribed.
+        subscribeUrl: await resolveDirectSubscribeUrl(user.organizationId, email, {
+          orgSlug,
+          skipConsentLookup: true,
+        }),
       };
       let result;
       // Quick-send edited drafts arrive as custom + subject/body.
@@ -298,7 +350,7 @@ async function sendBulkTypedEmails(user, body) {
     }
   }
 
-  await bumpEmailUsage(user.organizationId, success.length);
+  bumpEmailUsageAsync(user.organizationId, success.length);
 
   return {
     message: 'Bulk email campaign completed',

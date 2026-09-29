@@ -807,7 +807,12 @@ const createSmtpTransporter = (emailSettings) => {
 // Generic email sender — uses per-user transporter if userId provided
 const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
   const { cc, bcc, senderName, senderEmail, userId, organizationId, system } = options;
-  if (!system && userId) {
+  // Bulk callers pass mailSession so we skip repeated DB/config lookups per recipient.
+  const mailSession = options.mailSession && typeof options.mailSession === 'object'
+    ? options.mailSession
+    : null;
+
+  if (!system && userId && !mailSession?.demoChecked) {
     const { isDemoUserId } = require('./demoWorkspaceService');
     if (await isDemoUserId(userId)) {
       const { demoEmailBlockedError } = require('../config/demoRoles');
@@ -815,7 +820,18 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
     }
   }
   const recipientEmail = Array.isArray(to) ? to[0] : to;
-  
+
+  const transporterInfo = mailSession?.transporter
+    ? mailSession.transporter
+    : await getUserTransporter(userId, {
+        recipientEmail,
+        organizationId,
+        senderName,
+        system,
+        // Never hint a different Reply-To for system/noreply mail — it leaks platform mailbox addresses.
+        replyToEmail: system ? undefined : senderEmail,
+      });
+
   const {
     transporter: activeTransporter,
     fromEmail: transporterFrom,
@@ -825,14 +841,7 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
     provider,
     zohoApiKey,
     zohoApiUrl,
-  } = await getUserTransporter(userId, {
-    recipientEmail,
-    organizationId,
-    senderName,
-    system,
-    // Never hint a different Reply-To for system/noreply mail — it leaks platform mailbox addresses.
-    replyToEmail: system ? undefined : senderEmail,
-  });
+  } = transporterInfo;
 
   // Candidate mail: recruiter work address. System mail (OTP / reset / invite): noreply@org-domain.
   let fromEmail = (transporterFrom || '').trim();
@@ -849,7 +858,8 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
   }
   
   if (provider === 'zoho-zeptomail' && userId && !system) {
-    const senderStatus = await canUserSendViaZepto(userId);
+    const senderStatus = mailSession?.senderStatus
+      || (await canUserSendViaZepto(userId));
     if (!senderStatus.canSend) {
       const err = new Error(senderStatus.reason || 'USE_VERIFIED_DOMAIN');
       err.code = 'USE_VERIFIED_DOMAIN';
@@ -876,24 +886,26 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
     });
     try {
       const { recordEmailSend } = require('./emailReportService');
-      await recordEmailSend({
-        organizationId,
-        userId,
-        channel: system ? 'system' : options.channel || 'transactional',
-        provider: 'zeptomail',
-        emailType: options.emailType || '',
-        subject,
-        htmlBody,
-        textBody,
-        fromEmail: zeptoResult.fromEmail || fromEmail,
-        replyToEmail: zeptoResult.replyTo || replyToEmail,
-        to: Array.isArray(to) ? to : [to],
-        messageId: zeptoResult.messageId,
-        requestId: zeptoResult.requestId,
-        clientReference: zeptoResult.clientReference,
-        status: 'accepted',
-        providerRaw: { provider: 'zeptomail' },
-      });
+      Promise.resolve(
+        recordEmailSend({
+          organizationId,
+          userId,
+          channel: system ? 'system' : options.channel || 'transactional',
+          provider: 'zeptomail',
+          emailType: options.emailType || '',
+          subject,
+          htmlBody,
+          textBody,
+          fromEmail: zeptoResult.fromEmail || fromEmail,
+          replyToEmail: zeptoResult.replyTo || replyToEmail,
+          to: Array.isArray(to) ? to : [to],
+          messageId: zeptoResult.messageId,
+          requestId: zeptoResult.requestId,
+          clientReference: zeptoResult.clientReference,
+          status: 'accepted',
+          providerRaw: { provider: 'zeptomail' },
+        })
+      ).catch(() => {});
     } catch (_) { /* non-blocking */ }
     return zeptoResult;
   }
@@ -950,21 +962,23 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
     };
     try {
       const { recordEmailSend } = require('./emailReportService');
-      await recordEmailSend({
-        organizationId,
-        userId,
-        channel: system ? 'system' : 'transactional',
-        provider: 'smtp',
-        emailType: options.emailType || '',
-        subject,
-        htmlBody,
-        textBody,
-        fromEmail,
-        replyToEmail,
-        to: Array.isArray(to) ? to : [to],
-        messageId: info.messageId,
-        status: 'sent',
-      });
+      Promise.resolve(
+        recordEmailSend({
+          organizationId,
+          userId,
+          channel: system ? 'system' : 'transactional',
+          provider: 'smtp',
+          emailType: options.emailType || '',
+          subject,
+          htmlBody,
+          textBody,
+          fromEmail,
+          replyToEmail,
+          to: Array.isArray(to) ? to : [to],
+          messageId: info.messageId,
+          status: 'sent',
+        })
+      ).catch(() => {});
     } catch (_) { /* non-blocking */ }
     return smtpResult;
   } catch (error) {
