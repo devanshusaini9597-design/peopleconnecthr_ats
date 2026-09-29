@@ -119,8 +119,6 @@ const router = createBrowserRouter([
   { path: '/', element: <Home /> },
   { path: '/login', element: <Login /> },
   { path: '/demo', element: <DemoPage /> },
-  { path: '/try', element: <Navigate to="/demo" replace /> },
-  { path: '/try-demo', element: <Navigate to="/demo" replace /> },
   { path: '/trial-approve', element: <TrialApprovePage /> },
   { path: '/register', element: <Register /> },
   { path: '/verify-email', element: <VerifyEmailPage /> },

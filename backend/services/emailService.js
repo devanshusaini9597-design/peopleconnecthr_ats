@@ -415,24 +415,48 @@ const sendViaZohoZeptomail = async (to, subject, htmlBody, textBody, options = {
     const zohoError = error.response?.data?.error;
     const details = Array.isArray(zohoError?.details) ? zohoError.details : [];
     const sm111 = details.find((d) => d && d.code === 'SM_111');
+    const detailCode = details.find((d) => d && d.code)?.code || '';
+    const detailMsg = details
+      .map((d) => d?.message || d?.target_value || '')
+      .filter(Boolean)
+      .join('; ');
     const status = error.response?.status;
     let errorMsg = error.message;
+    let reasonHint = '';
     if (sm111) {
       errorMsg = `ZeptoMail: Sender address not verified. "${sm111.target_value || 'from'}" is not verified in your ZeptoMail agent. Emails are sent from your verified address (check .env ZOHO_ZEPTOMAIL_FROM_EMAIL).`;
+      reasonHint = 'configuration';
+    } else if (
+      /invalid|bounce|undeliverable|mailbox|recipient|does not exist|user unknown/i.test(
+        `${zohoError?.message || ''} ${detailMsg} ${detailCode}`
+      )
+    ) {
+      errorMsg = `ZeptoMail: ${zohoError?.message || detailMsg || 'Recipient address rejected'}`;
+      reasonHint = /invalid|malformed|bad address/i.test(`${zohoError?.message || ''} ${detailMsg}`)
+        ? 'invalid_address'
+        : 'mailbox_unavailable';
     } else if (status === 401) {
       errorMsg = 'ZeptoMail: Invalid API key. Check your Send Mail Token in ZeptoMail dashboard.';
+      reasonHint = 'configuration';
     } else if (status === 403) {
       errorMsg =
         'ZeptoMail 403: Request Denied. Go to ZeptoMail > your Agent > Settings > IP Restriction and remove all IPs (empty list = allow all).';
+      reasonHint = 'configuration';
     } else if (status === 429) {
       errorMsg = 'ZeptoMail rate limit hit. Try again later or upgrade your plan.';
+      reasonHint = 'provider_error';
     } else if (error.code === 'ECONNABORTED') {
       errorMsg = 'ZeptoMail timeout. Network issue or Zoho service is slow.';
+      reasonHint = 'provider_error';
     } else if (error.response?.data?.message) {
       errorMsg = `ZeptoMail: ${error.response.data.message}`;
+    } else if (zohoError?.message) {
+      errorMsg = `ZeptoMail: ${zohoError.message}${detailMsg ? ` (${detailMsg})` : ''}`;
     }
     const err = new Error(errorMsg);
     err.code = 'ZOHO_ZEPTOMAIL_ERROR';
+    err.displayMessage = errorMsg;
+    err.reasonCode = reasonHint || undefined;
     err.sm111 = Boolean(sm111);
     err.sm111Target = sm111?.target_value || '';
     return err;

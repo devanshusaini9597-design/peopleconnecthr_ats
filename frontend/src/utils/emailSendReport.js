@@ -1,16 +1,17 @@
 /**
- * Build an accurate bulk-send report from provider responses (not estimated).
+ * Build an accurate send report from provider responses (ZeptoMail + Zoho Campaigns).
+ * Counts come from the live send response — never estimated.
  */
 
 export const FAILURE_REASON_META = {
   invalid_address: {
     key: 'invalid_address',
-    label: 'Invalid address',
-    short: 'Malformed or missing email',
+    label: 'Invalid email',
+    short: 'Malformed or missing address',
   },
   mailbox_unavailable: {
     key: 'mailbox_unavailable',
-    label: 'Mailbox unavailable',
+    label: 'Bounce / mailbox missing',
     short: 'Account does not exist or rejected',
   },
   unsubscribed: {
@@ -26,7 +27,7 @@ export const FAILURE_REASON_META = {
   configuration: {
     key: 'configuration',
     label: 'Sender configuration',
-    short: 'SMTP / campaign setup issue',
+    short: 'ZeptoMail / Campaigns setup issue',
   },
   provider_error: {
     key: 'provider_error',
@@ -44,12 +45,16 @@ export function classifyFailureReason(failure = {}) {
   if (failure.reasonCode && FAILURE_REASON_META[failure.reasonCode]) {
     return failure.reasonCode;
   }
-  const text = `${failure.displayMessage || ''} ${failure.error || ''} ${failure.reason || ''}`.toLowerCase();
-  if (/invalid email|email address is required|no valid email|missing email|malformed/.test(text)) {
+  const text = `${failure.displayMessage || ''} ${failure.error || ''} ${failure.reason || ''} ${failure.code || ''}`.toLowerCase();
+  if (
+    /invalid email|email address is required|no valid email|missing email|malformed|bad address|not a valid email|invalid recipient|invalid.?to/i.test(
+      text
+    )
+  ) {
     return 'invalid_address';
   }
   if (
-    /mailbox (not found|unavailable|does not exist)|user unknown|recipient rejected|no such user|550\b|5\.1\.1|address rejected|undeliverable|does not exist|account does not exist|unknown recipient/.test(
+    /bounce|hard.?bounce|soft.?bounce|mailbox (not found|unavailable|does not exist)|user unknown|recipient rejected|no such user|550\b|5\.1\.1|address rejected|undeliverable|does not exist|account does not exist|unknown recipient|inactive mailbox|mailbox full|over quota/i.test(
       text
     )
   ) {
@@ -58,21 +63,47 @@ export function classifyFailureReason(failure = {}) {
   if (/unsubscrib|opted.?out|opt.?out|no marketing consent|not eligible for marketing/.test(text)) {
     return 'unsubscribed';
   }
-  if (/spam|blocked|blacklist|reputation|suppress/.test(text)) {
+  if (/spam|blocked|blacklist|reputation|suppress|sm_111|not verified/.test(text) && /spam|block|blacklist|suppress|reputation/.test(text)) {
     return 'blocked';
   }
-  if (/not configured|not verified|oauth|zoho campaigns|smtp|sender|verified domain|credentials/.test(text)) {
+  if (
+    /not configured|not verified|oauth|zoho campaigns|zeptomail|smtp|sender|verified domain|credentials|api key|sm_111|auth_failed|authentication failed/i.test(
+      text
+    )
+  ) {
     return 'configuration';
   }
   if (!text.trim()) return 'other';
   return 'provider_error';
 }
 
+export function normalizeFailureEntry(failure = {}) {
+  const email = String(failure.email || failure.to || '').trim();
+  const displayMessage =
+    failure.displayMessage || failure.error || failure.reason || failure.message || 'Send failed';
+  const reasonCode = classifyFailureReason({ ...failure, displayMessage });
+  return {
+    email,
+    error: failure.error || displayMessage,
+    displayMessage,
+    reasonCode,
+  };
+}
+
+export function normalizeSuccessEntry(entry) {
+  if (typeof entry === 'string') return { email: entry };
+  if (entry && typeof entry === 'object') {
+    return { email: String(entry.email || entry.to || '').trim(), messageId: entry.messageId || '' };
+  }
+  return { email: '' };
+}
+
 export function buildFailureBreakdown(failures = []) {
   const counts = {};
   const groups = {};
-  for (const failure of failures) {
-    const code = classifyFailureReason(failure);
+  const normalized = failures.map(normalizeFailureEntry);
+  for (const failure of normalized) {
+    const code = failure.reasonCode || 'other';
     counts[code] = (counts[code] || 0) + 1;
     if (!groups[code]) groups[code] = [];
     groups[code].push(failure);
@@ -84,39 +115,94 @@ export function buildFailureBreakdown(failures = []) {
       items: groups[key],
     }))
     .sort((a, b) => b.count - a.count);
-  return { counts, rows };
+  return { counts, rows, failures: normalized };
 }
 
 export function buildSendReportPayload({
   title,
   channel = 'transactional',
+  provider = '',
   successList = [],
   failedList = [],
   skipped = 0,
   selectedTotal = null,
 }) {
-  const sent = successList.length;
-  const failed = failedList.length;
+  const successes = (successList || []).map(normalizeSuccessEntry).filter((s) => s.email);
+  const breakdown = buildFailureBreakdown(failedList || []);
+  const failures = breakdown.failures;
+  const sent = successes.length;
+  const failed = failures.length;
   const totalAttempted = sent + failed;
-  const selected = selectedTotal != null ? Number(selectedTotal) : totalAttempted + Number(skipped || 0);
+  const selected =
+    selectedTotal != null ? Number(selectedTotal) : totalAttempted + Number(skipped || 0);
   const skippedCount = Math.max(0, Number(skipped) || Math.max(0, selected - totalAttempted));
   const successRate =
     totalAttempted > 0 ? `${((sent / totalAttempted) * 100).toFixed(1)}%` : '0%';
-  const breakdown = buildFailureBreakdown(failedList);
+
+  const resolvedProvider =
+    provider ||
+    (channel === 'marketing' ? 'Zoho Campaigns' : 'ZeptoMail / transactional');
 
   return {
     title,
     channel,
+    provider: resolvedProvider,
     total: selected,
     attempted: totalAttempted,
     sent,
     failed,
     skipped: skippedCount,
     successRate,
-    failures: failedList,
-    successes: successList,
+    failures,
+    successes,
     failureBreakdown: breakdown.rows,
     failureCounts: breakdown.counts,
     completedAt: new Date().toISOString(),
   };
+}
+
+/** Accurate toast copy — always states both accepted and failed when mixed. */
+export function formatSendOutcomeToast({ sent = 0, failed = 0, skipped = 0, channel = 'transactional' }) {
+  const noun = channel === 'marketing' ? 'campaign' : 'email';
+  const s = Number(sent) || 0;
+  const f = Number(failed) || 0;
+  const k = Number(skipped) || 0;
+  const skipBit = k > 0 ? ` · ${k.toLocaleString()} skipped (no email)` : '';
+
+  if (s > 0 && f > 0) {
+    return {
+      type: 'warning',
+      message: `${s.toLocaleString()} ${noun}${s === 1 ? '' : 's'} accepted, ${f.toLocaleString()} failed — see delivery report${skipBit}`,
+      duration: 8000,
+    };
+  }
+  if (s > 0 && f === 0) {
+    return {
+      type: 'success',
+      message:
+        s === 1
+          ? `${channel === 'marketing' ? 'Campaign' : 'Email'} accepted for delivery${skipBit}`
+          : `${s.toLocaleString()} ${noun}${s === 1 ? '' : 's'} accepted for delivery${skipBit}`,
+      duration: 5000,
+    };
+  }
+  if (s === 0 && f > 0) {
+    return {
+      type: 'error',
+      message: `${f.toLocaleString()} ${noun}${f === 1 ? '' : 's'} failed — see delivery report for reasons${skipBit}`,
+      duration: 8000,
+    };
+  }
+  return {
+    type: 'warning',
+    message: `No messages were sent${skipBit}`,
+    duration: 6000,
+  };
+}
+
+export function showSendOutcomeToast(toast, outcome) {
+  const { type, message, duration } = formatSendOutcomeToast(outcome);
+  if (type === 'success') toast.success(message, duration);
+  else if (type === 'warning') toast.warning(message, duration);
+  else toast.error(message, duration);
 }

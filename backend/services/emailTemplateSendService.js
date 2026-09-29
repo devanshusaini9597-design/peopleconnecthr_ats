@@ -133,12 +133,14 @@ function wrapEmailHtml({
 function classifySendFailureReason(message = '', code = '') {
   const text = `${code} ${message}`.toLowerCase();
   if (
-    /invalid email|email address is required|no valid email|missing email|malformed/i.test(text)
+    /invalid email|email address is required|no valid email|missing email|malformed|bad address|not a valid email|invalid recipient|invalid.?to/i.test(
+      text
+    )
   ) {
     return 'invalid_address';
   }
   if (
-    /mailbox (not found|unavailable|does not exist)|user unknown|recipient rejected|no such user|550\b|5\.1\.1|address rejected|undeliverable|does not exist|account does not exist|unknown recipient/i.test(
+    /bounce|hard.?bounce|soft.?bounce|mailbox (not found|unavailable|does not exist)|user unknown|recipient rejected|no such user|550\b|5\.1\.1|address rejected|undeliverable|does not exist|account does not exist|unknown recipient|inactive mailbox|mailbox full|over quota/i.test(
       text
     )
   ) {
@@ -155,7 +157,7 @@ function classifySendFailureReason(message = '', code = '') {
     return 'blocked';
   }
   if (
-    /not configured|not verified|oauth|zoho campaigns|smtp|sender|verified domain|credentials|CAMPAIGNS_/i.test(
+    /not configured|not verified|oauth|zoho campaigns|zeptomail|smtp|sender|verified domain|credentials|api key|sm_111|CAMPAIGNS_|auth_failed|authentication failed/i.test(
       text
     )
   ) {
@@ -204,7 +206,7 @@ function mapSendError(err) {
   return {
     error: errMsg,
     displayMessage,
-    reasonCode: classifySendFailureReason(displayMessage, err.code || ''),
+    reasonCode: err.reasonCode || classifySendFailureReason(displayMessage, err.code || ''),
   };
 }
 

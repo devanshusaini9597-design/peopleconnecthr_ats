@@ -302,13 +302,6 @@ export default function LoginAuthCard({
                     <ArrowRight size={14} />
                   </Link>
                 </div>
-
-                <p className="pt-1 text-center text-xs text-stone-500">
-                  Selling walkthrough?{' '}
-                  <Link to="/demo" className="font-semibold text-brand-700 hover:text-brand-800">
-                    Open the live role demo
-                  </Link>
-                </p>
               </form>
             )}
           </motion.div>

@@ -56,9 +56,6 @@ export function HomeNav({
             </div>
 
             <div className="hidden md:flex items-center space-x-2">
-              <Link to="/demo" className="text-sm font-semibold text-stone-600 hover:text-brand-700 transition-colors px-4 py-2 rounded-xl hover:bg-brand-50/60">
-                Live demo
-              </Link>
               <Link to="/login" className="text-sm font-semibold text-stone-600 hover:text-brand-700 transition-colors px-4 py-2 rounded-xl hover:bg-brand-50/60">
                 Login
               </Link>
@@ -94,7 +91,6 @@ export function HomeNav({
                   </a>
                 ))}
                 <div className="mt-4 pt-4 border-t border-stone-100 space-y-3">
-                  <Link to="/demo" className="btn-secondary block w-full text-center rounded-xl">Live demo</Link>
                   <Link to="/login" className="btn-secondary block w-full text-center rounded-xl">Login</Link>
                   <Link to="/register" className="btn-cta-primary block w-full text-center rounded-xl">Start Free Trial</Link>
                 </div>

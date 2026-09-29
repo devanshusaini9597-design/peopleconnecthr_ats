@@ -4,6 +4,12 @@ import { LogOut } from 'lucide-react';
 import { BASE_API_URL } from '../config';
 import { useAuth } from '../context/AuthContext';
 import { clearClientAuthStorage } from '../utils/authUtils';
+import {
+  clearDemoAccessKey,
+  demoKeyHeaders,
+  demoRolesHref,
+  getDemoAccessKey,
+} from '../utils/demoAccess';
 
 export default function DemoRoleBar() {
   const { user } = useAuth();
@@ -13,10 +19,15 @@ export default function DemoRoleBar() {
 
   useEffect(() => {
     if (!user?.isDemo) return undefined;
+    const key = getDemoAccessKey();
+    if (!key) return undefined;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${BASE_API_URL}/api/demo/roles`, { credentials: 'include' });
+        const res = await fetch(`${BASE_API_URL}/api/demo/roles`, {
+          credentials: 'include',
+          headers: demoKeyHeaders(),
+        });
         const data = await res.json();
         if (!cancelled && res.ok) setRoles(data.roles || []);
       } catch {
@@ -29,17 +40,26 @@ export default function DemoRoleBar() {
   if (!user?.isDemo) return null;
 
   const current = roles.find((r) => r.role === user.role);
+  const accessKey = getDemoAccessKey();
+  const rolesHref = demoRolesHref();
 
   const switchRole = async (role) => {
     if (!role || role === user.role || busy) return;
+    if (!accessKey) {
+      setError('Re-open your private demo link to switch roles.');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
       const res = await fetch(`${BASE_API_URL}/api/demo/enter`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...demoKeyHeaders(),
+        },
         credentials: 'include',
-        body: JSON.stringify({ role }),
+        body: JSON.stringify({ role, k: accessKey }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Could not switch role');
@@ -61,7 +81,8 @@ export default function DemoRoleBar() {
       /* still leave locally */
     }
     clearClientAuthStorage();
-    window.location.replace('/demo');
+    clearDemoAccessKey();
+    window.location.replace('/');
   };
 
   return (
@@ -92,7 +113,7 @@ export default function DemoRoleBar() {
         </select>
       </label>
       <Link
-        to="/demo"
+        to={rolesHref}
         className="h-8 inline-flex items-center px-2.5 rounded-lg border border-stone-600 text-stone-200 hover:bg-stone-800"
       >
         All roles

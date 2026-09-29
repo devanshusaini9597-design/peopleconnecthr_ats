@@ -3,7 +3,11 @@ import { authenticatedFetch } from '../../../utils/fetchUtils';
 import { withJobApplyFooter } from '../../../utils/careersApplyUrl';
 import { mergeAndPolish, polishMergedBody, polishMergedSubject } from '../../../utils/emailMergePolish';
 import { veiledEmployer, cleanApplyUrl, outboundCompany } from '../../../utils/employerVeil';
-import { buildSendReportPayload } from '../../../utils/emailSendReport';
+import {
+  buildSendReportPayload,
+  normalizeFailureEntry,
+  showSendOutcomeToast,
+} from '../../../utils/emailSendReport';
 
 const SEND_CHUNK = 400;
 
@@ -420,16 +424,25 @@ export function useCandidateEmailSend(deps) {
           body: JSON.stringify({ ...bodyBase, recipients: part }),
         });
         const data = await response.json().catch(() => ({}));
-        if (data.success) {
-          anySuccess = true;
-          failedList.push(...(data.data?.failed || []));
+      if (data.success) {
+        anySuccess = true;
+          failedList.push(...(data.data?.failed || []).map(normalizeFailureEntry));
           successList.push(...(data.data?.success || []));
         } else {
           lastError = data;
           if (data.message === 'EMAIL_NOT_CONFIGURED' || data.code === 'CAMPAIGNS_NOT_CONFIGURED' || data.code === 'USE_VERIFIED_DOMAIN') {
             break;
           }
-          failedList.push(...part.map((r) => ({ email: r.email, error: data.displayMessage || data.message || 'Failed to send' })));
+          failedList.push(
+            ...part.map((r) =>
+              normalizeFailureEntry({
+                email: r.email,
+                error: data.displayMessage || data.message || 'Failed to send',
+                displayMessage: data.displayMessage || data.message || 'Failed to send',
+                reasonCode: data.reasonCode,
+              })
+            )
+          );
         }
       }
       const data = anySuccess
@@ -439,16 +452,24 @@ export function useCandidateEmailSend(deps) {
       const successCount = successList.length;
       if (data.success) {
         const isBulk = bulkEmailRecipients.length > 0 || Boolean(bulkAudience?.active);
-        if (isBulk || failedCount > 0 || successCount > 1) {
+        const shouldShowReport = isBulk || failedCount > 0 || successCount > 1;
+        if (shouldShowReport) {
           const skippedFromAudience =
             Number(bulkAudience?.count) > 0
               ? Math.max(0, Number(bulkAudience.count) - (successCount + failedCount))
               : 0;
           const skipped = Math.max(Number(emailSendSkipped) || 0, skippedFromAudience);
+          const channel = emailChannel === 'marketing' ? 'marketing' : 'transactional';
           showCampaignResult(
             buildSendReportPayload({
-              title: emailChannel === 'marketing' ? 'Campaign delivery report' : 'Bulk email delivery report',
-              channel: emailChannel === 'marketing' ? 'marketing' : 'transactional',
+              title:
+                channel === 'marketing'
+                  ? 'Campaign delivery report'
+                  : isBulk
+                    ? 'Bulk email delivery report'
+                    : 'Email delivery report',
+              channel,
+              provider: channel === 'marketing' ? 'Zoho Campaigns' : 'ZeptoMail',
               successList,
               failedList,
               skipped,
@@ -457,15 +478,12 @@ export function useCandidateEmailSend(deps) {
                 successCount + failedCount + skipped,
             })
           );
-          if (failedCount > 0) {
-            toast.error(`${successCount} accepted, ${failedCount} failed — see delivery report`, 6000);
-          } else {
-            toast.success(
-              emailChannel === 'marketing'
-                ? `Campaign accepted for ${successCount} recipient${successCount === 1 ? '' : 's'}`
-                : `Emails accepted for ${successCount} recipient${successCount === 1 ? '' : 's'}`
-            );
-          }
+          showSendOutcomeToast(toast, {
+            sent: successCount,
+            failed: failedCount,
+            skipped,
+            channel,
+          });
           setShowEmailModal(false);
           setBulkEmailRecipients([]);
           setBulkAudience?.(null);
@@ -473,14 +491,6 @@ export function useCandidateEmailSend(deps) {
           setEmailRecipient(null);
           setEmailSendSkipped?.(0);
           clearJobTag();
-        } else if (failedCount > 0) {
-          const first = failedList[0];
-          const errMsg = first?.displayMessage || first?.error || 'Send failed';
-          if (emailChannel === 'marketing' && /not verified|sender|Manage Senders/i.test(errMsg)) {
-            toast.error(errMsg, 12000);
-          } else {
-            toast.error(`Email not sent: ${errMsg}`, 10000);
-          }
         } else {
           const via = emailChannel === 'marketing' ? ' (campaign)' : '';
           toast.success(`Email sent to ${emailRecipient.email}${via}`);
@@ -575,13 +585,22 @@ export function useCandidateEmailSend(deps) {
             anySuccess = true;
             sent += data.data?.sent ?? 0;
             failed += data.data?.failed ?? 0;
-            failedEmails.push(...(data.data?.failedEmails || []));
+            failedEmails.push(...(data.data?.failedEmails || []).map(normalizeFailureEntry));
             successEmails.push(...(data.data?.successEmails || []));
           } else {
             lastError = data;
             if (data.message === 'EMAIL_NOT_CONFIGURED' || data.code === 'USE_VERIFIED_DOMAIN') break;
             failed += part.length;
-            failedEmails.push(...part.map((r) => ({ email: r.email, error: data.displayMessage || data.message || 'Failed to send' })));
+            failedEmails.push(
+              ...part.map((r) =>
+                normalizeFailureEntry({
+                  email: r.email,
+                  error: data.displayMessage || data.message || 'Failed to send',
+                  displayMessage: data.displayMessage || data.message || 'Failed to send',
+                  reasonCode: data.reasonCode,
+                })
+              )
+            );
           }
         }
         const data = anySuccess
@@ -589,26 +608,31 @@ export function useCandidateEmailSend(deps) {
           : (lastError || { success: false, message: 'Failed to send emails' });
 
         if (data.success) {
+          // Prefer list lengths — authoritative over counter fields if they drift
+          const successCount = successEmails.length || sent;
+          const failedCount = failedEmails.length || failed;
           const skippedFromAudience =
             Number(bulkAudience?.count) > 0
-              ? Math.max(0, Number(bulkAudience.count) - (sent + failed))
+              ? Math.max(0, Number(bulkAudience.count) - (successCount + failedCount))
               : 0;
           const skipped = Math.max(Number(emailSendSkipped) || 0, skippedFromAudience);
           showCampaignResult(
             buildSendReportPayload({
               title: 'Bulk email delivery report',
               channel: 'transactional',
+              provider: 'ZeptoMail',
               successList: successEmails,
               failedList: failedEmails,
               skipped,
-              selectedTotal: Number(bulkAudience?.count) || sent + failed + skipped,
+              selectedTotal: Number(bulkAudience?.count) || successCount + failedCount + skipped,
             })
           );
-          if (failed > 0) {
-            toast.error(`${sent} accepted, ${failed} failed — see delivery report`, 6000);
-          } else {
-            toast.success(sent === 1 ? 'Email accepted for delivery' : `Emails accepted for ${sent} recipients`);
-          }
+          showSendOutcomeToast(toast, {
+            sent: successCount,
+            failed: failedCount,
+            skipped,
+            channel: 'transactional',
+          });
           setShowEmailModal(false);
           setBulkEmailRecipients([]);
           setBulkAudience?.(null);
@@ -669,8 +693,29 @@ export function useCandidateEmailSend(deps) {
           setShowVerifiedEmailRequiredModal(true);
           setShowEmailModal(false);
         } else {
-          console.error('[Send email] API error:', data.message, data);
-          toast.error(`Failed to send email: ${data.message}`);
+          const failMsg = data.displayMessage || data.message || 'Failed to send email';
+          showCampaignResult(
+            buildSendReportPayload({
+              title: 'Email delivery report',
+              channel: 'transactional',
+              provider: 'ZeptoMail',
+              successList: [],
+              failedList: [
+                normalizeFailureEntry({
+                  email: emailRecipient.email,
+                  error: failMsg,
+                  displayMessage: failMsg,
+                  reasonCode: data.reasonCode,
+                }),
+              ],
+              skipped: 0,
+              selectedTotal: 1,
+            })
+          );
+          showSendOutcomeToast(toast, { sent: 0, failed: 1, channel: 'transactional' });
+          setShowEmailModal(false);
+          setEmailRecipient(null);
+          clearJobTag();
         }
       }
     } catch (error) {

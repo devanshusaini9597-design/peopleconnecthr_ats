@@ -18,9 +18,42 @@ const {
 } = require('../config/demoRoles');
 
 const DEMO_JOB_CODE = 'DEMO-NS-';
+const DEMO_KEY_STORAGE = 'pc-demo-access-key';
 
 function demoEnabled() {
-  return String(process.env.DEMO_PUBLIC || '1').trim() !== '0';
+  // Private by default. Set DEMO_ACCESS_KEY to enable the share link.
+  // DEMO_PUBLIC=0 also disables even if a key is set.
+  if (String(process.env.DEMO_PUBLIC || '1').trim() === '0') return false;
+  return Boolean(String(process.env.DEMO_ACCESS_KEY || '').trim());
+}
+
+function demoAccessKey() {
+  return String(process.env.DEMO_ACCESS_KEY || '').trim();
+}
+
+function assertDemoAccess(providedKey) {
+  if (!demoEnabled()) {
+    const err = new Error('Demo is not available.');
+    err.statusCode = 404;
+    err.code = 'DEMO_DISABLED';
+    throw err;
+  }
+  const expected = demoAccessKey();
+  const got = String(providedKey || '').trim();
+  if (!expected || !got) {
+    const err = new Error('Private demo link required.');
+    err.statusCode = 403;
+    err.code = 'DEMO_KEY_REQUIRED';
+    throw err;
+  }
+  const a = Buffer.from(expected);
+  const b = Buffer.from(got);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    const err = new Error('Private demo link required.');
+    err.statusCode = 403;
+    err.code = 'DEMO_KEY_INVALID';
+    throw err;
+  }
 }
 
 function publicRoles() {
@@ -335,21 +368,13 @@ async function seedSupportingSampleData(org, usersByRole) {
   }
 }
 
-async function listDemoRoles() {
-  if (!demoEnabled()) {
-    const err = new Error('Demo is not available.');
-    err.statusCode = 404;
-    throw err;
-  }
+async function listDemoRoles(accessKey) {
+  assertDemoAccess(accessKey);
   return { company: 'Northstar Talent (Demo)', roles: publicRoles() };
 }
 
-async function enterDemoRole(role, req) {
-  if (!demoEnabled()) {
-    const err = new Error('Demo is not available.');
-    err.statusCode = 404;
-    throw err;
-  }
+async function enterDemoRole(role, req, accessKey) {
+  assertDemoAccess(accessKey);
   const spec = DEMO_ROLES.find((r) => r.role === String(role || '').trim());
   if (!spec) {
     const err = new Error('Choose a demo role.');
@@ -391,10 +416,13 @@ async function isDemoUserId(userId) {
 
 module.exports = {
   demoEnabled,
+  demoAccessKey,
+  assertDemoAccess,
   listDemoRoles,
   enterDemoRole,
   ensureDemoWorkspace,
   isDemoUserId,
   homePathForDemoRole,
   DEMO_ORG_SLUG,
+  DEMO_KEY_STORAGE,
 };

@@ -1,45 +1,76 @@
-import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
-  ArrowRight, Building2, Shield, Users, RefreshCw, Sparkles,
+  ArrowRight, Building2, Shield, Lock,
 } from 'lucide-react';
 import { BASE_API_URL } from '../config';
 import { useAuth } from '../context/AuthContext';
+import {
+  getDemoAccessKey,
+  storeDemoAccessKey,
+  demoKeyHeaders,
+} from '../utils/demoAccess';
 
 export default function DemoPage() {
   const { user, isAuthenticated, isLoading } = useAuth();
+  const [searchParams] = useSearchParams();
+  const urlKey = String(searchParams.get('k') || searchParams.get('access') || '').trim();
+  const accessKey = useMemo(() => urlKey || getDemoAccessKey(), [urlKey]);
+
   const [roles, setRoles] = useState([]);
   const [company, setCompany] = useState('Northstar Talent (Demo)');
   const [error, setError] = useState('');
+  const [locked, setLocked] = useState(!accessKey);
   const [entering, setEntering] = useState('');
 
   useEffect(() => {
+    if (urlKey) storeDemoAccessKey(urlKey);
+  }, [urlKey]);
+
+  useEffect(() => {
+    if (!accessKey) {
+      setLocked(true);
+      setRoles([]);
+      return undefined;
+    }
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${BASE_API_URL}/api/demo/roles`);
+        const res = await fetch(`${BASE_API_URL}/api/demo/roles`, {
+          headers: { 'X-Demo-Key': accessKey },
+        });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'Demo is not available');
+        if (!res.ok) throw new Error(data.message || 'Private demo link required');
         if (!cancelled) {
+          setLocked(false);
           setRoles(data.roles || []);
           setCompany(data.company || company);
+          setError('');
         }
       } catch (err) {
-        if (!cancelled) setError(err.message || 'Demo is not available');
+        if (!cancelled) {
+          setLocked(true);
+          setRoles([]);
+          setError(err.message || 'Private demo link required');
+        }
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [accessKey]);
 
   const enter = async (role) => {
+    if (!accessKey) return;
     setEntering(role);
     setError('');
     try {
       const res = await fetch(`${BASE_API_URL}/api/demo/enter`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Demo-Key': accessKey,
+        },
         credentials: 'include',
-        body: JSON.stringify({ role }),
+        body: JSON.stringify({ role, k: accessKey }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Could not open this role');
@@ -52,6 +83,36 @@ export default function DemoPage() {
 
   const realSession = isAuthenticated && user && !user.isDemo;
   const alreadyDemo = isAuthenticated && user?.isDemo;
+
+  if (locked) {
+    return (
+      <div className="min-h-dvh bg-[#f6f5f2] text-stone-900 flex flex-col">
+        <header className="max-w-lg mx-auto w-full px-4 pt-6">
+          <Link to="/" className="flex items-center gap-2.5">
+            <img src="/logo.png" alt="" className="w-9 h-9 rounded-xl object-cover" />
+            <span className="font-bold tracking-tight">People Connect HR</span>
+          </Link>
+        </header>
+        <main className="flex-1 flex items-center justify-center px-4 pb-16">
+          <div className="max-w-md w-full rounded-3xl border border-stone-200 bg-white p-8 shadow-sm text-center">
+            <div className="mx-auto h-12 w-12 rounded-2xl bg-stone-100 text-stone-600 flex items-center justify-center">
+              <Lock size={20} />
+            </div>
+            <h1 className="mt-4 text-xl font-bold text-stone-950">Private demo</h1>
+            <p className="mt-2 text-sm text-stone-600 leading-relaxed">
+              This walkthrough is invite-only. Open the private link you were shared — it is not listed on the website.
+            </p>
+            {error ? (
+              <p className="mt-4 text-sm text-rose-700">{error}</p>
+            ) : null}
+            <Link to="/login" className="mt-6 inline-flex text-sm font-semibold text-brand-700 hover:text-brand-800">
+              Customer login
+            </Link>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-dvh bg-[radial-gradient(ellipse_at_top,_#ecfdf5_0%,_#f6f5f2_42%,_#f6f5f2_100%)] text-stone-900">
@@ -74,28 +135,15 @@ export default function DemoPage() {
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
         <div className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-brand-700">
-          <Sparkles size={12} /> Sales demo · not a real company
+          <Shield size={12} /> Private sales demo
         </div>
         <h1 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-stone-950">
-          Try every role in one click
+          Walk the product as any role
         </h1>
         <p className="mt-3 max-w-2xl text-stone-600 leading-relaxed">
-          Opens the sample company <span className="font-semibold text-stone-800">{company}</span>.
-          No password. Switch roles anytime from the black bar inside the product.
-          Real customer accounts and live email are never used here.
+          Sample company <span className="font-semibold text-stone-800">{company}</span>.
+          No password. Switch roles from the bar inside the product. This link is not public.
         </p>
-
-        <div className="mt-5 flex flex-wrap gap-3 text-sm text-stone-600">
-          <span className="inline-flex items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3 py-1.5">
-            <Users size={14} className="text-brand-600" /> {roles.length || 9} roles
-          </span>
-          <span className="inline-flex items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3 py-1.5">
-            <RefreshCw size={14} className="text-brand-600" /> Switch without signing out
-          </span>
-          <span className="inline-flex items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3 py-1.5">
-            <Shield size={14} className="text-brand-600" /> Isolated demo tenant
-          </span>
-        </div>
 
         {realSession && !isLoading ? (
           <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
@@ -150,11 +198,6 @@ export default function DemoPage() {
         {!roles.length && !error ? (
           <p className="mt-8 text-sm text-stone-500">Loading roles…</p>
         ) : null}
-
-        <p className="mt-10 flex items-start gap-2 text-xs text-stone-500 max-w-2xl">
-          <Shield size={14} className="mt-0.5 flex-shrink-0" />
-          Share this page: <span className="font-mono text-stone-700">/demo</span>. Sample people, jobs, interviews, and MIS contacts only.
-        </p>
       </main>
     </div>
   );

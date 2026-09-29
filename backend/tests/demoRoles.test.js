@@ -26,12 +26,39 @@ describe('demo roles', () => {
 });
 
 describe('demo home paths', () => {
-  const { homePathForDemoRole } = require('../services/demoWorkspaceService');
+  const {
+    homePathForDemoRole,
+    assertDemoAccess,
+  } = require('../services/demoWorkspaceService');
+
+  const origKey = process.env.DEMO_ACCESS_KEY;
+  const origPublic = process.env.DEMO_PUBLIC;
+
+  afterEach(() => {
+    if (origKey == null) delete process.env.DEMO_ACCESS_KEY;
+    else process.env.DEMO_ACCESS_KEY = origKey;
+    if (origPublic == null) delete process.env.DEMO_PUBLIC;
+    else process.env.DEMO_PUBLIC = origPublic;
+  });
 
   it('lands each key role on a useful desk', () => {
     expect(homePathForDemoRole('owner')).toBe('/dashboard');
     expect(homePathForDemoRole('interviewer')).toBe('/interviews');
     expect(homePathForDemoRole('freelancer')).toBe('/dashboard');
     expect(homePathForDemoRole('sales')).toBe('/mis');
+  });
+
+  it('rejects demo entry without the private share key', () => {
+    process.env.DEMO_ACCESS_KEY = 'secret-walk-key';
+    process.env.DEMO_PUBLIC = '1';
+    expect(() => assertDemoAccess('')).toThrow(/private demo link/i);
+    expect(() => assertDemoAccess('wrong')).toThrow(/private demo link/i);
+    expect(() => assertDemoAccess('secret-walk-key')).not.toThrow();
+  });
+
+  it('stays locked when no access key is configured', () => {
+    delete process.env.DEMO_ACCESS_KEY;
+    process.env.DEMO_PUBLIC = '1';
+    expect(() => assertDemoAccess('anything')).toThrow(/not available/i);
   });
 });
