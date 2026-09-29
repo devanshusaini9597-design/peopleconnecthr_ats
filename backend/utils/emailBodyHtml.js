@@ -83,8 +83,10 @@ function isDetailLine(line) {
   const label = m[1].trim();
   const value = m[2].trim();
   if (!value || /^[–—\-.]+$/.test(value)) return null;
+  if (/subscribe/i.test(label)) return null;
   if (!DETAIL_LABELS.has(label.toLowerCase()) && !/^[A-Z][A-Za-z\s]{1,24}$/.test(label)) return null;
-  if (/^https?:\/\//i.test(value) && /apply/i.test(label)) return null;
+  if (/^https?:\/\//i.test(value) && /apply|subscribe|link|url/i.test(label)) return null;
+  if (/^https?:\/\//i.test(value) && !DETAIL_LABELS.has(label.toLowerCase())) return null;
   return { label, value };
 }
 
@@ -100,57 +102,103 @@ function extractUrl(line) {
   return cleanHref(m[0].replace(/[),.;]+$/g, ''));
 }
 
+function normalizeGreeting(line) {
+  let t = String(line || '').trim();
+  t = t.replace(/^Dear\s*(there|candidate)?\s*,?\s*$/i, 'Dear Candidate,');
+  t = t.replace(/^Dear\s+there\s*,?/i, 'Dear Candidate,');
+  t = t.replace(/^Hi\s+there\s*,?/i, 'Hello,');
+  if (!/,\s*$/.test(t) && /^Dear\b/i.test(t)) t = `${t.replace(/[,.\s]+$/, '')},`;
+  return t;
+}
+
+/**
+ * Solid CTA — full-width on narrow clients via .em-btn class.
+ */
 function ctaButtonHtml(href, accent) {
   const url = cleanHref(href);
   if (!/^https?:\/\//i.test(url)) return '';
   const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 18px 0;">
+  return `<table role="presentation" class="em-btn" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0 8px 0;">
   <tr>
-    <td align="center" style="padding:4px 0 0 0;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+    <td align="center" style="padding:0;">
+      <!--[if mso]>
+      <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${escapeHtml(url)}" style="height:48px;v-text-anchor:middle;width:280px;" arcsize="12%" stroke="f" fillcolor="${accent}">
+        <w:anchorlock/>
+        <center style="color:#ffffff;font-family:Segoe UI,sans-serif;font-size:15px;font-weight:600;">View role &amp; apply</center>
+      </v:roundrect>
+      <![endif]-->
+      <!--[if !mso]><!-- -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:320px;margin:0 auto;">
         <tr>
-          <td align="center" bgcolor="${accent}" style="background-color:${accent};border-radius:8px;">
-            <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:14px 32px;font-family:${font};font-size:14px;font-weight:600;letter-spacing:0.02em;color:#ffffff !important;text-decoration:none;">View role &amp; apply</a>
+          <td align="center" bgcolor="${accent}" style="background-color:${accent};border-radius:8px;mso-padding-alt:14px 28px;">
+            <a class="em-btn-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="display:block;padding:15px 28px;font-family:${font};font-size:15px;font-weight:600;letter-spacing:0.01em;color:#ffffff !important;text-decoration:none;text-align:center;line-height:1.3;">View role &amp; apply</a>
+          </td>
+        </tr>
+      </table>
+      <!--<![endif]-->
+    </td>
+  </tr>
+</table>
+<p style="margin:0 0 18px 0;text-align:center;font-family:${font};font-size:12px;line-height:1.55;color:#94a3b8;">Prefer email? Reply to this message to be considered.</p>`;
+}
+
+/**
+ * Enterprise role / details card — accent rail, clear hierarchy, mobile-safe stacks.
+ */
+function detailsCardHtml(rows, accent, roleTitle) {
+  const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+  const role = String(roleTitle || '').trim();
+  const rest = (rows || []).filter((r) => !/^role$|^job title$|^position$/i.test(r.label));
+  if (!role && !rest.length) return '';
+
+  const detailRows = rest
+    .map((r, idx) => {
+      const border = idx < rest.length - 1 ? 'border-bottom:1px solid #eef2f6;' : '';
+      return `<tr>
+        <td class="em-detail-row" style="padding:12px 0;${border}">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td class="em-detail-label" width="34%" valign="top" style="width:34%;padding:0 12px 0 0;font-family:${font};font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;line-height:1.45;">
+                ${escapeHtml(displayLabel(r.label))}
+              </td>
+              <td class="em-detail-value" valign="top" style="padding:0;font-family:${font};font-size:14px;font-weight:600;color:#0f172a;line-height:1.45;word-break:break-word;">
+                ${escapeHtml(formatDetailValue(r.label, r.value))}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>`;
+    })
+    .join('');
+
+  const headerBlock = role
+    ? `<tr>
+        <td style="padding:0 0 16px 0;${rest.length ? 'border-bottom:1px solid #eef2f6;' : ''}">
+          <p style="margin:0 0 6px 0;font-family:${font};font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:${accent};">Open role</p>
+          <p class="em-role-title" style="margin:0;font-family:${font};font-size:20px;font-weight:700;line-height:1.3;letter-spacing:-0.02em;color:#0f172a;">${escapeHtml(titleCasePhrase(role))}</p>
+        </td>
+      </tr>`
+    : `<tr>
+        <td style="padding:0 0 12px 0;${rest.length ? 'border-bottom:1px solid #eef2f6;' : ''}">
+          <p style="margin:0;font-family:${font};font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:${accent};">Role details</p>
+        </td>
+      </tr>`;
+
+  return `<table role="presentation" class="em-card" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:18px 0 22px 0;border:1px solid #e5e7eb;border-radius:10px;border-collapse:separate !important;overflow:hidden;">
+  <tr>
+    <td style="border-left:4px solid ${accent};background-color:#ffffff;padding:0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td style="padding:20px 20px 18px 18px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              ${headerBlock}
+              ${detailRows ? `<tr><td style="padding:${role ? '4px' : '2px'} 0 0 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${detailRows}</table></td></tr>` : ''}
+            </table>
           </td>
         </tr>
       </table>
     </td>
   </tr>
-</table>
-<p style="margin:0 0 16px 0;text-align:center;font-family:${font};font-size:12px;line-height:1.5;color:#94a3b8;">Or reply to this email to be considered</p>`;
-}
-
-function detailsCardHtml(rows, accent, roleTitle) {
-  const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-  const role = roleTitle || '';
-  const rest = rows.filter((r) => !/^role$|^job title$|^position$/i.test(r.label));
-  const body = rest
-    .map(
-      (r) => `<tr>
-        <td style="padding:9px 0;font-family:${font};font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#94a3b8;width:38%;vertical-align:top;">${escapeHtml(displayLabel(r.label))}</td>
-        <td style="padding:9px 0;font-family:${font};font-size:14px;font-weight:600;color:#0f172a;vertical-align:top;">${escapeHtml(formatDetailValue(r.label, r.value))}</td>
-      </tr>`
-    )
-    .join('');
-  if (!role && !body) return '';
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 20px 0;border:1px solid #e8ecf1;border-radius:12px;overflow:hidden;">
-  <tr>
-    <td style="padding:18px 20px 16px 20px;background:#f8fafc;border-bottom:1px solid #eef2f6;">
-      <p style="margin:0 0 6px 0;font-family:${font};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${accent};">Opportunity</p>
-      ${
-        role
-          ? `<p style="margin:0;font-family:${font};font-size:20px;font-weight:700;line-height:1.3;letter-spacing:-0.03em;color:#0f172a;">${escapeHtml(titleCasePhrase(role))}</p>`
-          : ''
-      }
-    </td>
-  </tr>
-  ${
-    body
-      ? `<tr><td style="padding:6px 20px 10px 20px;background:#ffffff;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${body}</table>
-    </td></tr>`
-      : ''
-  }
 </table>`;
 }
 
@@ -198,6 +246,7 @@ function convertPlainEmailBody(emailBody, opts = {}) {
       if (!isApplyCue(trimmed)) {
         const cleaned = trimmed
           .replace(/\s*(,|\.)?\s*(or\s+)?apply using the link below:?$/i, '.')
+          .replace(/\s+or\s*$/i, '.')
           .replace(/\.\s*\.$/, '.');
         if (cleaned && !/^[\s.]*$/.test(cleaned)) flushProse(cleaned);
       }
@@ -235,7 +284,7 @@ function convertPlainEmailBody(emailBody, opts = {}) {
 
     if (/^dear\b/i.test(trimmed)) {
       html.push(
-        `<p style="margin:0 0 18px 0;font-family:${font};font-size:16px;font-weight:600;color:#0f172a;letter-spacing:-0.01em;">${escapeHtml(trimmed)}</p>`
+        `<p style="margin:0 0 18px 0;font-family:${font};font-size:16px;font-weight:600;color:#0f172a;letter-spacing:-0.01em;">${escapeHtml(normalizeGreeting(trimmed))}</p>`
       );
       i += 1;
       continue;
@@ -244,7 +293,7 @@ function convertPlainEmailBody(emailBody, opts = {}) {
     if (/^(best regards|warm regards|regards|sincerely|thank you)\b/i.test(trimmed)) {
       inSignOff = true;
       html.push(
-        `<p style="margin:28px 0 2px 0;font-family:${font};font-size:14px;color:#64748b;">${escapeHtml(trimmed.replace(/,?\s*$/, ''))},</p>`
+        `<p style="margin:28px 0 4px 0;font-family:${font};font-size:14px;line-height:1.5;color:#64748b;">${escapeHtml(trimmed.replace(/,?\s*$/, ''))},</p>`
       );
       i += 1;
       continue;
@@ -252,7 +301,7 @@ function convertPlainEmailBody(emailBody, opts = {}) {
 
     if (inSignOff) {
       html.push(
-        `<p style="margin:0 0 1px 0;font-family:${font};font-size:14px;font-weight:700;color:#0f172a;">${escapeHtml(trimmed)}</p>`
+        `<p style="margin:0 0 2px 0;font-family:${font};font-size:14px;font-weight:700;color:#0f172a;line-height:1.45;">${escapeHtml(trimmed)}</p>`
       );
       i += 1;
       continue;

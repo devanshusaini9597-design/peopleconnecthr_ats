@@ -180,22 +180,28 @@ export default function EmailTemplatePreview({
                       {' '}with{' '}
                       <span className="font-semibold text-stone-800">{companyBrand}</span>.
                     </p>
-                    <div className="rounded-lg border border-stone-200 bg-teal-50/40 p-4 space-y-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">
-                        Role highlights
+                    <div className="rounded-lg border border-stone-200 border-l-4 border-l-brand-700 bg-white p-4 space-y-3 overflow-hidden">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-brand-700">
+                        Open role
                       </p>
-                      {[
-                        ['Compensation', previewVars.ctc],
-                        ['Experience', previewVars.experience],
-                        ['Location', previewVars.location],
-                      ]
-                        .filter(([, v]) => v)
-                        .map(([label, value]) => (
-                          <div key={label}>
-                            <p className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">{label}</p>
-                            <p className="text-[14px] font-semibold text-stone-900">{value}</p>
-                          </div>
-                        ))}
+                      <p className="text-[18px] font-bold text-stone-900 tracking-tight leading-snug">
+                        {previewVars.position || 'Role title'}
+                      </p>
+                      <div className="divide-y divide-stone-100">
+                        {[
+                          ['Compensation', previewVars.ctc],
+                          ['Experience', previewVars.experience],
+                          ['Location', previewVars.location],
+                          ['Employer', previewVars.jobEmployer || companyBrand],
+                        ]
+                          .filter(([, v]) => v)
+                          .map(([label, value]) => (
+                            <div key={label} className="py-2.5 first:pt-1">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">{label}</p>
+                              <p className="text-[14px] font-semibold text-stone-900 mt-0.5 break-words">{value}</p>
+                            </div>
+                          ))}
+                      </div>
                     </div>
                     <div className="pt-1 text-center">
                       <a

@@ -49,6 +49,9 @@ describe('emailBrandLayout', () => {
     expect(html).toContain('You have received this email because you are registered at People Connect HR, to ensure the implementation of our Terms of Service and (or) for other legitimate matters.');
     expect(html).not.toContain('Sent from');
     expect(html).not.toContain('noreply@peopleconnecthr.com');
+    expect(html).toContain('em-shell');
+    expect(html).toContain('@media only screen and (max-width: 620px)');
+    expect(html).toContain('max-width:600px');
   });
 
   it('uses Skillnix website for Privacy and Help when websiteUrl is set', () => {

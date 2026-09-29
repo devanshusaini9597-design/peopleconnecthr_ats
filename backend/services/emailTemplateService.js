@@ -407,7 +407,7 @@ ${SIGN_OFF}`,
     base({
       name: 'Open Role Spotlight',
       category: 'marketing',
-      subject: 'Open role: {{position}}',
+      subject: 'Open opportunity – {{position}}',
       body: `Dear {{candidateName}},
 
 We came across your profile and thought this opening may be a strong match.
@@ -419,7 +419,8 @@ CTC: {{ctc}}
 Experience: {{experience}}
 Location: {{location}}
 
-If you would like to be considered, reply to this email or apply using the link below:
+If you would like to be considered, reply to this email or use the button below to apply.
+
 {{applyLink}}
 
 ${SIGN_OFF}`,
@@ -428,7 +429,7 @@ ${SIGN_OFF}`,
     base({
       name: 'Job Alert – New Opening',
       category: 'marketing',
-      subject: 'New opening: {{position}} | {{location}}',
+      subject: 'New opening – {{position}} | {{location}}',
       body: `Dear {{candidateName}},
 
 A role that may fit your background is now open.
@@ -451,7 +452,7 @@ ${SIGN_OFF}`,
     base({
       name: 'Hiring Drive Broadcast',
       category: 'marketing',
-      subject: 'Hiring drive: {{position}} – {{date}} | {{company}}',
+      subject: 'Hiring drive – {{position}} | {{date}} | {{company}}',
       body: `Dear {{candidateName}},
 
 We are running a hiring drive for {{position}} with {{company}}.

@@ -68,6 +68,19 @@ Reply to confirm interest.`,
     expect(body).not.toMatch(/\?$/m);
   });
 
+  it('repairs incomplete reply-or-apply CTAs when the link is missing', () => {
+    const body = polishMergedBody(
+      'If you would like to be considered, reply to this email or apply using the link below:\n'
+    );
+    expect(body).toMatch(/reply to this email\./i);
+    expect(body).not.toMatch(/\bor\s*$/m);
+    expect(body).not.toMatch(/apply using the link below/i);
+  });
+
+  it('normalizes Dear there to Dear Candidate', () => {
+    expect(polishMergedBody('Dear there,\n\nHello.')).toContain('Dear Candidate,');
+  });
+
   it('mergeAndPolish cleans subject empties', () => {
     expect(
       mergeAndPolish('Hiring drive: {{position}} – {{date}} | {{company}}', {

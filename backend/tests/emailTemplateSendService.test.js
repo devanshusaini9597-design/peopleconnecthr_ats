@@ -43,6 +43,14 @@ describe('emailTemplateSendService', () => {
     ).toBe('Hiring drive | Skillnix Recruitment Services');
   });
 
+  it('polishMergedSubject title-cases shouty role titles and fills empty open-role subjects', () => {
+    expect(polishMergedSubject('Open role: SALES OFFICER')).toBe('Open role: Sales Officer');
+    expect(polishMergedSubject('Open opportunity – ')).toBe('Career opportunity');
+    expect(polishMergedSubject('New opening: SALES OFFICER | CHENNAI')).toBe(
+      'New opening: Sales Officer | Chennai'
+    );
+  });
+
   it('polishMergedBody fixes empty fields and grammar', () => {
     const body = polishMergedBody(
       applyVariables(

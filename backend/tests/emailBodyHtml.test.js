@@ -22,14 +22,34 @@ Skillnix Recruitment Services`,
       { sampleName: 'Jadhav Kumar', brandColor: '#0f766e' }
     );
     expect(html).toContain('Dear Jadhav Kumar,');
-    expect(html).toContain('Opportunity');
+    expect(html).toContain('Open role');
     expect(html).toContain('Sales Officer');
     expect(html).toContain('SKILLNIX-2026-0049');
     expect(html).toContain('Chennai');
     expect(html).toContain('0–1 years');
     expect(html).toContain('View role &amp; apply');
+    expect(html).toContain('em-card');
+    expect(html).toContain('em-btn');
     expect(html).not.toMatch(/Role: SALES/);
-    expect(html).not.toMatch(/\?/);
+    expect(html).toContain('https://www.peopleconnecthr.com/careers/skillnix-recruitment/jobs/vv9d97s5"');
+    expect(html).not.toContain('vv9d97s5?');
+  });
+
+  it('uses Role details header when job title is missing', () => {
+    const html = convertPlainEmailBody(
+      `Dear there,
+
+Employer: a leading organization
+Location: Remote
+
+Best regards,
+Skillnix`,
+      { brandColor: '#0f766e' }
+    );
+    expect(html).toContain('Dear Candidate,');
+    expect(html).toContain('Role details');
+    expect(html).not.toContain('Open role');
+    expect(html).toContain('a leading organization');
   });
 
   it('title-cases role names', () => {

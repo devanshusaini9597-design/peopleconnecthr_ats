@@ -35,9 +35,17 @@ function buildHtmlContent(emailBody, { isSubscribeInvite, brandColor = '#0f766e'
     ? String(brandColor).trim()
     : '#0f766e';
   const subHref = String(subscribeUrl || '').trim();
-  const looksLikeHtml = /<[a-z][\s\S]*>/i.test(emailBody);
+  let raw = String(emailBody || '');
+  if (isSubscribeInvite) {
+    raw = raw
+      .replace(/^Subscribe now:\s*.*$/gim, '')
+      .replace(/^Subscribe here:\s*.*$/gim, '')
+      .replace(/Subscribe now:\s*/gi, '')
+      .replace(/Subscribe here:\s*/gi, '');
+  }
+  const looksLikeHtml = /<[a-z][\s\S]*>/i.test(raw);
   if (looksLikeHtml) {
-    let html = emailBody
+    let html = raw
       .replace(/Subscribe now:\s*/gi, '')
       .replace(/Subscribe here:\s*/gi, '');
     if (subHref && /^https?:\/\//i.test(subHref)) {
@@ -52,7 +60,7 @@ function buildHtmlContent(emailBody, { isSubscribeInvite, brandColor = '#0f766e'
     return html;
   }
 
-  let htmlContent = convertPlainEmailBody(emailBody, { brandColor: accent, subscribeUrl: subHref });
+  let htmlContent = convertPlainEmailBody(raw, { brandColor: accent, subscribeUrl: subHref });
   if (isSubscribeInvite) {
     htmlContent = htmlContent
       .replace(/Subscribe now:\s*/gi, '')
@@ -583,7 +591,9 @@ async function sendTemplateEmail(user, body) {
     const displayTitle = isSubscribeInvite
       ? 'Subscribe for updates'
       : isRoleSpotlight
-        ? 'Role opportunity'
+        ? (emailSubject && !/^(Open role|Open opportunity|Career opportunity|New opening)\s*:?$/i.test(emailSubject)
+            ? emailSubject
+            : 'Role opportunity')
         : isReengage
           ? 'Stay in touch'
           : emailSubject;
@@ -944,7 +954,9 @@ async function sendTemplateEmail(user, body) {
       const displayTitle = isSubscribeInvite
         ? 'Subscribe for updates'
         : isRoleSpotlight
-          ? 'Role opportunity'
+          ? (emailSubject && !/^(Open role|Open opportunity|Career opportunity|New opening)\s*:?$/i.test(emailSubject)
+              ? emailSubject
+              : 'Role opportunity')
           : isReengage
             ? 'Stay in touch'
             : emailSubject;
