@@ -330,9 +330,7 @@ export default function CandidateEmailModal(props) {
                   </p>
                   <h3 className="text-sm font-semibold text-stone-900 mt-1">How do you want to write it?</h3>
                   <p className="text-xs text-stone-500 mt-0.5">
-                    {emailChannel === 'marketing'
-                      ? 'Campaigns use the template library (Zoho Campaigns, then ZeptoMail if needed).'
-                      : 'Pick a saved template or write a custom draft.'}
+                    Pick a saved template or write a custom draft.
                   </p>
                 </div>
                 {!campaignOnly ? (
@@ -348,7 +346,7 @@ export default function CandidateEmailModal(props) {
                   </button>
                 ) : null}
               </div>
-              <div className={`grid gap-2.5 sm:gap-3 ${emailChannel === 'marketing' ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
+              <div className="grid gap-2.5 sm:gap-3 grid-cols-1 sm:grid-cols-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -377,35 +375,33 @@ export default function CandidateEmailModal(props) {
                   </p>
                 </button>
 
-                {emailChannel !== 'marketing' ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmailMode('quick');
-                      setSelectedTemplate?.(null);
-                      setComposePhase('write');
-                    }}
-                    className={`rounded-xl border px-3.5 sm:px-4 py-3 sm:py-3.5 text-left transition ${
-                      emailMode === 'quick' ? channelActive : channelIdle
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 text-stone-900">
-                      <span
-                        className={`inline-flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${
-                          emailMode === 'quick'
-                            ? 'bg-brand-600 text-white'
-                            : 'bg-stone-100 text-stone-500'
-                        }`}
-                      >
-                        <Zap size={15} />
-                      </span>
-                      <span className="text-sm font-semibold">Custom draft</span>
-                    </div>
-                    <p className="text-xs text-stone-500 mt-2 leading-relaxed">
-                      Write a one-off message without a template
-                    </p>
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmailMode('quick');
+                    setSelectedTemplate?.(null);
+                    setComposePhase('write');
+                  }}
+                  className={`rounded-xl border px-3.5 sm:px-4 py-3 sm:py-3.5 text-left transition ${
+                    emailMode === 'quick' ? channelActive : channelIdle
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 text-stone-900">
+                    <span
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${
+                        emailMode === 'quick'
+                          ? 'bg-brand-600 text-white'
+                          : 'bg-stone-100 text-stone-500'
+                      }`}
+                    >
+                      <Zap size={15} />
+                    </span>
+                    <span className="text-sm font-semibold">Custom draft</span>
+                  </div>
+                  <p className="text-xs text-stone-500 mt-2 leading-relaxed">
+                    Write a one-off message without a template
+                  </p>
+                </button>
               </div>
             </section>
           ) : null}

@@ -404,10 +404,19 @@ async function sendMarketing(user, body) {
   if (!subject || !htmlBody) throw httpError('Subject and HTML body are required');
 
   const { sendMarketingEmail, isCampaignsConfigured } = require('./campaignService');
-  if (!isCampaignsConfigured()) {
+  const { resolveCampaignsSettings, isSettingsConfigured } = require('./marketingListService');
+  let marketingOk = isCampaignsConfigured();
+  if (!marketingOk && user.organizationId) {
+    try {
+      marketingOk = isSettingsConfigured(await resolveCampaignsSettings(user.organizationId));
+    } catch (_) {
+      marketingOk = false;
+    }
+  }
+  if (!marketingOk) {
     throw httpError('CAMPAIGNS_NOT_CONFIGURED', 400, {
       displayMessage:
-        'Zoho Campaigns is not configured. Add ZOHO_CAMPAIGNS_CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN (or ZOHO_CAMPAIGNS_API_KEY) and ZOHO_CAMPAIGNS_LIST_KEY to backend .env.',
+        'Campaigns are not configured. Add marketing under Organization → Integrations, or contact your admin.',
     });
   }
 
@@ -423,7 +432,7 @@ async function sendMarketing(user, body) {
   });
 
   return {
-    message: `Marketing campaign started for ${result.sent} recipient(s) via Zoho Campaigns`,
+    message: `Campaign started for ${result.sent} recipient(s)`,
     data: result.data,
   };
 }

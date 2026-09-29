@@ -3,6 +3,7 @@ import { authenticatedFetch } from '../../../utils/fetchUtils';
 import { withJobApplyFooter } from '../../../utils/careersApplyUrl';
 import { mergeAndPolish, polishMergedBody, polishMergedSubject } from '../../../utils/emailMergePolish';
 import { veiledEmployer, cleanApplyUrl, outboundCompany } from '../../../utils/employerVeil';
+import { convertPlainEmailBody } from '../../../utils/emailBodyHtml';
 import {
   buildSendReportPayload,
   normalizeFailureEntry,
@@ -15,6 +16,12 @@ const CHUNK_TIMEOUT_MS = 55_000;
 /** Campaigns: one Zoho campaign per request — allow longer, send larger batches. */
 const MARKETING_SEND_CHUNK = 200;
 const MARKETING_CHUNK_TIMEOUT_MS = 120_000;
+
+function draftBodyToHtml(body) {
+  const raw = String(body || '');
+  if (/<[a-z][\s\S]*>/i.test(raw)) return raw;
+  return convertPlainEmailBody(raw);
+}
 
 function chunkList(list, size) {
   const out = [];
@@ -664,6 +671,158 @@ export function useCandidateEmailSend(deps) {
       }
       const jobMeta = await loadJobMetaForEmail();
       const messageWithApply = withJobApplyFooter(customMessage, jobMeta);
+      const isMarketingChannel = emailChannel === 'marketing';
+      const isBulkSend = Boolean(audiencePeople) || bulkEmailRecipients.length > 0;
+
+      // Campaign custom draft → one campaign send (same path as marketing templates).
+      if (isMarketingChannel) {
+        const people = isBulkSend
+          ? (audiencePeople || bulkEmailRecipients).map((c) => ({
+              email: c.email,
+              name: c.name || '',
+            }))
+          : [{ email: emailRecipient.email, name: quickName || emailRecipient.name || '' }];
+
+        let bulkSubject = (quickSubject || '').trim() || 'Message from recruiting team';
+        let bulkBody = messageWithApply;
+        const previewName = String(
+          quickName || people[0]?.name || emailRecipient?.name || ''
+        ).trim();
+        if (isBulkSend && previewName) {
+          bulkSubject = ensureCandidateNameToken(bulkSubject, [previewName]);
+          bulkBody = ensureCandidateNameToken(bulkBody, [previewName]);
+        }
+        bulkSubject = polishMergedSubject(bulkSubject, {
+          preserveTokens: isBulkSend ? ['candidateName'] : [],
+        });
+        bulkBody = polishMergedBody(bulkBody, {
+          preserveTokens: isBulkSend ? ['candidateName'] : [],
+        });
+        const htmlBody = draftBodyToHtml(bulkBody);
+
+        const successList = [];
+        const failedList = [];
+        let lastError = null;
+        let timedOut = false;
+        const chunks = chunkList(people, MARKETING_SEND_CHUNK);
+        for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
+          const part = chunks[chunkIndex];
+          if (chunks.length > 1 || people.length > 1) {
+            toast?.info?.(
+              `Sending ${Math.min((chunkIndex + 1) * MARKETING_SEND_CHUNK, people.length).toLocaleString()} of ${people.length.toLocaleString()}…`
+            );
+          }
+          const { data, timedOut: chunkTimedOut } = await fetchJsonWithTimeout(
+            `${BASE_API_URL}/api/email/send-marketing`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                recipients: part.map((r) => r.email),
+                subject: bulkSubject,
+                htmlBody,
+                campaignName: 'Custom campaign',
+              }),
+            },
+            MARKETING_CHUNK_TIMEOUT_MS
+          );
+          if (chunkTimedOut) {
+            timedOut = true;
+            lastError = data;
+            break;
+          }
+          if (data.success) {
+            const failedFromProvider = Array.isArray(data.data?.failed) ? data.data.failed : [];
+            const failedSet = new Set(
+              failedFromProvider
+                .map((f) => String(f.email || '').trim().toLowerCase())
+                .filter(Boolean)
+            );
+            for (const r of part) {
+              const key = String(r.email || '').trim().toLowerCase();
+              if (failedSet.has(key)) {
+                const row = failedFromProvider.find(
+                  (f) => String(f.email || '').trim().toLowerCase() === key
+                );
+                failedList.push(
+                  normalizeFailureEntry({
+                    email: r.email,
+                    error: row?.error || 'Failed to send',
+                    displayMessage: row?.error || row?.displayMessage || 'Failed to send',
+                    reasonCode: 'provider_error',
+                  })
+                );
+              } else {
+                successList.push(r.email);
+              }
+            }
+          } else {
+            lastError = data;
+            if (data.code === 'CAMPAIGNS_NOT_CONFIGURED') break;
+            failedList.push(
+              ...part.map((r) =>
+                normalizeFailureEntry({
+                  email: r.email,
+                  error: data.displayMessage || data.message || 'Failed to send',
+                  displayMessage: data.displayMessage || data.message || 'Failed to send',
+                  reasonCode: data.reasonCode || 'configuration',
+                })
+              )
+            );
+          }
+        }
+
+        setIsSendingEmail(false);
+        const successCount = successList.length;
+        const failedCount = failedList.length;
+
+        if (timedOut && successCount === 0 && failedCount === 0) {
+          toast?.warning?.(
+            lastError?.displayMessage ||
+              'Campaign is still processing. Mail may arrive shortly — check Email Reports in a minute.',
+            10000
+          );
+          setShowEmailModal(false);
+          setBulkEmailRecipients([]);
+          setBulkAudience?.(null);
+          setSelectedIds?.([]);
+          setEmailRecipient(null);
+          clearJobTag();
+        } else if (successCount > 0 || failedCount > 0) {
+          presentSendOutcome({
+            title: isBulkSend || failedCount > 0 ? 'Campaign delivery report' : 'Campaign delivery report',
+            channel: 'marketing',
+            provider: 'Zoho Campaigns',
+            successList,
+            failedList,
+            skipped: Math.max(Number(emailSendSkipped) || 0, 0),
+            selectedTotal:
+              Number(bulkAudience?.count) || successCount + failedCount + (Number(emailSendSkipped) || 0),
+          });
+          if (timedOut) {
+            toast?.info?.(
+              'Campaign request took longer than expected — delivery may still finish. Check Email Reports.',
+              8000
+            );
+          }
+          setShowEmailModal(false);
+          setBulkEmailRecipients([]);
+          setBulkAudience?.(null);
+          setSelectedIds?.([]);
+          setEmailRecipient(null);
+          setEmailSendSkipped?.(0);
+          clearJobTag();
+        } else if (lastError?.code === 'CAMPAIGNS_NOT_CONFIGURED') {
+          toast.error(
+            lastError.displayMessage || 'Campaigns are not configured. Contact your admin.',
+            8000
+          );
+          setShowEmailModal(false);
+        } else {
+          toast.error(lastError?.displayMessage || lastError?.message || 'Failed to send campaign');
+        }
+        return;
+      }
 
       if (audiencePeople || bulkEmailRecipients.length > 0) {
         let sent = 0;
