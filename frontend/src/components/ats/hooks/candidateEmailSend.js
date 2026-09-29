@@ -12,6 +12,9 @@ import {
 /** Keep chunks small so each HTTP call returns before proxy/browser timeouts. */
 const SEND_CHUNK = 20;
 const CHUNK_TIMEOUT_MS = 55_000;
+/** Campaigns: one Zoho campaign per request — allow longer, send larger batches. */
+const MARKETING_SEND_CHUNK = 200;
+const MARKETING_CHUNK_TIMEOUT_MS = 120_000;
 
 function chunkList(list, size) {
   const out = [];
@@ -500,12 +503,15 @@ export function useCandidateEmailSend(deps) {
       let lastError = null;
       let anySuccess = false;
       let timedOut = false;
-      const recipientChunks = chunkList(recipients, SEND_CHUNK);
+      const isMarketingChannel = emailChannel === 'marketing';
+      const chunkSize = isMarketingChannel ? MARKETING_SEND_CHUNK : SEND_CHUNK;
+      const chunkTimeout = isMarketingChannel ? MARKETING_CHUNK_TIMEOUT_MS : CHUNK_TIMEOUT_MS;
+      const recipientChunks = chunkList(recipients, chunkSize);
       for (let chunkIndex = 0; chunkIndex < recipientChunks.length; chunkIndex += 1) {
         const part = recipientChunks[chunkIndex];
         if (recipientChunks.length > 1 || recipients.length > 1) {
           toast?.info?.(
-            `Sending ${Math.min((chunkIndex + 1) * SEND_CHUNK, recipients.length).toLocaleString()} of ${recipients.length.toLocaleString()}…`
+            `Sending ${Math.min((chunkIndex + 1) * chunkSize, recipients.length).toLocaleString()} of ${recipients.length.toLocaleString()}…`
           );
         }
         const { data, timedOut: chunkTimedOut } = await fetchJsonWithTimeout(
@@ -514,7 +520,8 @@ export function useCandidateEmailSend(deps) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ...bodyBase, recipients: part }),
-          }
+          },
+          chunkTimeout
         );
         if (chunkTimedOut) {
           timedOut = true;
@@ -560,7 +567,9 @@ export function useCandidateEmailSend(deps) {
       if (timedOut && successCount === 0 && failedCount === 0) {
         toast?.warning?.(
           lastError?.displayMessage ||
-            'Send is taking longer than expected. Emails may still be delivering — check Email Reports.',
+            (isMarketingChannel
+              ? 'Campaign is still processing with Zoho. Mail may arrive shortly — check Email Reports in a minute.'
+              : 'Send is taking longer than expected. Emails may still be delivering — check Email Reports.'),
           10000
         );
         setShowEmailModal(false);
@@ -596,7 +605,12 @@ export function useCandidateEmailSend(deps) {
               successCount + failedCount + skipped,
           });
           if (timedOut) {
-            toast?.info?.('Some requests timed out — report shows what finished. Check Email Reports for the rest.', 8000);
+            toast?.info?.(
+              isMarketingChannel
+                ? 'Campaign request took longer than expected — Zoho may still be finishing. Check Email Reports.'
+                : 'Some requests timed out — report shows what finished. Check Email Reports for the rest.',
+              8000
+            );
           }
           setShowEmailModal(false);
           setBulkEmailRecipients([]);

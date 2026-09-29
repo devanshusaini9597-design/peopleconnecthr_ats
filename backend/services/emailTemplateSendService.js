@@ -366,6 +366,312 @@ async function sendTemplateEmail(user, body) {
     }
   }
 
+  // ── Marketing: ONE Zoho campaign for the whole chunk (not one campaign per person).
+  // Per-recipient Zoho create+wait was why Campaign sends took minutes and the UI timed out
+  // even though mail still arrived later (Zoho/Zepto finished after the client aborted).
+  if (isMarketing) {
+    const eligible = [];
+    for (const recipient of recipientList) {
+      if (!recipient?.email) {
+        results.failed.push({
+          email: recipient?.email || '',
+          error: 'Invalid email address',
+          displayMessage: 'Invalid or missing email address',
+          reasonCode: 'invalid_address',
+        });
+        continue;
+      }
+      try {
+        const Candidate = require('../models/Candidate');
+        const row = await Candidate.findOne({
+          organizationId: user.organizationId,
+          email: String(recipient.email).trim().toLowerCase(),
+        })
+          .select('marketingConsent')
+          .lean();
+        if (row?.marketingConsent?.optedIn === false && row?.marketingConsent?.optedOutAt) {
+          results.failed.push({
+            email: recipient.email,
+            error: 'Recipient unsubscribed from marketing emails',
+            displayMessage:
+              'This candidate unsubscribed from marketing. Send a Direct email — it includes a Subscribe button so they can opt back in.',
+            reasonCode: 'unsubscribed',
+          });
+          continue;
+        }
+        const MisContact = require('../models/MisContact');
+        const mis = await MisContact.findOne({
+          organizationId: user.organizationId,
+          email: String(recipient.email).trim().toLowerCase(),
+        })
+          .select('marketingConsent unsubscribedAt')
+          .lean();
+        if (mis && (mis.marketingConsent === false || mis.unsubscribedAt)) {
+          results.failed.push({
+            email: recipient.email,
+            error: 'MIS contact is not eligible for marketing email',
+            displayMessage: 'This MIS contact has no marketing consent or has unsubscribed.',
+            reasonCode: 'unsubscribed',
+          });
+          continue;
+        }
+      } catch (_) {
+        /* ignore consent lookup failures */
+      }
+      eligible.push(recipient);
+    }
+
+    if (!eligible.length) {
+      return {
+        message: `Sent 0 of ${recipientList.length} emails`,
+        data: results,
+      };
+    }
+
+    const backendBase = (
+      process.env.EMAIL_LINKS_BACKEND_URL ||
+      process.env.BACKEND_URL ||
+      process.env.API_URL ||
+      ''
+    )
+      .trim()
+      .replace(/\/$/, '');
+    const frontendBase = (process.env.FRONTEND_URL || '').trim().replace(/\/$/, '');
+    if (!backendBase && !frontendBase) {
+      throw httpError('EMAIL_LINKS_NOT_CONFIGURED', 400, {
+        displayMessage:
+          'Marketing links need BACKEND_URL (or EMAIL_LINKS_BACKEND_URL) and FRONTEND_URL set to public HTTPS URLs so Subscribe / Unsubscribe work.',
+      });
+    }
+
+    const orgQuery = orgSlug
+      ? `org=${encodeURIComponent(orgSlug)}`
+      : user.organizationId
+        ? `orgId=${encodeURIComponent(String(user.organizationId))}`
+        : '';
+    const sharedSubscribe =
+      frontendBase && orgQuery
+        ? `${frontendBase}/subscribe?${orgQuery}`
+        : frontendBase
+          ? `${frontendBase}/subscribe`
+          : '';
+
+    const greetingName = isBulkSend
+      ? 'there'
+      : eligible[0].name || variables?.candidateName || 'there';
+    const vars = {
+      ...variables,
+      candidateName: greetingName,
+      name: greetingName,
+      company: outboundCompany(variables, orgBrand),
+      orgName: orgBrand,
+      jobEmployer:
+        String(variables?.jobEmployer || '').trim() ||
+        veiledEmployer(
+          variables?.jobIndustry || variables?.industry || '',
+          variables?.jobClient || ''
+        ),
+      applyLink: cleanApplyUrl(variables?.applyLink || variables?.applyUrl || ''),
+      applyUrl: cleanApplyUrl(variables?.applyLink || variables?.applyUrl || ''),
+      jobSummary: jobEmailSummary(variables?.jobSummary || '', ''),
+      subscribeLink: sharedSubscribe,
+      unsubscribeLink: sharedSubscribe
+        ? sharedSubscribe.replace('/subscribe', '/unsubscribe')
+        : '',
+    };
+    if (!String(vars.position || '').trim()) vars.position = vars.jobTitle || '';
+    if (!String(vars.location || '').trim()) vars.location = vars.jobLocation || '';
+    if (!String(vars.experience || '').trim()) vars.experience = vars.jobExperience || '';
+    if (!String(vars.ctc || '').trim()) vars.ctc = vars.jobCtc || '';
+
+    const tplName = String(template.name || '');
+    const isSubscribeInvite =
+      tplName === 'Subscribe for Updates' && template.category === 'marketing';
+    const isRoleSpotlight =
+      !sharedBodyOverride &&
+      template.category === 'marketing' &&
+      /Talent Pool Nurture|Open Role Spotlight|Job Alert/i.test(tplName);
+    const isReengage =
+      template.category === 'marketing' && /Re-engagement|Stay in Touch/i.test(tplName);
+
+    let emailSubject = polishMergedSubject(
+      applyVariables(
+        sharedSubjectOverride.length ? sharedSubjectOverride : template.subject,
+        vars
+      )
+    );
+    let emailBody = polishMergedBody(
+      applyVariables(
+        sharedBodyOverride.length ? sharedBodyOverride : template.body,
+        vars
+      )
+    );
+
+    const {
+      brandButtonHtml,
+      subscribeInviteHtml,
+      roleSpotlightHtml,
+      reengageInviteHtml,
+      zohoCampaignComplianceFooterHtml,
+    } = require('./emailBrandLayout');
+
+    let htmlContent;
+    const subscribeUrlEarly = sharedSubscribe;
+    if (isSubscribeInvite) {
+      htmlContent = subscribeInviteHtml({
+        candidateName: greetingName,
+        company: (vars.company || '').trim() || orgBrand,
+        brandColor: orgBrandColor,
+      });
+    } else if (isRoleSpotlight) {
+      htmlContent = roleSpotlightHtml({
+        candidateName: greetingName,
+        company: orgBrand,
+        employer: vars.jobEmployer || '',
+        position: vars.jobTitle || vars.position || '',
+        jobCode: vars.jobCode || '',
+        ctc: vars.ctc || '',
+        experience: vars.jobExperience || vars.experience || '',
+        location: vars.jobLocation || vars.location || '',
+        summary: vars.jobSummary || '',
+        applyUrl: vars.applyLink || vars.applyUrl || '',
+        brandColor: orgBrandColor,
+      });
+    } else if (isReengage) {
+      htmlContent = reengageInviteHtml({
+        candidateName: greetingName,
+        company: (vars.company || '').trim() || orgBrand,
+        brandColor: orgBrandColor,
+      });
+    } else {
+      htmlContent = buildHtmlContent(emailBody, {
+        isSubscribeInvite,
+        brandColor: orgBrandColor,
+        subscribeUrl: subscribeUrlEarly,
+      });
+    }
+
+    if (
+      subscribeUrlEarly &&
+      (isSubscribeInvite || isRoleSpotlight || isReengage) &&
+      /\bsubscribe\b/i.test(htmlContent) &&
+      !/href=[^>]*subscribe/i.test(htmlContent)
+    ) {
+      const accentLink = orgBrandColor || '#0f766e';
+      htmlContent = htmlContent.replace(
+        /(^|>|[\s(])subscribe(?=[\s.,;:!?<)&]|$)/gi,
+        `$1<a href="${subscribeUrlEarly}" style="color:${accentLink};font-weight:600;text-decoration:underline;">subscribe</a>`
+      );
+    }
+
+    const accent = orgBrandColor || '#0f766e';
+    const subscribeCtaHtml = subscribeUrlEarly
+      ? `<div style="margin:22px 0 8px 0;text-align:center;">${brandButtonHtml({
+          href: subscribeUrlEarly,
+          label: isRoleSpotlight ? 'Subscribe for role alerts' : 'Subscribe to job & career updates',
+          brandColor: orgBrandColor,
+          fullWidth: true,
+        })}</div>
+        <p style="margin:0 0 4px 0;text-align:center;font-size:12px;line-height:1.5;color:#9ca3af;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">Optional job and career updates · Change preferences anytime</p>`
+      : '';
+    const unsubscribeFooterHtml = zohoCampaignComplianceFooterHtml({
+      brandColor: accent,
+      subscribeUrl: subscribeUrlEarly,
+      isSubscribed: false,
+      orgName: orgBrand,
+    });
+    const displayTitle = isSubscribeInvite
+      ? 'Subscribe for updates'
+      : isRoleSpotlight
+        ? 'Role opportunity'
+        : isReengage
+          ? 'Stay in touch'
+          : emailSubject;
+
+    const htmlBody = wrapEmailHtml({
+      emailSubject: displayTitle,
+      htmlContent,
+      subscribeCtaHtml,
+      unsubscribeFooterHtml,
+      senderName,
+      senderEmail,
+      orgBrand,
+      companyName: orgBrand,
+      logoUrl: orgLogoUrl,
+      brandColor: orgBrandColor,
+      category: template.category,
+      eyebrow: isSubscribeInvite
+        ? 'Job alerts'
+        : isRoleSpotlight
+          ? 'Open role'
+          : isReengage
+            ? 'Stay connected'
+            : undefined,
+      publicLogo: true,
+      websiteUrl: orgWebsiteUrl,
+      supportEmail: orgSupportEmail,
+      socialLinks: orgSocialLinks,
+      companyAddress: orgCompanyAddress,
+      wordmark: orgWordmark,
+    });
+
+    try {
+      const { sendMarketingEmail } = require('./campaignService');
+      const campaignResult = await sendMarketingEmail(
+        eligible.map((r) => ({ email: r.email, name: r.name || '' })),
+        emailSubject,
+        htmlBody,
+        {
+          userId: user.id || user._id,
+          senderName,
+          fromEmail: senderEmail,
+          replyToEmail: senderEmail,
+          campaignName: template.name || 'ATS Marketing',
+          organizationId: user.organizationId,
+          listPurpose: require('./marketingListService').inferListPurpose({
+            templateName: template.name,
+            category: template.category,
+            subject: emailSubject,
+          }),
+        }
+      );
+      const failedFromProvider = Array.isArray(campaignResult?.data?.failed)
+        ? campaignResult.data.failed
+        : [];
+      const failedSet = new Set(
+        failedFromProvider.map((f) => String(f.email || '').trim().toLowerCase()).filter(Boolean)
+      );
+      for (const r of eligible) {
+        const key = String(r.email || '').trim().toLowerCase();
+        if (failedSet.has(key)) {
+          const row = failedFromProvider.find(
+            (f) => String(f.email || '').trim().toLowerCase() === key
+          );
+          results.failed.push({
+            email: r.email,
+            error: row?.error || 'Failed to send',
+            displayMessage: row?.error || row?.displayMessage || 'Failed to send',
+            reasonCode: 'provider_error',
+          });
+        } else {
+          results.success.push(r.email);
+        }
+      }
+    } catch (err) {
+      if (err.code === 'USE_VERIFIED_DOMAIN' || err.code === 'CAMPAIGNS_NOT_CONFIGURED') throw err;
+      logger.error({ err: err.message, code: err.code }, 'Marketing campaign send failed');
+      const mapped = mapSendError(err);
+      for (const r of eligible) {
+        results.failed.push({ email: r.email, ...mapped });
+      }
+    }
+
+    return {
+      message: `Sent ${results.success.length} of ${recipientList.length} emails`,
+      data: results,
+    };
+  }
+
   for (const recipient of recipientList) {
     try {
       const vars = {

@@ -80,6 +80,22 @@ export default function CandidateEmailModal(props) {
     : String(bulkEmailRecipients?.length || 0);
   const showJobTag = Array.isArray(jobs) && jobs.length > 0;
 
+  // Step 1: channel → Step 2: template vs draft → Step 3: compose
+  const [composePhase, setComposePhase] = useState(() =>
+    campaignOnly ? 'method' : 'channel'
+  );
+
+  useEffect(() => {
+    if (!(props.showEmailModal && emailRecipient)) return;
+    if (campaignOnly) {
+      setEmailChannel('marketing');
+      setEmailMode('template');
+      setComposePhase('method');
+    } else {
+      setComposePhase('channel');
+    }
+  }, [props.showEmailModal, emailRecipient?.email, campaignOnly]);
+
   useEffect(() => {
     const key = String(campaignJobId || '').trim();
     if (!key) {
@@ -149,6 +165,7 @@ export default function CandidateEmailModal(props) {
   };
 
   const canSend =
+    composePhase === 'write' &&
     !isSendingEmail &&
     !(emailMode === 'template' && !selectedTemplate) &&
     !(emailMode === 'template' && selectedTemplate && !(props.templateDraftSubject || '').trim()) &&
@@ -227,230 +244,315 @@ export default function CandidateEmailModal(props) {
         </div>
 
         <div className="overflow-y-auto overscroll-contain flex-1 min-h-0 px-4 sm:px-6 py-4 sm:py-5 space-y-5 sm:space-y-6 bg-white">
-          <section className="space-y-3">
-            <div>
-              <h3 className="text-sm font-semibold text-stone-900">Delivery channel</h3>
-              <p className="text-xs text-stone-500 mt-0.5">
-                Select the appropriate channel for this communication.
-              </p>
-            </div>
-            <div className={`grid gap-2.5 sm:gap-3 ${campaignOnly ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
-              {!campaignOnly ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setEmailChannel('transactional');
-                  setSelectedTemplate?.(null);
-                }}
-                className={`rounded-xl border px-3.5 sm:px-4 py-3 sm:py-3.5 text-left transition ${
-                  emailChannel === 'transactional' ? channelActive : channelIdle
-                }`}
-              >
-                <div className="flex items-center gap-2.5 text-stone-900">
-                  <span
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${
-                      emailChannel === 'transactional'
-                        ? 'bg-brand-600 text-white'
-                        : 'bg-stone-100 text-stone-500'
-                    }`}
-                  >
-                    <Mail size={15} />
-                  </span>
-                  <span className="text-sm font-semibold">Transactional</span>
-                </div>
-                <p className="text-xs text-stone-500 mt-2 leading-relaxed">
-                  Interviews, offers, documents, and one-to-one follow-ups
-                </p>
-              </button>
-              ) : null}
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (!channelsAvailable.marketing) return;
-                  setEmailChannel('marketing');
-                  setSelectedTemplate?.(null);
-                  setEmailMode('template');
-                }}
-                disabled={!channelsAvailable.marketing}
-                className={`rounded-xl border px-3.5 sm:px-4 py-3 sm:py-3.5 text-left transition ${
-                  emailChannel === 'marketing' ? channelActive : channelIdle
-                } ${!channelsAvailable.marketing ? 'opacity-45 cursor-not-allowed' : ''}`}
-              >
-                <div className="flex items-center gap-2.5 text-stone-900">
-                  <span
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${
-                      emailChannel === 'marketing'
-                        ? 'bg-brand-600 text-white'
-                        : 'bg-stone-100 text-stone-500'
-                    }`}
-                  >
-                    <Megaphone size={15} />
-                  </span>
-                  <span className="text-sm font-semibold">Campaign</span>
-                </div>
-                <p className="text-xs text-stone-500 mt-2 leading-relaxed">
-                  {campaignOnly
-                    ? 'Marketing templates via Zoho Campaigns · consent-checked audience'
-                    : 'Outreach, nurture sequences, and talent-pool campaigns'}
-                </p>
-                {!channelsAvailable.marketing && (
-                  <p className="text-[11px] font-medium text-stone-400 mt-2">Channel unavailable</p>
-                )}
-              </button>
-            </div>
-          </section>
-
-          {showJobTag ? (
+          {composePhase === 'channel' && !campaignOnly ? (
             <section className="space-y-3">
               <div>
-                <h3 className="text-sm font-semibold text-stone-900 inline-flex items-center gap-2">
-                  <Briefcase size={14} className="text-brand-700" />
-                  Job merge fields
-                </h3>
-                <p className="text-xs text-stone-500 mt-0.5 leading-relaxed">
-                  Populates role, Job ID, compensation, location, and apply link in this message.
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-400">
+                  Step 1 of 2
+                </p>
+                <h3 className="text-sm font-semibold text-stone-900 mt-1">Delivery channel</h3>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  Choose how this message should be delivered.
                 </p>
               </div>
-              <PremiumSelect
-                variant="list"
-                value={campaignJobId || ''}
-                onChange={(v) => setCampaignJobId?.(v || '')}
-                options={[
-                  { value: '', label: 'Do not include job details' },
-                  ...jobs.map((job) => {
-                    const code = String(job.jobCode || '').trim();
-                    const title = String(job.title || job.role || 'Untitled').trim();
-                    return {
-                      value: code || String(job._id),
-                      label: code || 'Job ID pending',
-                      description: title,
-                      searchText: `${code} ${title} ${job.location || ''}`,
-                    };
-                  }),
-                ]}
-                placeholder="Select Job ID / JNS"
-                searchable
-                searchPlaceholder="Search Job ID or title…"
-                allowClear={Boolean(campaignJobId)}
-              />
-              {campaignJobMeta?.jobTitle || campaignJobMeta?.applyUrl ? (
-                <div className="rounded-lg border border-stone-200 bg-stone-50/70 px-3 py-2.5 text-[11px] text-stone-600 leading-snug space-y-0.5">
-                  {campaignJobMeta.jobTitle ? (
-                    <p className="font-medium text-stone-800">
-                      {campaignJobMeta.jobTitle}
-                      {campaignJobMeta.jobCode ? ` · ${campaignJobMeta.jobCode}` : ''}
-                    </p>
-                  ) : null}
-                  {campaignJobMeta.jobLocation ? <p>{campaignJobMeta.jobLocation}</p> : null}
-                  {campaignJobMeta.jobCtc ? <p>CTC: {campaignJobMeta.jobCtc}</p> : null}
-                  {campaignJobMeta.applyUrl ? (
-                    <p className="break-all">Apply link: {campaignJobMeta.applyUrl}</p>
-                  ) : null}
-                </div>
-              ) : null}
+              <div className="grid gap-2.5 sm:gap-3 grid-cols-1 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmailChannel('transactional');
+                    setSelectedTemplate?.(null);
+                    setComposePhase('method');
+                  }}
+                  className={`rounded-xl border px-3.5 sm:px-4 py-3 sm:py-3.5 text-left transition ${
+                    emailChannel === 'transactional' ? channelActive : channelIdle
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 text-stone-900">
+                    <span
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${
+                        emailChannel === 'transactional'
+                          ? 'bg-brand-600 text-white'
+                          : 'bg-stone-100 text-stone-500'
+                      }`}
+                    >
+                      <Mail size={15} />
+                    </span>
+                    <span className="text-sm font-semibold">Transactional</span>
+                  </div>
+                  <p className="text-xs text-stone-500 mt-2 leading-relaxed">
+                    Interviews, offers, documents, and one-to-one follow-ups
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!channelsAvailable.marketing) return;
+                    setEmailChannel('marketing');
+                    setSelectedTemplate?.(null);
+                    setEmailMode('template');
+                    setComposePhase('method');
+                  }}
+                  disabled={!channelsAvailable.marketing}
+                  className={`rounded-xl border px-3.5 sm:px-4 py-3 sm:py-3.5 text-left transition ${
+                    emailChannel === 'marketing' ? channelActive : channelIdle
+                  } ${!channelsAvailable.marketing ? 'opacity-45 cursor-not-allowed' : ''}`}
+                >
+                  <div className="flex items-center gap-2.5 text-stone-900">
+                    <span
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${
+                        emailChannel === 'marketing'
+                          ? 'bg-brand-600 text-white'
+                          : 'bg-stone-100 text-stone-500'
+                      }`}
+                    >
+                      <Megaphone size={15} />
+                    </span>
+                    <span className="text-sm font-semibold">Campaign</span>
+                  </div>
+                  <p className="text-xs text-stone-500 mt-2 leading-relaxed">
+                    Outreach, nurture sequences, and talent-pool campaigns
+                  </p>
+                  {!channelsAvailable.marketing && (
+                    <p className="text-[11px] font-medium text-stone-400 mt-2">Channel unavailable</p>
+                  )}
+                </button>
+              </div>
             </section>
           ) : null}
 
-          <section className="space-y-4">
-            {!campaignOnly ? (
-            <div className="flex w-full p-1 rounded-lg bg-stone-100 border border-stone-200/80 gap-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setEmailMode('template');
-                  setSelectedTemplate?.(null);
-                }}
-                className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium rounded-md transition ${
-                  emailMode === 'template'
-                    ? 'bg-white text-stone-900 shadow-sm border border-stone-200/90'
-                    : 'text-stone-600 hover:text-stone-800 border border-transparent'
-                }`}
-              >
-                <FileText size={14} /> Template library
-              </button>
-              <button
-                type="button"
-                onClick={() => setEmailMode('quick')}
-                disabled={emailChannel === 'marketing'}
-                className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium rounded-md transition ${
-                  emailMode === 'quick'
-                    ? 'bg-white text-stone-900 shadow-sm border border-stone-200/90'
-                    : 'text-stone-600 hover:text-stone-800 border border-transparent'
-                } ${emailChannel === 'marketing' ? 'opacity-40 cursor-not-allowed' : ''}`}
-              >
-                <Zap size={14} /> Custom draft
-              </button>
-            </div>
-            ) : null}
+          {composePhase === 'method' ? (
+            <section className="space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-400">
+                    {campaignOnly ? 'Choose content' : 'Step 2 of 2'}
+                  </p>
+                  <h3 className="text-sm font-semibold text-stone-900 mt-1">How do you want to write it?</h3>
+                  <p className="text-xs text-stone-500 mt-0.5">
+                    {emailChannel === 'marketing'
+                      ? 'Campaigns use the template library (Zoho Campaigns, then ZeptoMail if needed).'
+                      : 'Pick a saved template or write a custom draft.'}
+                  </p>
+                </div>
+                {!campaignOnly ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedTemplate?.(null);
+                      setComposePhase('channel');
+                    }}
+                    className="text-xs font-medium text-stone-500 hover:text-stone-800 shrink-0 pt-1"
+                  >
+                    ← Channel
+                  </button>
+                ) : null}
+              </div>
+              <div className={`grid gap-2.5 sm:gap-3 ${emailChannel === 'marketing' ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmailMode('template');
+                    setSelectedTemplate?.(null);
+                    setComposePhase('write');
+                  }}
+                  className={`rounded-xl border px-3.5 sm:px-4 py-3 sm:py-3.5 text-left transition ${
+                    emailMode === 'template' ? channelActive : channelIdle
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 text-stone-900">
+                    <span
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${
+                        emailMode === 'template'
+                          ? 'bg-brand-600 text-white'
+                          : 'bg-stone-100 text-stone-500'
+                      }`}
+                    >
+                      <FileText size={15} />
+                    </span>
+                    <span className="text-sm font-semibold">Template library</span>
+                  </div>
+                  <p className="text-xs text-stone-500 mt-2 leading-relaxed">
+                    Start from an approved template, then edit subject and body
+                  </p>
+                </button>
 
-            <EmailCcBccFields
-              emailCC={emailCC}
-              setEmailCC={setEmailCC}
-              emailBCC={emailBCC}
-              setEmailBCC={setEmailBCC}
-              teamMembers={teamMembers}
-              ccInput={ccInput}
-              setCcInput={setCcInput}
-              bccInput={bccInput}
-              setBccInput={setBccInput}
-              showCCPicker={showCCPicker}
-              setShowCCPicker={setShowCCPicker}
-              showBCCPicker={showBCCPicker}
-              setShowBCCPicker={setShowBCCPicker}
-            />
-          </section>
+                {emailChannel !== 'marketing' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmailMode('quick');
+                      setSelectedTemplate?.(null);
+                      setComposePhase('write');
+                    }}
+                    className={`rounded-xl border px-3.5 sm:px-4 py-3 sm:py-3.5 text-left transition ${
+                      emailMode === 'quick' ? channelActive : channelIdle
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 text-stone-900">
+                      <span
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${
+                          emailMode === 'quick'
+                            ? 'bg-brand-600 text-white'
+                            : 'bg-stone-100 text-stone-500'
+                        }`}
+                      >
+                        <Zap size={15} />
+                      </span>
+                      <span className="text-sm font-semibold">Custom draft</span>
+                    </div>
+                    <p className="text-xs text-stone-500 mt-2 leading-relaxed">
+                      Write a one-off message without a template
+                    </p>
+                  </button>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
 
-          {emailMode === 'template' && (
-            <EmailTemplateMode
-              emailTemplates={emailTemplates}
-              templatesLoading={emailTemplatesLoading}
-              selectedTemplate={selectedTemplate}
-              selectEmailTemplate={selectEmailTemplate}
-              setSelectedTemplate={setSelectedTemplate}
-              templateVars={templateVars}
-              setTemplateVars={setTemplateVars}
-              orgName={orgMeta.name}
-              emailChannel={emailChannel}
-              templateDraftSubject={props.templateDraftSubject}
-              setTemplateDraftSubject={props.setTemplateDraftSubject}
-              templateDraftBody={props.templateDraftBody}
-              setTemplateDraftBody={props.setTemplateDraftBody}
-              templateDraftDirty={props.templateDraftDirty}
-              setTemplateDraftDirty={props.setTemplateDraftDirty}
-              isBulk={isBulk}
-            />
-          )}
+          {composePhase === 'write' ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2.5">
+                <p className="text-xs text-stone-600">
+                  <span className="font-semibold text-stone-800">
+                    {emailChannel === 'marketing' ? 'Campaign' : 'Transactional'}
+                  </span>
+                  <span className="text-stone-400 mx-1.5">·</span>
+                  {emailMode === 'template' ? 'Template library' : 'Custom draft'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTemplate?.(null);
+                    setComposePhase('method');
+                  }}
+                  className="text-xs font-medium text-brand-700 hover:text-brand-800"
+                >
+                  ← Change
+                </button>
+              </div>
 
-          {emailMode === 'quick' && (
-            <EmailQuickSendMode
-              emailType={emailType}
-              setEmailType={setEmailType}
-              emailRecipient={emailRecipient}
-              quickName={quickName}
-              setQuickName={setQuickName}
-              quickPosition={quickPosition}
-              setQuickPosition={setQuickPosition}
-              quickDepartment={quickDepartment}
-              setQuickDepartment={setQuickDepartment}
-              quickJoiningDate={quickJoiningDate}
-              setQuickJoiningDate={setQuickJoiningDate}
-              customMessage={customMessage}
-              setCustomMessage={setCustomMessage}
-              quickSubject={quickSubject}
-              setQuickSubject={setQuickSubject}
-              showQuickPreview={showQuickPreview}
-              setShowQuickPreview={setShowQuickPreview}
-              quickPreviewHtml={quickPreviewHtml}
-              setQuickPreviewHtml={setQuickPreviewHtml}
-              quickPreviewSubject={quickPreviewSubject}
-              setQuickPreviewSubject={setQuickPreviewSubject}
-              loadingPreview={loadingPreview}
-              setLoadingPreview={setLoadingPreview}
-              toast={props.toast}
-              isBulk={isBulk}
-            />
-          )}
+              {showJobTag ? (
+                <section className="space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-stone-900 inline-flex items-center gap-2">
+                      <Briefcase size={14} className="text-brand-700" />
+                      Job merge fields
+                    </h3>
+                    <p className="text-xs text-stone-500 mt-0.5 leading-relaxed">
+                      Populates role, Job ID, compensation, location, and apply link in this message.
+                    </p>
+                  </div>
+                  <PremiumSelect
+                    variant="list"
+                    value={campaignJobId || ''}
+                    onChange={(v) => setCampaignJobId?.(v || '')}
+                    options={[
+                      { value: '', label: 'Do not include job details' },
+                      ...jobs.map((job) => {
+                        const code = String(job.jobCode || '').trim();
+                        const title = String(job.title || job.role || 'Untitled').trim();
+                        return {
+                          value: code || String(job._id),
+                          label: code || 'Job ID pending',
+                          description: title,
+                          searchText: `${code} ${title} ${job.location || ''}`,
+                        };
+                      }),
+                    ]}
+                    placeholder="Select Job ID / JNS"
+                    searchable
+                    searchPlaceholder="Search Job ID or title…"
+                    allowClear={Boolean(campaignJobId)}
+                  />
+                  {campaignJobMeta?.jobTitle || campaignJobMeta?.applyUrl ? (
+                    <div className="rounded-lg border border-stone-200 bg-stone-50/70 px-3 py-2.5 text-[11px] text-stone-600 leading-snug space-y-0.5">
+                      {campaignJobMeta.jobTitle ? (
+                        <p className="font-medium text-stone-800">
+                          {campaignJobMeta.jobTitle}
+                          {campaignJobMeta.jobCode ? ` · ${campaignJobMeta.jobCode}` : ''}
+                        </p>
+                      ) : null}
+                      {campaignJobMeta.jobLocation ? <p>{campaignJobMeta.jobLocation}</p> : null}
+                      {campaignJobMeta.jobCtc ? <p>CTC: {campaignJobMeta.jobCtc}</p> : null}
+                      {campaignJobMeta.applyUrl ? (
+                        <p className="break-all">Apply link: {campaignJobMeta.applyUrl}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
+
+              <section className="space-y-4">
+                <EmailCcBccFields
+                  emailCC={emailCC}
+                  setEmailCC={setEmailCC}
+                  emailBCC={emailBCC}
+                  setEmailBCC={setEmailBCC}
+                  teamMembers={teamMembers}
+                  ccInput={ccInput}
+                  setCcInput={setCcInput}
+                  bccInput={bccInput}
+                  setBccInput={setBccInput}
+                  showCCPicker={showCCPicker}
+                  setShowCCPicker={setShowCCPicker}
+                  showBCCPicker={showBCCPicker}
+                  setShowBCCPicker={setShowBCCPicker}
+                />
+              </section>
+
+              {emailMode === 'template' && (
+                <EmailTemplateMode
+                  emailTemplates={emailTemplates}
+                  templatesLoading={emailTemplatesLoading}
+                  selectedTemplate={selectedTemplate}
+                  selectEmailTemplate={selectEmailTemplate}
+                  setSelectedTemplate={setSelectedTemplate}
+                  templateVars={templateVars}
+                  setTemplateVars={setTemplateVars}
+                  orgName={orgMeta.name}
+                  emailChannel={emailChannel}
+                  templateDraftSubject={props.templateDraftSubject}
+                  setTemplateDraftSubject={props.setTemplateDraftSubject}
+                  templateDraftBody={props.templateDraftBody}
+                  setTemplateDraftBody={props.setTemplateDraftBody}
+                  templateDraftDirty={props.templateDraftDirty}
+                  setTemplateDraftDirty={props.setTemplateDraftDirty}
+                  isBulk={isBulk}
+                />
+              )}
+
+              {emailMode === 'quick' && (
+                <EmailQuickSendMode
+                  emailType={emailType}
+                  setEmailType={setEmailType}
+                  emailRecipient={emailRecipient}
+                  quickName={quickName}
+                  setQuickName={setQuickName}
+                  quickPosition={quickPosition}
+                  setQuickPosition={setQuickPosition}
+                  quickDepartment={quickDepartment}
+                  setQuickDepartment={setQuickDepartment}
+                  quickJoiningDate={quickJoiningDate}
+                  setQuickJoiningDate={setQuickJoiningDate}
+                  customMessage={customMessage}
+                  setCustomMessage={setCustomMessage}
+                  quickSubject={quickSubject}
+                  setQuickSubject={setQuickSubject}
+                  showQuickPreview={showQuickPreview}
+                  setShowQuickPreview={setShowQuickPreview}
+                  quickPreviewHtml={quickPreviewHtml}
+                  setQuickPreviewHtml={setQuickPreviewHtml}
+                  quickPreviewSubject={quickPreviewSubject}
+                  setQuickPreviewSubject={setQuickPreviewSubject}
+                  loadingPreview={loadingPreview}
+                  setLoadingPreview={setLoadingPreview}
+                  toast={props.toast}
+                  isBulk={isBulk}
+                />
+              )}
+            </>
+          ) : null}
         </div>
 
         <div className="px-4 sm:px-6 py-3 sm:py-3.5 border-t border-stone-200/80 flex flex-col gap-2.5 sm:flex-row sm:items-center flex-shrink-0 bg-stone-50/90 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
@@ -460,7 +562,13 @@ export default function CandidateEmailModal(props) {
                 emailChannel === 'marketing' ? 'bg-brand-600' : 'bg-stone-400'
               }`}
             />
-            {emailChannel === 'marketing' ? 'Campaign channel' : 'Transactional channel'}
+            {composePhase === 'channel'
+              ? 'Select a delivery channel'
+              : composePhase === 'method'
+                ? 'Select template or custom draft'
+                : emailChannel === 'marketing'
+                  ? 'Campaign channel'
+                  : 'Transactional channel'}
           </p>
           <div className="flex gap-2 w-full sm:w-auto order-1 sm:order-2">
             <button
@@ -471,24 +579,26 @@ export default function CandidateEmailModal(props) {
             >
               Cancel
             </button>
-            <button
-              type="button"
-              onClick={emailMode === 'template' ? sendTemplateEmail : sendSingleEmail}
-              disabled={!canSend}
-              className="btn-primary flex-1 sm:flex-none justify-center min-w-0 sm:min-w-[9rem] disabled:opacity-50"
-            >
-              {isSendingEmail ? (
-                <>
-                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
-                  Sending…
-                </>
-              ) : (
-                <>
-                  <Mail size={15} />
-                  {isBulk ? `Send to ${sendLabel}` : 'Send message'}
-                </>
-              )}
-            </button>
+            {composePhase === 'write' ? (
+              <button
+                type="button"
+                onClick={emailMode === 'template' ? sendTemplateEmail : sendSingleEmail}
+                disabled={!canSend}
+                className="btn-primary flex-1 sm:flex-none justify-center min-w-0 sm:min-w-[9rem] disabled:opacity-50"
+              >
+                {isSendingEmail ? (
+                  <>
+                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                    Sending…
+                  </>
+                ) : (
+                  <>
+                    <Mail size={15} />
+                    {isBulk ? `Send to ${sendLabel}` : 'Send message'}
+                  </>
+                )}
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

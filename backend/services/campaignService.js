@@ -782,7 +782,7 @@ const countListContacts = async (listkey, status = 'active', settings = null) =>
 const countActiveContacts = async (listkey, settings = null) =>
   countListContacts(listkey, 'active', settings);
 
-const waitForActiveContacts = async (listkey, minCount, timeoutMs = 45000, settings = null) => {
+const waitForActiveContacts = async (listkey, minCount, timeoutMs = 12000, settings = null) => {
   const started = Date.now();
   let last = 0;
   while (Date.now() - started < timeoutMs) {
@@ -795,7 +795,7 @@ const waitForActiveContacts = async (listkey, minCount, timeoutMs = 45000, setti
     } catch (err) {
       logger.warn({ err: err.message }, '[Campaigns] getlistsubscribers poll failed');
     }
-    await sleep(2500);
+    await sleep(1500);
   }
   return last;
 };
@@ -863,19 +863,28 @@ const createTempListWithContacts = async (emails, listName, settings = null) => 
   }
 
   let pendingConfirmCount = 0;
-  for (const email of unique) {
-    try {
-      const sub = await addContact(listkey, email, '', '', topicId, settings);
-      if (sub?.pendingConfirm) pendingConfirmCount += 1;
-    } catch (err) {
-      logger.warn({ email, err: err.message }, '[Campaigns] temp listsubscribe failed');
-    }
+  // Re-subscribe in parallel (topics) — sequential calls made every campaign send take tens of seconds.
+  const SUB_CONCURRENCY = 8;
+  for (let i = 0; i < unique.length; i += SUB_CONCURRENCY) {
+    const slice = unique.slice(i, i + SUB_CONCURRENCY);
+    const outcomes = await Promise.all(
+      slice.map(async (email) => {
+        try {
+          const sub = await addContact(listkey, email, '', '', topicId, settings);
+          return sub?.pendingConfirm ? 1 : 0;
+        } catch (err) {
+          logger.warn({ email, err: err.message }, '[Campaigns] temp listsubscribe failed');
+          return 0;
+        }
+      })
+    );
+    pendingConfirmCount += outcomes.reduce((a, b) => a + b, 0);
   }
 
-  const active = await waitForActiveContacts(listkey, 1, 45000, settings);
+  // Short poll only — createCampaign falls back to ZeptoMail on empty-list (6606).
+  // Waiting 45s here was the main reason the UI timed out while mail still arrived later.
+  const active = await waitForActiveContacts(listkey, 1, 12000, settings);
   if (active < 1) {
-    // Don't hard-fail here — getlistsubscribers is often slow/wrong while createCampaign
-    // still works (especially with Double opt-in off). Caller falls back to Zepto on 6606.
     logger.warn(
       {
         listkeyPrefix: listkey.slice(0, 10),
