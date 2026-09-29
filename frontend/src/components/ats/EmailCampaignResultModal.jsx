@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   CheckCircle2,
   XCircle,
@@ -71,7 +72,7 @@ export default function EmailCampaignResultModal({
   }, [result]);
 
   // Prefer Failed tab when there are failures; otherwise Accepted
-  React.useEffect(() => {
+  useEffect(() => {
     if (!report) return;
     setListTab(report.failed > 0 ? 'failed' : 'accepted');
     setActiveReason('all');
@@ -154,8 +155,8 @@ export default function EmailCampaignResultModal({
       })
     : null;
 
-  return (
-    <div className="fixed inset-0 z-[280] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/45 backdrop-blur-[2px]">
+  const modal = (
+    <div className="fixed inset-0 z-[400] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/50 backdrop-blur-[2px]">
       <div
         className="absolute inset-0"
         onClick={onClose}
@@ -163,7 +164,7 @@ export default function EmailCampaignResultModal({
         role="presentation"
       />
       <div
-        className="relative w-full sm:max-w-2xl max-h-[94vh] sm:max-h-[90vh] overflow-hidden rounded-t-2xl sm:rounded-2xl border border-stone-200/90 bg-white shadow-[0_28px_80px_-24px_rgba(28,25,23,0.45)] animate-page-enter flex flex-col"
+        className="relative w-full sm:max-w-2xl h-[100dvh] sm:h-auto sm:max-h-[90vh] overflow-hidden rounded-none sm:rounded-2xl border-0 sm:border border-stone-200/90 bg-white shadow-none sm:shadow-[0_28px_80px_-24px_rgba(28,25,23,0.45)] animate-page-enter flex flex-col"
         role="dialog"
         aria-modal="true"
         aria-labelledby="email-campaign-result-title"
@@ -417,7 +418,7 @@ export default function EmailCampaignResultModal({
           )}
         </div>
 
-        <div className="flex flex-col-reverse sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-end gap-2 border-t border-stone-100 bg-stone-50/70 px-4 sm:px-6 py-3 sm:py-3.5 flex-shrink-0 safe-pb">
+        <div className="flex flex-col-reverse sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-end gap-2 border-t border-stone-100 bg-stone-50/70 px-4 sm:px-6 py-3 sm:py-3.5 flex-shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {onViewReports && (
             <button type="button" className="btn-secondary w-full sm:w-auto justify-center" onClick={onViewReports}>
               Open Email Reports
@@ -430,6 +431,9 @@ export default function EmailCampaignResultModal({
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return modal;
+  return createPortal(modal, document.body);
 }
 
 function StatCard({ label, value, tone = 'stone', hint }) {

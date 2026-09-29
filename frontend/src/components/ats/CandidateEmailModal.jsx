@@ -21,24 +21,24 @@ function OrgBrandMark({ name, logo }) {
   const showImg = Boolean(src) && !broken;
 
   return (
-    <div className="flex items-center gap-3 min-w-0">
+    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
       {showImg ? (
         <img
           src={src}
           alt=""
           onError={() => setBroken(true)}
-          className="h-10 w-10 rounded-lg object-contain bg-white border border-stone-200/80 shadow-sm flex-shrink-0"
+          className="h-9 w-9 sm:h-10 sm:w-10 rounded-lg object-contain bg-white border border-stone-200/80 shadow-sm flex-shrink-0"
         />
       ) : (
-        <span className="h-10 w-10 rounded-lg bg-stone-900 text-white border border-stone-800 shadow-sm flex items-center justify-center text-[11px] font-semibold tracking-wide flex-shrink-0">
+        <span className="h-9 w-9 sm:h-10 sm:w-10 rounded-lg bg-stone-900 text-white border border-stone-800 shadow-sm flex items-center justify-center text-[11px] font-semibold tracking-wide flex-shrink-0">
           {orgInitials(name)}
         </span>
       )}
       <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-500">
           Sender organization
         </p>
-        <h2 className="text-[16px] sm:text-[17px] font-semibold text-stone-900 tracking-tight leading-snug truncate">
+        <h2 className="text-[15px] sm:text-[17px] font-semibold text-stone-900 tracking-tight leading-snug truncate">
           {name || 'Organization'}
         </h2>
       </div>
@@ -156,6 +156,10 @@ export default function CandidateEmailModal(props) {
     !(emailMode === 'quick' && !(quickSubject || '').trim()) &&
     !(emailMode === 'quick' && !customMessage.trim());
 
+  const recipientCount = usingAudience
+    ? audienceCount
+    : (isBulk ? (bulkEmailRecipients?.length || 0) : 1);
+
   const toLine = usingAudience
     ? (audienceCount > 0 ? `All ${audienceCount.toLocaleString()} matching contacts` : 'Everyone matching this search')
     : (isBulk
@@ -167,12 +171,16 @@ export default function CandidateEmailModal(props) {
   const channelIdle = 'border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50/80';
 
   return (
-    <div className="fixed inset-0 bg-stone-950/45 backdrop-blur-[2px] flex items-center justify-center z-50 p-3 sm:p-4 animate-fade-in">
-      <div className="bg-white rounded-2xl border border-stone-200/80 w-full max-w-3xl max-h-[90vh] shadow-[0_28px_80px_-24px_rgba(28,25,23,0.42)] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-[260] bg-stone-950/45 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
+      <div
+        className="bg-white w-full sm:max-w-3xl h-[100dvh] sm:h-auto sm:max-h-[90vh] rounded-none sm:rounded-2xl border-0 sm:border border-stone-200/80 shadow-none sm:shadow-[0_28px_80px_-24px_rgba(28,25,23,0.42)] flex flex-col overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="relative flex-shrink-0 border-b border-stone-200/80">
           <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-brand-700 via-teal-500 to-brand-600" aria-hidden />
-          <div className="px-5 sm:px-6 pt-5 pb-4 bg-gradient-to-b from-stone-50/90 to-white">
-            <div className="flex items-start justify-between gap-3">
+          <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 bg-gradient-to-b from-stone-50/90 to-white">
+            <div className="flex items-start justify-between gap-2">
               <OrgBrandMark name={orgMeta.name} logo={orgMeta.logo} />
               <button
                 type="button"
@@ -184,35 +192,41 @@ export default function CandidateEmailModal(props) {
               </button>
             </div>
 
-            <div className="mt-4 sm:pl-[3.25rem]">
+            <div className="mt-3 sm:mt-4 sm:pl-[3.25rem]">
               <h3 className="text-[15px] sm:text-base font-semibold text-stone-900 tracking-tight">
                 {isBulk
                   ? `Compose ${campaignOnly ? 'campaign' : 'message'} · ${sendLabel} ${recipientNoun}`
                   : (campaignOnly ? 'Compose campaign message' : 'Compose message')}
               </h3>
-              <p className="text-sm text-stone-600 mt-1.5 truncate" title={toLine}>
+              <p className="text-sm text-stone-600 mt-1.5 line-clamp-2 sm:truncate" title={toLine}>
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-400 mr-1.5">To</span>
-                <span className="font-medium text-stone-800">{toLine}</span>
+                <span className="font-medium text-stone-800">
+                  {isBulk && recipientCount > 3
+                    ? `${recipientCount.toLocaleString()} recipients`
+                    : toLine}
+                </span>
               </p>
+              {isBulk && recipientCount > 3 ? (
+                <p className="text-[11px] text-stone-400 mt-0.5 line-clamp-1" title={toLine}>
+                  {toLine}
+                </p>
+              ) : null}
               {usingAudience ? (
                 <p className="text-xs text-stone-500 mt-1.5 leading-relaxed">
-                  The full matching list is delivered in one action. Contacts without an email address are skipped automatically.
+                  Full matching list is delivered in one action. Contacts without email are skipped.
                 </p>
               ) : null}
               {emailSenderInfo?.fromEmail && (
                 <p className="text-xs text-stone-500 mt-1 truncate">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-400 mr-1.5">From</span>
                   {emailSenderInfo.displayName || 'Recruiter'} · {emailSenderInfo.fromEmail}
-                  {emailSenderInfo.replyTo && !emailSenderInfo.sendAsUser
-                    ? ` · Replies to ${emailSenderInfo.replyTo}`
-                    : ''}
                 </p>
               )}
             </div>
           </div>
         </div>
 
-        <div className="overflow-y-auto flex-1 min-h-0 px-5 sm:px-6 py-5 space-y-6 bg-white">
+        <div className="overflow-y-auto overscroll-contain flex-1 min-h-0 px-4 sm:px-6 py-4 sm:py-5 space-y-5 sm:space-y-6 bg-white">
           <section className="space-y-3">
             <div>
               <h3 className="text-sm font-semibold text-stone-900">Delivery channel</h3>
@@ -220,7 +234,7 @@ export default function CandidateEmailModal(props) {
                 Select the appropriate channel for this communication.
               </p>
             </div>
-            <div className={`grid gap-3 ${campaignOnly ? 'grid-cols-1' : 'grid-cols-2'}`}>
+            <div className={`grid gap-2.5 sm:gap-3 ${campaignOnly ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
               {!campaignOnly ? (
               <button
                 type="button"
@@ -228,13 +242,13 @@ export default function CandidateEmailModal(props) {
                   setEmailChannel('transactional');
                   setSelectedTemplate?.(null);
                 }}
-                className={`rounded-xl border px-4 py-3.5 text-left transition ${
+                className={`rounded-xl border px-3.5 sm:px-4 py-3 sm:py-3.5 text-left transition ${
                   emailChannel === 'transactional' ? channelActive : channelIdle
                 }`}
               >
                 <div className="flex items-center gap-2.5 text-stone-900">
                   <span
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${
                       emailChannel === 'transactional'
                         ? 'bg-brand-600 text-white'
                         : 'bg-stone-100 text-stone-500'
@@ -244,7 +258,7 @@ export default function CandidateEmailModal(props) {
                   </span>
                   <span className="text-sm font-semibold">Transactional</span>
                 </div>
-                <p className="text-xs text-stone-500 mt-2.5 leading-relaxed">
+                <p className="text-xs text-stone-500 mt-2 leading-relaxed">
                   Interviews, offers, documents, and one-to-one follow-ups
                 </p>
               </button>
@@ -259,13 +273,13 @@ export default function CandidateEmailModal(props) {
                   setEmailMode('template');
                 }}
                 disabled={!channelsAvailable.marketing}
-                className={`rounded-xl border px-4 py-3.5 text-left transition ${
+                className={`rounded-xl border px-3.5 sm:px-4 py-3 sm:py-3.5 text-left transition ${
                   emailChannel === 'marketing' ? channelActive : channelIdle
                 } ${!channelsAvailable.marketing ? 'opacity-45 cursor-not-allowed' : ''}`}
               >
                 <div className="flex items-center gap-2.5 text-stone-900">
                   <span
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${
                       emailChannel === 'marketing'
                         ? 'bg-brand-600 text-white'
                         : 'bg-stone-100 text-stone-500'
@@ -275,7 +289,7 @@ export default function CandidateEmailModal(props) {
                   </span>
                   <span className="text-sm font-semibold">Campaign</span>
                 </div>
-                <p className="text-xs text-stone-500 mt-2.5 leading-relaxed">
+                <p className="text-xs text-stone-500 mt-2 leading-relaxed">
                   {campaignOnly
                     ? 'Marketing templates via Zoho Campaigns · consent-checked audience'
                     : 'Outreach, nurture sequences, and talent-pool campaigns'}
@@ -296,7 +310,6 @@ export default function CandidateEmailModal(props) {
                 </h3>
                 <p className="text-xs text-stone-500 mt-0.5 leading-relaxed">
                   Populates role, Job ID, compensation, location, and apply link in this message.
-                  Recipients are not added to the job unless they apply or you assign them.
                 </p>
               </div>
               <PremiumSelect
@@ -331,7 +344,6 @@ export default function CandidateEmailModal(props) {
                   ) : null}
                   {campaignJobMeta.jobLocation ? <p>{campaignJobMeta.jobLocation}</p> : null}
                   {campaignJobMeta.jobCtc ? <p>CTC: {campaignJobMeta.jobCtc}</p> : null}
-                  {campaignJobMeta.jobClient ? <p>{campaignJobMeta.jobClient}</p> : null}
                   {campaignJobMeta.applyUrl ? (
                     <p className="break-all">Apply link: {campaignJobMeta.applyUrl}</p>
                   ) : null}
@@ -342,14 +354,14 @@ export default function CandidateEmailModal(props) {
 
           <section className="space-y-4">
             {!campaignOnly ? (
-            <div className="inline-flex flex-wrap items-center gap-1 p-1 rounded-lg bg-stone-100 border border-stone-200/80">
+            <div className="flex w-full p-1 rounded-lg bg-stone-100 border border-stone-200/80 gap-1">
               <button
                 type="button"
                 onClick={() => {
                   setEmailMode('template');
                   setSelectedTemplate?.(null);
                 }}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-md transition ${
+                className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium rounded-md transition ${
                   emailMode === 'template'
                     ? 'bg-white text-stone-900 shadow-sm border border-stone-200/90'
                     : 'text-stone-600 hover:text-stone-800 border border-transparent'
@@ -361,7 +373,7 @@ export default function CandidateEmailModal(props) {
                 type="button"
                 onClick={() => setEmailMode('quick')}
                 disabled={emailChannel === 'marketing'}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-md transition ${
+                className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium rounded-md transition ${
                   emailMode === 'quick'
                     ? 'bg-white text-stone-900 shadow-sm border border-stone-200/90'
                     : 'text-stone-600 hover:text-stone-800 border border-transparent'
@@ -441,8 +453,8 @@ export default function CandidateEmailModal(props) {
           )}
         </div>
 
-        <div className="px-5 sm:px-6 py-3.5 border-t border-stone-200/80 flex flex-col-reverse sm:flex-row sm:items-center gap-3 flex-shrink-0 bg-stone-50/80">
-          <p className="text-xs text-stone-500 sm:mr-auto inline-flex items-center gap-1.5">
+        <div className="px-4 sm:px-6 py-3 sm:py-3.5 border-t border-stone-200/80 flex flex-col gap-2.5 sm:flex-row sm:items-center flex-shrink-0 bg-stone-50/90 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <p className="text-xs text-stone-500 sm:mr-auto inline-flex items-center gap-1.5 order-2 sm:order-1 justify-center sm:justify-start">
             <span
               className={`h-1.5 w-1.5 rounded-full ${
                 emailChannel === 'marketing' ? 'bg-brand-600' : 'bg-stone-400'
@@ -450,7 +462,7 @@ export default function CandidateEmailModal(props) {
             />
             {emailChannel === 'marketing' ? 'Campaign channel' : 'Transactional channel'}
           </p>
-          <div className="flex gap-2">
+          <div className="flex gap-2 w-full sm:w-auto order-1 sm:order-2">
             <button
               type="button"
               onClick={closeModal}
@@ -463,7 +475,7 @@ export default function CandidateEmailModal(props) {
               type="button"
               onClick={emailMode === 'template' ? sendTemplateEmail : sendSingleEmail}
               disabled={!canSend}
-              className="btn-primary flex-1 sm:flex-none justify-center min-w-[9rem] disabled:opacity-50"
+              className="btn-primary flex-1 sm:flex-none justify-center min-w-0 sm:min-w-[9rem] disabled:opacity-50"
             >
               {isSendingEmail ? (
                 <>

@@ -13,6 +13,7 @@ import { blockTableExfil } from '../../utils/tableCopyGuard';
 import { WhatsAppIcon } from '../icons/BrandIcons';
 import { useCandidateEmail } from '../ats/hooks/useCandidateEmail';
 import CandidateEmailModal from '../ats/CandidateEmailModal';
+import EmailCampaignResultModal from '../ats/EmailCampaignResultModal';
 import ConfirmationModal from '../ConfirmationModal';
 import { careersApplyUrl, withJobApplyFooter } from '../../utils/careersApplyUrl';
 import { veiledEmployer, jobEmailSummary, cleanApplyUrl } from '../../utils/employerVeil';
@@ -1116,6 +1117,21 @@ export default function TalentMatchDesk({
         setCampaignJobId={email.setCampaignJobId}
         campaignJobMeta={email.campaignJobMeta}
         setCampaignJobMeta={email.setCampaignJobMeta}
+        toast={toast}
+      />
+
+      <EmailCampaignResultModal
+        open={Boolean(email.showEmailCampaignResult)}
+        result={email.emailCampaignResult}
+        onClose={() => {
+          email.setShowEmailCampaignResult?.(false);
+          email.setEmailCampaignResult?.(null);
+        }}
+        onViewReports={() => {
+          email.setShowEmailCampaignResult?.(false);
+          email.setEmailCampaignResult?.(null);
+          navigate('/email-reports');
+        }}
       />
 
       <ConfirmationModal

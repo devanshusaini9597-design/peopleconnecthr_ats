@@ -200,9 +200,31 @@ export function formatSendOutcomeToast({ sent = 0, failed = 0, skipped = 0, chan
   };
 }
 
-export function showSendOutcomeToast(toast, outcome) {
+export function showSendOutcomeToast(toastApi, outcome) {
   const { type, message, duration } = formatSendOutcomeToast(outcome);
-  if (type === 'success') toast.success(message, duration);
-  else if (type === 'warning') toast.warning(message, duration);
-  else toast.error(message, duration);
+  try {
+    const api = toastApi && typeof toastApi === 'object' ? toastApi : null;
+    if (type === 'success' && typeof api?.success === 'function') {
+      api.success(message, duration);
+      return;
+    }
+    if (type === 'warning' && typeof api?.warning === 'function') {
+      api.warning(message, duration);
+      return;
+    }
+    if (type === 'error' && typeof api?.error === 'function') {
+      api.error(message, duration);
+      return;
+    }
+    // Fallbacks so mixed results never go silent
+    if (typeof api?.info === 'function') {
+      api.info(message, duration);
+      return;
+    }
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert(message);
+    }
+  } catch (err) {
+    console.warn('[emailSendReport] toast failed:', err?.message || err, message);
+  }
 }
