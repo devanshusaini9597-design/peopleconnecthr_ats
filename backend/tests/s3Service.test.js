@@ -16,6 +16,7 @@ describe('s3Service path helpers', () => {
     expect(kindFromKey('/uploads/logos/org-logo-1.png')).toBe('logo');
     expect(kindFromKey('profiles/profile-2.jpg')).toBe('profile');
     expect(kindFromKey('resumes/file.pdf')).toBe('resume');
+    expect(kindFromKey('mail-archive/org/sent/2026/09/a.html')).toBe('email');
     expect(kindFromKey('org-logo-legacy.png')).toBe('logo');
     expect(kindFromKey('profile-legacy.jpg')).toBe('profile');
     expect(kindFromKey('')).toBeNull();

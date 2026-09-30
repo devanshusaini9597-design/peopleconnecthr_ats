@@ -142,6 +142,18 @@ async function getInboxStats(organizationId, user, query = {}) {
   const replyRate = outbound > 0 ? Math.round((inbound / outbound) * 100) : 0;
   const unreadThreads = unreadAgg[0]?.threads || 0;
 
+  let sent = 0;
+  try {
+    const EmailSendLog = require('../models/EmailSendLog');
+    const sentFilter = { organizationId };
+    if (!wantAll) {
+      sentFilter.sentByUserId = user.id || user._id;
+    }
+    sent = await EmailSendLog.countDocuments(sentFilter);
+  } catch (_) {
+    sent = outbound;
+  }
+
   return {
     totalThreads: inbox,
     unreadCount: unreadAgg[0]?.unread || 0,
@@ -155,6 +167,7 @@ async function getInboxStats(organizationId, user, query = {}) {
       snoozed,
       drafts,
       archived,
+      sent,
     },
   };
 }
@@ -170,7 +183,12 @@ function ownerClause(user) {
 }
 
 async function listThreads(organizationId, query, user) {
-  const { q = '', archived = 'false', channel, assigned, starred, unread, snoozed, drafts } = query;
+  const { q = '', archived = 'false', channel, assigned, starred, unread, snoozed, drafts, sent } = query;
+
+  if (sent === 'true') {
+    return listSentArchive(organizationId, query, user);
+  }
+
   const and = [
     {
       organizationId,
@@ -214,6 +232,76 @@ async function listThreads(organizationId, query, user) {
   return groupInboxConversations(rows);
 }
 
+function sendLogThreadId(id) {
+  return `sendlog:${String(id)}`;
+}
+
+function parseSendLogThreadId(threadId) {
+  const raw = String(threadId || '');
+  if (!raw.startsWith('sendlog:')) return null;
+  return raw.slice('sendlog:'.length);
+}
+
+async function listSentArchive(organizationId, query, user) {
+  const EmailSendLog = require('../models/EmailSendLog');
+  const { q = '', assigned } = query;
+  const filter = { organizationId };
+  const wantAll = assigned === 'all' && canManageSharedMailbox(user);
+  if (!wantAll) {
+    filter.sentByUserId = user.id || user._id;
+  }
+  if (String(q || '').trim()) {
+    const re = { $regex: String(q).trim(), $options: 'i' };
+    filter.$or = [
+      { subject: re },
+      { fromEmail: re },
+      { campaignName: re },
+      { 'recipients.email': re },
+      { 'recipients.name': re },
+    ];
+  }
+  const logs = await EmailSendLog.find(filter)
+    .sort({ sentAt: -1 })
+    .limit(200)
+    .select('subject fromEmail replyToEmail recipients sentAt channel provider campaignName emailType archiveKey htmlBody sentByUserId status totals')
+    .lean();
+
+  return logs.map((doc) => {
+    const first = (doc.recipients || [])[0] || {};
+    const more = Math.max(0, (doc.recipients || []).length - 1);
+    const toLabel = first.email
+      ? (more ? `${first.email} +${more}` : first.email)
+      : 'Recipients';
+    const preview = String(doc.htmlBody || '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 160);
+    return {
+      _id: sendLogThreadId(doc._id),
+      organizationId,
+      subject: doc.subject || '(no subject)',
+      channel: 'email',
+      participants: {
+        candidateName: first.name || toLabel,
+        candidateEmail: first.email || '',
+      },
+      unreadCount: 0,
+      lastMessageAt: doc.sentAt || doc.createdAt,
+      lastMessagePreview: preview || `${doc.channel || 'email'} · ${doc.provider || 'sent'}`,
+      lastDirection: 'outbound',
+      source: 'archive',
+      archived: false,
+      isDraft: false,
+      sendLogId: String(doc._id),
+      archiveKey: doc.archiveKey || '',
+      assignedTo: doc.sentByUserId || null,
+      assignedEmail: '',
+      assignedName: '',
+    };
+  });
+}
+
 async function siblingThreads(organizationId, thread, user) {
   const email = String(thread.participants?.candidateEmail || '').trim().toLowerCase();
   if (!email) return [thread];
@@ -227,7 +315,94 @@ async function siblingThreads(organizationId, thread, user) {
   return siblings.length ? siblings : [thread];
 }
 
+async function hydrateMessageBodies(messages) {
+  const list = Array.isArray(messages) ? [...messages] : [];
+  let resolveHtmlBody;
+  try {
+    ({ resolveHtmlBody } = require('./emailArchiveService'));
+  } catch {
+    return list;
+  }
+  for (const m of list) {
+    if (!m?.archiveKey) continue;
+    const short = String(m.bodyHtml || '').length < 800;
+    if (!short && String(m.bodyHtml || '').length > 2000) continue;
+    try {
+      const html = await resolveHtmlBody({ archiveKey: m.archiveKey, htmlBody: m.bodyHtml });
+      if (html) m.bodyHtml = html;
+    } catch {
+      /* keep mongo clip */
+    }
+  }
+  return list;
+}
+
+async function getSentArchiveThread(organizationId, sendLogId, user) {
+  const EmailSendLog = require('../models/EmailSendLog');
+  const doc = await EmailSendLog.findOne({ _id: sendLogId, organizationId }).lean();
+  if (!doc) throw httpError('Thread not found', 404);
+  const wantAll = canManageSharedMailbox(user);
+  if (!wantAll && String(doc.sentByUserId || '') !== String(user.id || user._id || '')) {
+    throw httpError('Thread not found', 404);
+  }
+
+  let html = doc.htmlBody || '';
+  try {
+    const { resolveHtmlBody } = require('./emailArchiveService');
+    html = await resolveHtmlBody({ archiveKey: doc.archiveKey, htmlBody: doc.htmlBody });
+  } catch {
+    /* use clip */
+  }
+
+  const recipients = doc.recipients || [];
+  const first = recipients[0] || {};
+  const toLine = recipients.map((r) => r.email).filter(Boolean).join(', ');
+  const thread = {
+    _id: sendLogThreadId(doc._id),
+    organizationId,
+    subject: doc.subject || '(no subject)',
+    channel: 'email',
+    participants: {
+      candidateName: first.name || first.email || 'Recipient',
+      candidateEmail: first.email || '',
+    },
+    unreadCount: 0,
+    lastMessageAt: doc.sentAt,
+    lastMessagePreview: '',
+    lastDirection: 'outbound',
+    source: 'archive',
+    archived: false,
+    sendLogId: String(doc._id),
+    fromLabel: 'me',
+    conversationIds: [sendLogThreadId(doc._id)],
+  };
+  const message = {
+    _id: `sendmsg:${doc._id}`,
+    organizationId,
+    threadId: thread._id,
+    channel: 'email',
+    direction: 'outbound',
+    fromName: doc.fromEmail || 'ATS',
+    fromAddress: doc.fromEmail || '',
+    toAddress: toLine,
+    subject: doc.subject || '',
+    body: doc.textBody || '',
+    bodyHtml: html || '',
+    status: doc.status || 'sent',
+    isRead: true,
+    sentAt: doc.sentAt,
+    archiveKey: doc.archiveKey || '',
+    sentBy: doc.sentByUserId || null,
+  };
+  return { thread, messages: [message], readOnly: true };
+}
+
 async function getThread(organizationId, threadId, user) {
+  const sendLogId = parseSendLogThreadId(threadId);
+  if (sendLogId) {
+    return getSentArchiveThread(organizationId, sendLogId, user);
+  }
+
   const thread = await MessageThread.findOne({ _id: threadId, organizationId }).lean();
   if (!thread) throw httpError('Thread not found', 404);
   if (user && !canViewThread(thread, user)) throw httpError('Thread not found', 404);
@@ -241,7 +416,8 @@ async function getThread(organizationId, threadId, user) {
     .sort({ sentAt: 1 })
     .lean();
 
-  const hydrated = await hydrateSentOriginal(organizationId, thread, messages, user);
+  let hydrated = await hydrateSentOriginal(organizationId, thread, messages, user);
+  hydrated = await hydrateMessageBodies(hydrated);
 
   const latest = siblings[siblings.length - 1] || thread;
   const unreadCount = siblings.reduce((n, t) => n + Number(t.unreadCount || 0), 0);
@@ -282,8 +458,11 @@ async function hydrateSentOriginal(organizationId, thread, messages, user) {
   }
   const logs = await EmailSendLog.find({
     organizationId,
-    htmlBody: { $exists: true, $nin: [null, ''] },
     'recipients.email': email,
+    $or: [
+      { archiveKey: { $exists: true, $nin: [null, ''] } },
+      { htmlBody: { $exists: true, $nin: [null, ''] } },
+    ],
   })
     .sort({ createdAt: -1 })
     .limit(12)
@@ -291,12 +470,33 @@ async function hydrateSentOriginal(organizationId, thread, messages, user) {
   if (!logs.length) return list;
   const root = conversationRootSubject(thread.subject).toLowerCase();
   const log = logs.find((l) => conversationRootSubject(l.subject).toLowerCase() === root) || logs[0];
-  if (!log?.htmlBody) return list;
+  let html = log?.htmlBody || '';
+  if (log?.archiveKey) {
+    try {
+      const { getArchivedHtml } = require('./emailArchiveService');
+      const fromS3 = await getArchivedHtml(log.archiveKey);
+      if (fromS3) html = fromS3;
+    } catch {
+      /* keep clip */
+    }
+  }
+  if (!html) return list;
 
   const emptyOutbound = list.find((m) => m.direction === 'outbound' && String(m.bodyHtml || '').length < 600);
   if (emptyOutbound) {
-    await Message.updateOne({ _id: emptyOutbound._id, organizationId }, { $set: { bodyHtml: log.htmlBody } });
-    emptyOutbound.bodyHtml = log.htmlBody;
+    await Message.updateOne(
+      { _id: emptyOutbound._id, organizationId },
+      {
+        $set: {
+          bodyHtml: html.slice(0, 48_000),
+          ...(log.archiveKey
+            ? { archiveKey: log.archiveKey, archiveMetaKey: log.archiveMetaKey || '' }
+            : {}),
+        },
+      }
+    );
+    emptyOutbound.bodyHtml = html;
+    if (log.archiveKey) emptyOutbound.archiveKey = log.archiveKey;
     return list;
   }
   if (list.some((m) => m.direction === 'outbound')) return list;
@@ -312,7 +512,9 @@ async function hydrateSentOriginal(organizationId, thread, messages, user) {
     toAddress: email,
     subject: log.subject || thread.subject,
     body: log.textBody || log.subject || '',
-    bodyHtml: log.htmlBody,
+    bodyHtml: html.slice(0, 48_000),
+    archiveKey: log.archiveKey || '',
+    archiveMetaKey: log.archiveMetaKey || '',
     status: 'sent',
     isRead: true,
     sentBy: user?.id || user?._id || log.sentByUserId || null,

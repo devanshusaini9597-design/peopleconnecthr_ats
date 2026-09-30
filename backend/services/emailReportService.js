@@ -262,9 +262,11 @@ function recomputeTotals(doc) {
   return doc;
 }
 
-/** Cap stored bodies so ledger docs stay lean (preview still useful). */
-const MAX_HTML_BODY = 450_000;
-const MAX_TEXT_BODY = 50_000;
+/** Cap Mongo bodies; full HTML lives on S3 mail-archive when configured. */
+const MAX_HTML_BODY = 48_000;
+const MAX_TEXT_BODY = 8_000;
+/** Allow larger remote preview fetches before clipping into Mongo. */
+const MAX_PREVIEW_FETCH = 450_000;
 
 function clipBody(value, max) {
   const s = value == null ? '' : String(value);
@@ -291,6 +293,9 @@ async function recordEmailSend(payload = {}) {
 
     if (!recipients.length && !payload.campaignKey) return null;
 
+    const fullHtml = payload.htmlBody || payload.html || '';
+    const fullText = payload.textBody || payload.text || '';
+
     const doc = new EmailSendLog({
       organizationId: payload.organizationId || null,
       sentByUserId: payload.userId || null,
@@ -298,8 +303,8 @@ async function recordEmailSend(payload = {}) {
       provider: payload.provider || 'unknown',
       emailType: payload.emailType || '',
       subject: payload.subject || '',
-      htmlBody: clipBody(payload.htmlBody || payload.html || '', MAX_HTML_BODY),
-      textBody: clipBody(payload.textBody || payload.text || '', MAX_TEXT_BODY),
+      htmlBody: clipBody(fullHtml, MAX_HTML_BODY),
+      textBody: clipBody(fullText, MAX_TEXT_BODY),
       fromEmail: payload.fromEmail || '',
       replyToEmail: payload.replyToEmail || '',
       campaignName: payload.campaignName || '',
@@ -316,6 +321,37 @@ async function recordEmailSend(payload = {}) {
     });
     recomputeTotals(doc);
     await doc.save();
+
+    try {
+      const { storeOutbound } = require('./emailArchiveService');
+      const archived = await storeOutbound({
+        organizationId: doc.organizationId,
+        sendLogId: doc._id,
+        subject: doc.subject,
+        html: fullHtml,
+        text: fullText,
+        from: doc.fromEmail,
+        replyTo: doc.replyToEmail,
+        recipients: doc.recipients,
+        provider: doc.provider,
+        channel: doc.channel,
+        messageId: doc.messageId,
+        emailType: doc.emailType,
+        campaignKey: doc.campaignKey,
+        sentAt: doc.sentAt,
+      });
+      if (archived?.archiveKey) {
+        doc.archiveKey = archived.archiveKey;
+        doc.archiveMetaKey = archived.archiveMetaKey || '';
+        await EmailSendLog.updateOne(
+          { _id: doc._id },
+          { $set: { archiveKey: doc.archiveKey, archiveMetaKey: doc.archiveMetaKey } }
+        );
+      }
+    } catch (archErr) {
+      logger.warn({ err: archErr.message }, '[emailReports] mail-archive soft-fail');
+    }
+
     return doc;
   } catch (err) {
     logger.warn({ err: err.message }, '[emailReports] recordEmailSend failed');
@@ -1245,7 +1281,7 @@ async function downloadPreviewHtml(url) {
     const res = await axios.get(url, {
       timeout: 15000,
       responseType: 'text',
-      maxContentLength: MAX_HTML_BODY,
+      maxContentLength: MAX_PREVIEW_FETCH,
       maxRedirects: 5,
       headers: {
         Accept: 'text/html,application/xhtml+xml',
@@ -1304,6 +1340,17 @@ async function fetchZohoCampaignHtml(doc) {
 }
 
 async function hydratePreview(doc) {
+  try {
+    if (doc.archiveKey) {
+      const { getArchivedHtml } = require('./emailArchiveService');
+      const fromS3 = await getArchivedHtml(doc.archiveKey);
+      if (fromS3 && /</.test(fromS3)) {
+        doc.htmlBody = fromS3;
+        return doc;
+      }
+    }
+  } catch (_) { /* fall through */ }
+
   if (String(doc.htmlBody || '').trim().length > 40 && /</.test(doc.htmlBody)) return doc;
   const rawHtml = findHtmlString(doc.providerRaw);
   let html = rawHtml;
@@ -1314,7 +1361,7 @@ async function hydratePreview(doc) {
         const res = await axios.get(url, {
           timeout: 8000,
           responseType: 'text',
-          maxContentLength: MAX_HTML_BODY,
+          maxContentLength: 450_000,
           validateStatus: (status) => status >= 200 && status < 300,
         });
         const body = String(res.data || '');
@@ -1331,19 +1378,32 @@ async function hydratePreview(doc) {
       const sibling = await EmailSendLog.findOne({
         organizationId: doc.organizationId,
         _id: { $ne: doc._id },
-        htmlBody: { $regex: '<', $options: 'i' },
-        $or: or,
-      }).select('htmlBody').sort({ createdAt: -1 }).lean();
-      if (sibling?.htmlBody) html = sibling.htmlBody;
+        $or: [
+          { archiveKey: { $exists: true, $nin: [null, ''] } },
+          { htmlBody: { $regex: '<', $options: 'i' } },
+        ],
+        $and: [{ $or: or }],
+      }).select('htmlBody archiveKey').sort({ createdAt: -1 }).lean();
+      if (sibling?.archiveKey) {
+        try {
+          const { getArchivedHtml } = require('./emailArchiveService');
+          const fromS3 = await getArchivedHtml(sibling.archiveKey);
+          if (fromS3) html = fromS3;
+        } catch (_) { /* ignore */ }
+      }
+      if (!html && sibling?.htmlBody) html = sibling.htmlBody;
     }
   }
   if (!html && doc.campaignKey) {
     html = await fetchZohoCampaignHtml(doc);
   }
   if (html) {
-    doc.htmlBody = clipBody(html, MAX_HTML_BODY);
+    doc.htmlBody = html;
     try {
-      await EmailSendLog.updateOne({ _id: doc._id }, { $set: { htmlBody: doc.htmlBody } });
+      await EmailSendLog.updateOne(
+        { _id: doc._id },
+        { $set: { htmlBody: clipBody(html, MAX_HTML_BODY) } }
+      );
     } catch (_) { /* preview still returned */ }
   }
   return doc;

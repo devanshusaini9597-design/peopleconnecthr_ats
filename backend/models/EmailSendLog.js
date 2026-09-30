@@ -61,9 +61,12 @@ const emailSendLogSchema = new mongoose.Schema(
     },
     emailType: { type: String, default: '' }, // interview, rejection, custom, otp, campaign, …
     subject: { type: String, default: '' },
-    /** Snapshot of HTML at send time — used for Email Reports preview (Zepto/Zoho style). */
+    /** Snapshot of HTML at send time — clipped for Mongo; full body on S3 when archiveKey is set. */
     htmlBody: { type: String, default: '' },
     textBody: { type: String, default: '' },
+    /** S3 key for full HTML (mail-archive/.../sent/...). */
+    archiveKey: { type: String, default: '', index: true },
+    archiveMetaKey: { type: String, default: '' },
     fromEmail: { type: String, default: '' },
     replyToEmail: { type: String, default: '' },
     campaignName: { type: String, default: '' },

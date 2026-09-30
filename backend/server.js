@@ -509,11 +509,20 @@ const startServer = () => {
   const server = app.listen(PORT, () => {
     global.__ats_server = server; // Store ref for graceful shutdown
     logger.info(`🚀 SkillNix SaaS ATS v3 running on port ${PORT}`);
-    const s3Resume = require('./services/s3Service').isS3Configured();
+    const s3 = require('./services/s3Service');
+    const s3Resume = s3.isS3Configured();
+    const emailBucket = s3.S3_EMAIL_BUCKET;
+    const emailPrefix = s3.S3_EMAIL_PREFIX;
     logger.info(s3Resume
       ? `[File storage] S3 — bucket: ${process.env.S3_BUCKET_NAME} (resumes / logos / profiles)`
       : '[File storage] Local (uploads/)');
-    startNotificationScheduler();
+    if (s3.isEmailArchiveConfigured()) {
+      logger.info(
+        `[Mail archive] S3 — bucket: ${emailBucket} prefix: ${emailPrefix}/ (sent + inbox)`
+      );
+    } else {
+      logger.info('[Mail archive] Disabled — set AWS_* and S3_EMAIL_BUCKET (or S3_BUCKET_NAME)');
+    }    startNotificationScheduler();
     initWebhookDispatcher();
     startReportScheduler();
     startBackupScheduler();
@@ -533,7 +542,8 @@ mongoose.connect(mongoUrl, {
   serverSelectionTimeoutMS: 30000,
   connectTimeoutMS: 30000,
   socketTimeoutMS: 45000,
-  maxPoolSize: 10,
+  // Hobby + multi-user: 10 saturates under auth/presence chatter; 25 stays modest for Atlas.
+  maxPoolSize: Number(process.env.MONGO_MAX_POOL_SIZE) || 25,
   minPoolSize: 2,
   retryWrites: true,
   retryReads: true,

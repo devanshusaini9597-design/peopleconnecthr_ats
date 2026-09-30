@@ -41,6 +41,7 @@ export default function InboxThreadDetail({
 }) {
   const thread = detail?.thread;
   const messages = detail?.messages || [];
+  const readOnly = Boolean(detail?.readOnly || thread?.source === 'archive');
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const candidateQ = thread?.participants?.candidateEmail || thread?.participants?.candidateName || '';
   const candidateHref = candidateQ ? buildAtsHref({ q: candidateQ }) : '/ats';
@@ -226,6 +227,12 @@ export default function InboxThreadDetail({
           </div>
 
           <div className="relative p-3.5 sm:p-4 border-t border-stone-100 space-y-2.5 bg-white">
+            {readOnly ? (
+              <p className="text-[12px] text-stone-500">
+                Sent archive from AWS mail storage. Open Email Reports for engagement metrics.
+              </p>
+            ) : (
+            <>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-[12px] font-semibold text-stone-700">Reply</p>
               <div className="flex flex-wrap items-center gap-2">
@@ -308,6 +315,8 @@ export default function InboxThreadDetail({
               </div>
             ) : null}
             <p className="text-[11px] text-stone-400">Ctrl/Cmd + Enter to send. PDF, Word, Excel, and images up to 8 MB.</p>
+            </>
+            )}
           </div>
         </>
       )}

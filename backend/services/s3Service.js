@@ -1,7 +1,7 @@
 /**
  * Platform S3 storage.
- * Default: one bucket with separate prefixes (resumes/, logos/, profiles/).
- * Optional dedicated buckets: S3_RESUME_BUCKET, S3_LOGO_BUCKET, S3_PROFILE_BUCKET.
+ * Default: one bucket with separate prefixes (resumes/, logos/, profiles/, mail-archive/).
+ * Optional dedicated buckets: S3_RESUME_BUCKET, S3_LOGO_BUCKET, S3_PROFILE_BUCKET, S3_EMAIL_BUCKET.
  */
 const {
   S3Client,
@@ -20,6 +20,7 @@ const KINDS = {
   resume: { bucketEnv: 'S3_RESUME_BUCKET', prefixEnv: 'S3_RESUME_PREFIX', prefixDefault: 'resumes' },
   logo: { bucketEnv: 'S3_LOGO_BUCKET', prefixEnv: 'S3_LOGO_PREFIX', prefixDefault: 'logos' },
   profile: { bucketEnv: 'S3_PROFILE_BUCKET', prefixEnv: 'S3_PROFILE_PREFIX', prefixDefault: 'profiles' },
+  email: { bucketEnv: 'S3_EMAIL_BUCKET', prefixEnv: 'S3_EMAIL_PREFIX', prefixDefault: 'mail-archive' },
 };
 
 function env(name, fallback = '') {
@@ -47,13 +48,26 @@ function isS3Configured() {
   return !!(accessKey && secretKey && region && defaultBucket());
 }
 
+/** Mail archive can use a dedicated bucket even when the default asset bucket is unset. */
+function isEmailArchiveConfigured() {
+  const accessKey = env('AWS_ACCESS_KEY_ID') || env('S3_ACCESS_KEY_ID');
+  const secretKey = env('AWS_SECRET_ACCESS_KEY') || env('S3_SECRET_ACCESS_KEY');
+  const region = env('AWS_REGION') || env('S3_REGION');
+  const bucket = kindConfig('email').bucket;
+  return !!(accessKey && secretKey && region && bucket);
+}
+
 function getClient() {
-  if (!isS3Configured()) return null;
+  const accessKey = env('AWS_ACCESS_KEY_ID') || env('S3_ACCESS_KEY_ID');
+  const secretKey = env('AWS_SECRET_ACCESS_KEY') || env('S3_SECRET_ACCESS_KEY');
+  const region = env('AWS_REGION') || env('S3_REGION');
+  if (!accessKey || !secretKey || !region) return null;
+  if (!defaultBucket() && !kindConfig('email').bucket) return null;
   return new S3Client({
-    region: env('AWS_REGION') || env('S3_REGION'),
+    region,
     credentials: {
-      accessKeyId: env('AWS_ACCESS_KEY_ID') || env('S3_ACCESS_KEY_ID'),
-      secretAccessKey: env('AWS_SECRET_ACCESS_KEY') || env('S3_SECRET_ACCESS_KEY'),
+      accessKeyId: accessKey,
+      secretAccessKey: secretKey,
     },
   });
 }
@@ -69,6 +83,11 @@ function getContentType(ext, fallback) {
     '.gif': 'image/gif',
     '.webp': 'image/webp',
     '.svg': 'image/svg+xml',
+    '.html': 'text/html; charset=utf-8',
+    '.htm': 'text/html; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.txt': 'text/plain; charset=utf-8',
+    '.eml': 'message/rfc822',
   };
   return mime[String(ext || '').toLowerCase()] || fallback || 'application/octet-stream';
 }
@@ -84,6 +103,7 @@ function storedToKey(value) {
 function kindFromKey(key) {
   const k = storedToKey(key);
   if (!k) return null;
+  if (k.startsWith(`${kindConfig('email').prefix}/`) || k.startsWith('mail-archive/')) return 'email';
   if (k.startsWith(`${kindConfig('logo').prefix}/`) || k.startsWith('logos/') || k.startsWith('org-logo-')) return 'logo';
   if (k.startsWith(`${kindConfig('profile').prefix}/`) || k.startsWith('profiles/') || k.startsWith('profile-')) return 'profile';
   if (k.startsWith(`${kindConfig('resume').prefix}/`) || k.startsWith('resumes/')) return 'resume';
@@ -123,12 +143,15 @@ async function uploadAsset({ kind, body, filename, originalName, contentType }) 
     .replace(/[^a-zA-Z0-9._-]/g, '-');
   const key = `${cfg.prefix}/${safeName}`;
   try {
+    const isPrivate = kind === 'email';
     await client.send(new PutObjectCommand({
       Bucket: cfg.bucket,
       Key: key,
       Body: body,
       ContentType: contentType || getContentType(ext),
-      CacheControl: 'public, max-age=31536000, immutable',
+      ...(isPrivate
+        ? { CacheControl: 'private, no-store' }
+        : { CacheControl: 'public, max-age=31536000, immutable' }),
     }));
     logger.info(`[S3] ${kind} saved — bucket: ${cfg.bucket}, key: ${key}`);
     return { key, bucket: cfg.bucket, publicPath: publicPathForKey(key) };
@@ -197,10 +220,15 @@ async function getAssetBuffer(storedValue) {
         Key: key,
       }));
       const bytes = await response.Body.transformToByteArray();
+      const ext = path.extname(key);
+      const fallbackType = kindFromKey(key) === 'email'
+        ? (ext === '.json' ? 'application/json' : 'text/html; charset=utf-8')
+        : 'image/png';
       return {
         buffer: Buffer.from(bytes),
-        contentType: response.ContentType || getContentType(path.extname(key), 'image/png'),
+        contentType: response.ContentType || getContentType(ext, fallbackType),
         key,
+        bucket: resolveBucketForKey(key),
       };
     } catch {
       /* try next key */
@@ -214,7 +242,7 @@ async function sendAssetToResponse(rel, res) {
   if (!asset) return false;
   res.setHeader('Content-Type', asset.contentType);
   res.setHeader('Content-Disposition', 'inline');
-  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.setHeader('Cache-Control', kindFromKey(rel) === 'email' ? 'private, no-store' : 'public, max-age=86400');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   res.send(asset.buffer);
   return true;
@@ -239,15 +267,15 @@ async function deleteStoredAsset(storedValue) {
   return deleted;
 }
 
-async function listKeys(prefix, { maxKeys = 0 } = {}) {
+async function listKeys(prefix, { maxKeys = 0, bucket } = {}) {
   const client = getClient();
-  const bucket = defaultBucket();
-  if (!client || !bucket) return [];
+  const target = bucket || defaultBucket();
+  if (!client || !target) return [];
   const keys = [];
   let token;
   do {
     const page = await client.send(new ListObjectsV2Command({
-      Bucket: bucket,
+      Bucket: target,
       Prefix: prefix || '',
       ContinuationToken: token,
     }));
@@ -281,21 +309,24 @@ async function headKey(key, bucket) {
   return { contentLength: res.ContentLength, contentType: res.ContentType };
 }
 
-async function putObject({ key, body, contentType, bucket }) {
+async function putObject({ key, body, contentType, bucket, cacheControl }) {
   const client = getClient();
-  const target = bucket || defaultBucket();
+  const target = bucket || resolveBucketForKey(key) || defaultBucket();
   if (!client || !target) return false;
+  const privateMail = kindFromKey(key) === 'email';
   await client.send(new PutObjectCommand({
     Bucket: target,
     Key: key,
     Body: body,
     ContentType: contentType || 'application/octet-stream',
+    CacheControl: cacheControl || (privateMail ? 'private, no-store' : undefined),
   }));
   return true;
 }
 
 module.exports = {
   isS3Configured,
+  isEmailArchiveConfigured,
   uploadAsset,
   uploadResumeFromFile,
   isS3Resume,
@@ -312,6 +343,9 @@ module.exports = {
   headKey,
   putObject,
   kindConfig,
+  resolveBucketForKey,
   get S3_BUCKET() { return defaultBucket(); },
   get S3_RESUME_PREFIX() { return kindConfig('resume').prefix; },
+  get S3_EMAIL_BUCKET() { return kindConfig('email').bucket; },
+  get S3_EMAIL_PREFIX() { return kindConfig('email').prefix; },
 };

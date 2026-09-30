@@ -129,6 +129,7 @@ function InboxPageInner() {
       if (folder === 'unread') params.set('unread', 'true');
       if (folder === 'snoozed') params.set('snoozed', 'true');
       if (folder === 'drafts') params.set('drafts', 'true');
+      if (folder === 'sent') params.set('sent', 'true');
       const statsParams = new URLSearchParams();
       if (canManageMailbox && assigned === 'all') statsParams.set('assigned', 'all');
       else statsParams.set('assigned', 'me');

@@ -34,6 +34,9 @@ const messageSchema = new mongoose.Schema({
   subject: { type: String, default: '' },
   body: { type: String, default: '' },
   bodyHtml: { type: String, default: '' },
+  /** S3 key for full HTML archive (mail-archive/.../inbox/...). */
+  archiveKey: { type: String, default: '', index: true },
+  archiveMetaKey: { type: String, default: '' },
   status: {
     type: String,
     enum: ['draft', 'queued', 'sent', 'delivered', 'read', 'failed', 'received'],

@@ -437,7 +437,8 @@ async function ingestParsed({ org, mailboxUser, uid, uidValidity, parsed }) {
     sentAt: parsed.date || new Date(),
   });
 
-  await Message.create({
+  const bodyText = text || htmlToText(html);
+  const message = await Message.create({
     organizationId: org._id,
     threadId: thread._id,
     candidateId: candidate?._id || thread.candidateId || null,
@@ -447,14 +448,46 @@ async function ingestParsed({ org, mailboxUser, uid, uidValidity, parsed }) {
     fromAddress: fromEmail,
     toAddress: mailboxUser,
     subject,
-    body: text || htmlToText(html),
-    bodyHtml: html,
+    body: bodyText.slice(0, 8000),
+    bodyHtml: String(html || '').slice(0, 48_000),
     status: 'received',
     externalId,
     isRead: false,
     sentAt: parsed.date || new Date(),
     attachments: await saveImapAttachments(org._id, parsed),
   });
+
+  try {
+    const { storeInbound } = require('./emailArchiveService');
+    const archived = await storeInbound({
+      organizationId: org._id,
+      messageId: message._id,
+      threadId: thread._id,
+      subject,
+      html,
+      text: bodyText,
+      from: fromEmail,
+      to: mailboxUser,
+      externalId,
+      sentAt: message.sentAt,
+    });
+    if (archived?.archiveKey) {
+      message.archiveKey = archived.archiveKey;
+      message.archiveMetaKey = archived.archiveMetaKey || '';
+      await Message.updateOne(
+        { _id: message._id },
+        {
+          $set: {
+            archiveKey: message.archiveKey,
+            archiveMetaKey: message.archiveMetaKey,
+            bodyHtml: String(html || '').slice(0, 12_000),
+          },
+        }
+      );
+    }
+  } catch (archErr) {
+    logger.warn({ err: archErr.message }, '[inbox-imap] mail-archive soft-fail');
+  }
 
   return { ingested: true, threadId: thread._id };
 }

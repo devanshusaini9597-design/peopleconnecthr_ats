@@ -8,6 +8,7 @@ import { listPreview } from './mailBody';
 
 const FOLDERS = [
   { id: 'inbox', label: 'Inbox', icon: InboxIcon },
+  { id: 'sent', label: 'Sent', icon: Send },
   { id: 'unread', label: 'Unread', icon: Mail },
   { id: 'starred', label: 'Starred', icon: Star },
   { id: 'snoozed', label: 'Snoozed', icon: Clock },
