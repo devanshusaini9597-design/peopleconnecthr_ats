@@ -25,7 +25,7 @@ import { fetchPicklist, PICKLIST_DROPDOWN_LIMIT } from '../utils/orgListFetch';
 import { DEFAULT_CTC_BANDS } from '../utils/ctcRanges';
 import { dedupeByName } from '../utils/dedupeMasterData';
 import { guardTableCopy } from '../utils/tableCopyGuard';
-import { canAccessMis, canSeeMisAllDesk, normalizeMisDesk, misPageSubtitle, misTipCaption } from '../utils/misAccess';
+import { canAccessMis, canSeeMisAllDesk, normalizeMisDesk, misPageSubtitle, misTipCaption, misDeskHint } from '../utils/misAccess';
 import { MIS_TOUR_KEY, MIS_TOUR_STEPS } from './mis/misConstants';
 import ProductTour from './ui/ProductTour';
 import TourHelpFab from './ui/TourHelpFab';
@@ -160,8 +160,8 @@ function MisActionsMenu({
             }}
           >
             <div className="px-3 py-2 border-b border-stone-100 bg-stone-50/90 shrink-0">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-stone-500">Actions</p>
-              <p className="text-[11px] text-stone-400">Import, export, and matching</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-stone-500">Workspace</p>
+              <p className="text-[11px] text-stone-400">Import, export, and talent matching</p>
             </div>
             <div
               className="p-1.5 overflow-y-auto overscroll-contain min-h-0 flex-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -177,8 +177,8 @@ function MisActionsMenu({
                   {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} strokeWidth={1.75} />}
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-stone-800 truncate">Import file</span>
-                  <span className="block text-[11px] text-stone-500 truncate">Excel or CSV</span>
+                  <span className="block text-sm font-semibold text-stone-800 truncate">Import spreadsheet</span>
+                  <span className="block text-[11px] text-stone-500 truncate">Excel or CSV · Name and Email required</span>
                 </span>
               </button>
               {isOwner ? (
@@ -192,8 +192,8 @@ function MisActionsMenu({
                     <Download size={15} strokeWidth={1.75} />
                   </span>
                   <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-stone-800 truncate">Export</span>
-                    <span className="block text-[11px] text-stone-500 truncate">Download to Excel</span>
+                    <span className="block text-sm font-semibold text-stone-800 truncate">Export directory</span>
+                    <span className="block text-[11px] text-stone-500 truncate">Download current view as Excel</span>
                   </span>
                 </button>
               ) : null}
@@ -208,7 +208,7 @@ function MisActionsMenu({
                 </span>
                 <span className="min-w-0">
                   <span className="block text-sm font-semibold text-stone-800 truncate">Match to job</span>
-                  <span className="block text-[11px] text-stone-500 truncate">Rank MIS contacts vs an open role</span>
+                  <span className="block text-[11px] text-stone-500 truncate">Rank contacts against an open role</span>
                 </span>
               </button>
             </div>
@@ -329,17 +329,17 @@ export default function MisPage() {
   const setDeskView = useCallback((next) => {
     const value = normalizeMisDesk(next, user);
     const labels = { all: 'All contacts', mine: 'My records', company: 'Organisation' };
+    const currentNorm = normalizeMisDesk(deskFromUrl, user);
+    if (currentNorm === value) return;
     setDeskSwitchLabel(labels[value] || 'contacts');
-    announceLoadRef.current = true;
-    toast.info(`Loading ${labels[value]}…`, 1800);
+    announceLoadRef.current = false;
     setSearchParams((prev) => {
       const p = new URLSearchParams(prev);
-      // Always persist desk so admin All (desk=all) is distinct from employee default (mine)
       p.set('desk', value);
       return p;
     }, { replace: true });
     setPage(1);
-  }, [setSearchParams, user, toast]);  const [showFilters, setShowFilters] = useState(false);
+  }, [setSearchParams, user, deskFromUrl]);  const [showFilters, setShowFilters] = useState(false);
   const [draftFilters, setDraftFilters] = useState(() => ({ ...EMPTY_MIS_FILTERS }));
   const [appliedFilters, setAppliedFilters] = useState(() => ({ ...EMPTY_MIS_FILTERS }));
   const [loading, setLoading] = useState(true);
@@ -526,12 +526,13 @@ export default function MisPage() {
       }
       if (announce) {
         const n = Number(nextPagination.total) || 0;
-        const deskLabel = deskView === 'mine' ? 'My records' : deskView === 'company' ? 'Organisation' : 'All';
+        const deskLabel = deskView === 'mine' ? 'My records' : deskView === 'company' ? 'Organisation' : 'All contacts';
         toast.info(
           n === 0
-            ? `${deskLabel}: no contacts`
-            : `${deskLabel}: ${n.toLocaleString()} contact${n === 1 ? '' : 's'}`,
-          2200
+            ? `${deskLabel} · no contacts found`
+            : `${deskLabel} · ${n.toLocaleString()} contact${n === 1 ? '' : 's'}`,
+          2000,
+          { key: 'mis-desk' }
         );
       }
     } catch (err) {
@@ -1434,8 +1435,7 @@ export default function MisPage() {
   }, [isOwner, selectedIds, q, appliedFilters, filteredCount, toast]);
 
   const runSearch = () => {
-    announceLoadRef.current = true;
-    toast.info(draft.trim() || activeFilterCount > 0 ? 'Searching contacts…' : 'Loading contacts…', 1800);
+    announceLoadRef.current = false;
     setQ(draft.trim());
     setAppliedFilters({ ...draftFilters });
     setPage(1);
@@ -1443,11 +1443,10 @@ export default function MisPage() {
 
   const applyFilters = () => {
     if (draftFilters.datePeriod === 'custom' && (!draftFilters.dateFrom || !draftFilters.dateTo)) {
-      toast.warning('Select both From and To dates, then click Search.');
+      toast.warning('Select a start and end date, then apply filters.', 3500, { key: 'mis-filters' });
       return;
     }
-    announceLoadRef.current = true;
-    toast.info('Applying filters…', 1800);
+    announceLoadRef.current = false;
     setAppliedFilters({ ...draftFilters });
     setPage(1);
     setShowFilters(true);
@@ -1524,7 +1523,7 @@ export default function MisPage() {
       })[appliedFilters.datePeriod] || appliedFilters.datePeriod;
       chips.push({
         key: 'datePeriod',
-        label: 'Period',
+        label: 'Date range',
         value: periodLabel,
       });
     }
@@ -1550,8 +1549,8 @@ export default function MisPage() {
   }, [appliedFilters]);
   const showOverlay = loading;
   const overlayTitle = deskSwitchLabel
-    ? `Loading ${deskSwitchLabel}`
-    : (q || activeFilterCount > 0 ? 'Searching contacts' : 'Loading contacts');
+    ? `Updating ${deskSwitchLabel}`
+    : (q || activeFilterCount > 0 ? 'Updating results' : 'Loading directory');
   const hasActiveFilters = Boolean(q || activeFilterCount > 0);
   const filtersDirty = useMemo(
     () => JSON.stringify(draftFilters) !== JSON.stringify(appliedFilters),
@@ -1609,83 +1608,15 @@ export default function MisPage() {
         </div>
       </PageHeader>
 
-      <div
-        data-tour="mis-tip"
-        className="rounded-xl border border-brand-100/80 bg-gradient-to-r from-brand-50/70 via-white to-white px-3.5 sm:px-4 py-2.5 text-[13px] text-stone-600 leading-snug flex flex-col xs:flex-row sm:flex-row sm:items-center gap-1.5 sm:gap-2 shadow-sm shadow-brand-900/[0.03] min-w-0"
-      >
-        <span className="inline-flex items-center gap-1.5 text-brand-800 font-semibold shrink-0">
-          <Info size={14} /> Note
-        </span>
-        <span className="min-w-0 flex-1 sm:truncate" title={misTipCaption(user)}>
-          {misTipCaption(user)}
-        </span>
-      </div>
-
-      {/* Desk scope tabs */}
-      <div className="flex flex-col gap-2 min-w-0" data-tour="mis-desk-tabs">
-        <div className="overflow-x-auto -mx-1 px-1 scrollbar-thin">
-          <div className="inline-flex min-w-full sm:min-w-0 flex-nowrap sm:flex-wrap items-center gap-1 p-1 rounded-xl border border-stone-200 bg-white shadow-sm shadow-stone-900/5">
-            {[
-              canSeeAllDesk
-                ? { id: 'all', label: 'All', icon: Layers, hint: 'Organisation directory and your records' }
-                : null,
-              { id: 'mine', label: 'My records', icon: UserRound, hint: 'Contacts you added' },
-              { id: 'company', label: 'Organisation', icon: Building2, hint: 'Shared organisation directory' },
-            ].filter(Boolean).map((tab) => {
-              const Icon = tab.icon;
-              const active = deskView === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setDeskView(tab.id)}
-                  disabled={loading && active}
-                  title={tab.hint}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 sm:px-3 h-9 text-sm font-semibold transition-colors whitespace-nowrap ${
-                    active
-                      ? 'bg-gradient-to-br from-brand-600 to-teal-600 text-white shadow-md shadow-brand-500/20'
-                      : 'text-stone-600 hover:bg-stone-50'
-                  } disabled:opacity-80`}
-                >
-                  {loading && active ? (
-                    <Loader2 size={14} className="shrink-0 animate-spin opacity-90" />
-                  ) : (
-                    <Icon size={14} className="shrink-0 opacity-90" />
-                  )}
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <p className="text-[11px] text-stone-400 min-w-0 leading-snug">
-          {loading && deskSwitchLabel
-            ? `Loading ${deskSwitchLabel.toLowerCase()}…`
-            : deskView === 'mine'
-              ? 'Showing contacts you added'
-              : deskView === 'company'
-                ? 'Showing the shared organisation directory'
-                : 'Showing the organisation directory and your records'}
-        </p>
-      </div>
-
-      {/* KPI cards — All / Organisation / My records / Added this month */}
-      <section className="min-w-0" aria-label="MIS overview">
-        <div className="flex items-end justify-between gap-2 mb-3 min-w-0">
-          <div className="min-w-0">
-            <h2 className="text-sm font-bold tracking-tight text-stone-900">Overview</h2>
-            <p className="text-xs text-stone-500 mt-0.5">
-              Live counts for contacts you are authorised to view.
-            </p>
-          </div>
-        </div>
-        <div className={`grid grid-cols-1 min-[420px]:grid-cols-2 ${canSeeAllDesk ? 'xl:grid-cols-4' : 'xl:grid-cols-3'} gap-3 sm:gap-4`}>
+      {/* Overview cards — top of page so KPIs stay above the directory */}
+      <section className="min-w-0" aria-label="Directory overview" data-tour="mis-tip">
+        <div className={`grid grid-cols-1 min-[420px]:grid-cols-2 ${canSeeAllDesk ? 'xl:grid-cols-4' : 'xl:grid-cols-3'} gap-3`}>
           {canSeeAllDesk ? (
             <StatCard
               icon={Inbox}
               label="All contacts"
               value={stats?.total ?? 0}
-              caption="Organisation + your records"
+              caption="Shared directory and your records"
               gradient="from-sky-500 to-brand-400"
               loading={statsLoading}
               aligned
@@ -1696,7 +1627,7 @@ export default function MisPage() {
             icon={Building2}
             label="Organisation"
             value={stats?.company ?? 0}
-            caption="Shared directory contacts"
+            caption="Shared company directory"
             gradient="from-indigo-500 to-blue-400"
             loading={statsLoading}
             aligned
@@ -1716,7 +1647,7 @@ export default function MisPage() {
             icon={CalendarPlus}
             label="Added this month"
             value={stats?.newThisMonth ?? 0}
-            caption="Your new contacts this month"
+            caption="New on your desk this month"
             gradient="from-emerald-500 to-lime-400"
             loading={statsLoading}
             aligned
@@ -1728,6 +1659,10 @@ export default function MisPage() {
             }}
           />
         </div>
+        <p className="mt-2.5 text-[12px] text-stone-500 leading-snug flex items-start gap-1.5 min-w-0">
+          <Info size={13} className="shrink-0 text-brand-600 mt-0.5" />
+          <span className="min-w-0" title={misTipCaption(user)}>{misTipCaption(user)}</span>
+        </p>
       </section>
 
       <input
@@ -1744,7 +1679,59 @@ export default function MisPage() {
         }}
       />
 
+      {/* Directory workspace: desks + search + table stay together (no scroll gap on tab switch) */}
       <div className="card-ats-bordered relative overflow-hidden min-h-[320px]">
+        <div
+          className="px-3 sm:px-5 pt-3 sm:pt-4 pb-0 border-b border-stone-100/90 bg-gradient-to-b from-stone-50/50 to-white"
+          data-tour="mis-desk-tabs"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 min-w-0">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-stone-400">Directory</p>
+              <p className="text-[12px] text-stone-500 mt-0.5 truncate">
+                {loading && deskSwitchLabel
+                  ? `Updating ${deskSwitchLabel.toLowerCase()}…`
+                  : misDeskHint(deskView)}
+              </p>
+            </div>
+            <div className="overflow-x-auto scrollbar-thin min-w-0 sm:max-w-full">
+              <div className="inline-flex items-center gap-0.5 p-1 rounded-xl border border-stone-200 bg-white shadow-sm shadow-stone-900/5">
+                {[
+                  canSeeAllDesk
+                    ? { id: 'all', label: 'All', icon: Layers, hint: 'Organisation directory and your records' }
+                    : null,
+                  { id: 'mine', label: 'My records', icon: UserRound, hint: 'Contacts you added' },
+                  { id: 'company', label: 'Organisation', icon: Building2, hint: 'Shared organisation directory' },
+                ].filter(Boolean).map((tab) => {
+                  const Icon = tab.icon;
+                  const active = deskView === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setDeskView(tab.id)}
+                      disabled={loading && active}
+                      title={tab.hint}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 sm:px-3 h-9 text-sm font-semibold transition-colors whitespace-nowrap ${
+                        active
+                          ? 'bg-gradient-to-br from-brand-600 to-teal-600 text-white shadow-md shadow-brand-500/20'
+                          : 'text-stone-600 hover:bg-stone-50'
+                      } disabled:opacity-80`}
+                    >
+                      {loading && active ? (
+                        <Loader2 size={14} className="shrink-0 animate-spin opacity-90" />
+                      ) : (
+                        <Icon size={14} className="shrink-0 opacity-90" />
+                      )}
+                      <span>{tab.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {selectedIds.length > 0 ? (
           <MisBulkToolbar
             selectedIds={selectedIds}
@@ -1762,72 +1749,70 @@ export default function MisPage() {
             onSelectAllFiltered={handleSelectAllFiltered}
           />
         ) : null}
-        <div className="p-3 sm:p-5 border-b border-stone-100/90 space-y-3 bg-gradient-to-b from-stone-50/40 to-white" data-tour="mis-search">
-          <div className="flex flex-col gap-2.5 sm:gap-3 min-w-0">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 min-w-0">
-              <div className="relative flex-1 min-w-0 flex h-11 overflow-hidden rounded-xl border border-stone-200/90 bg-white shadow-sm shadow-stone-900/5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/15 transition-all">
-                <div className="relative flex-1 min-w-0">
-                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none z-[1]" />
-                  <input
-                    type="text"
-                    placeholder="Search name, email, company, or phone"
-                    aria-label="Search MIS contacts"
-                    className="w-full h-full min-w-0 pl-11 pr-10 bg-transparent border-0 outline-none ring-0 shadow-none text-sm font-medium text-stone-900 placeholder:text-stone-400"
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
-                  />
-                  {draft.trim() ? (
-                    <button
-                      type="button"
-                      onClick={() => { setDraft(''); setQ(''); setPage(1); }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 z-[1]"
-                      title="Clear"
-                    >
-                      <X size={14} />
-                    </button>
-                  ) : null}
-                </div>
+        <div className="px-3 sm:px-5 py-3 sm:py-3.5 border-b border-stone-100/90 space-y-2.5 bg-white" data-tour="mis-search">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0">
+            <div className="relative flex-1 min-w-0 flex h-10 overflow-hidden rounded-xl border border-stone-200/90 bg-white shadow-sm shadow-stone-900/5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/15 transition-all">
+              <div className="relative flex-1 min-w-0">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none z-[1]" />
+                <input
+                  type="text"
+                  placeholder="Search by name, email, company, or phone"
+                  aria-label="Search directory"
+                  className="w-full h-full min-w-0 pl-10 pr-9 bg-transparent border-0 outline-none ring-0 shadow-none text-sm font-medium text-stone-900 placeholder:text-stone-400"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
+                />
+                {draft.trim() ? (
+                  <button
+                    type="button"
+                    onClick={() => { setDraft(''); setQ(''); setPage(1); }}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 z-[1]"
+                    title="Clear search"
+                  >
+                    <X size={14} />
+                  </button>
+                ) : null}
               </div>
-              <div className="inline-flex items-center gap-2 flex-shrink-0">
-                <button
-                  type="button"
-                  className="btn-secondary h-11 justify-center shadow-sm shadow-stone-900/5 px-4 min-w-[7.5rem]"
-                  onClick={runSearch}
-                  disabled={loading}
-                >
-                  {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-                  {loading ? 'Searching…' : 'Search'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDraftFilters({ ...appliedFilters });
-                    setShowFilters((v) => !v);
-                  }}
-                  className={`relative inline-flex h-11 w-11 sm:w-auto sm:px-4 items-center justify-center gap-2 rounded-xl font-semibold border shadow-sm shadow-stone-900/5 transition-all text-sm ${
-                    showFilters || activeFilterCount > 0
-                      ? 'border-brand-400 bg-brand-50 text-brand-800'
-                      : 'border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50 text-stone-700'
-                  }`}
-                  title="Advanced filters"
-                  aria-label="Advanced filters"
-                >
-                  <Filter size={15} strokeWidth={1.75} />
-                  <span className="hidden sm:inline">Filters</span>
-                  {activeFilterCount > 0 ? (
-                    <span className="absolute -top-1 -right-1 sm:static sm:relative inline-flex items-center justify-center min-w-[1.15rem] h-4 sm:h-5 px-1 sm:px-1.5 rounded-full sm:rounded bg-stone-900 text-white text-[9px] sm:text-[10px] font-bold tabular-nums">
-                      {activeFilterCount}
-                    </span>
-                  ) : null}
-                </button>
-              </div>
+            </div>
+            <div className="inline-flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                className="btn-secondary h-10 justify-center shadow-sm shadow-stone-900/5 px-3.5 min-w-[6.75rem]"
+                onClick={runSearch}
+                disabled={loading}
+              >
+                {loading ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
+                {loading ? 'Searching' : 'Search'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftFilters({ ...appliedFilters });
+                  setShowFilters((v) => !v);
+                }}
+                className={`relative inline-flex h-10 w-10 sm:w-auto sm:px-3.5 items-center justify-center gap-2 rounded-xl font-semibold border shadow-sm shadow-stone-900/5 transition-all text-sm ${
+                  showFilters || activeFilterCount > 0
+                    ? 'border-brand-400 bg-brand-50 text-brand-800'
+                    : 'border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50 text-stone-700'
+                }`}
+                title="Refine results"
+                aria-label="Refine results"
+              >
+                <Filter size={15} strokeWidth={1.75} />
+                <span className="hidden sm:inline">Filters</span>
+                {activeFilterCount > 0 ? (
+                  <span className="absolute -top-1 -right-1 sm:static sm:relative inline-flex items-center justify-center min-w-[1.15rem] h-4 sm:h-5 px-1 sm:px-1.5 rounded-full sm:rounded bg-stone-900 text-white text-[9px] sm:text-[10px] font-bold tabular-nums">
+                    {activeFilterCount}
+                  </span>
+                ) : null}
+              </button>
             </div>
           </div>
 
           {activeChips.length > 0 && !showFilters ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">Active</span>
+            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+              <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400">Applied</span>
               {activeChips.map((chip) => (
                 <button
                   key={chip.key}
@@ -1979,17 +1964,17 @@ export default function MisPage() {
                           icon={Search}
                           tone="amber"
                           message="No matching contacts"
-                          subMessage="Adjust or clear filters to widen the search."
+                          subMessage="Adjust filters or clear the search to broaden results."
                         />
                       ) : (
                         <EmptyState
                           icon={Megaphone}
                           tone="teal"
-                          message="No contacts yet"
+                          message="No contacts in this desk"
                           subMessage={
                             user?.role === 'owner'
-                              ? 'Import a file or add a contact to build the organisation directory.'
-                              : 'Import a file with Name and Email, or add a contact. Shared records are visible to authorised staff.'
+                              ? 'Import a spreadsheet or add a contact to build the organisation directory.'
+                              : 'Add a contact or import a file with Name and Email to get started.'
                           }
                         />
                       )}
@@ -2015,7 +2000,7 @@ export default function MisPage() {
                 <div className="text-center">
                   <p className="text-sm font-semibold tracking-tight text-stone-900">{overlayTitle}</p>
                   <p className="mt-1 text-xs font-medium text-stone-500">
-                    {hasActiveFilters ? 'Updating results for your search' : 'Refreshing your directory view'}
+                    {hasActiveFilters ? 'Applying your search and filters' : 'Refreshing the selected desk'}
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5" aria-hidden="true">

@@ -26,7 +26,6 @@ export function normalizeMisDesk(desk, user) {
   const view = String(desk || '').toLowerCase().trim();
   if (view === 'mine' || view === 'company') return view;
   if (view === 'all') return canSeeMisAllDesk(user) ? 'all' : 'mine';
-  // Missing desk param → role default (owner: all, employees/admin: mine)
   return defaultMisDesk(user);
 }
 
@@ -36,24 +35,30 @@ export function misPageSubtitle(user, total, formattedTotal) {
   const label = formattedTotal ?? String(n);
   const role = user?.role;
   if (role === 'owner') {
-    return `${label} ${noun} in the organisation directory`;
+    return `${label} ${noun} across the organisation`;
   }
   if (role === 'admin') {
-    return `${label} ${noun} · organisation directory and your records`;
+    return `${label} ${noun} in your visible desks`;
   }
-  return `${label} ${noun} · your records and organisation directory`;
+  return `${label} ${noun} in your desk`;
 }
 
 export function misTipCaption(user) {
   const role = user?.role;
   if (role === 'owner') {
-    return 'Use All, My records, or Organisation to switch views. Select contacts to email, export, or move to Candidates.';
+    return 'Switch desks to review organisation-wide or personal records. Select contacts to email, export, or move to Candidates.';
   }
   if (role === 'admin') {
-    return 'All shows the organisation directory plus your records. Other employees’ private desks stay private.';
+    return 'All combines the shared directory with your own records. Other employees’ personal desks remain private.';
   }
   if (role === 'sales') {
-    return 'Start on My records. Use Organisation for the shared directory. Select rows to email or message.';
+    return 'My records is your working desk. Organisation shows the shared company directory for outreach.';
   }
-  return 'My records is your default desk. Organisation shows the shared directory — not other employees’ private desks.';
+  return 'My records is your default desk. Organisation shows the shared directory — not other employees’ personal records.';
+}
+
+export function misDeskHint(deskView) {
+  if (deskView === 'mine') return 'Contacts you created';
+  if (deskView === 'company') return 'Shared organisation directory';
+  return 'Organisation directory and your records';
 }

@@ -1,20 +1,26 @@
-export const MIS_TOUR_KEY = 'skillnix_tour_mis_v1';
+export const MIS_TOUR_KEY = 'skillnix_tour_mis_v2';
 
 export const MIS_TOUR_STEPS = [
   {
     title: 'MIS directory',
-    body: 'Company marketing contacts, kept separate from Candidates. Only authorised company staff can open this page.',
+    body: 'Marketing and outreach contacts, kept separate from Candidates. Only authorised company staff can open this workspace.',
+  },
+  {
+    target: '[data-tour="mis-tip"]',
+    title: 'Overview cards',
+    body: 'Live counts for desks you can access. Select a card to switch the directory view below.',
+    placement: 'bottom',
+  },
+  {
+    target: '[data-tour="mis-desk-tabs"]',
+    title: 'Desk switcher',
+    body: 'All (owner/admin), My records, or Organisation. Desks sit with the table so results update in place.',
+    placement: 'bottom',
   },
   {
     target: '[data-tour="mis-actions"]',
     title: 'Add, import, and export',
-    body: 'Add a single contact or import Excel and CSV files. Each row needs Name and Email. Duplicate emails are skipped. Company owners can export the directory.',
-    placement: 'bottom',
-  },
-  {
-    target: '[data-tour="mis-tip"]',
-    title: 'Workspace guide',
-    body: 'Select rows for email, WhatsApp, consent, or bulk edit. Press ? or the help control to reopen this tour.',
+    body: 'Add a contact or import Excel and CSV. Each row needs Name and Email. Duplicate emails are skipped. Owners can export the directory.',
     placement: 'bottom',
   },
   {
@@ -26,7 +32,7 @@ export const MIS_TOUR_STEPS = [
   {
     target: '[data-tour="mis-bulk"]',
     title: 'Bulk actions',
-    body: 'When contacts are selected, email, message, update consent, or delete them together. Company owners can move selected contacts into Candidates.',
+    body: 'When contacts are selected, email, message, update consent, or delete them together. Owners can move selected contacts into Candidates.',
     placement: 'bottom',
   },
   {
