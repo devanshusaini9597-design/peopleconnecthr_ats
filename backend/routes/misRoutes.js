@@ -90,9 +90,9 @@ router.get('/stats', async (req, res) => {
 
 router.post('/reconcile-moved', async (req, res) => {
   try {
-    const data = await svc.reconcileMisMoveHistory(req.user, { force: true });
+    const data = await svc.resetFalseMisMoveMarks(req.user, { force: Boolean(req.body?.force) });
     const stats = await svc.getMisStats(req.user);
-    res.json({ success: true, reconcile: data, ...stats });
+    res.json({ success: true, reset: data, ...stats });
   } catch (error) {
     handle(res, error);
   }

@@ -37,7 +37,9 @@ const organizationSchema = new mongoose.Schema({
   settings: {
     timezone: { type: String, default: 'Asia/Kolkata' },
     currency: { type: String, default: 'INR' },
-    dateFormat: { type: String, default: 'DD/MM/YYYY' }
+    dateFormat: { type: String, default: 'DD/MM/YYYY' },
+    /** One-time clear of auto-inferred MIS→Candidates marks (email-match false positives). */
+    misFalseMoveResetV1: { type: Date, default: null },
   },
   /**
    * Org-level editable system role packs (enterprise).

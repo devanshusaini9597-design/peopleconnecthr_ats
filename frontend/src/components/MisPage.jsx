@@ -354,7 +354,7 @@ export default function MisPage() {
     setDeskView(desk);
   }, [setDeskView]);
 
-  const showMovedToCandidates = useCallback(async () => {
+  const showMovedToCandidates = useCallback(() => {
     announceLoadRef.current = false;
     const next = { ...EMPTY_MIS_FILTERS, moved: '1' };
     setDraftFilters(next);
@@ -363,35 +363,7 @@ export default function MisPage() {
     setQ('');
     setPage(1);
     if (canSeeAllDesk) setDeskView('all');
-    toast.info('Showing contacts already in Candidates', 2800, { key: 'mis-moved-view' });
-    try {
-      const res = await authenticatedFetch('/api/mis/reconcile-moved', { method: 'POST' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) return;
-      setStats((prev) => ({
-        ...(prev || {}),
-        total: Number(data.total) || prev?.total || 0,
-        mine: Number(data.mine) || prev?.mine || 0,
-        company: Number(data.company) || prev?.company || 0,
-        newThisMonth: Number(data.newThisMonth) || prev?.newThisMonth || 0,
-        movedToCandidates: Number(data.movedToCandidates) || 0,
-        activeInMis: Number(data.activeInMis) || 0,
-        generatedAt: data.generatedAt || prev?.generatedAt,
-      }));
-      const restored = Number(data.reconcile?.restored) || 0;
-      const marked = Number(data.reconcile?.marked) || 0;
-      if (restored > 0 || marked > 0) {
-        toast.success(
-          restored > 0
-            ? `Restored ${restored.toLocaleString()} contact${restored === 1 ? '' : 's'} into MIS history`
-            : `Marked ${marked.toLocaleString()} contact${marked === 1 ? '' : 's'} as In Candidates`,
-          4000,
-          { key: 'mis-reconcile' }
-        );
-      }
-    } catch {
-      /* ignore reconcile errors — list filter still applies */
-    }
+    toast.info('Showing contacts you moved to Candidates', 2800, { key: 'mis-moved-view' });
   }, [canSeeAllDesk, setDeskView, toast]);
 
   const [loading, setLoading] = useState(true);
@@ -596,17 +568,13 @@ export default function MisPage() {
         scope: data.scope,
         generatedAt: data.generatedAt,
       });
-      const restored = Number(data.reconcile?.restored) || 0;
-      const marked = Number(data.reconcile?.marked) || 0;
-      if (restored > 0 || marked > 0) {
+      const cleared = Number(data.reset?.clearedMis) || 0;
+      if (cleared > 0) {
         toast.info(
-          restored > 0
-            ? `Restored ${restored.toLocaleString()} previously moved MIS contact${restored === 1 ? '' : 's'} from Candidates${marked ? ` · marked ${marked.toLocaleString()} In Candidates` : ''}`
-            : `Marked ${marked.toLocaleString()} contact${marked === 1 ? '' : 's'} as In Candidates`,
+          `Cleared ${cleared.toLocaleString()} incorrect In Candidates mark${cleared === 1 ? '' : 's'}. Those contacts stay in MIS.`,
           5000,
-          { key: 'mis-reconcile' }
+          { key: 'mis-reset-marks' }
         );
-        // Reload directory so restored rows appear immediately
         loadRef.current?.(undefined, { silent: true, announce: false }).catch(() => {});
       }
     } catch {
@@ -1688,7 +1656,7 @@ export default function MisPage() {
               icon={Inbox}
               label="All contacts"
               value={stats?.total ?? 0}
-              caption={`${Number(stats?.activeInMis || 0).toLocaleString()} active in MIS`}
+              caption="Organisation directory overview"
               gradient="from-sky-500 to-brand-400"
               loading={statsLoading}
               aligned
@@ -1719,7 +1687,7 @@ export default function MisPage() {
             icon={UserCheck}
             label="In Candidates"
             value={stats?.movedToCandidates ?? 0}
-            caption={showingMovedOnly ? 'Filtered view · click another card to exit' : 'Moved from MIS · click to view'}
+            caption={showingMovedOnly ? 'Filtered · click another card to exit' : 'Only contacts you moved from MIS'}
             gradient="from-violet-500 to-indigo-500"
             loading={statsLoading}
             aligned

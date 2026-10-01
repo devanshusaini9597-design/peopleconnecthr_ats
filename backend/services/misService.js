@@ -578,201 +578,74 @@ function andMisFilter(base, clause) {
 }
 
 /**
- * Restore MIS directory rows deleted by the old "move removes from MIS" flow,
- * and mark remaining MIS↔Candidate email matches as moved.
- * Safe / idempotent — only inserts missing emails and sets missing markers.
+ * One-time reset: clear auto-inferred "In Candidates" marks that were never
+ * intentional UI moves (email-match / restore heuristics).
+ * Future moves via /move-to-candidates still set movedBy + markers correctly.
  */
-const misRestoreCooldown = new Map();
-
-function isMisOriginCandidate(candidate) {
-  if (!candidate) return false;
-  if (candidate.fromMis === true) return true;
-  if (candidate.misContactId) return true;
-  const src = String(candidate.source || '').trim();
-  if (!src) return false;
-  return /^(mis)(\b|[_\s-]|$)/i.test(src) || /\bmis\b/i.test(src);
-}
-
-async function reconcileMisMoveHistory(user, { force = false } = {}) {
+async function resetFalseMisMoveMarks(user, { force = false } = {}) {
   assertMisCompany(user);
   const organizationId = user.organizationId;
   if (!organizationId) throw httpError('Organization required', 403);
 
-  const orgKey = String(organizationId);
-  const now = Date.now();
-  if (!force) {
-    const last = misRestoreCooldown.get(orgKey) || 0;
-    if (now - last < 2 * 60 * 1000) {
-      return { skipped: true, restored: 0, marked: 0, linked: 0 };
-    }
-  }
-  misRestoreCooldown.set(orgKey, now);
-
+  const Organization = require('../models/Organization');
   const Candidate = require('../models/Candidate');
-  const User = require('../models/User');
   const orgMatch = organizationIdMatch(organizationId) || { organizationId };
 
-  const [misRows, candidates] = await Promise.all([
-    MisContact.find(orgMatch).select('_id email movedToCandidateAt movedToCandidateId phone contact').lean(),
-    Candidate.find(orgMatch)
-      .select('_id email name contact phone position location state companyName experience ctc expectedCtc noticePeriod skills product client fls source remark createdBy createdAt fromMis misContactId')
-      .lean(),
-  ]);
-
-  const misByEmail = new Map();
-  for (const row of misRows) {
-    const email = normalizeEmail(row.email);
-    if (email) misByEmail.set(email, row);
-  }
-
-  const candByEmail = new Map();
-  for (const c of candidates) {
-    const email = normalizeEmail(c.email);
-    if (email && !candByEmail.has(email)) candByEmail.set(email, c);
-  }
-
-  let marked = 0;
-  let linked = 0;
-  const markOps = [];
-  for (const row of misRows) {
-    const email = normalizeEmail(row.email);
-    const hit = email ? candByEmail.get(email) : null;
-    if (!hit) continue;
-    if (row.movedToCandidateAt && row.movedToCandidateId) {
-      linked += 1;
-      continue;
-    }
-    markOps.push({
-      updateOne: {
-        filter: { _id: row._id, organizationId },
-        update: {
-          $set: {
-            movedToCandidateAt: row.movedToCandidateAt || hit.createdAt || new Date(),
-            movedToCandidateId: hit._id,
-          },
-        },
-      },
-    });
-  }
-  if (markOps.length) {
-    const res = await MisContact.bulkWrite(markOps, { ordered: false });
-    marked = res.modifiedCount || markOps.length;
-  }
-
-  const creatorIds = [...new Set(
-    candidates
-      .filter((c) => isMisOriginCandidate(c) && !misByEmail.has(normalizeEmail(c.email)))
-      .map((c) => String(c.createdBy || ''))
-      .filter((id) => id && id.length === 24)
-  )];
-  const creators = creatorIds.length
-    ? await User.find({ _id: { $in: creatorIds } }).select('_id role').lean()
-    : [];
-  const roleById = new Map(creators.map((u) => [String(u._id), u.role]));
-
-  let restored = 0;
-  const inserts = [];
-  for (const c of candidates) {
-    if (!isMisOriginCandidate(c)) continue;
-    const email = normalizeEmail(c.email);
-    if (!email || misByEmail.has(email)) continue;
-    if (!trimStr(c.name)) continue;
-
-    const creatorRole = roleById.get(String(c.createdBy || ''));
-    const deskScope = creatorRole === 'owner' ? 'org' : 'personal';
-    const phone = phoneDigits(c.phone || c.contact);
-    const doc = {
-      organizationId,
-      createdBy: c.createdBy || user.id || user._id,
-      deskScope,
-      name: normalizeText(trimStr(c.name)),
-      email,
-      contact: phone || trimStr(c.contact || c.phone),
-      phone: phone || trimStr(c.phone || c.contact),
-      position: normalizeText(trimStr(c.position)),
-      location: normalizeText(trimStr(c.location)),
-      state: normalizeText(trimStr(c.state)),
-      companyName: normalizeText(trimStr(c.companyName)),
-      experience: normalizeText(trimStr(c.experience)),
-      ctc: normalizeText(trimStr(c.ctc)),
-      expectedCtc: normalizeText(trimStr(c.expectedCtc)),
-      noticePeriod: normalizeText(trimStr(c.noticePeriod)),
-      skills: normalizeText(trimStr(c.skills)),
-      product: normalizeText(trimStr(c.product)),
-      client: normalizeText(trimStr(c.client)),
-      fls: normalizeText(trimStr(c.fls)),
-      source: normalizeText(trimStr(c.source) || 'MIS'),
-      remark: trimStr(c.remark),
-      status: 'NEW',
-      marketingConsent: true,
-      recordDate: c.createdAt || null,
-      movedToCandidateAt: c.createdAt || new Date(),
-      movedToCandidateId: c._id,
-      movedBy: c.createdBy || null,
-      createdAt: c.createdAt || new Date(),
-      updatedAt: new Date(),
-    };
-    inserts.push(doc);
-    misByEmail.set(email, doc);
-  }
-
-  if (inserts.length) {
-    try {
-      const inserted = await MisContact.insertMany(inserts, { ordered: false });
-      restored = inserted.length;
-      const linkOps = inserted
-        .filter((row) => row.movedToCandidateId)
-        .map((row) => ({
-          updateOne: {
-            filter: { _id: row.movedToCandidateId, organizationId },
-            update: { $set: { fromMis: true, misContactId: row._id } },
-          },
-        }));
-      if (linkOps.length) {
-        await Candidate.bulkWrite(linkOps, { ordered: false }).catch(() => {});
-      }
-    } catch (err) {
-      // Duplicate-key races: count successful inserts if partial
-      if (err?.insertedDocs?.length) restored = err.insertedDocs.length;
-      else if (err?.writeErrors) {
-        restored = Math.max(0, inserts.length - err.writeErrors.length);
-      } else {
-        logger.warn({ err: err.message, organizationId: orgKey }, 'MIS restore insert failed');
-      }
+  if (!force) {
+    const org = await Organization.findById(organizationId).select('settings.misFalseMoveResetV1').lean();
+    if (org?.settings?.misFalseMoveResetV1) {
+      return { skipped: true, clearedMis: 0, clearedCandidates: 0 };
     }
   }
 
-  // Tag remaining MIS-origin candidates that already match an MIS email
-  const tagOps = [];
-  for (const c of candidates) {
-    if (!isMisOriginCandidate(c) && !c.fromMis) continue;
-    if (c.fromMis && c.misContactId) continue;
-    const email = normalizeEmail(c.email);
-    const mis = email ? misByEmail.get(email) : null;
-    if (!mis?._id) continue;
-    tagOps.push({
-      updateOne: {
-        filter: { _id: c._id, organizationId },
-        update: { $set: { fromMis: true, misContactId: mis._id } },
-      },
-    });
-  }
-  if (tagOps.length) {
-    await Candidate.bulkWrite(tagOps, { ordered: false }).catch(() => {});
-  }
+  // Clear every prior move marker so the 5k+ false "In Candidates" rows become normal MIS again.
+  const misRes = await MisContact.updateMany(
+    {
+      ...orgMatch,
+      $or: [
+        { movedToCandidateAt: { $exists: true, $ne: null } },
+        { movedToCandidateId: { $exists: true, $ne: null } },
+        { movedBy: { $exists: true, $ne: null } },
+      ],
+    },
+    { $unset: { movedToCandidateAt: 1, movedToCandidateId: 1, movedBy: 1 } }
+  );
 
-  if (restored || marked) {
-    logger.info({ organizationId: orgKey, restored, marked }, 'MIS move history reconciled');
+  const candRes = await Candidate.updateMany(
+    {
+      ...orgMatch,
+      $or: [
+        { fromMis: true },
+        { misContactId: { $exists: true, $ne: null } },
+      ],
+    },
+    { $set: { fromMis: false, misContactId: null } }
+  );
+
+  await Organization.updateOne(
+    { _id: organizationId },
+    { $set: { 'settings.misFalseMoveResetV1': new Date() } }
+  );
+
+  const clearedMis = misRes.modifiedCount || 0;
+  const clearedCandidates = candRes.modifiedCount || 0;
+  if (clearedMis || clearedCandidates) {
+    logger.info(
+      { organizationId: String(organizationId), clearedMis, clearedCandidates },
+      'Cleared false MIS In Candidates marks'
+    );
   }
 
   return {
     skipped: false,
-    restored,
-    marked,
-    linked,
-    scannedCandidates: candidates.length,
-    scannedMis: misRows.length,
+    clearedMis,
+    clearedCandidates,
   };
+}
+
+/** @deprecated name kept for route compatibility — now only clears false marks once. */
+async function reconcileMisMoveHistory(user, options = {}) {
+  return resetFalseMisMoveMarks(user, options);
 }
 
 /**
@@ -785,11 +658,11 @@ async function getMisStats(user) {
   const me = userCreatedByIds(user);
   const orgMatch = organizationIdMatch(organizationId) || { organizationId };
 
-  let reconcile = null;
+  let reset = null;
   try {
-    reconcile = await reconcileMisMoveHistory(user);
+    reset = await resetFalseMisMoveMarks(user);
   } catch (err) {
-    logger.warn({ err: err.message }, 'MIS move history reconcile skipped');
+    logger.warn({ err: err.message }, 'MIS false-move reset skipped');
   }
 
   let monthRange = null;
@@ -830,9 +703,9 @@ async function getMisStats(user) {
     activeInMis: Number(activeInMis) || 0,
     scope: user.role === 'owner' ? 'owner' : 'employee',
     createdBySelf: me.length > 0,
-    reconcile: reconcile && !reconcile.skipped ? {
-      restored: reconcile.restored || 0,
-      marked: reconcile.marked || 0,
+    reset: reset && !reset.skipped ? {
+      clearedMis: reset.clearedMis || 0,
+      clearedCandidates: reset.clearedCandidates || 0,
     } : null,
     generatedAt: new Date().toISOString(),
   };
@@ -1740,6 +1613,7 @@ module.exports = {
   getBulkUploadJob,
   moveToCandidates,
   reconcileMisMoveHistory,
+  resetFalseMisMoveMarks,
   sendMarketingToMis,
   startExportContacts,
   getExportJob,
