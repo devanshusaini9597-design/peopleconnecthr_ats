@@ -55,7 +55,7 @@ const ATS = forwardRef((props, ref) => {
   const canExportCandidates = CANDIDATE_EXPORT_ROLES.includes(user?.role);
   const orgPlan = organization?.plan;
   const { onImportComplete } = props || {};
-  const LIST_REFRESH_MS = 30_000;
+  const LIST_REFRESH_MS = 60 * 60 * 1000; // hourly auto-refresh
   const [listRefreshing, setListRefreshing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const listQueryOptionsRef = useRef(null);
@@ -128,10 +128,18 @@ const ATS = forwardRef((props, ref) => {
 
   const refreshRef = useRef(refreshCandidates);
   refreshRef.current = refreshCandidates;
+  const lastSyncedRef = useRef(lastSyncedAt);
+  lastSyncedRef.current = lastSyncedAt;
 
   useEffect(() => {
+    const shouldAutoRefresh = () => {
+      if (document.visibilityState !== 'visible') return false;
+      const last = lastSyncedRef.current;
+      if (!last) return true;
+      return (Date.now() - new Date(last).getTime()) >= LIST_REFRESH_MS;
+    };
     const tick = () => {
-      if (document.visibilityState !== 'visible') return;
+      if (!shouldAutoRefresh()) return;
       refreshRef.current().catch(() => {});
     };
     const id = window.setInterval(tick, LIST_REFRESH_MS);
@@ -163,6 +171,7 @@ const ATS = forwardRef((props, ref) => {
     toast, candidates, selectedIds, setSelectedIds, API_URL,
     searchQuery, filterJob, currentPage, setCurrentPage, fetchData,
     isFreelancer,
+    refreshList: () => fetchData(currentPage, { ...(listQueryOptionsRef.current || {}), silent: true }),
   });
   const {
     sendWhatsApp, handleBulkWhatsApp, handleBulkDelete, handleBulkStatusUpdate,
@@ -493,16 +502,24 @@ const ATS = forwardRef((props, ref) => {
       />
 
       {!isFreelancer && employeeScope.canSelect ? (
-        <div className="mb-4">
+        <div className="mb-4 rounded-xl border border-stone-200/80 bg-gradient-to-r from-stone-50/90 via-white to-white p-3 sm:p-3.5 shadow-sm shadow-stone-900/5">
           <EmployeeScopeSelect
             value={employeeScope.employeeParam}
             employees={employeeScope.employees}
-            onChange={employeeScope.setEmployee}
+            onChange={(next) => {
+              setFreelanceOnly(false);
+              employeeScope.setEmployee(next);
+            }}
             loading={employeeScope.loadingEmployees}
           />
-          <p className="mt-1.5 text-[11px] text-stone-500">
-            Employee desk shows that person’s company candidates only. Use the freelance icon in the toolbar for records a freelancer shared with them.
+          <p className="mt-2 text-[11px] text-stone-500 leading-relaxed max-w-2xl">
+            Company desk counts that employee’s own candidates only. Freelancer shares stay separate — use the person icon in the toolbar to view them.
           </p>
+          {freelanceOnly ? (
+            <p className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] font-semibold text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg px-2 py-1">
+              Viewing freelancer shares only — company desk is hidden
+            </p>
+          ) : null}
         </div>
       ) : null}
 

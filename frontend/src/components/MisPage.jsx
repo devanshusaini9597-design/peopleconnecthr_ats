@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Megaphone, Search, Upload, RefreshCw, Trash2, Loader2, Info,
   CheckSquare, Square, MinusSquare, Plus, Users, X, Filter, RotateCcw, Download, Briefcase, Sparkles,
+  Layers, ChevronDown, Building2, UserRound, Inbox, CalendarPlus,
 } from 'lucide-react';
 import { authenticatedFetch, authenticatedUpload, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -24,19 +25,21 @@ import { fetchPicklist, PICKLIST_DROPDOWN_LIMIT } from '../utils/orgListFetch';
 import { DEFAULT_CTC_BANDS } from '../utils/ctcRanges';
 import { dedupeByName } from '../utils/dedupeMasterData';
 import { guardTableCopy } from '../utils/tableCopyGuard';
-import { canAccessMis, misPageSubtitle, misTipCaption } from '../utils/misAccess';
+import { canAccessMis, canSeeMisAllDesk, normalizeMisDesk, misPageSubtitle, misTipCaption } from '../utils/misAccess';
 import { MIS_TOUR_KEY, MIS_TOUR_STEPS } from './mis/misConstants';
 import ProductTour from './ui/ProductTour';
 import TourHelpFab from './ui/TourHelpFab';
 import usePageTour from '../hooks/usePageTour';
 import { useTranslation } from 'react-i18next';
 import TalentMatchDesk from './talentMatch/TalentMatchDesk';
+import { StatCard } from './dashboard/DashboardWidgets';
 
 const PAGE_SIZE = 50;
 
 const EMPTY_MIS_FILTERS = {
   consent: 'all',
   unsubscribed: 'all',
+  status: '',
   location: '',
   position: '',
   companyName: '',
@@ -60,6 +63,26 @@ const TEXT_FILTER_KEYS = [
   'expMin', 'expMax', 'ctcMin', 'ctcMax', 'expectedCtcMin', 'expectedCtcMax',
 ];
 
+function formatMisStatusLabel(status) {
+  const raw = String(status || '').trim();
+  if (!raw) return '—';
+  if (raw === raw.toUpperCase() && raw.includes(' ')) {
+    return raw.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  if (raw === raw.toUpperCase()) {
+    return raw.charAt(0) + raw.slice(1).toLowerCase();
+  }
+  return raw;
+}
+
+function misStatusBadgeClass(status) {
+  const key = String(status || '').toUpperCase();
+  if (key.includes('CONVERT') || key.includes('QUALIF')) return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+  if (key.includes('NOT INTEREST') || key.includes('CLOSED') || key.includes('DEAD')) return 'bg-red-50 text-red-800 border-red-200';
+  if (key.includes('FOLLOW') || key.includes('CONTACT')) return 'bg-amber-50 text-amber-900 border-amber-200';
+  if (key.includes('INTEREST')) return 'bg-violet-50 text-violet-800 border-violet-200';
+  return 'bg-sky-50 text-sky-800 border-sky-200';
+}
 function pageButtonClass(active) {
   return active
     ? 'bg-gradient-to-br from-brand-600 to-teal-600 text-white shadow-md shadow-brand-500/25'
@@ -68,6 +91,132 @@ function pageButtonClass(active) {
 
 function dash(v) {
   return v ? <span className="text-sm text-stone-700 whitespace-nowrap">{v}</span> : <span className="text-stone-300">—</span>;
+}
+
+function MisActionsMenu({
+  isOwner, uploading, loading, filteredCount, onImport, onExport, onMatch,
+}) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef(null);
+  const [pos, setPos] = useState(null);
+  const close = () => setOpen(false);
+
+  useEffect(() => {
+    if (!open) {
+      setPos(null);
+      return undefined;
+    }
+    const place = () => {
+      const el = btnRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const width = Math.min(300, window.innerWidth - 16);
+      const left = Math.min(Math.max(8, r.right - width), window.innerWidth - width - 8);
+      const spaceBelow = window.innerHeight - r.bottom - 12;
+      const maxH = Math.min(360, Math.max(200, spaceBelow > 200 ? spaceBelow : r.top - 12));
+      const openUp = spaceBelow < 220 && r.top > spaceBelow;
+      setPos({
+        left,
+        width,
+        maxH,
+        top: openUp ? undefined : r.bottom + 8,
+        bottom: openUp ? window.innerHeight - r.top + 8 : undefined,
+      });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        disabled={uploading}
+        className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-stone-200 bg-white px-2.5 sm:px-3 text-sm font-semibold text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-50"
+      >
+        <Layers size={15} className="shrink-0 text-stone-500" />
+        Actions
+        <ChevronDown size={14} className={`opacity-60 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && pos ? (
+        <>
+          <div className="fixed inset-0 z-40" onClick={close} aria-hidden />
+          <div
+            className="fixed z-50 rounded-xl border border-stone-200 bg-white shadow-xl shadow-stone-900/10 animate-fade-in flex flex-col overflow-hidden"
+            style={{
+              left: pos.left,
+              width: pos.width,
+              top: pos.top,
+              bottom: pos.bottom,
+              maxHeight: pos.maxH,
+            }}
+          >
+            <div className="px-3 py-2 border-b border-stone-100 bg-stone-50/90 shrink-0">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-stone-500">Actions</p>
+              <p className="text-[11px] text-stone-400">Import, export, and matching</p>
+            </div>
+            <div
+              className="p-1.5 overflow-y-auto overscroll-contain min-h-0 flex-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              style={{ maxHeight: pos.maxH - 52 }}
+            >
+              <button
+                type="button"
+                onClick={() => { close(); onImport?.(); }}
+                disabled={uploading}
+                className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-stone-50 transition-colors disabled:opacity-50"
+              >
+                <span className="h-8 w-8 rounded-lg border border-stone-200 bg-white inline-flex items-center justify-center text-stone-600 flex-shrink-0">
+                  {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} strokeWidth={1.75} />}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-stone-800 truncate">Import file</span>
+                  <span className="block text-[11px] text-stone-500 truncate">Excel or CSV</span>
+                </span>
+              </button>
+              {isOwner ? (
+                <button
+                  type="button"
+                  onClick={() => { close(); onExport?.(); }}
+                  disabled={uploading || loading || filteredCount === 0}
+                  className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-stone-50 transition-colors disabled:opacity-50"
+                >
+                  <span className="h-8 w-8 rounded-lg border border-stone-200 bg-white inline-flex items-center justify-center text-stone-600 flex-shrink-0">
+                    <Download size={15} strokeWidth={1.75} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-stone-800 truncate">Export</span>
+                    <span className="block text-[11px] text-stone-500 truncate">Download to Excel</span>
+                  </span>
+                </button>
+              ) : null}
+              <div className="my-1 mx-2 border-t border-stone-100" />
+              <button
+                type="button"
+                onClick={() => { close(); onMatch?.(); }}
+                className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-stone-50 transition-colors"
+              >
+                <span className="h-8 w-8 rounded-lg border border-brand-200 bg-brand-50 inline-flex items-center justify-center text-brand-700 flex-shrink-0">
+                  <Sparkles size={15} strokeWidth={1.75} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-stone-800 truncate">Match to job</span>
+                  <span className="block text-[11px] text-stone-500 truncate">Rank MIS contacts vs an open role</span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
 }
 
 function formatDate(raw) {
@@ -83,6 +232,7 @@ function appendMisFilters(params, filters = {}) {
   if (filters.unsubscribed === '1' || filters.unsubscribed === '0') {
     params.set('unsubscribed', filters.unsubscribed);
   }
+  if (String(filters.status || '').trim()) params.set('status', String(filters.status).trim().toUpperCase());
   TEXT_FILTER_KEYS.forEach((key) => {
     if (String(filters[key] || '').trim()) params.set(key, String(filters[key]).trim());
   });
@@ -97,6 +247,7 @@ function countActiveMisFilters(filters = {}) {
   let n = 0;
   if (filters.consent === 'yes' || filters.consent === 'no') n += 1;
   if (filters.unsubscribed === '1' || filters.unsubscribed === '0') n += 1;
+  if (String(filters.status || '').trim()) n += 1;
   TEXT_FILTER_KEYS.forEach((key) => {
     if (String(filters[key] || '').trim()) n += 1;
   });
@@ -110,6 +261,7 @@ export default function MisPage() {
   const toast = useToast();
   const navigate = useNavigate();
   const isOwner = user?.role === 'owner';
+  const canSeeAllDesk = canSeeMisAllDesk(user);
   const [tourOpen, setTourOpen] = usePageTour(MIS_TOUR_KEY);
   const fileInputRef = useRef(null);
   const {
@@ -123,19 +275,77 @@ export default function MisPage() {
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
   const [scope, setScope] = useState('owner');
   const [page, setPage] = useState(1);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const urlQ = String(searchParams.get('q') || '').trim();
+  const deskFromUrl = String(searchParams.get('desk') || '').toLowerCase();
+  const deskView = normalizeMisDesk(deskFromUrl, user);
   const [q, setQ] = useState(urlQ);
   const [draft, setDraft] = useState(urlQ);
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [masterMisStatuses, setMasterMisStatuses] = useState([]);
+  const [deskSwitchLabel, setDeskSwitchLabel] = useState('');
+  const announceLoadRef = useRef(false);
 
   useEffect(() => {
     setQ(urlQ);
     setDraft(urlQ);
   }, [urlQ]);
-  const [showFilters, setShowFilters] = useState(false);
+
+  // Keep URL desk in sync with role rules (employees never stay on All).
+  useEffect(() => {
+    if (!user) return;
+    const normalized = normalizeMisDesk(deskFromUrl, user);
+    const urlDesk = deskFromUrl === 'mine' || deskFromUrl === 'company' || deskFromUrl === 'all'
+      ? deskFromUrl
+      : '';
+    // No desk param → write role default (owner: all, others: mine)
+    if (!urlDesk) {
+      setSearchParams((prev) => {
+        const p = new URLSearchParams(prev);
+        p.set('desk', normalized);
+        return p;
+      }, { replace: true });
+      return;
+    }
+    // Non-admin/owner trying to use All → force My records
+    if (urlDesk === 'all' && !canSeeMisAllDesk(user)) {
+      setSearchParams((prev) => {
+        const p = new URLSearchParams(prev);
+        p.set('desk', 'mine');
+        return p;
+      }, { replace: true });
+      return;
+    }
+    if (urlDesk !== normalized) {
+      setSearchParams((prev) => {
+        const p = new URLSearchParams(prev);
+        p.set('desk', normalized);
+        return p;
+      }, { replace: true });
+    }
+  }, [user, deskFromUrl, setSearchParams]);
+
+  const setDeskView = useCallback((next) => {
+    const value = normalizeMisDesk(next, user);
+    const labels = { all: 'All contacts', mine: 'My records', company: 'Organisation' };
+    setDeskSwitchLabel(labels[value] || 'contacts');
+    announceLoadRef.current = true;
+    toast.info(`Loading ${labels[value]}…`, 1800);
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      // Always persist desk so admin All (desk=all) is distinct from employee default (mine)
+      p.set('desk', value);
+      return p;
+    }, { replace: true });
+    setPage(1);
+  }, [setSearchParams, user, toast]);  const [showFilters, setShowFilters] = useState(false);
   const [draftFilters, setDraftFilters] = useState(() => ({ ...EMPTY_MIS_FILTERS }));
   const [appliedFilters, setAppliedFilters] = useState(() => ({ ...EMPTY_MIS_FILTERS }));
   const [loading, setLoading] = useState(true);
+  const [listRefreshing, setListRefreshing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const LIST_REFRESH_MS = 60 * 60 * 1000; // hourly auto-refresh
   const [uploading, setUploading] = useState(false);
   const [uploadUi, setUploadUi] = useState(null);
   // uploadUi: { phase, percent, fileName, result? }
@@ -162,6 +372,9 @@ export default function MisPage() {
   const [exporting, setExporting] = useState(false);
   const [masterPositions, setMasterPositions] = useState([]);
   const [masterCtcBands, setMasterCtcBands] = useState([]);
+  const [masterClients, setMasterClients] = useState([]);
+  const [masterSources, setMasterSources] = useState([]);
+  const [masterProducts, setMasterProducts] = useState([]);
 
   const activeFilterCount = useMemo(() => countActiveMisFilters(appliedFilters), [appliedFilters]);
 
@@ -169,13 +382,21 @@ export default function MisPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [positions, ctc] = await Promise.all([
+        const [positions, ctc, clients, sources, product, misStatus] = await Promise.all([
           fetchPicklist('/api/positions', { limit: PICKLIST_DROPDOWN_LIMIT }).catch(() => []),
           fetchPicklist('/api/org-lists/ctc').catch(() => []),
+          fetchPicklist('/api/clients', { limit: PICKLIST_DROPDOWN_LIMIT }).catch(() => []),
+          fetchPicklist('/api/sources', { limit: PICKLIST_DROPDOWN_LIMIT }).catch(() => []),
+          fetchPicklist('/api/org-lists/product', { limit: PICKLIST_DROPDOWN_LIMIT }).catch(() => []),
+          fetchPicklist('/api/org-lists/misStatus', { limit: PICKLIST_DROPDOWN_LIMIT }).catch(() => []),
         ]);
         if (cancelled) return;
         setMasterPositions(dedupeByName(positions));
         setMasterCtcBands(dedupeByName(ctc));
+        setMasterClients(dedupeByName(clients));
+        setMasterSources(dedupeByName(sources));
+        setMasterProducts(dedupeByName(product));
+        setMasterMisStatuses(dedupeByName(misStatus));
       } catch { /* keep empty */ }
     })();
     return () => { cancelled = true; };
@@ -216,16 +437,59 @@ export default function MisPage() {
     ],
     [masterPositions]
   );
+  const clientFilterOptions = useMemo(
+    () => [
+      { value: '', label: 'All clients' },
+      ...masterClients.map((c) => ({ value: c.name, label: c.name })),
+    ],
+    [masterClients]
+  );
+  const sourceFilterOptions = useMemo(
+    () => [
+      { value: '', label: 'All sources' },
+      ...masterSources.map((s) => ({ value: s.name, label: s.name })),
+    ],
+    [masterSources]
+  );
+  const productFilterOptions = useMemo(
+    () => [
+      { value: '', label: 'All products' },
+      ...masterProducts.map((p) => ({ value: p.name, label: p.name })),
+    ],
+    [masterProducts]
+  );
+  const statusFilterOptions = useMemo(() => {
+    const defaults = ['NEW', 'CONTACTED', 'INTERESTED', 'FOLLOW UP', 'NOT INTERESTED', 'QUALIFIED', 'CONVERTED'];
+    const fromApi = masterMisStatuses.map((s) => String(s.name || '').toUpperCase()).filter(Boolean);
+    // Prefer live org list — do not re-merge starters (that undoes rename/delete in Manage).
+    const names = fromApi.length ? fromApi : defaults;
+    const seen = new Set();
+    const unique = [];
+    for (const name of names) {
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      unique.push(name);
+    }
+    return [
+      { value: '', label: 'All statuses' },
+      ...unique.map((name) => ({ value: name, label: formatMisStatusLabel(name) })),
+    ];
+  }, [masterMisStatuses]);
 
-  const load = useCallback(async (pageOverride) => {
+  const load = useCallback(async (pageOverride, opts = {}) => {
     const pageNum = pageOverride != null ? pageOverride : page;
-    setLoading(true);
+    const silent = Boolean(opts.silent);
+    const announce = Boolean(opts.announce);
+    if (silent) setListRefreshing(true);
+    else setLoading(true);
     try {
       const params = new URLSearchParams({
         page: String(pageNum),
         limit: String(PAGE_SIZE),
       });
       if (q) params.set('q', q);
+      // Always send desk so backend role defaults stay accurate
+      if (deskView) params.set('desk', deskView);
       appendMisFilters(params, appliedFilters);
       const res = await authenticatedFetch(`/api/mis?${params}`);
       const data = await res.json().catch(() => ({}));
@@ -234,26 +498,117 @@ export default function MisPage() {
       setRows(data.rows || []);
       setPagination(nextPagination);
       setScope(data.scope || 'owner');
+      setLastSyncedAt(new Date());
+      // Keep overview cards aligned with the live list total for the active desk
+      const listTotal = Number(nextPagination.total);
+      if (Number.isFinite(listTotal) && listTotal >= 0) {
+        const hasFilters = Boolean(q || Object.values(appliedFilters || {}).some((v) => v && v !== 'all' && v !== ''));
+        if (!hasFilters) {
+          setStats((prev) => {
+            if (!prev) {
+              return {
+                total: deskView === 'all' ? listTotal : 0,
+                company: deskView === 'company' ? listTotal : 0,
+                mine: deskView === 'mine' ? listTotal : 0,
+                newThisMonth: 0,
+              };
+            }
+            if (deskView === 'all') return { ...prev, total: listTotal };
+            if (deskView === 'company') return { ...prev, company: listTotal };
+            if (deskView === 'mine') return { ...prev, mine: listTotal };
+            return prev;
+          });
+        }
+      }
       const maxPage = Math.max(1, Number(nextPagination.pages) || 1);
       if (pageNum > maxPage) {
         setPage(maxPage);
       }
+      if (announce) {
+        const n = Number(nextPagination.total) || 0;
+        const deskLabel = deskView === 'mine' ? 'My records' : deskView === 'company' ? 'Organisation' : 'All';
+        toast.info(
+          n === 0
+            ? `${deskLabel}: no contacts`
+            : `${deskLabel}: ${n.toLocaleString()} contact${n === 1 ? '' : 's'}`,
+          2200
+        );
+      }
     } catch (err) {
-      toast.error(err.message || 'Failed to load contacts');
-      setRows([]);
+      if (!silent) toast.error(err.message || 'Failed to load contacts');
+      if (!silent) setRows([]);
     } finally {
-      setLoading(false);
+      if (silent) setListRefreshing(false);
+      else setLoading(false);
+      setDeskSwitchLabel('');
     }
-  }, [page, q, appliedFilters, toast]);
+  }, [page, q, appliedFilters, deskView, toast]);
 
-  // Clear selection when filters/search change (not on page flip — keeps "select all matching")
+  const loadStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const res = await authenticatedFetch(`/api/mis/stats?_=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to load MIS stats');
+      setStats({
+        total: Number(data.total) || 0,
+        mine: Number(data.mine) || 0,
+        company: Number(data.company) || 0,
+        newThisMonth: Number(data.newThisMonth) || 0,
+        scope: data.scope,
+        generatedAt: data.generatedAt,
+      });
+    } catch {
+      setStats(null);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  const loadStatsRef = useRef(loadStats);
+  loadStatsRef.current = loadStats;
+  const lastSyncedRef = useRef(lastSyncedAt);
+  lastSyncedRef.current = lastSyncedAt;
+
+  // Clear selection when filters/search/desk change (not on page flip — keeps "select all matching")
   useEffect(() => {
     setSelected(new Set());
     setConsentMenuOpen(false);
-  }, [q, appliedFilters]);
+  }, [q, appliedFilters, deskView]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const announce = announceLoadRef.current;
+    announceLoadRef.current = false;
+    load(undefined, { announce });
+  }, [load]);
+  useEffect(() => { loadStats(); }, [loadStats]);
 
+  useEffect(() => {
+    const shouldAutoRefresh = () => {
+      if (document.visibilityState !== 'visible') return false;
+      const last = lastSyncedRef.current;
+      if (!last) return true;
+      return (Date.now() - new Date(last).getTime()) >= LIST_REFRESH_MS;
+    };
+    const tick = () => {
+      if (!shouldAutoRefresh()) return;
+      loadRef.current(undefined, { silent: true }).catch(() => {});
+      loadStatsRef.current().catch(() => {});
+    };
+    const id = window.setInterval(tick, LIST_REFRESH_MS);
+    window.addEventListener('focus', tick);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('focus', tick);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, []);
   const pageIds = rows.map((r) => String(r._id));
   const selectedOnPage = pageIds.filter((id) => selected.has(id));
   const isPageSelected = pageIds.length > 0 && selectedOnPage.length === pageIds.length;
@@ -278,7 +633,16 @@ export default function MisPage() {
     setSelectedIds,
   });
 
-  const totalLabel = (pagination.total || rows.length || 0).toLocaleString();
+  const headerTotal = useMemo(() => {
+    const hasFilters = Boolean(q || Object.values(appliedFilters || {}).some((v) => v && v !== 'all' && v !== ''));
+    if (!hasFilters && stats) {
+      if (deskView === 'all' && Number.isFinite(Number(stats.total))) return Number(stats.total);
+      if (deskView === 'mine' && Number.isFinite(Number(stats.mine))) return Number(stats.mine);
+      if (deskView === 'company' && Number.isFinite(Number(stats.company))) return Number(stats.company);
+    }
+    return pagination.total || rows.length || 0;
+  }, [q, appliedFilters, deskView, stats, pagination.total, rows.length]);
+  const totalLabel = headerTotal.toLocaleString();
   const filteredCount = pagination.total > 0 ? pagination.total : (rows.length || 0);
   const totalPages = Math.max(1, Number(pagination.pages) || 1);
   const safePage = Math.min(Math.max(1, page), totalPages);
@@ -293,12 +657,13 @@ export default function MisPage() {
       limit: String(extra.limit ?? PAGE_SIZE),
     });
     if (q) params.set('q', q);
+    if (deskView && deskView !== 'all') params.set('desk', deskView);
     appendMisFilters(params, appliedFilters);
     if (extra.idsOnly) params.set('idsOnly', '1');
     if (extra.idSkip) params.set('idSkip', String(extra.idSkip));
     if (extra.idLimit) params.set('idLimit', String(extra.idLimit));
     return params;
-  }, [page, q, appliedFilters]);
+  }, [page, q, appliedFilters, deskView]);
 
   const loadMatchingContacts = useCallback(async () => {
     const ids = [];
@@ -571,6 +936,22 @@ export default function MisPage() {
       render: (row) => (row.noticePeriod ? <span className="text-sm whitespace-nowrap">{row.noticePeriod}</span> : <span className="text-stone-300">—</span>),
     },
     {
+      key: 'status',
+      label: 'Status',
+      className: 'w-auto min-w-[120px]',
+      render: (row) => {
+        const label = formatMisStatusLabel(row.status || 'NEW');
+        return (
+          <span
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold border whitespace-nowrap ${misStatusBadgeClass(row.status)}`}
+            title="MIS contact status (separate from Candidates pipeline)"
+          >
+            {label}
+          </span>
+        );
+      },
+    },
+    {
       key: 'consent',
       label: 'Marketing consent',
       className: 'w-auto min-w-[130px]',
@@ -591,8 +972,7 @@ export default function MisPage() {
           </button>
         );
       },
-    },
-    { key: 'client', label: 'Client', className: 'w-auto', render: (row) => dash(row.client) },
+    },    { key: 'client', label: 'Client', className: 'w-auto', render: (row) => dash(row.client) },
     { key: 'product', label: 'Product / Skill', className: 'w-auto', render: (row) => dash(row.product) },
     {
       key: 'source',
@@ -814,6 +1194,7 @@ export default function MisPage() {
       }
       setPage(1);
       await load(1);
+      await loadStats();
     } catch (err) {
       setUploadUi((prev) => ({
         ...(prev || { fileName: '', percent: 0 }),
@@ -846,6 +1227,7 @@ export default function MisPage() {
       toast.success(`Deleted ${data.deleted || 0}`);
       setDeleteConfirmOpen(false);
       await load();
+      await loadStats();
     } catch (err) {
       toast.error(err.message || 'Delete failed');
     } finally {
@@ -868,6 +1250,7 @@ export default function MisPage() {
       toast.success(data.message || `Moved ${data.moved || 0}`);
       setSelected(new Set());
       await load();
+      await loadStats();
     } catch (err) {
       toast.error(err.message || 'Move failed');
       setMoveConfirmOpen(false);
@@ -1051,6 +1434,8 @@ export default function MisPage() {
   }, [isOwner, selectedIds, q, appliedFilters, filteredCount, toast]);
 
   const runSearch = () => {
+    announceLoadRef.current = true;
+    toast.info(draft.trim() || activeFilterCount > 0 ? 'Searching contacts…' : 'Loading contacts…', 1800);
     setQ(draft.trim());
     setAppliedFilters({ ...draftFilters });
     setPage(1);
@@ -1061,6 +1446,8 @@ export default function MisPage() {
       toast.warning('Select both From and To dates, then click Search.');
       return;
     }
+    announceLoadRef.current = true;
+    toast.info('Applying filters…', 1800);
     setAppliedFilters({ ...draftFilters });
     setPage(1);
     setShowFilters(true);
@@ -1116,15 +1503,29 @@ export default function MisPage() {
     const chips = [];
     if (appliedFilters.consent === 'yes') chips.push({ key: 'consent', label: 'Consent', value: 'Consented' });
     if (appliedFilters.consent === 'no') chips.push({ key: 'consent', label: 'Consent', value: 'No consent' });
-    if (appliedFilters.unsubscribed === '0') chips.push({ key: 'unsubscribed', label: 'Status', value: 'Active' });
-    if (appliedFilters.unsubscribed === '1') chips.push({ key: 'unsubscribed', label: 'Status', value: 'Unsubscribed' });
+    if (appliedFilters.unsubscribed === '0') chips.push({ key: 'unsubscribed', label: 'Subscription', value: 'Active' });
+    if (appliedFilters.unsubscribed === '1') chips.push({ key: 'unsubscribed', label: 'Subscription', value: 'Unsubscribed' });
+    if (String(appliedFilters.status || '').trim()) {
+      chips.push({
+        key: 'status',
+        label: 'Status',
+        value: formatMisStatusLabel(appliedFilters.status),
+      });
+    }
     if (appliedFilters.datePeriod) {
+      const periodLabel = ({
+        today: 'Today',
+        yesterday: 'Yesterday',
+        week: 'Last 7 days',
+        month: 'This month',
+        quarter: 'This quarter',
+        year: 'This year',
+        custom: `${appliedFilters.dateFrom || '…'} → ${appliedFilters.dateTo || '…'}`,
+      })[appliedFilters.datePeriod] || appliedFilters.datePeriod;
       chips.push({
         key: 'datePeriod',
         label: 'Period',
-        value: appliedFilters.datePeriod === 'custom'
-          ? `${appliedFilters.dateFrom || '…'} → ${appliedFilters.dateTo || '…'}`
-          : appliedFilters.datePeriod,
+        value: periodLabel,
       });
     }
     [
@@ -1147,8 +1548,10 @@ export default function MisPage() {
     });
     return chips;
   }, [appliedFilters]);
-
-  const showOverlay = loading && rows.length === 0;
+  const showOverlay = loading;
+  const overlayTitle = deskSwitchLabel
+    ? `Loading ${deskSwitchLabel}`
+    : (q || activeFilterCount > 0 ? 'Searching contacts' : 'Loading contacts');
   const hasActiveFilters = Boolean(q || activeFilterCount > 0);
   const filtersDirty = useMemo(
     () => JSON.stringify(draftFilters) !== JSON.stringify(appliedFilters),
@@ -1164,76 +1567,168 @@ export default function MisPage() {
       <PageHeader
         icon={Megaphone}
         title="MIS"
-        subtitle={misPageSubtitle(user, pagination.total, totalLabel)}
+        subtitle={misPageSubtitle(user, headerTotal, totalLabel)}
         gradientTitle
       >
-        <div className="flex w-full sm:w-auto flex-wrap items-center gap-2" data-tour="mis-actions">
+        <div
+          className="flex w-full items-center gap-1.5 sm:gap-2 justify-start md:justify-end flex-nowrap min-w-0"
+          data-tour="mis-actions"
+        >
           <button
             type="button"
-            onClick={() => load()}
-            disabled={loading || uploading}
-            className="btn-secondary flex-1 sm:flex-none justify-center"
-            title="Refresh directory"
+            onClick={() => load(undefined, { silent: true })}
+            disabled={loading || listRefreshing || uploading}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-600 shadow-sm hover:bg-stone-50 hover:text-stone-800 disabled:opacity-50"
+            aria-label="Refresh directory"
+            title={
+              lastSyncedAt
+                ? `Refresh directory · auto every 1 hour · last ${new Date(lastSyncedAt).toLocaleTimeString()}`
+                : 'Refresh directory · auto every 1 hour'
+            }
           >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-            Refresh
+            <RefreshCw size={16} strokeWidth={2.25} className={(loading || listRefreshing) ? 'animate-spin' : ''} />
           </button>
-          {isOwner && (
-            <button
-              type="button"
-              onClick={() => setExportOpen(true)}
-              disabled={uploading || loading || filteredCount === 0}
-              className="btn-secondary flex-1 sm:flex-none justify-center"
-              title="Export directory to Excel (owner only)"
-            >
-              <Download size={16} />
-              Export
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="btn-secondary flex-1 sm:flex-none justify-center"
-            title="Import Excel or CSV"
-          >
-            {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-            Import spreadsheet
-          </button>
-          <button
-            type="button"
-            onClick={() => setRankOpen(true)}
-            className="btn-secondary flex-1 sm:flex-none justify-center"
-            title="Rank this directory against an open job"
-          >
-            <Sparkles size={16} />
-            Match to job
-          </button>
+          <MisActionsMenu
+            isOwner={isOwner}
+            uploading={uploading}
+            loading={loading}
+            filteredCount={filteredCount}
+            onImport={() => fileInputRef.current?.click()}
+            onExport={() => setExportOpen(true)}
+            onMatch={() => setRankOpen(true)}
+          />
           <button
             type="button"
             onClick={() => setAddOpen(true)}
             disabled={uploading}
-            className="btn-primary flex-1 sm:flex-none justify-center"
+            className="inline-flex h-10 min-w-0 flex-1 sm:flex-none items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br from-brand-600 to-teal-600 px-3 sm:px-3.5 text-sm font-semibold text-white shadow-md shadow-brand-500/20 hover:opacity-95 disabled:opacity-50"
           >
-            <Plus size={16} />
-            Add contact
+            <Plus size={16} className="shrink-0" />
+            <span className="truncate">Add contact</span>
           </button>
         </div>
       </PageHeader>
 
       <div
         data-tour="mis-tip"
-        className="rounded-xl border border-stone-200 bg-white px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-[13px] text-stone-600 leading-relaxed flex flex-wrap items-center gap-x-3 gap-y-1.5"
+        className="rounded-xl border border-brand-100/80 bg-gradient-to-r from-brand-50/70 via-white to-white px-3.5 sm:px-4 py-2.5 text-[13px] text-stone-600 leading-snug flex flex-col xs:flex-row sm:flex-row sm:items-center gap-1.5 sm:gap-2 shadow-sm shadow-brand-900/[0.03] min-w-0"
       >
-        <span className="inline-flex items-center gap-1.5 text-brand-700 font-semibold">
-          <Info size={14} /> Tip
+        <span className="inline-flex items-center gap-1.5 text-brand-800 font-semibold shrink-0">
+          <Info size={14} /> Note
         </span>
-        <span>
+        <span className="min-w-0 flex-1 sm:truncate" title={misTipCaption(user)}>
           {misTipCaption(user)}
-          {' '}
-          Press <span className="font-semibold text-stone-800">?</span> for a tour.
         </span>
       </div>
+
+      {/* Desk scope tabs */}
+      <div className="flex flex-col gap-2 min-w-0" data-tour="mis-desk-tabs">
+        <div className="overflow-x-auto -mx-1 px-1 scrollbar-thin">
+          <div className="inline-flex min-w-full sm:min-w-0 flex-nowrap sm:flex-wrap items-center gap-1 p-1 rounded-xl border border-stone-200 bg-white shadow-sm shadow-stone-900/5">
+            {[
+              canSeeAllDesk
+                ? { id: 'all', label: 'All', icon: Layers, hint: 'Organisation directory and your records' }
+                : null,
+              { id: 'mine', label: 'My records', icon: UserRound, hint: 'Contacts you added' },
+              { id: 'company', label: 'Organisation', icon: Building2, hint: 'Shared organisation directory' },
+            ].filter(Boolean).map((tab) => {
+              const Icon = tab.icon;
+              const active = deskView === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setDeskView(tab.id)}
+                  disabled={loading && active}
+                  title={tab.hint}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 sm:px-3 h-9 text-sm font-semibold transition-colors whitespace-nowrap ${
+                    active
+                      ? 'bg-gradient-to-br from-brand-600 to-teal-600 text-white shadow-md shadow-brand-500/20'
+                      : 'text-stone-600 hover:bg-stone-50'
+                  } disabled:opacity-80`}
+                >
+                  {loading && active ? (
+                    <Loader2 size={14} className="shrink-0 animate-spin opacity-90" />
+                  ) : (
+                    <Icon size={14} className="shrink-0 opacity-90" />
+                  )}
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <p className="text-[11px] text-stone-400 min-w-0 leading-snug">
+          {loading && deskSwitchLabel
+            ? `Loading ${deskSwitchLabel.toLowerCase()}…`
+            : deskView === 'mine'
+              ? 'Showing contacts you added'
+              : deskView === 'company'
+                ? 'Showing the shared organisation directory'
+                : 'Showing the organisation directory and your records'}
+        </p>
+      </div>
+
+      {/* KPI cards — All / Organisation / My records / Added this month */}
+      <section className="min-w-0" aria-label="MIS overview">
+        <div className="flex items-end justify-between gap-2 mb-3 min-w-0">
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold tracking-tight text-stone-900">Overview</h2>
+            <p className="text-xs text-stone-500 mt-0.5">
+              Live counts for contacts you are authorised to view.
+            </p>
+          </div>
+        </div>
+        <div className={`grid grid-cols-1 min-[420px]:grid-cols-2 ${canSeeAllDesk ? 'xl:grid-cols-4' : 'xl:grid-cols-3'} gap-3 sm:gap-4`}>
+          {canSeeAllDesk ? (
+            <StatCard
+              icon={Inbox}
+              label="All contacts"
+              value={stats?.total ?? 0}
+              caption="Organisation + your records"
+              gradient="from-sky-500 to-brand-400"
+              loading={statsLoading}
+              aligned
+              onClick={() => setDeskView('all')}
+            />
+          ) : null}
+          <StatCard
+            icon={Building2}
+            label="Organisation"
+            value={stats?.company ?? 0}
+            caption="Shared directory contacts"
+            gradient="from-indigo-500 to-blue-400"
+            loading={statsLoading}
+            aligned
+            onClick={() => setDeskView('company')}
+          />
+          <StatCard
+            icon={UserRound}
+            label="My records"
+            value={stats?.mine ?? 0}
+            caption="Contacts you added"
+            gradient="from-brand-500 to-teal-500"
+            loading={statsLoading}
+            aligned
+            onClick={() => setDeskView('mine')}
+          />
+          <StatCard
+            icon={CalendarPlus}
+            label="Added this month"
+            value={stats?.newThisMonth ?? 0}
+            caption="Your new contacts this month"
+            gradient="from-emerald-500 to-lime-400"
+            loading={statsLoading}
+            aligned
+            onClick={() => {
+              setDeskView('mine');
+              setAppliedFilters((prev) => ({ ...prev, datePeriod: 'month', dateFrom: '', dateTo: '' }));
+              setDraftFilters((prev) => ({ ...prev, datePeriod: 'month', dateFrom: '', dateTo: '' }));
+              setPage(1);
+            }}
+          />
+        </div>
+      </section>
 
       <input
         ref={fileInputRef}
@@ -1249,72 +1744,85 @@ export default function MisPage() {
         }}
       />
 
-      {selectedIds.length > 0 ? (
-        <MisBulkToolbar
-          selectedIds={selectedIds}
-          onClear={() => { setSelected(new Set()); setConsentMenuOpen(false); }}
-          onEmail={startMisCampaign}
-          onWhatsApp={handleBulkWhatsApp}
-          onBulkEdit={() => { setConsentMenuOpen(false); setBulkEditOpen(true); }}
-          onConsentMenuToggle={() => setConsentMenuOpen((v) => !v)}
-          consentMenuOpen={consentMenuOpen}
-          onSetConsent={requestBulkConsent}
-          onMoveToCandidates={isOwner ? () => requestMove(selectedIds) : null}
-          onDelete={() => setDeleteConfirmOpen(true)}
-          filteredCount={filteredCount}
-          isAllFilteredSelected={isAllFilteredSelected}
-          onSelectAllFiltered={handleSelectAllFiltered}
-        />
-      ) : null}
-
       <div className="card-ats-bordered relative overflow-hidden min-h-[320px]">
-        <div className="p-4 sm:p-5 border-b border-stone-100 space-y-3" data-tour="mis-search">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none z-[1]" />
-              <input
-                type="text"
-                placeholder="Search by name, email, company, or phone"
-                className="w-full h-11 pl-11 sm:pl-12 pr-10 rounded-xl border border-stone-200 bg-white focus:border-brand-600 outline-none ring-0 shadow-none text-sm font-medium text-stone-900 placeholder:text-stone-400 transition-colors"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
-              />
-              {draft.trim() ? (
+        {selectedIds.length > 0 ? (
+          <MisBulkToolbar
+            selectedIds={selectedIds}
+            onClear={() => { setSelected(new Set()); setConsentMenuOpen(false); }}
+            onEmail={startMisCampaign}
+            onWhatsApp={handleBulkWhatsApp}
+            onBulkEdit={() => { setConsentMenuOpen(false); setBulkEditOpen(true); }}
+            onConsentMenuToggle={() => setConsentMenuOpen((v) => !v)}
+            consentMenuOpen={consentMenuOpen}
+            onSetConsent={requestBulkConsent}
+            onMoveToCandidates={isOwner ? () => requestMove(selectedIds) : null}
+            onDelete={() => setDeleteConfirmOpen(true)}
+            filteredCount={filteredCount}
+            isAllFilteredSelected={isAllFilteredSelected}
+            onSelectAllFiltered={handleSelectAllFiltered}
+          />
+        ) : null}
+        <div className="p-3 sm:p-5 border-b border-stone-100/90 space-y-3 bg-gradient-to-b from-stone-50/40 to-white" data-tour="mis-search">
+          <div className="flex flex-col gap-2.5 sm:gap-3 min-w-0">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 min-w-0">
+              <div className="relative flex-1 min-w-0 flex h-11 overflow-hidden rounded-xl border border-stone-200/90 bg-white shadow-sm shadow-stone-900/5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/15 transition-all">
+                <div className="relative flex-1 min-w-0">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none z-[1]" />
+                  <input
+                    type="text"
+                    placeholder="Search name, email, company, or phone"
+                    aria-label="Search MIS contacts"
+                    className="w-full h-full min-w-0 pl-11 pr-10 bg-transparent border-0 outline-none ring-0 shadow-none text-sm font-medium text-stone-900 placeholder:text-stone-400"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
+                  />
+                  {draft.trim() ? (
+                    <button
+                      type="button"
+                      onClick={() => { setDraft(''); setQ(''); setPage(1); }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 z-[1]"
+                      title="Clear"
+                    >
+                      <X size={14} />
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div className="inline-flex items-center gap-2 flex-shrink-0">
                 <button
                   type="button"
-                  onClick={() => { setDraft(''); setQ(''); setPage(1); }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 z-[1]"
-                  title="Clear"
+                  className="btn-secondary h-11 justify-center shadow-sm shadow-stone-900/5 px-4 min-w-[7.5rem]"
+                  onClick={runSearch}
+                  disabled={loading}
                 >
-                  <X size={14} />
+                  {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                  {loading ? 'Searching…' : 'Search'}
                 </button>
-              ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraftFilters({ ...appliedFilters });
+                    setShowFilters((v) => !v);
+                  }}
+                  className={`relative inline-flex h-11 w-11 sm:w-auto sm:px-4 items-center justify-center gap-2 rounded-xl font-semibold border shadow-sm shadow-stone-900/5 transition-all text-sm ${
+                    showFilters || activeFilterCount > 0
+                      ? 'border-brand-400 bg-brand-50 text-brand-800'
+                      : 'border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50 text-stone-700'
+                  }`}
+                  title="Advanced filters"
+                  aria-label="Advanced filters"
+                >
+                  <Filter size={15} strokeWidth={1.75} />
+                  <span className="hidden sm:inline">Filters</span>
+                  {activeFilterCount > 0 ? (
+                    <span className="absolute -top-1 -right-1 sm:static sm:relative inline-flex items-center justify-center min-w-[1.15rem] h-4 sm:h-5 px-1 sm:px-1.5 rounded-full sm:rounded bg-stone-900 text-white text-[9px] sm:text-[10px] font-bold tabular-nums">
+                      {activeFilterCount}
+                    </span>
+                  ) : null}
+                </button>
+              </div>
             </div>
-            <button type="button" className="btn-secondary h-11 justify-center" onClick={runSearch}>
-              <Search size={16} />
-              Search
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setDraftFilters({ ...appliedFilters });
-                setShowFilters((v) => !v);
-              }}
-              className={`inline-flex h-11 items-center justify-center gap-2 px-4 rounded-lg font-semibold border transition-colors text-sm ${
-                showFilters || activeFilterCount > 0
-                  ? 'border-brand-500 bg-brand-50 text-brand-800'
-                  : 'border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50 text-stone-700'
-              }`}
-            >
-              <Filter size={15} strokeWidth={1.75} />
-              Filters
-              {activeFilterCount > 0 ? (
-                <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded bg-stone-900 text-white text-[10px] font-bold tabular-nums">
-                  {activeFilterCount}
-                </span>
-              ) : null}
-            </button>
           </div>
 
           {activeChips.length > 0 && !showFilters ? (
@@ -1349,23 +1857,16 @@ export default function MisPage() {
             filters={draftFilters}
             onPatch={patchDraftFilter}
             onClearAll={clearFilters}
-            onClearOne={(key) => {
-              setDraftFilters((prev) => {
-                const next = { ...prev };
-                if (key === 'consent' || key === 'unsubscribed') next[key] = 'all';
-                else if (key === 'datePeriod') {
-                  next.datePeriod = '';
-                  next.dateFrom = '';
-                  next.dateTo = '';
-                } else next[key] = '';
-                return next;
-              });
-            }}
+            onClearOne={clearOneFilter}
             onApply={applyFilters}
             filtersDirty={filtersDirty}
             isSearching={loading}
             activeFilterCount={activeFilterCount}
             positionFilterOptions={positionFilterOptions}
+            clientFilterOptions={clientFilterOptions}
+            sourceFilterOptions={sourceFilterOptions}
+            productFilterOptions={productFilterOptions}
+            statusFilterOptions={statusFilterOptions}
             expOptions={expOptions}
             ctcFilterOptions={ctcFilterOptions}
           />
@@ -1487,8 +1988,8 @@ export default function MisPage() {
                           message="No contacts yet"
                           subMessage={
                             user?.role === 'owner'
-                              ? 'Import a spreadsheet or add a contact to build the organisation directory.'
-                              : 'Import a spreadsheet with Name and Email, or add a contact. Shared records are visible to authorised company staff.'
+                              ? 'Import a file or add a contact to build the organisation directory.'
+                              : 'Import a file with Name and Email, or add a contact. Shared records are visible to authorised staff.'
                           }
                         />
                       )}
@@ -1498,6 +1999,33 @@ export default function MisPage() {
               </tbody>
             </table>
           </div>
+          {showOverlay ? (
+            <div
+              className="absolute inset-0 z-20 flex items-center justify-center bg-gradient-to-b from-white/70 via-stone-50/75 to-white/80 backdrop-blur-[1px]"
+              role="status"
+              aria-live="polite"
+              aria-label={overlayTitle}
+            >
+              <div className="pointer-events-none flex flex-col items-center gap-3.5 rounded-2xl border border-stone-200/90 bg-white/95 px-9 py-7 shadow-[0_18px_50px_-24px_rgba(15,23,42,0.45)] ring-1 ring-stone-900/5">
+                <div className="relative h-11 w-11">
+                  <span className="absolute inset-0 rounded-full border-2 border-brand-100" aria-hidden="true" />
+                  <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-brand-600 animate-spin" aria-hidden="true" />
+                  <span className="absolute inset-2 rounded-full border border-teal-200/80 opacity-70 animate-pulse" aria-hidden="true" />
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-semibold tracking-tight text-stone-900">{overlayTitle}</p>
+                  <p className="mt-1 text-xs font-medium text-stone-500">
+                    {hasActiveFilters ? 'Updating results for your search' : 'Refreshing your directory view'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5" aria-hidden="true">
+                  <span className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-bounce [animation-delay:-0.2s]" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-bounce [animation-delay:-0.1s]" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-teal-500 animate-bounce" />
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="border-t border-stone-100 bg-stone-50/50 px-4 sm:px-5 py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
@@ -1836,6 +2364,7 @@ export default function MisPage() {
         onCreated={() => {
           setPage(1);
           load(1);
+          loadStats();
         }}
       />
 
@@ -1979,12 +2508,15 @@ export default function MisPage() {
         open={rankOpen}
         onClose={() => setRankOpen(false)}
         title="Match MIS to a job"
-        description="Rank this directory against an open role, then email or message the shortlist."
-        size="full"
+        description="Pick an open job to rank your MIS directory by fit, then email or WhatsApp the shortlist."
+        size="workbench"
+        fillHeight
         icon={Sparkles}
-        bodyClassName="p-0"
+        bodyClassName="p-0 flex-1 min-h-0 flex flex-col overflow-hidden bg-white"
       >
-        <TalentMatchDesk initialSource="mis" sources={['mis']} />
+        {rankOpen ? (
+          <TalentMatchDesk initialSource="mis" sources={['mis']} embedded />
+        ) : null}
       </Modal>
 
       <TourHelpFab

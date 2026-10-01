@@ -51,7 +51,9 @@ function displayLabel(key) {
 export function titleCasePhrase(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
-  if (/^a leading\b/i.test(raw)) return raw.charAt(0).toLowerCase() + raw.slice(1);
+  if (/^a leading\b/i.test(raw) || /^a confidential\b/i.test(raw)) {
+    return raw.charAt(0).toLowerCase() + raw.slice(1);
+  }
   if (/https?:\/\//i.test(raw)) return raw;
   if (/^[A-Z0-9]+-\d{4}-\d+/i.test(raw)) return raw.toUpperCase();
   let s = raw.replace(/\s+/g, ' ');
@@ -104,9 +106,10 @@ function extractUrl(line) {
 
 function normalizeGreeting(line) {
   let t = String(line || '').trim();
-  t = t.replace(/^Dear\s*(there|candidate)?\s*,?\s*$/i, 'Dear Candidate,');
+  t = t.replace(/^Dear\s+(Candidates|Candidate|there)\s*,?\s*$/i, 'Dear Candidate,');
   t = t.replace(/^Dear\s+there\s*,?/i, 'Dear Candidate,');
   t = t.replace(/^Hi\s+there\s*,?/i, 'Hello,');
+  t = t.replace(/^Dear\s+Candidates\b/i, 'Dear Candidate');
   if (!/,\s*$/.test(t) && /^Dear\b/i.test(t)) t = `${t.replace(/[,.\s]+$/, '')},`;
   return t;
 }
@@ -168,7 +171,7 @@ function detailsCardHtml(rows, accent, roleTitle) {
   const headerBlock = role
     ? `<tr>
         <td style="padding:0 0 16px 0;${rest.length ? 'border-bottom:1px solid #eef2f6;' : ''}">
-          <p style="margin:0 0 6px 0;font-family:${font};font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:${accent};">Open role</p>
+          <p style="margin:0 0 6px 0;font-family:${font};font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:${accent};">Position</p>
           <p class="em-role-title" style="margin:0;font-family:${font};font-size:20px;font-weight:700;line-height:1.3;letter-spacing:-0.02em;color:#0f172a;">${escapeHtml(titleCasePhrase(role))}</p>
         </td>
       </tr>`
@@ -262,6 +265,9 @@ export function convertPlainEmailBody(emailBody, opts = {}) {
     if (firstDetail) {
       const rows = [];
       while (i < lines.length) {
+        // Blank lines between Role / Employer / Location must not split into separate cards
+        while (i < lines.length && !String(lines[i] || '').trim()) i += 1;
+        if (i >= lines.length) break;
         const d = isDetailLine(lines[i]);
         if (!d) break;
         rows.push(d);

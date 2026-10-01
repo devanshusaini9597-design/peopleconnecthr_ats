@@ -10,6 +10,8 @@ const {
   misListFilter,
   misWriteFilter,
   isMisCompanyRole,
+  userIdParts,
+  organizationIdMatch,
 } = require('../utils/dataScope');
 const { normalizeText } = require('../utils/textNormalize');
 const { publicSiteBase } = require('./emailBrandLayout');
@@ -115,7 +117,57 @@ function phoneDigits(raw) {
 const TEXT_FIELDS = [
   'name', 'position', 'location', 'state', 'companyName', 'experience',
   'ctc', 'expectedCtc', 'noticePeriod', 'skills', 'product', 'client', 'fls', 'source', 'remark',
+  'status',
 ];
+
+function normalizeMisStatus(raw) {
+  const s = String(raw ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+  return s || '';
+}
+
+function userCreatedByIds(user) {
+  const { userIdStr, userIdObj } = userIdParts(user);
+  if (!userIdStr) return [];
+  return userIdObj ? [userIdObj, userIdStr] : [userIdStr];
+}
+
+/**
+ * Narrow list to My contacts / Company directory / All (within misListFilter visibility).
+ * desk=mine → rows the user created; desk=company → org-shared (deskScope !== personal).
+ * desk=all is owner/admin only — other employees are coerced to mine.
+ */
+function canUseMisAllDesk(user) {
+  return user?.role === 'owner' || user?.role === 'admin';
+}
+
+function resolveMisDeskView(user, desk) {
+  const view = String(desk || '').toLowerCase().trim();
+  if (view === 'mine' || view === 'company') return view;
+  if (view === 'all' && canUseMisAllDesk(user)) return 'all';
+  // Missing / invalid: owner defaults to all; employees (incl. admin) to mine
+  if (!view && user?.role === 'owner') return 'all';
+  return 'mine';
+}
+
+function applyMisDeskView(filter, user, desk) {
+  const view = resolveMisDeskView(user, desk);
+  const next = { ...(filter || {}) };
+  if (Array.isArray(filter?.$and)) next.$and = [...filter.$and];
+  if (view === 'all') return next;
+  const andParts = Array.isArray(next.$and) ? [...next.$and] : [];
+  if (view === 'mine') {
+    const me = userCreatedByIds(user);
+    if (!me.length) {
+      next._id = { $in: [] };
+      return next;
+    }
+    andParts.push({ createdBy: { $in: me } });
+  } else if (view === 'company') {
+    andParts.push({ deskScope: { $ne: 'personal' } });
+  }
+  if (andParts.length) next.$and = andParts;
+  return next;
+}
 
 function unsubscribeUrlFor(contact) {
   const secret = contact.ensureUnsubscribeSecret();
@@ -164,6 +216,11 @@ function buildMisQueryFilter(user, query = {}) {
   if (query.consent === 'no') filter.marketingConsent = false;
   if (query.unsubscribed === '1') filter.unsubscribedAt = { $ne: null };
   if (query.unsubscribed === '0') filter.unsubscribedAt = null;
+
+  const statusFilter = normalizeMisStatus(query.status);
+  if (statusFilter && statusFilter !== 'ALL') {
+    filter.status = statusFilter;
+  }
 
   if (trimStr(query.location)) {
     const rx = { $regex: escapeRx(trimStr(query.location)), $options: 'i' };
@@ -222,23 +279,30 @@ function buildMisQueryFilter(user, query = {}) {
     filter.experience = { $regex: escapeRx(expMax), $options: 'i' };
   }
 
-  // Date period on tracker date (recordDate) with fallback to import time
+  // Date period:
+  // - My desk → createdAt (when this employee added the contact) so cards match the table
+  // - Company / All → tracker recordDate with createdAt fallback
   try {
     const { buildDateFilter } = require('../utils/analyticsTime');
     const period = trimStr(query.dateRange || query.period || query.datePeriod);
     const dateFilter = buildDateFilter(period || 'all', query.from || query.dateFrom, query.to || query.dateTo);
     if (dateFilter) {
-      andParts.push({
-        $or: [
-          { recordDate: dateFilter },
-          {
-            $and: [
-              { $or: [{ recordDate: null }, { recordDate: { $exists: false } }] },
-              { createdAt: dateFilter },
-            ],
-          },
-        ],
-      });
+      const desk = resolveMisDeskView(user, query.desk || query.deskScope || query.view);
+      if (desk === 'mine') {
+        andParts.push({ createdAt: dateFilter });
+      } else {
+        andParts.push({
+          $or: [
+            { recordDate: dateFilter },
+            {
+              $and: [
+                { $or: [{ recordDate: null }, { recordDate: { $exists: false } }] },
+                { createdAt: dateFilter },
+              ],
+            },
+          ],
+        });
+      }
     }
   } catch (err) {
     logger.warn({ err: err.message }, 'MIS date filter skipped');
@@ -247,7 +311,59 @@ function buildMisQueryFilter(user, query = {}) {
   if (andParts.length) {
     filter.$and = [...(Array.isArray(filter.$and) ? filter.$and : []), ...andParts];
   }
-  return filter;
+  return applyMisDeskView(filter, user, query.desk || query.deskScope || query.view);
+}
+
+/** Prefer indexed counts over a single $or count when the list has no extra filters. */
+async function countMisDesk(user, organizationId, desk = 'all') {
+  const orgMatch = organizationIdMatch(organizationId) || { organizationId };
+  // Stats use raw desk keys (all/company/mine). Access control for list tab "all"
+  // is handled in resolveMisDeskView / applyMisDeskView — not here.
+  const view = String(desk || 'all').toLowerCase().trim() || 'all';
+  const me = userCreatedByIds(user);
+  const countMs = (q) => MisContact.countDocuments(q).maxTimeMS(20000).catch(() => null);
+
+  if (user.role === 'owner') {
+    if (view === 'mine') {
+      if (!me.length) return 0;
+      return countMs({ ...orgMatch, createdBy: { $in: me } });
+    }
+    if (view === 'company') {
+      return countMs({ ...orgMatch, deskScope: { $ne: 'personal' } });
+    }
+    return countMs(orgMatch);
+  }
+
+  // Employees: never include other people's personal desks.
+  if (view === 'mine') {
+    if (!me.length) return 0;
+    return countMs({ ...orgMatch, createdBy: { $in: me } });
+  }
+  if (view === 'company') {
+    return countMs({ ...orgMatch, deskScope: { $ne: 'personal' } });
+  }
+  // all = company shared + own personal (disjoint — no double-count)
+  const [company, personalMine] = await Promise.all([
+    countMs({ ...orgMatch, deskScope: { $ne: 'personal' } }),
+    me.length
+      ? countMs({ ...orgMatch, deskScope: 'personal', createdBy: { $in: me } })
+      : Promise.resolve(0),
+  ]);
+  if (company == null && personalMine == null) return null;
+  return (Number(company) || 0) + (Number(personalMine) || 0);
+}
+
+function misQueryHasExtraFilters(query = {}) {
+  if (trimStr(query.q)) return true;
+  if (query.consent === 'yes' || query.consent === 'no') return true;
+  if (query.unsubscribed === '1' || query.unsubscribed === '0') return true;
+  if (trimStr(query.status) && String(query.status).toUpperCase() !== 'ALL') return true;
+  const keys = [
+    'location', 'source', 'position', 'companyName', 'company', 'client', 'product', 'skills',
+    'ctcMin', 'ctcMax', 'expectedCtcMin', 'expectedCtcMax', 'expMin', 'expMax',
+    'dateRange', 'period', 'datePeriod', 'from', 'dateFrom', 'to', 'dateTo',
+  ];
+  return keys.some((k) => trimStr(query[k]));
 }
 
 async function listContacts(user, query = {}) {
@@ -258,14 +374,22 @@ async function listContacts(user, query = {}) {
   const limit = Math.min(200, Math.max(1, Number(query.limit) || 50));
   const idsOnly = query.idsOnly === '1' || query.idsOnly === 'true' || query.idsOnly === true;
   const filter = buildMisQueryFilter(user, query);
+  const desk = resolveMisDeskView(user, query.desk || query.deskScope || query.view);
+  const resolveTotal = async () => {
+    if (!misQueryHasExtraFilters(query)) {
+      const fast = await countMisDesk(user, organizationId, desk);
+      if (fast != null) return fast;
+    }
+    return MisContact.countDocuments(filter).maxTimeMS(20000).catch(() => null);
+  };
 
   if (idsOnly) {
     const idLimit = Math.min(3000, Math.max(1, parseInt(query.idLimit, 10) || 3000));
     const idSkip = Math.max(0, parseInt(query.idSkip, 10) || 0);
-    const total = await MisContact.countDocuments(filter).maxTimeMS(8000).catch(() => null);
+    const total = await resolveTotal();
     const idDocs = await MisContact.find(filter)
       .sort(misListSort())
-      .select('_id phone contact email name position location state companyName client product skills experience ctc marketingConsent unsubscribedAt')
+      .select('_id phone contact email name position location state companyName client product skills experience ctc status marketingConsent unsubscribedAt')
       .skip(idSkip)
       .limit(idLimit + 1)
       .maxTimeMS(20000)
@@ -290,6 +414,7 @@ async function listContacts(user, query = {}) {
         skills: d.skills || '',
         experience: d.experience || '',
         ctc: d.ctc || '',
+        status: d.status || 'NEW',
         marketingConsent: d.marketingConsent !== false,
         unsubscribedAt: d.unsubscribedAt || null,
       })),
@@ -304,6 +429,7 @@ async function listContacts(user, query = {}) {
         hasMore,
       },
       scope: user.role === 'owner' ? 'owner' : 'employee',
+      desk: resolveMisDeskView(user, query.desk || query.view),
     };
   }
 
@@ -314,7 +440,7 @@ async function listContacts(user, query = {}) {
       .limit(limit)
       .populate('createdBy', 'name email')
       .lean(),
-    MisContact.countDocuments(filter).maxTimeMS(8000).catch(() => null),
+    resolveTotal(),
   ]);
   const rowCount = (rows || []).length;
   const floor = (page - 1) * limit + rowCount + (rowCount === limit ? 1 : 0);
@@ -333,12 +459,371 @@ async function listContacts(user, query = {}) {
       hasMore: page * limit < resolvedTotal,
     },
     scope: user.role === 'owner' ? 'owner' : 'employee',
+    desk: resolveMisDeskView(user, query.desk || query.view),
+  };
+}
+
+/**
+ * Secure report/stats identity — never take organizationId / userId from the query string.
+ */
+function assertMisActor(user) {
+  assertMisCompany(user);
+  if (!user.organizationId) throw httpError('Organization required', 403);
+  if (user.role !== 'owner' && !userCreatedByIds(user).length) {
+    throw httpError('User identity required for MIS access', 403, { code: 'MIS_USER_REQUIRED' });
+  }
+}
+
+/**
+ * Report data scope by role (must match list security):
+ * - owner → full organisation (all desks)
+ * - admin → same as MIS list (shared directory + own personal; never others’ personal)
+ * - other employees → only contacts they added
+ */
+function resolveMisReportScope(user) {
+  const organizationId = user.organizationId;
+  const orgMatch = organizationIdMatch(organizationId) || { organizationId };
+  const me = userCreatedByIds(user);
+  const role = user.role;
+
+  if (role === 'owner') {
+    return {
+      scope: 'organisation',
+      dateMode: 'tracker',
+      base: orgMatch,
+      me,
+    };
+  }
+
+  if (role === 'admin') {
+    return {
+      scope: 'visible',
+      dateMode: 'tracker',
+      base: misListFilter(organizationId, user),
+      me,
+    };
+  }
+
+  // recruiter / sales / hr_* — personal performance only
+  return {
+    scope: 'self',
+    dateMode: 'createdAt',
+    base: me.length
+      ? { ...orgMatch, createdBy: { $in: me } }
+      : { _id: { $in: [] } },
+    me,
+  };
+}
+
+function applyMisPeriodFilter(base, dateFilter, dateMode) {
+  if (!dateFilter) return base;
+  const next = { ...base };
+  const andParts = Array.isArray(base.$and) ? [...base.$and] : [];
+  if (dateMode === 'createdAt') {
+    andParts.push({ createdAt: dateFilter });
+  } else {
+    andParts.push({
+      $or: [
+        { recordDate: dateFilter },
+        {
+          $and: [
+            { $or: [{ recordDate: null }, { recordDate: { $exists: false } }] },
+            { createdAt: dateFilter },
+          ],
+        },
+      ],
+    });
+  }
+  if (andParts.length) next.$and = andParts;
+  return next;
+}
+
+function andMisFilter(base, clause) {
+  if (!clause || typeof clause !== 'object') return base;
+  const next = { ...base };
+  const andParts = Array.isArray(base.$and) ? [...base.$and] : [];
+  andParts.push(clause);
+  next.$and = andParts;
+  return next;
+}
+
+/**
+ * Scoped MIS dashboard KPIs — identical desk math as the list tabs (countMisDesk).
+ * Cards: total / company / mine / newThisMonth.
+ */
+async function getMisStats(user) {
+  assertMisActor(user);
+  const organizationId = user.organizationId;
+  const me = userCreatedByIds(user);
+  const orgMatch = organizationIdMatch(organizationId) || { organizationId };
+
+  let monthRange = null;
+  try {
+    const { buildDateFilter } = require('../utils/analyticsTime');
+    monthRange = buildDateFilter('month');
+  } catch (err) {
+    logger.warn({ err: err.message }, 'MIS month filter skipped');
+  }
+
+  const countMs = (q) => MisContact.countDocuments(q).maxTimeMS(20000).catch(() => 0);
+  const newThisMonthQ = (monthRange && me.length)
+    ? { ...orgMatch, createdBy: { $in: me }, createdAt: monthRange }
+    : { _id: { $in: [] } };
+
+  const [total, company, mine, newThisMonth] = await Promise.all([
+    countMisDesk(user, organizationId, 'all').then((n) => (n == null ? 0 : n)),
+    countMisDesk(user, organizationId, 'company').then((n) => (n == null ? 0 : n)),
+    countMisDesk(user, organizationId, 'mine').then((n) => (n == null ? 0 : n)),
+    countMs(newThisMonthQ),
+  ]);
+
+  // Consistency check: for non-owners, total must equal company + own personal
+  // (already how countMisDesk('all') works). Surface scope for the UI.
+  return {
+    total: Number(total) || 0,
+    mine: Number(mine) || 0,
+    company: Number(company) || 0,
+    newThisMonth: Number(newThisMonth) || 0,
+    scope: user.role === 'owner' ? 'owner' : 'employee',
+    createdBySelf: me.length > 0,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * MIS reports for a period — totals, desks, status mix, duplicacy.
+ * Scoped securely by role via resolveMisReportScope (never query-string identity).
+ */
+async function getMisReports(user, query = {}) {
+  assertMisActor(user);
+
+  // Ignore any attempt to spoof another org / user via query
+  const safeQuery = { ...(query || {}) };
+  delete safeQuery.organizationId;
+  delete safeQuery.orgId;
+  delete safeQuery.userId;
+  delete safeQuery.employeeId;
+  delete safeQuery.createdBy;
+
+  const { scope, dateMode, base, me } = resolveMisReportScope(user);
+
+  const period = trimStr(safeQuery.dateRange || safeQuery.period || safeQuery.datePeriod) || 'month';
+  const from = safeQuery.from || safeQuery.dateFrom || safeQuery.customFrom;
+  const to = safeQuery.to || safeQuery.dateTo || safeQuery.customTo;
+
+  let dateFilter = null;
+  let periodLabel = period;
+  try {
+    const { buildDateFilter, getDateRangeLabel } = require('../utils/analyticsTime');
+    dateFilter = buildDateFilter(period === 'all' ? 'all' : period, from, to);
+    periodLabel = typeof getDateRangeLabel === 'function'
+      ? getDateRangeLabel(period, from, to)
+      : (period === 'custom' && from && to ? `${from} → ${to}` : period);
+  } catch (err) {
+    logger.warn({ err: err.message }, 'MIS reports date filter skipped');
+  }
+
+  const periodMatch = applyMisPeriodFilter(base, dateFilter, dateMode);
+  const companyPeriod = andMisFilter(periodMatch, { deskScope: { $ne: 'personal' } });
+  const personalPeriod = andMisFilter(periodMatch, { deskScope: 'personal' });
+
+  const countMs = (q, ms = 20000) => MisContact.countDocuments(q).maxTimeMS(ms).catch(() => 0);
+  const dateExpr = dateMode === 'createdAt'
+    ? '$createdAt'
+    : { $ifNull: ['$recordDate', '$createdAt'] };
+
+  const [totalInPeriod, companyInPeriod, personalInPeriod, statusAgg, sourceAgg, trendAgg, phoneDupes, emailOverlap, phoneOverlap, allTimeTotal] = await Promise.all([
+    countMs(periodMatch),
+    countMs(companyPeriod),
+    countMs(personalPeriod),
+    MisContact.aggregate([
+      { $match: periodMatch },
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $or: [{ $eq: ['$status', null] }, { $eq: ['$status', ''] }] },
+              'NEW',
+              { $toUpper: '$status' },
+            ],
+          },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { count: -1 } },
+      { $limit: 30 },
+    ]).option({ maxTimeMS: 20000 }).catch(() => []),
+    MisContact.aggregate([
+      { $match: periodMatch },
+      {
+        $group: {
+          _id: {
+            $let: {
+              vars: { s: { $trim: { input: { $ifNull: ['$source', ''] } } } },
+              in: {
+                $cond: [
+                  { $or: [{ $eq: ['$$s', null] }, { $eq: ['$$s', ''] }] },
+                  'Unspecified',
+                  '$$s',
+                ],
+              },
+            },
+          },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { count: -1 } },
+      { $limit: 12 },
+    ]).option({ maxTimeMS: 20000 }).catch(() => []),
+    MisContact.aggregate([
+      { $match: periodMatch },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: '%Y-%m-%d',
+              date: dateExpr,
+            },
+          },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+      { $limit: 120 },
+    ]).option({ maxTimeMS: 20000 }).catch(() => []),
+    MisContact.aggregate([
+      { $match: base },
+      {
+        $project: {
+          phoneKey: {
+            $let: {
+              vars: {
+                raw: { $ifNull: ['$phone', { $ifNull: ['$contact', ''] }] },
+              },
+              in: {
+                $replaceAll: {
+                  input: { $replaceAll: { input: '$$raw', find: ' ', replacement: '' } },
+                  find: '-',
+                  replacement: '',
+                },
+              },
+            },
+          },
+        },
+      },
+      { $match: { phoneKey: { $nin: [null, ''] } } },
+      { $group: { _id: '$phoneKey', count: { $sum: 1 }, ids: { $push: '$_id' } } },
+      { $match: { count: { $gt: 1 } } },
+      {
+        $group: {
+          _id: null,
+          duplicateGroups: { $sum: 1 },
+          duplicateRows: { $sum: '$count' },
+        },
+      },
+    ]).option({ maxTimeMS: 20000 }).catch(() => []),
+    (async () => {
+      try {
+        const Candidate = require('../models/Candidate');
+        const emails = await MisContact.distinct('email', { ...base, email: { $nin: [null, ''] } });
+        if (!emails.length) return 0;
+        const orgMatch = organizationIdMatch(user.organizationId) || { organizationId: user.organizationId };
+        return Candidate.countDocuments({
+          ...orgMatch,
+          email: { $in: emails },
+        }).maxTimeMS(15000).catch(() => 0);
+      } catch {
+        return 0;
+      }
+    })(),
+    (async () => {
+      try {
+        const Candidate = require('../models/Candidate');
+        const orgMatch = organizationIdMatch(user.organizationId) || { organizationId: user.organizationId };
+        const phones = await MisContact.aggregate([
+          { $match: base },
+          {
+            $project: {
+              phoneKey: {
+                $trim: {
+                  input: { $ifNull: ['$phone', { $ifNull: ['$contact', ''] }] },
+                },
+              },
+            },
+          },
+          { $match: { phoneKey: { $nin: [null, ''] } } },
+          { $group: { _id: '$phoneKey' } },
+          { $limit: 20000 },
+        ]).option({ maxTimeMS: 15000 });
+        const keys = (phones || []).map((p) => p._id).filter(Boolean);
+        if (!keys.length) return 0;
+        return Candidate.countDocuments({
+          ...orgMatch,
+          $or: [
+            { phone: { $in: keys } },
+            { contact: { $in: keys } },
+          ],
+        }).maxTimeMS(15000).catch(() => 0);
+      } catch {
+        return 0;
+      }
+    })(),
+    countMs(base, 20000),
+  ]);
+
+  const phoneDup = phoneDupes?.[0] || {};
+  const companyN = Number(companyInPeriod) || 0;
+  const personalN = Number(personalInPeriod) || 0;
+  const inPeriod = Number(totalInPeriod) || 0;
+
+  return {
+    period,
+    periodLabel,
+    scope,
+    generatedAt: new Date().toISOString(),
+    totals: {
+      allTime: Number(allTimeTotal) || 0,
+      inPeriod,
+      companyInPeriod: companyN,
+      personalInPeriod: personalN,
+    },
+    byStatus: (statusAgg || []).map((row) => ({
+      status: String(row._id || 'NEW'),
+      count: Number(row.count) || 0,
+    })),
+    bySource: (sourceAgg || []).map((row) => ({
+      source: String(row._id || 'Unspecified'),
+      count: Number(row.count) || 0,
+    })),
+    trend: (trendAgg || [])
+      .filter((row) => row && row._id)
+      .map((row) => ({
+        date: String(row._id),
+        count: Number(row.count) || 0,
+      })),
+    deskMix: [
+      { label: scope === 'organisation' ? 'Organisation' : 'Shared desk', key: 'company', count: companyN },
+      { label: 'Personal records', key: 'personal', count: personalN },
+    ].filter((row) => row.count > 0),
+    duplicacy: {
+      phoneDuplicateGroups: Number(phoneDup.duplicateGroups) || 0,
+      phoneDuplicateRows: Number(phoneDup.duplicateRows) || 0,
+      emailOverlapWithCandidates: Number(emailOverlap) || 0,
+      phoneOverlapWithCandidates: Number(phoneOverlap) || 0,
+    },
+    // Help UI explain scope without leaking other desks
+    meta: {
+      role: user.role,
+      selfOnly: scope === 'self',
+      includesOthersPersonal: scope === 'organisation',
+      actorId: me.length ? String(me[0]) : null,
+    },
   };
 }
 
 const BULK_UPDATE_FIELDS = [
   'source', 'client', 'position', 'companyName', 'location', 'product', 'fls', 'remark',
-  'state', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'skills',
+  'state', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'skills', 'status',
 ];
 
 async function bulkUpdate(user, ids = [], updates = {}) {
@@ -353,6 +838,12 @@ async function bulkUpdate(user, ids = [], updates = {}) {
   for (const key of BULK_UPDATE_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(updates, key)) continue;
     if (updates[key] == null) continue;
+    if (key === 'status') {
+      const status = normalizeMisStatus(updates[key]);
+      if (!status) continue;
+      $set.status = status;
+      continue;
+    }
     const val = normalizeText(trimStr(updates[key]));
     if (!val) continue;
     $set[key] = val;
@@ -435,11 +926,12 @@ async function createContact(user, body = {}) {
     ctc: normalizeText(ctc),
     location,
     state: normalizeText(state),
+    status: normalizeMisStatus(body.status) || 'NEW',
     marketingConsent: body.marketingConsent !== false,
     source: trimStr(body.source) || 'MIS Manual',
   });
   for (const key of TEXT_FIELDS) {
-    if (key === 'name' || key === 'source' || key === 'ctc' || key === 'location' || key === 'state') continue;
+    if (key === 'name' || key === 'source' || key === 'ctc' || key === 'location' || key === 'state' || key === 'status') continue;
     if (body[key] != null) doc[key] = normalizeText(trimStr(body[key]));
   }
   if (body.recordDate) {
@@ -475,7 +967,13 @@ async function updateContact(user, id, body = {}) {
   }
   for (const key of TEXT_FIELDS) {
     if (key === 'name') continue;
-    if (body[key] != null) doc[key] = normalizeText(trimStr(body[key]));
+    if (body[key] != null) {
+      if (key === 'status') {
+        doc.status = normalizeMisStatus(body[key]) || doc.status || 'NEW';
+      } else {
+        doc[key] = normalizeText(trimStr(body[key]));
+      }
+    }
   }
   if (typeof body.marketingConsent === 'boolean') {
     doc.marketingConsent = body.marketingConsent;
@@ -913,6 +1411,8 @@ async function unsubscribePublic({ id, token }) {
 
 module.exports = {
   listContacts,
+  getMisStats,
+  getMisReports,
   getContact,
   createContact,
   updateContact,
@@ -929,4 +1429,6 @@ module.exports = {
   unsubscribePublic,
   unsubscribeUrlFor,
   deskScopeForUser,
+  resolveMisDeskView,
+  canUseMisAllDesk,
 };

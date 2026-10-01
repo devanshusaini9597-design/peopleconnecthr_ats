@@ -16,6 +16,8 @@ describe('s3Service path helpers', () => {
     expect(kindFromKey('/uploads/logos/org-logo-1.png')).toBe('logo');
     expect(kindFromKey('profiles/profile-2.jpg')).toBe('profile');
     expect(kindFromKey('resumes/file.pdf')).toBe('resume');
+    expect(kindFromKey('partner-resumes/partner-1.pdf')).toBe('partnerResume');
+    expect(kindFromKey('partner-1234567890-1.pdf')).toBe('partnerResume');
     expect(kindFromKey('mail-archive/org/sent/2026/09/a.html')).toBe('email');
     expect(kindFromKey('org-logo-legacy.png')).toBe('logo');
     expect(kindFromKey('profile-legacy.jpg')).toBe('profile');
@@ -30,5 +32,6 @@ describe('s3Service path helpers', () => {
     expect(isS3Resume('resumes/a.pdf')).toBe(true);
     expect(isS3Resume('/uploads/logos/x.png')).toBe(false);
     expect(isS3Asset('/uploads/profiles/x.jpg')).toBe(true);
+    expect(isS3Asset('partner-resumes/partner-1.pdf')).toBe(true);
   });
 });

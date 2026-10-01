@@ -2,14 +2,14 @@ const mongoose = require('mongoose');
 
 /**
  * Shared org picklist rows — CTC bands, notice periods, products/skills, etc.
- * listKey: shared candidate + job picklists
+ * listKey: candidate/job picklists + MIS-only `misStatus` (never Candidate pipeline stages).
  */
 const orgListItemSchema = new mongoose.Schema({
   listKey: {
     type: String,
     required: true,
     index: true,
-    enum: ['ctc', 'notice', 'product', 'grade', 'industry', 'location', 'experience'],
+    enum: ['ctc', 'notice', 'product', 'grade', 'industry', 'location', 'experience', 'misStatus'],
   },
   name: { type: String, required: true },
   description: { type: String },

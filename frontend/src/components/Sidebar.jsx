@@ -103,7 +103,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
   }, [visibleSections]);
 
   const [openGroups, setOpenGroups] = useState(() => {
-    const initial = new Set(['main', 'recruitment', 'lists', 'communication']);
+    const initial = new Set(['main', 'recruitment', 'mis', 'freelancer', 'communication']);
     const key = pathToGroup[location.pathname];
     if (key) initial.add(key);
     return initial;

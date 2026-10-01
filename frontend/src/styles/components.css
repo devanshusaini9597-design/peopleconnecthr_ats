@@ -638,14 +638,28 @@ div.input-ats:has(> input) {
  * Pair with absolute icon at left-3.5 (clears 16px icon + gap).
  */
 .field-premium-icon,
-.input-ats-icon {
-  padding-left: 2.75rem !important; /* pl-11 */
-  padding-right: 0.75rem;
+.input-ats-icon,
+input.input-ats.input-ats-icon,
+input.field-premium.field-premium-icon {
+  padding-left: 2.75rem !important; /* pl-11 — clears absolute search icon */
+  padding-right: 0.75rem !important;
+}
+input.input-ats.input-ats-icon:-webkit-autofill,
+input.input-ats.input-ats-icon:-webkit-autofill:hover,
+input.input-ats.input-ats-icon:-webkit-autofill:focus {
+  padding-left: 2.75rem !important;
 }
 @media (min-width: 640px) {
   .field-premium-icon,
-  .input-ats-icon {
+  .input-ats-icon,
+  input.input-ats.input-ats-icon,
+  input.field-premium.field-premium-icon {
     padding-left: 3rem !important; /* sm:pl-12 */
+  }
+  input.input-ats.input-ats-icon:-webkit-autofill,
+  input.input-ats.input-ats-icon:-webkit-autofill:hover,
+  input.input-ats.input-ats-icon:-webkit-autofill:focus {
+    padding-left: 3rem !important;
   }
 }
 

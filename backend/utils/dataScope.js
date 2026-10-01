@@ -282,18 +282,17 @@ async function assertOrgEmployee(organizationId, userId) {
 
 /**
  * Dashboard / analytics / export filter.
- * - Recruiter / sales: always SPOC-name desk for that user.
+ * - Recruiter / sales: company employee desk (SPOC / createdBy / job ownership),
+ *   freelancer-created rows excluded so KPIs match the Candidates table.
  * - Owner / admin / HR manager: organization totals by default;
- *   with ?userId= → that person's SPOC-name desk (any role).
+ *   with ?userId= → that person's company desk (not mixed with freelancer shares).
  */
 async function analyticsScope(req) {
   const user = req.user || {};
   const requestedId = requestedAnalyticsUserId(req);
 
   if (!canViewOrgAnalytics(user)) {
-    const desk = employeeDeskFilter(user, user.organizationId);
-    const merged = await mergeDeskWithJobApplicants(user, user.organizationId, desk);
-    return withoutUnsharedFreelancerDesks({ user }, merged);
+    return companyEmployeeDesk(user, user.organizationId);
   }
 
   if (!requestedId) {
@@ -301,9 +300,9 @@ async function analyticsScope(req) {
     return orgMatch || employeeDeskFilter(user, null);
   }
 
-  // Self or another teammate — same SPOC desk rule for every role
+  // Self or another teammate — same company desk as Candidates (separate from freelancer shares)
   if (String(requestedId) === String(user.id || user._id || '')) {
-    return employeeDeskFilter(user, user.organizationId);
+    return companyEmployeeDesk(user, user.organizationId);
   }
 
   if (!user.organizationId) {
@@ -311,7 +310,7 @@ async function analyticsScope(req) {
   }
 
   const target = await assertOrgEmployee(user.organizationId, requestedId);
-  return employeeDeskFilter(
+  return companyEmployeeDesk(
     { id: target._id, role: target.role, name: target.name, email: target.email },
     user.organizationId
   );
@@ -642,7 +641,9 @@ function isMisCompanyRole(user) {
  */
 function misListFilter(organizationId, user, extra = {}) {
   const { $and: extraAnd, ...restExtra } = extra || {};
-  const filter = { organizationId, ...restExtra };
+  // Match ObjectId + string forms so tenant scoping never accidentally widens.
+  const orgMatch = organizationIdMatch(organizationId) || { organizationId };
+  const filter = { ...orgMatch, ...restExtra };
 
   if (!user || isFreelancer(user) || !isMisCompanyRole(user)) {
     filter._id = { $in: [] };
@@ -657,10 +658,11 @@ function misListFilter(organizationId, user, extra = {}) {
 
   const { userIdStr, userIdObj } = userIdParts(user);
   const me = userIdObj ? [userIdObj, userIdStr] : [userIdStr];
+  // Index-friendly: org-shared OR own personal (disjoint branches).
   const visibility = {
     $or: [
       { deskScope: { $ne: 'personal' } },
-      { createdBy: { $in: me } },
+      { deskScope: 'personal', createdBy: { $in: me } },
     ],
   };
   filter.$and = [...(Array.isArray(extraAnd) ? extraAnd : []), visibility];
@@ -671,15 +673,16 @@ function misListFilter(organizationId, user, extra = {}) {
  * MIS mutate scope: owner = all; employees = only rows they created (personal desk).
  */
 function misWriteFilter(organizationId, user, extra = {}) {
+  const orgMatch = organizationIdMatch(organizationId) || { organizationId };
   if (!user || isFreelancer(user) || !isMisCompanyRole(user)) {
-    return { organizationId, _id: { $in: [] }, ...extra };
+    return { ...orgMatch, _id: { $in: [] }, ...extra };
   }
   if (user.role === 'owner') {
     return misListFilter(organizationId, user, extra);
   }
   const { userIdStr, userIdObj } = userIdParts(user);
   const me = userIdObj ? [userIdObj, userIdStr] : [userIdStr];
-  return { organizationId, createdBy: { $in: me }, ...extra };
+  return { ...orgMatch, createdBy: { $in: me }, ...extra };
 }
 
 /** Picklists / master data: freelancer sees only values they created. */

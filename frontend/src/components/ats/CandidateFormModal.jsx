@@ -792,7 +792,14 @@ export default function CandidateFormModal(props) {
                       </div>
                       <div className="md:col-span-2 min-w-0">
                         <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">Remark</label>
-                        <textarea name="remark" value={formData.remark || ''} onChange={handleInputChange} placeholder="Optional notes for the hiring team…" rows="2" className={`${fieldClass(false)} resize-none`} />
+                        <textarea
+                          name="remark"
+                          value={formData.remark || ''}
+                          onChange={handleInputChange}
+                          placeholder="Optional notes for the hiring team…"
+                          rows="3"
+                          className={`${fieldClass(false)} !h-auto min-h-[5.5rem] max-h-48 resize-y overflow-y-auto leading-relaxed`}
+                        />
                       </div>
                     </div>
                     {orgCandidateFields.filter((f) => !f.isCore && f.showInForm !== false).length > 0 && (

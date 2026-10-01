@@ -7,9 +7,9 @@ const { listCatalogCities } = require('../services/locationService');
 const skillCatalogSync = require('../services/skillCatalogSync');
 const { parseCatalogQuery, findNamedCatalog, sendCatalog } = require('../utils/paginatedCatalog');
 
-const ALLOWED = new Set(['ctc', 'notice', 'product', 'grade', 'industry', 'location', 'experience']);
+const ALLOWED = new Set(['ctc', 'notice', 'product', 'grade', 'industry', 'location', 'experience', 'misStatus']);
 
-/** Sensible starter sets for org picklists (candidate + job forms). */
+/** Sensible starter sets for org picklists (candidate + job forms + MIS-only statuses). */
 const SEEDS = {
   ctc: [
     '0-50K', '50K-1L', '1L-2L', '2L-3L', '3L-4L', '4L-5L', '5L-6L', '6L-7L', '7L-8L', '8L-9L', '9L-10L',
@@ -37,6 +37,10 @@ const SEEDS = {
     'FRESHER', '0-1 YEARS', '1-2 YEARS', '2-3 YEARS', '3-5 YEARS', '5-8 YEARS',
     '8-12 YEARS', '12+ YEARS', 'MINIMUM 2 YEARS OF RELEVANT EXPERIENCE',
   ],
+  /** MIS contact statuses only — never written to Candidate.status / pipelineStages. */
+  misStatus: [
+    'NEW', 'CONTACTED', 'INTERESTED', 'FOLLOW UP', 'NOT INTERESTED', 'QUALIFIED', 'CONVERTED',
+  ],
 };
 
 const scopeFilter = (req) => masterDataScope(req);
@@ -49,12 +53,35 @@ const assertKey = (listKey, res) => {
   return true;
 };
 
+/**
+ * Seed MIS starter statuses only when the org list is empty.
+ * Do NOT re-merge on every read/create — that undoes rename/delete (looks like "merge" instead of CRUD).
+ * Explicit "Load starter library" (seed with force) still adds any missing starters.
+ */
+async function ensureMisStatusSeeds(req) {
+  if (isFreelancer(req.user)) return;
+  const names = SEEDS.misStatus || [];
+  if (!names.length || !req.user?.organizationId) return;
+  const scope = { ...scopeFilter(req), listKey: 'misStatus' };
+  const existing = await OrgListItem.countDocuments({ ...scope, isActive: true });
+  if (existing > 0) return;
+  await seedNamedList(OrgListItem, {
+    scope,
+    names,
+    user: req.user,
+    extraFields: (i) => ({ listKey: 'misStatus', sortOrder: i }),
+  });
+}
+
 const getItems = async (req, res) => {
   try {
     if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
     const { listKey } = req.params;
     if (!assertKey(listKey, res)) return;
     const scope = scopeFilter(req);
+    if (listKey === 'misStatus') {
+      await ensureMisStatusSeeds(req);
+    }
     if (listKey === 'product' && req.user.organizationId) {
       const picker = await skillCatalogSync.listPickerItems(req.user.organizationId, req.user.id);
       return res.json(picker);
@@ -77,6 +104,9 @@ const getAllItems = async (req, res) => {
     if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
     const { listKey } = req.params;
     if (!assertKey(listKey, res)) return;
+    if (listKey === 'misStatus') {
+      await ensureMisStatusSeeds(req);
+    }
     const parsed = parseCatalogQuery(req.query);
     if (listKey === 'product' && req.user.organizationId) {
       const picker = await skillCatalogSync.listPickerItems(
@@ -112,8 +142,10 @@ const seedItems = async (req, res) => {
     const { listKey } = req.params;
     if (!assertKey(listKey, res)) return;
     const scope = scopeFilter(req);
+    // Only re-add missing starters when the client explicitly asks (force:true).
+    const force = Boolean(req.body?.force);
     const existing = await OrgListItem.countDocuments({ ...scope, listKey, isActive: true });
-    if (existing > 0 && !req.body?.force) {
+    if (existing > 0 && !force) {
       return res.status(400).json({ message: 'List already has items. Pass force:true to re-seed missing only.' });
     }
     const names = SEEDS[listKey] || [];
@@ -141,6 +173,11 @@ const createItem = async (req, res) => {
     const { name, description } = req.body;
     const scope = scopeFilter(req);
     if (!name) return res.status(400).json({ message: 'Name is required' });
+
+    // Merge starters before first custom add so defaults are never wiped.
+    if (listKey === 'misStatus') {
+      await ensureMisStatusSeeds(req);
+    }
 
     const existingActive = await OrgListItem.findOne({
       ...scope,

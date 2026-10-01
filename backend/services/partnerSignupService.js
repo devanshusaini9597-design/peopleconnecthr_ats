@@ -243,13 +243,49 @@ async function notifyApplicant(org, application, kind) {
   return true;
 }
 
-function resumeMeta(file) {
+async function persistPartnerResume(file) {
   if (!file) return { resumePath: '', resumeOriginalName: '' };
-  const stored = file.filename ? `uploads/${file.filename}` : (file.path || '');
+  const localPath = file.path || (file.filename ? path.join('uploads', file.filename) : '');
+  const originalName = String(file.originalname || file.filename || 'resume.pdf').slice(0, 180);
+  if (!localPath) return { resumePath: '', resumeOriginalName: originalName };
+
+  try {
+    const s3Service = require('./s3Service');
+    if (s3Service.isS3Configured()) {
+      const uploaded = await s3Service.uploadPartnerResumeFromFile(localPath, originalName);
+      if (uploaded?.key || uploaded?.publicPath) {
+        try {
+          if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
+        } catch { /* ignore */ }
+        return {
+          resumePath: uploaded.publicPath || `/uploads/${uploaded.key}`,
+          resumeOriginalName: originalName,
+        };
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Partner resume S3 upload failed; keeping local file');
+  }
+
   return {
-    resumePath: stored,
-    resumeOriginalName: String(file.originalname || '').slice(0, 180),
+    resumePath: file.filename ? `uploads/${file.filename}` : localPath,
+    resumeOriginalName: originalName,
   };
+}
+
+async function removePartnerResumeFile(resumePath) {
+  if (!resumePath) return;
+  try {
+    const s3Service = require('./s3Service');
+    if (s3Service.isS3PartnerResume(resumePath) || s3Service.isS3Asset(resumePath)) {
+      await s3Service.deleteStoredAsset(resumePath);
+      return;
+    }
+  } catch { /* fall through to local */ }
+  try {
+    const abs = path.resolve(String(resumePath).replace(/^\/+/, ''));
+    if (fs.existsSync(abs)) fs.unlinkSync(abs);
+  } catch { /* ignore */ }
 }
 
 async function notifyCompany(org, application) {
@@ -467,11 +503,14 @@ async function submitApplication(orgSlug, rawBody, file, rateKey) {
 
   const fields = parseBody(rawBody);
   validateApply(fields);
-  const resume = resumeMeta(file);
+  const resume = await persistPartnerResume(file);
 
   const existingApp = await findExistingApplication(org._id, fields.email, fields.phone);
   const duplicate = duplicateFromRecords(existingApp);
   if (duplicate.duplicate) {
+    if (resume.resumePath && file) {
+      await removePartnerResumeFile(resume.resumePath);
+    }
     throw httpError(duplicate.message, 409, {
       code: duplicate.code,
       referenceCode: duplicate.referenceCode,
@@ -507,10 +546,7 @@ async function submitApplication(orgSlug, rawBody, file, rateKey) {
       payload.resumePath = existingApp.resumePath;
       payload.resumeOriginalName = existingApp.resumeOriginalName;
     } else if (existingApp.resumePath && existingApp.resumePath !== payload.resumePath) {
-      try {
-        const oldAbs = path.resolve(existingApp.resumePath);
-        if (fs.existsSync(oldAbs)) fs.unlinkSync(oldAbs);
-      } catch { /* ignore */ }
+      await removePartnerResumeFile(existingApp.resumePath);
     }
     Object.assign(existingApp, payload, { reviewedAt: null, reviewedBy: null, reviewNote: '' });
     application = await existingApp.save();
@@ -584,17 +620,28 @@ const MEMBER_ROLE_LABEL = {
   readonly: 'read-only teammate',
 };
 
-function identityFromRecords(organizationId, userRow, candidateRow) {
+function lastTenDigits(raw) {
+  const digits = phoneDigitsOnly(raw);
+  return digits.length >= 10 ? digits.slice(-10) : digits;
+}
+
+function identityFromRecords(organizationId, userRow, candidateRow, matchedOn = 'email') {
   if (userRow && String(userRow.organizationId) === String(organizationId)) {
     const roleLabel = MEMBER_ROLE_LABEL[userRow.role] || 'company teammate';
+    const via = matchedOn === 'phone' ? 'mobile number' : 'email';
     return {
       blocked: true,
       code: 'already_member',
       role: userRow.role,
       roleLabel,
       name: userRow.name || '',
+      email: userRow.email || '',
       active: userRow.isActive !== false,
-      message: `This email is already a ${roleLabel} in the company${userRow.name ? ` (${userRow.name})` : ''}. An invitation was not sent.`,
+      matchedOn,
+      profileId: String(userRow._id),
+      profileHref: '/team',
+      profileLabel: 'Open team directory',
+      message: `This ${via} already belongs to a ${roleLabel} in your organisation${userRow.name ? ` (${userRow.name})` : ''}. A company invitation cannot be sent.`,
     };
   }
   if (userRow) {
@@ -602,42 +649,117 @@ function identityFromRecords(organizationId, userRow, candidateRow) {
       blocked: true,
       code: 'other_company',
       role: userRow.role || '',
-      roleLabel: 'account in another company',
+      roleLabel: 'account in another organisation',
       name: userRow.name || '',
+      email: userRow.email || '',
       active: userRow.isActive !== false,
-      message: 'This email already belongs to an account in another company. An invitation was not sent.',
+      matchedOn,
+      profileId: null,
+      profileHref: '',
+      profileLabel: '',
+      message: 'This email already belongs to an account in another organisation. A company invitation cannot be sent.',
     };
   }
   if (candidateRow) {
+    const via = matchedOn === 'phone' ? 'mobile number' : 'email';
     return {
       blocked: true,
       code: 'already_candidate',
       role: 'candidate',
       roleLabel: 'candidate',
       name: candidateRow.name || '',
+      email: candidateRow.email || '',
       active: true,
-      message: `This email is already a candidate${candidateRow.name ? ` (${candidateRow.name})` : ''}. An invitation was not sent.`,
+      matchedOn,
+      profileId: String(candidateRow._id),
+      profileHref: `/ats?candidate=${candidateRow._id}`,
+      profileLabel: 'View candidate profile',
+      message: `This ${via} is already on file as a candidate${candidateRow.name ? ` (${candidateRow.name})` : ''}. A company invitation cannot be sent.`,
     };
   }
   return null;
 }
 
-async function identityMapForEmails(organizationId, emails) {
-  const list = [...new Set(emails.filter(Boolean))];
+function phoneMatchesRow(targetTen, row) {
+  if (!targetTen || targetTen.length !== 10) return false;
+  const fields = [row.phone, row.contact].filter(Boolean);
+  return fields.some((value) => lastTenDigits(value) === targetTen);
+}
+
+async function identityMapForEmails(organizationId, emails, phones = []) {
+  const emailList = [...new Set((emails || []).map(normalizeEmail).filter(Boolean))];
+  const phoneList = [...new Set((phones || []).map(lastTenDigits).filter((p) => p.length === 10))];
   const map = new Map();
-  if (!list.length) return map;
+  if (!emailList.length && !phoneList.length) return map;
+
   const Candidate = require('../models/Candidate');
-  const [users, candidates] = await Promise.all([
-    User.find({ email: { $in: list } }).select('email name role isActive organizationId').lean(),
-    Candidate.find({ organizationId, email: { $in: list } }).select('email name').lean(),
+  const [usersByEmail, candidatesByEmail, orgUsers, orgCandidates] = await Promise.all([
+    emailList.length
+      ? User.find({ email: { $in: emailList } }).select('_id email name role isActive organizationId phone').lean()
+      : Promise.resolve([]),
+    emailList.length
+      ? Candidate.find({ organizationId, email: { $in: emailList } }).select('_id email name contact phone').lean()
+      : Promise.resolve([]),
+    phoneList.length
+      ? User.find({ organizationId }).select('_id email name role isActive organizationId phone').lean()
+      : Promise.resolve([]),
+    phoneList.length
+      ? Candidate.find({ organizationId }).select('_id email name contact phone').lean()
+      : Promise.resolve([]),
   ]);
-  const userByEmail = new Map(users.map((row) => [row.email, row]));
-  const candidateByEmail = new Map(candidates.map((row) => [row.email, row]));
-  for (const email of list) {
-    const identity = identityFromRecords(organizationId, userByEmail.get(email), candidateByEmail.get(email));
+
+  const userByEmail = new Map(usersByEmail.map((row) => [normalizeEmail(row.email), row]));
+  const candidateByEmail = new Map(candidatesByEmail.map((row) => [normalizeEmail(row.email), row]));
+
+  for (const email of emailList) {
+    const identity = identityFromRecords(organizationId, userByEmail.get(email), candidateByEmail.get(email), 'email');
     if (identity) map.set(email, identity);
   }
-  return map;
+
+  return { byEmail: map, orgUsers, orgCandidates, phoneList };
+}
+
+async function resolveIdentityForApplication(organizationId, email, phone) {
+  const normalizedEmail = normalizeEmail(email);
+  const ten = lastTenDigits(phone);
+
+  if (normalizedEmail) {
+    const pack = await identityMapForEmails(organizationId, [normalizedEmail], []);
+    if (pack.byEmail.has(normalizedEmail)) {
+      return pack.byEmail.get(normalizedEmail);
+    }
+  }
+
+  if (ten.length !== 10) return null;
+
+  const Candidate = require('../models/Candidate');
+  const phoneRegex = new RegExp(escapeRegex(ten));
+  const [orgUsers, orgCandidates] = await Promise.all([
+    User.find({
+      organizationId,
+      phone: { $exists: true, $nin: [null, ''] },
+    }).select('_id email name role isActive organizationId phone').lean(),
+    Candidate.find({
+      organizationId,
+      $or: [
+        { contact: phoneRegex },
+        { phone: phoneRegex },
+      ],
+    }).select('_id email name contact phone').limit(20).lean(),
+  ]);
+
+  const userHit = orgUsers.find((row) => phoneMatchesRow(ten, row));
+  if (userHit) return identityFromRecords(organizationId, userHit, null, 'phone');
+  const candidateHit = orgCandidates.find((row) => phoneMatchesRow(ten, row));
+  if (candidateHit) return identityFromRecords(organizationId, null, candidateHit, 'phone');
+  return null;
+}
+
+async function identityMapForApplications(organizationId, rows) {
+  // List view: email-only for speed. Invite / review-check also matches mobile numbers.
+  const emails = rows.map((row) => normalizeEmail(row.email)).filter(Boolean);
+  const pack = await identityMapForEmails(organizationId, emails, []);
+  return pack.byEmail;
 }
 
 async function listApplications(user, { status } = {}) {
@@ -661,7 +783,7 @@ async function listApplications(user, { status } = {}) {
       await row.save();
     }
   }
-  const identities = await identityMapForEmails(user.organizationId, rows.map((row) => row.email));
+  const identities = await identityMapForApplications(user.organizationId, rows);
   const counts = await FreelancerApplication.aggregate([
     { $match: { organizationId: user.organizationId } },
     { $group: { _id: '$status', n: { $sum: 1 } } },
@@ -679,7 +801,7 @@ async function listApplications(user, { status } = {}) {
         : serialized.status === 'invited'
           ? 'invited'
           : '';
-      serialized.identity = identities.get(row.email) || null;
+      serialized.identity = identities.get(normalizeEmail(row.email)) || null;
       return serialized;
     }),
     counts: byStatus,
@@ -719,10 +841,16 @@ async function updateApplicationStatus(user, id, { status, reviewNote } = {}) {
 
   let alreadyJoined = false;
   if (nextStatus === 'invited' && !['invited', 'approved', 'joined'].includes(application.status)) {
-    const identities = await identityMapForEmails(user.organizationId, [application.email]);
-    const identity = identities.get(application.email);
+    const identity = await resolveIdentityForApplication(
+      user.organizationId,
+      application.email,
+      application.phone,
+    );
     if (identity?.blocked) {
-      throw httpError(identity.message, 409, { code: identity.code });
+      throw httpError(identity.message, 409, {
+        code: identity.code,
+        identity,
+      });
     }
     const { inviteTeammate } = require('./onboardingService');
     try {
@@ -775,10 +903,13 @@ async function reviewApplication(user, id) {
   }).lean();
   if (!application) throw httpError('Application not found', 404);
 
-  const identities = await identityMapForEmails(user.organizationId, [application.email]);
-  const identity = identities.get(application.email) || null;
-  const phone = phoneDigitsOnly(application.phone);
-  const clauses = [{ email: application.email }];
+  const identity = await resolveIdentityForApplication(
+    user.organizationId,
+    application.email,
+    application.phone,
+  );
+  const phone = lastTenDigits(application.phone);
+  const clauses = [{ email: normalizeEmail(application.email) }];
   if (phone.length === 10) clauses.push({ phone });
   const others = await FreelancerApplication.find({
     organizationId: user.organizationId,
@@ -794,10 +925,11 @@ async function reviewApplication(user, id) {
     referenceCode: row.referenceCode || '',
     status: row.status === 'approved' ? 'invited' : row.status,
     createdAt: row.createdAt,
-    matchedOn: row.email === application.email ? 'email' : 'phone',
+    matchedOn: normalizeEmail(row.email) === normalizeEmail(application.email) ? 'email' : 'phone',
   }));
 
   const matchCount = (identity ? 1 : 0) + otherApplications.length;
+  const clear = matchCount === 0;
   return {
     applicationId: String(application._id),
     name: application.name,
@@ -806,13 +938,14 @@ async function reviewApplication(user, id) {
     referenceCode: application.referenceCode || '',
     status: application.status === 'approved' ? 'invited' : application.status,
     checkedAt: new Date().toISOString(),
-    clear: matchCount === 0,
+    clear,
+    canInvite: clear && !['invited', 'joined', 'approved'].includes(application.status),
     matchCount,
     identity,
     otherApplications,
-    recommendation: matchCount === 0
-      ? 'No existing company, candidate, or application record uses this email or mobile number. The team may invite this person.'
-      : 'A matching record was found. Do not send a company invitation until the match is resolved.',
+    recommendation: clear
+      ? 'No matching employee, freelancer, candidate, or prior partnership application was found for this email or mobile number. You may proceed with a company invitation.'
+      : 'A matching organisation record was found. Review the profile below before taking further action. A company invitation will not be issued while this conflict remains.',
   };
 }
 
@@ -824,15 +957,48 @@ async function getResumeFile(user, id) {
   }).select('resumePath resumeOriginalName name').lean();
   if (!row) throw httpError('Application not found', 404);
   if (!row.resumePath) throw httpError('No resume uploaded', 404);
-  const abs = path.resolve(row.resumePath);
+
+  const downloadName = row.resumeOriginalName || `${row.name || 'freelancer'}-resume.pdf`;
+  const resumeValue = String(row.resumePath).trim();
+  const s3Service = require('./s3Service');
+
+  if (s3Service.isS3Configured() && (s3Service.isS3PartnerResume(resumeValue) || s3Service.isS3Asset(resumeValue))) {
+    const remote = await s3Service.getPartnerResumeStream(resumeValue);
+    if (remote?.stream) {
+      return {
+        source: 's3',
+        stream: remote.stream,
+        contentType: remote.contentType || 'application/octet-stream',
+        downloadName,
+      };
+    }
+    const buffered = await s3Service.getAssetBuffer(resumeValue);
+    if (buffered?.buffer) {
+      return {
+        source: 's3-buffer',
+        buffer: buffered.buffer,
+        contentType: buffered.contentType || 'application/octet-stream',
+        downloadName,
+      };
+    }
+  }
+
+  const raw = resumeValue.replace(/^\/+/, '');
   const uploadsRoot = path.resolve('uploads');
-  const rel = path.relative(uploadsRoot, abs);
-  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) throw httpError('Invalid resume path', 400);
-  if (!fs.existsSync(abs)) throw httpError('Resume file is no longer available', 404);
-  return {
-    abs,
-    downloadName: row.resumeOriginalName || `${row.name || 'freelancer'}-resume.pdf`,
-  };
+  const tries = [
+    path.resolve(raw),
+    path.join(uploadsRoot, path.basename(raw)),
+    path.join(process.cwd(), raw),
+    path.join(process.cwd(), 'uploads', path.basename(raw)),
+  ];
+  for (const abs of tries) {
+    const rel = path.relative(uploadsRoot, abs);
+    if (rel.startsWith('..') && !abs.includes(`${path.sep}uploads${path.sep}`)) continue;
+    if (fs.existsSync(abs)) {
+      return { source: 'local', abs, downloadName };
+    }
+  }
+  throw httpError('Resume file is no longer available', 404);
 }
 
 async function createApplication(user, body = {}) {
@@ -916,10 +1082,7 @@ async function deleteApplication(user, id) {
   });
   if (!row) throw httpError('Application not found', 404);
   if (row.resumePath) {
-    try {
-      const abs = path.resolve(row.resumePath);
-      if (fs.existsSync(abs)) fs.unlinkSync(abs);
-    } catch { /* ignore */ }
+    await removePartnerResumeFile(row.resumePath);
   }
   await row.deleteOne();
   return { deleted: true, id: String(id) };

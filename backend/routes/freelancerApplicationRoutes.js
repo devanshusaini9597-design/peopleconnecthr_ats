@@ -43,7 +43,31 @@ router.get('/:id/review-check', run(async (req, res) => {
 
 router.get('/:id/resume', run(async (req, res) => {
   const file = await svc.getResumeFile(req.user, req.params.id);
-  res.download(file.abs, file.downloadName);
+  const isDownload = String(req.query.download || '') === '1';
+  const disposition = `${isDownload ? 'attachment' : 'inline'}; filename="${String(file.downloadName || 'resume.pdf').replace(/"/g, '')}"`;
+  res.setHeader('Content-Disposition', disposition);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
+  if (file.source === 's3' && file.stream) {
+    res.setHeader('Content-Type', file.contentType || 'application/octet-stream');
+    if (typeof file.stream.pipe === 'function') {
+      file.stream.pipe(res);
+      return;
+    }
+    const { Readable } = require('stream');
+    Readable.from(file.stream).pipe(res);
+    return;
+  }
+  if (file.source === 's3-buffer' && file.buffer) {
+    res.setHeader('Content-Type', file.contentType || 'application/octet-stream');
+    res.send(file.buffer);
+    return;
+  }
+  if (file.abs) {
+    return res.download(file.abs, file.downloadName);
+  }
+  throw Object.assign(new Error('Resume file is no longer available'), { statusCode: 404 });
 }));
 
 router.patch('/:id/status', run(async (req, res) => {

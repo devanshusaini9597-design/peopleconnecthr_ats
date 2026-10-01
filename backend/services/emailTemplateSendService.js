@@ -613,7 +613,7 @@ async function sendTemplateEmail(user, body) {
       eyebrow: isSubscribeInvite
         ? 'Job alerts'
         : isRoleSpotlight
-          ? 'Open role'
+          ? 'Career opportunity'
           : isReengage
             ? 'Stay connected'
             : undefined,
@@ -945,7 +945,7 @@ async function sendTemplateEmail(user, body) {
       const eyebrow = isSubscribeInvite
         ? 'Job alerts'
         : isRoleSpotlight
-          ? 'Open role'
+          ? 'Career opportunity'
           : isReengage
             ? 'Stay connected'
             : undefined;

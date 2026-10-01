@@ -20,7 +20,7 @@ const connectDatabase = async () => {
     serverSelectionTimeoutMS: 30000,
     connectTimeoutMS: 30000,
     socketTimeoutMS: 45000,
-    maxPoolSize: 10,
+    maxPoolSize: Number(process.env.MONGO_MAX_POOL_SIZE) || 25,
     minPoolSize: 2,
     retryWrites: true,
     retryReads: true,

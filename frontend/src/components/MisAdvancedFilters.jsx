@@ -18,9 +18,10 @@ const PERIOD_OPTIONS = [
 
 const FILTER_CHIPS = [
   { key: 'consent', label: 'Consent' },
-  { key: 'unsubscribed', label: 'Status' },
+  { key: 'unsubscribed', label: 'Subscription' },
+  { key: 'status', label: 'Status' },
   { key: 'position', label: 'Position' },
-  { key: 'skills', label: 'Skill' },
+  { key: 'skills', label: 'Skills' },
   { key: 'product', label: 'Product' },
   { key: 'companyName', label: 'Company' },
   { key: 'client', label: 'Client' },
@@ -145,6 +146,10 @@ export default function MisAdvancedFilters({
   isSearching = false,
   activeFilterCount = 0,
   positionFilterOptions = [],
+  clientFilterOptions = [],
+  sourceFilterOptions = [],
+  productFilterOptions = [],
+  statusFilterOptions = [],
   expOptions = [],
   ctcFilterOptions = [],
 }) {
@@ -210,7 +215,7 @@ export default function MisAdvancedFilters({
 
       {activeChips.length > 0 ? (
         <div className="cand-filters-chips">
-          <span className="cand-filters-chips-label">Active</span>
+          <span className="cand-filters-chips-label">Applied</span>
           {activeChips.map(({ key, label }) => (
             <button
               key={key}
@@ -229,7 +234,7 @@ export default function MisAdvancedFilters({
 
       <div className="cand-filters-body">
         <Section title="Date range">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-3 gap-y-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-4 gap-y-3">
             <Field label="Period">
               <PremiumSelect
                 variant="list"
@@ -244,7 +249,7 @@ export default function MisAdvancedFilters({
                   }
                 }}
                 options={PERIOD_OPTIONS}
-                placeholder="Any time"
+                placeholder="All dates"
                 allowClear
               />
             </Field>
@@ -270,12 +275,25 @@ export default function MisAdvancedFilters({
             ) : null}
           </div>
           {datePeriod === 'custom' && (!filters.dateFrom || !filters.dateTo) ? (
-            <p className="mt-2 text-[11px] text-amber-700">Select both From and To, then click Search.</p>
+            <p className="mt-2 text-[11px] text-amber-700">Select a start date and an end date, then search.</p>
           ) : null}
         </Section>
 
         <Section title="Consent & status">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-3 gap-y-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-4 gap-y-3">
+            <Field label="Contact status">
+              <PremiumSelect
+                variant="list"
+                compact
+                value={filters.status || ''}
+                onChange={(v) => onPatch?.('status', v || '')}
+                options={statusFilterOptions}
+                placeholder="All statuses"
+                searchable
+                searchPlaceholder="Search statuses"
+                allowClear
+              />
+            </Field>
             <Field label="Consent">
               <PremiumSelect
                 variant="list"
@@ -289,14 +307,14 @@ export default function MisAdvancedFilters({
                 ]}
               />
             </Field>
-            <Field label="Status">
+            <Field label="Subscription">
               <PremiumSelect
                 variant="list"
                 compact
                 value={filters.unsubscribed || 'all'}
                 onChange={(v) => onPatch?.('unsubscribed', v || 'all')}
                 options={[
-                  { value: 'all', label: 'All status' },
+                  { value: 'all', label: 'All subscriptions' },
                   { value: '0', label: 'Active' },
                   { value: '1', label: 'Unsubscribed' },
                 ]}
@@ -306,7 +324,7 @@ export default function MisAdvancedFilters({
         </Section>
 
         <Section title="Role & organisation">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-x-3 gap-y-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-x-4 gap-y-3.5">
             <Field label="Position">
               <PremiumSelect
                 variant="list"
@@ -316,59 +334,83 @@ export default function MisAdvancedFilters({
                 options={positionFilterOptions}
                 placeholder="All positions"
                 searchable
-                searchPlaceholder="Search positions…"
+                searchPlaceholder="Search positions"
                 allowClear
                 minSearchChars={PICKLIST_MIN_SEARCH}
                 onSearch={async (q) => searchPicklistOptions('/api/positions', q)}
               />
             </Field>
-            <Field label="Skill">
+            <Field label="Skills">
               <TextInput
                 value={filters.skills || ''}
                 onChange={(e) => onPatch?.('skills', e.target.value)}
-                placeholder="Banking, Sales…"
+                placeholder="e.g. Banking, Sales"
               />
             </Field>
-            <Field label="Product / Skill">
-              <TextInput
+            <Field label="Product">
+              <PremiumSelect
+                variant="list"
+                compact
                 value={filters.product || ''}
-                onChange={(e) => onPatch?.('product', e.target.value)}
-                placeholder="Home Loan…"
+                onChange={(v) => onPatch?.('product', v || '')}
+                options={productFilterOptions}
+                placeholder="All products"
+                searchable
+                searchPlaceholder="Search products"
+                allowClear
+                minSearchChars={PICKLIST_MIN_SEARCH}
+                onSearch={async (q) => searchPicklistOptions('/api/org-lists/product', q)}
               />
             </Field>
             <Field label="Company">
               <TextInput
                 value={filters.companyName || ''}
                 onChange={(e) => onPatch?.('companyName', e.target.value)}
-                placeholder="Company"
+                placeholder="Company name"
               />
             </Field>
             <Field label="Client">
-              <TextInput
+              <PremiumSelect
+                variant="list"
+                compact
                 value={filters.client || ''}
-                onChange={(e) => onPatch?.('client', e.target.value)}
-                placeholder="Client"
+                onChange={(v) => onPatch?.('client', v || '')}
+                options={clientFilterOptions}
+                placeholder="All clients"
+                searchable
+                searchPlaceholder="Search clients"
+                allowClear
+                minSearchChars={PICKLIST_MIN_SEARCH}
+                onSearch={async (q) => searchPicklistOptions('/api/clients', q)}
               />
             </Field>
             <Field label="Location">
               <TextInput
                 value={filters.location || ''}
                 onChange={(e) => onPatch?.('location', e.target.value)}
-                placeholder="City / branch"
+                placeholder="City / region"
               />
             </Field>
             <Field label="Source">
-              <TextInput
+              <PremiumSelect
+                variant="list"
+                compact
                 value={filters.source || ''}
-                onChange={(e) => onPatch?.('source', e.target.value)}
-                placeholder="Naukri, Referral…"
+                onChange={(v) => onPatch?.('source', v || '')}
+                options={sourceFilterOptions}
+                placeholder="All sources"
+                searchable
+                searchPlaceholder="Search sources"
+                allowClear
+                minSearchChars={PICKLIST_MIN_SEARCH}
+                onSearch={async (q) => searchPicklistOptions('/api/sources', q)}
               />
             </Field>
           </div>
         </Section>
 
         <Section title="Experience & CTC">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-3 gap-y-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-3">
             <Field label="Experience (years)">
               <RangePair
                 minValue={filters.expMin || ''}

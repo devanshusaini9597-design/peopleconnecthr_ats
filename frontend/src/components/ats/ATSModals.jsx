@@ -353,6 +353,7 @@ export default function ATSModals(props) {
         onClose={() => !bulk.dedupeMerging && bulk.setShowDedupeModal(false)}
         onMerge={bulk.handleMergeDuplicates}
         merging={bulk.dedupeMerging}
+        mergingDropId={bulk.dedupeMergingDropId}
       />
 
       <TourHelpFab onClick={() => setTourOpen(true)} label="Take a tour" title="Take a tour of Candidates" />

@@ -50,6 +50,17 @@ const MisContactSchema = new mongoose.Schema({
   remark: { type: String, default: '' },
 
   /**
+   * MIS contact lifecycle status — org picklist `misStatus` only.
+   * Never shared with Candidate.pipeline / atsSettings.pipelineStages.
+   */
+  status: {
+    type: String,
+    default: 'NEW',
+    trim: true,
+    set: (v) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ').toUpperCase() : v),
+  },
+
+  /**
    * Date from the tracker Excel "Date" column (when the lead was originally logged).
    * Falls back to createdAt (import time) in the UI when missing — older uploads never stored this.
    */
@@ -66,6 +77,7 @@ const MisContactSchema = new mongoose.Schema({
 MisContactSchema.index({ organizationId: 1, email: 1 }, { unique: true });
 MisContactSchema.index({ organizationId: 1, createdBy: 1, createdAt: -1 });
 MisContactSchema.index({ organizationId: 1, deskScope: 1, createdAt: -1 });
+MisContactSchema.index({ organizationId: 1, status: 1, createdAt: -1 });
 MisContactSchema.index({ organizationId: 1, recordDate: -1, createdAt: -1 });
 MisContactSchema.index({ organizationId: 1, updatedAt: -1 });
 MisContactSchema.index({ organizationId: 1, name: 1 });

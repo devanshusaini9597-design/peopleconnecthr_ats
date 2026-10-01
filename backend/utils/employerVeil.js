@@ -15,7 +15,7 @@ function veiledEmployer(industry = '', clientName = '') {
   if (/\bmanufactur|\bauto/.test(blob)) return 'a leading manufacturing company';
   if (/\bfintech\b|\bfinance\b/.test(blob)) return 'a leading financial services company';
   if (/^a leading\b/i.test(String(clientName || '').trim())) return String(clientName).trim();
-  return 'a leading organization';
+  return 'a confidential hiring partner';
 }
 
 function stripClientName(text, clientName) {

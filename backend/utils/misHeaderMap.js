@@ -106,6 +106,18 @@ function autoDetectHeaderMapping(headerRow) {
     if (norm === 'remark' || norm === 'remarks' || norm === 'notes') set('remark', colNumber, 10);
     else if (has('remark') || has('note')) set('remark', colNumber, 5);
 
+    // MIS contact status (not Candidate pipeline / unsubscribe)
+    if (
+      norm === 'status'
+      || norm === 'misstatus'
+      || norm === 'leadstatus'
+      || norm === 'contactstatus'
+    ) {
+      set('status', colNumber, 10);
+    } else if (has('status') && !has('unsub') && !has('consent')) {
+      set('status', colNumber, 5);
+    }
+
     // Tracker "Date" / added-on — not upload time
     if (
       norm === 'date'

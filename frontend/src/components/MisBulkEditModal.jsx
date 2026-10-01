@@ -4,6 +4,7 @@ import Modal from './ui/Modal';
 import PremiumSelect from './ui/PremiumSelect';
 
 const FIELDS = [
+  { key: 'status', label: 'Status (MIS)', freeText: true },
   { key: 'source', label: 'Source', freeText: true },
   { key: 'client', label: 'Client', freeText: true },
   { key: 'position', label: 'Position', freeText: true },

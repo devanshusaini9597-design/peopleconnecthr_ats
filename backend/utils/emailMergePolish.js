@@ -175,6 +175,7 @@ function polishMergedBody(body, opts = {}) {
   s = s.replace(/\.\s*\./g, '.');
   s = s.replace(/^Dear\s*(there)?\s*,?\s*$/gim, 'Dear Candidate,');
   s = s.replace(/^Dear\s+there\s*,?/gim, 'Dear Candidate,');
+  s = s.replace(/^Dear\s+Candidates\b/gim, 'Dear Candidate');
 
   s = s.replace(/[ \t]{2,}/g, ' ');
   s = s.replace(/[ \t]+\n/g, '\n');

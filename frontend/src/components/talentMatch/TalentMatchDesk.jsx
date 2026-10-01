@@ -27,6 +27,7 @@ const BAND_CLASS = {
 
 const SOURCE_BADGE = {
   candidates: { label: 'Candidate', className: 'bg-stone-100 text-stone-500 border-stone-200' },
+  candidate: { label: 'Candidate', className: 'bg-stone-100 text-stone-500 border-stone-200' },
   mis: { label: 'MIS directory', className: 'bg-sky-50 text-sky-700 border-sky-200' },
   both: { label: 'Candidate · MIS', className: 'bg-violet-50 text-violet-700 border-violet-200' },
 };
@@ -81,17 +82,21 @@ export default function TalentMatchDesk({
   const [resultsPulse, setResultsPulse] = useState(false);
   const [chatLog, setChatLog] = useState(() => [{
     role: 'assistant',
-    text: 'Profiles are ranked for this requisition. Tell me what to change — for example remove a title, keep only branch managers, or filter by city. The match list updates as we chat.',
+    text: sources.includes('mis') && !sources.includes('candidates')
+      ? 'MIS contacts are ranked against this job. Ask me to narrow by city, title, or remove a role — the shortlist updates as we chat.'
+      : 'Profiles are ranked for this requisition. Tell me what to change — for example remove a title, keep only branch managers, or filter by city. The match list updates as we chat.',
   }]);
   const [chatDraft, setChatDraft] = useState('');
   const [chatBusy, setChatBusy] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [agentSteps, setAgentSteps] = useState([]);
   const [activeFilters, setActiveFilters] = useState(null);
+  const [upgradeRequired, setUpgradeRequired] = useState(false);
   const constraintsRef = useRef(null);
   const chatEndRef = useRef(null);
   const resultsRef = useRef(null);
 
+  const misOnly = sources.includes('mis') && !sources.includes('candidates');
   const jobId = fixedJob?._id || pickedJobId;
   const jobTitle = fixedJob?.role || fixedJob?.title
     || jobs.find((job) => job._id === jobId)?.role
@@ -108,17 +113,34 @@ export default function TalentMatchDesk({
     let cancelled = false;
     (async () => {
       setJobsLoading(true);
+      setError('');
       try {
-        const res = await authenticatedFetch('/api/jobs');
-        const data = await res.json();
+        const res = await authenticatedFetch('/api/jobs?isTemplate=false');
+        const data = await res.json().catch(() => ([]));
+        if (!res.ok) {
+          throw new Error(data.message || 'Could not load jobs');
+        }
         const list = Array.isArray(data) ? data : (data.data || data.jobs || []);
         if (!cancelled) {
-          const open = list.filter((job) => String(job.status || '').toLowerCase() === 'open' && !job.isTemplate);
+          const open = list.filter((job) => {
+            const status = String(job.status || '').toLowerCase();
+            return status === 'open' && !job.isTemplate;
+          });
           setJobs(open);
-          setPickedJobId((current) => current || open[0]?._id || '');
+          setPickedJobId((current) => {
+            if (current && open.some((job) => String(job._id) === String(current))) return current;
+            return open[0]?._id || '';
+          });
+          if (!open.length) {
+            setError('No open jobs yet. Publish a requisition on Jobs, then match MIS contacts here.');
+          }
         }
       } catch (err) {
-        if (!cancelled) setError(err.message || 'Could not load jobs');
+        if (!cancelled) {
+          setJobs([]);
+          setPickedJobId('');
+          setError(err.message || 'Could not load jobs');
+        }
       } finally {
         if (!cancelled) setJobsLoading(false);
       }
@@ -137,13 +159,19 @@ export default function TalentMatchDesk({
     }
   }, []);
 
-  const run = useCallback(async (explain = false) => {
+  const run = useCallback(async (explain = false, { silent = false } = {}) => {
     if (!jobId) return null;
     setError('');
+    setUpgradeRequired(false);
     if (explain) setExplaining(true);
     else setLoading(true);
+    if (!silent) {
+      toastRef.current.info?.(
+        misOnly ? `Matching MIS contacts to ${jobTitle}…` : `Matching profiles to ${jobTitle}…`,
+        2200
+      );
+    }
     const controller = new AbortController();
-    // Full-directory JD scan can take longer on large orgs
     const timer = setTimeout(() => controller.abort(), 120000);
     try {
       const res = await authenticatedFetch('/api/ai/job-matches', {
@@ -153,7 +181,6 @@ export default function TalentMatchDesk({
           jobId,
           source,
           limit: 20000,
-          // Re-rank = full JD fit rescore (no AI credits). explain only adds optional AI notes.
           explain: Boolean(explain),
           smart: false,
           constraints: constraintsRef.current,
@@ -162,21 +189,31 @@ export default function TalentMatchDesk({
       const body = await res.json().catch(() => ({}));
       if (!res.ok || body.success === false) {
         if (body.code === 'UPGRADE_REQUIRED') {
-          throw new Error('Suggested talent is not included on the current plan. Upgrade to Professional to rank people for this job.');
+          setUpgradeRequired(true);
+          throw new Error('Suggested talent needs the Professional plan. Upgrade to rank MIS contacts against jobs.');
         }
         throw new Error(body.message || 'Could not rank this job');
       }
       applyRankPayload(body.data);
+      const count = body.data?.results?.length || 0;
       if (explain) {
         if (body.data?.ai?.explained) toastRef.current.success('Re-ranked from the job description · AI notes added');
         else if (body.data?.ai?.message) toastRef.current.success(body.data.ai.message);
-        else toastRef.current.success(`Re-ranked · ${body.data?.results?.length || 0} matches from the job description`);
+        else toastRef.current.success(`Re-ranked · ${count} matches from the job description`);
+      } else if (!silent) {
+        toastRef.current.success(
+          count === 0
+            ? (misOnly ? 'No MIS contacts matched this job yet — try the assistant to widen filters.' : 'No matches yet — try the assistant to adjust filters.')
+            : `${count.toLocaleString()} match${count === 1 ? '' : 'es'} ranked for this job`
+        );
       }
       return body.data;
     } catch (err) {
       const aborted = err?.name === 'AbortError';
       setError(aborted
-        ? 'Suggested talent took too long on this large directory. Try again in a moment.'
+        ? (misOnly
+          ? 'Matching the MIS directory took too long. Try again, or narrow with the assistant.'
+          : 'Suggested talent took too long on this large directory. Try again in a moment.')
         : (err.message || 'Could not rank this job'));
       return null;
     } finally {
@@ -184,14 +221,17 @@ export default function TalentMatchDesk({
       setLoading(false);
       setExplaining(false);
     }
-  }, [jobId, source, applyRankPayload]);
+  }, [jobId, source, applyRankPayload, misOnly, jobTitle]);
 
   useEffect(() => {
-    if (!jobId) return;
+    if (!jobId) return undefined;
     constraintsRef.current = null;
     setActiveFilters(null);
+    setPayload(null);
     run(false);
-  }, [jobId, source, run]);
+    return undefined;
+    // Auto-rank when job or source changes — omit `run` to avoid duplicate scans.
+  }, [jobId, source]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sendChat = async () => {
     const text = chatDraft.trim();
@@ -339,6 +379,8 @@ export default function TalentMatchDesk({
       location: row.location,
       experience: row.experience,
       companyName: row.companyName,
+      marketingConsent: row.marketingConsent,
+      unsubscribedAt: row.unsubscribed ? new Date().toISOString() : null,
     };
     if (row.source === 'mis') return { ...base, misId: row.id, uploadBatchId: 1 };
     if (row.source === 'both') return { ...base, candidateId: row.id, misId: row.id, _kinds: ['candidates', 'mis'] };
@@ -397,7 +439,7 @@ export default function TalentMatchDesk({
     });
   };
 
-  const campaignJobTag = () => String(activeJob?.jobCode || jobId || '').trim();
+  const campaignJobTag = () => String(jobId || activeJob?.jobCode || '').trim();
 
   const seedJobTemplateVars = () => {
     const job = activeJob || {};
@@ -516,23 +558,33 @@ export default function TalentMatchDesk({
         <div className={`flex flex-col gap-3 ${embedded ? 'px-4 py-3 sm:px-5' : 'gap-4 px-5 py-4 sm:px-6'}`}>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0 max-w-xl">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Suggested talent</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+                {misOnly ? 'Match MIS to job' : 'Suggested talent'}
+              </p>
               <h2 className="mt-1 text-lg font-semibold tracking-tight text-stone-900">
-                {payload
-                  ? `${rows.length.toLocaleString()} ${rows.length === 1 ? 'match' : 'matches'}`
-                  : `Matching ${jobTitle}`}
+                {jobsLoading
+                  ? 'Loading open jobs…'
+                  : payload
+                    ? `${rows.length.toLocaleString()} ${rows.length === 1 ? 'match' : 'matches'}`
+                    : loading
+                      ? `Matching ${jobTitle}`
+                      : `Matching ${jobTitle}`}
                 {selected.size ? (
                   <span className="ml-2 text-sm font-medium text-stone-400">{selected.size} selected</span>
                 ) : null}
               </h2>
               {payload?.scanned != null ? (
                 <p className="mt-1.5 text-[13px] leading-relaxed text-stone-500">
-                  Reviewed {Number(payload.scanned).toLocaleString()} profiles
+                  Reviewed {Number(payload.scanned).toLocaleString()} {misOnly ? 'MIS contacts' : 'profiles'}
                   {payload.fullDirectory || payload.pullMode === 'location' ? ' in this job location' : ''}
                   {rows.length ? ' · showing people who pass location, CTC and domain' : ''}
                 </p>
               ) : (
-                <p className="mt-1.5 text-[13px] text-stone-500">{jobTitle}</p>
+                <p className="mt-1.5 text-[13px] text-stone-500">
+                  {misOnly
+                    ? 'Ranks your MIS directory against the selected open job.'
+                    : jobTitle}
+                </p>
               )}
             </div>
             {sourceChoices.length > 1 && (
@@ -556,19 +608,23 @@ export default function TalentMatchDesk({
           </div>
 
           {!fixedJob && (
-            <select
-              value={jobId}
-              onChange={(event) => setPickedJobId(event.target.value)}
-              disabled={jobsLoading}
-              className="h-9 max-w-sm rounded-lg border border-stone-200 bg-white px-3 text-[13px] font-medium text-stone-800 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/15"
-            >
-              {!jobs.length && <option value="">No open jobs</option>}
-              {jobs.map((job) => (
-                <option key={job._id} value={job._id}>
-                  {[job.jobCode, job.role || job.title].filter(Boolean).join(' · ')}
-                </option>
-              ))}
-            </select>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={jobId}
+                onChange={(event) => setPickedJobId(event.target.value)}
+                disabled={jobsLoading || !jobs.length}
+                className="h-9 max-w-sm flex-1 rounded-lg border border-stone-200 bg-white px-3 text-[13px] font-medium text-stone-800 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/15 disabled:opacity-60"
+              >
+                {jobsLoading && <option value="">Loading open jobs…</option>}
+                {!jobsLoading && !jobs.length && <option value="">No open jobs</option>}
+                {jobs.map((job) => (
+                  <option key={job._id} value={job._id}>
+                    {[job.jobCode, job.role || job.title].filter(Boolean).join(' · ')}
+                  </option>
+                ))}
+              </select>
+              {jobsLoading ? <Loader2 size={16} className="animate-spin text-stone-400" /> : null}
+            </div>
           )}
 
           <div className="flex flex-wrap items-center gap-2">
@@ -637,9 +693,42 @@ export default function TalentMatchDesk({
       ) : null}
 
       {error && (
-        <div className="mx-4 mt-2 flex shrink-0 items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-800 sm:mx-5">
+        <div className={`mx-4 mt-2 flex shrink-0 items-start gap-2 rounded-md border px-3 py-2 text-[13px] sm:mx-5 ${
+          upgradeRequired
+            ? 'border-amber-200 bg-amber-50 text-amber-950'
+            : 'border-rose-200 bg-rose-50 text-rose-800'
+        }`}
+        >
           <AlertCircle size={15} className="mt-0.5 shrink-0" />
-          {error}
+          <div className="min-w-0 flex-1">
+            <p>{error}</p>
+            {upgradeRequired ? (
+              <button
+                type="button"
+                className="mt-1.5 text-[12px] font-semibold text-amber-900 underline hover:text-amber-950"
+                onClick={() => navigate('/billing')}
+              >
+                View plans / upgrade
+              </button>
+            ) : !jobId && !jobsLoading ? (
+              <button
+                type="button"
+                className="mt-1.5 text-[12px] font-semibold text-rose-900 underline"
+                onClick={() => navigate('/jobs')}
+              >
+                Open Jobs
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="mt-1.5 text-[12px] font-semibold underline opacity-90"
+                onClick={() => run(false)}
+                disabled={loading || !jobId}
+              >
+                Try again
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -650,20 +739,45 @@ export default function TalentMatchDesk({
         }`}
       >
         <div className="min-h-0 flex-1 overflow-auto">
-          {loading && !rows.length ? (
+          {jobsLoading ? (
             <div className="flex flex-col items-center justify-center gap-3 py-20 text-sm text-stone-500">
               <Loader2 size={22} className="animate-spin text-teal-600" />
-              <p>Smart-matching people for <span className="font-semibold text-stone-700">{jobTitle}</span>…</p>
+              <p>Loading open jobs…</p>
+            </div>
+          ) : loading && !rows.length ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-20 text-sm text-stone-500">
+              <Loader2 size={22} className="animate-spin text-teal-600" />
+              <p>
+                {misOnly ? 'Matching MIS contacts for' : 'Smart-matching people for'}{' '}
+                <span className="font-semibold text-stone-700">{jobTitle}</span>…
+              </p>
+              <p className="text-xs text-stone-400">Scoring against the job description — this can take a moment on large directories.</p>
             </div>
           ) : !jobId ? (
-            <p className="py-20 text-center text-sm text-stone-500">Select an open job to rank people against it.</p>
+            <div className="px-6 py-20 text-center text-sm text-stone-500">
+              <p className="font-semibold text-stone-800">Select an open job</p>
+              <p className="mt-1">Publish a requisition on Jobs, then return here to rank {misOnly ? 'MIS contacts' : 'people'} against it.</p>
+              <button type="button" className="mt-3 btn-secondary h-9 px-3 text-[13px]" onClick={() => navigate('/jobs')}>
+                Go to Jobs
+              </button>
+            </div>
           ) : !rows.length ? (
             <div className="px-6 py-20 text-center text-sm text-stone-500">
-              <p>No matching profiles yet.</p>
-              <button type="button" className="mt-2 font-semibold text-teal-700 underline hover:text-teal-900" onClick={() => setChatOpen(true)}>
-                Open the assistant
-              </button>
-              <span> to adjust titles, location, or other criteria.</span>
+              <p className="font-semibold text-stone-800">No matching profiles yet</p>
+              <p className="mt-1 max-w-md mx-auto">
+                {misOnly
+                  ? 'No MIS contacts scored high enough for this job’s location, CTC, or domain. Adjust filters with the assistant, or refresh after adding contacts.'
+                  : 'No profiles scored high enough yet. Open the assistant to adjust titles, location, or other criteria.'}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                <button type="button" className="btn-secondary h-9 px-3 text-[13px]" onClick={() => run(false)} disabled={loading}>
+                  <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                  Refresh matches
+                </button>
+                <button type="button" className="btn-primary h-9 px-3 text-[13px]" onClick={() => setChatOpen(true)}>
+                  Open the assistant
+                </button>
+              </div>
             </div>
           ) : (
             <div className="table-shell-ats mx-0 h-full rounded-none border-0 shadow-none">

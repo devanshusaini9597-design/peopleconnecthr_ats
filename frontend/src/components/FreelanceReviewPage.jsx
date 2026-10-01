@@ -32,7 +32,7 @@ import {
 } from './freelance/freelanceTourConstants';
 
 const AUTO_REFRESH_MS = 60_000;
-const PRESENCE_POLL_MS = 12_000;
+const PRESENCE_POLL_MS = 45_000;
 
 const COMPANY_ROLES = ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales'];
 

@@ -22,7 +22,7 @@ Skillnix Recruitment Services`,
       { sampleName: 'Jadhav Kumar', brandColor: '#0f766e' }
     );
     expect(html).toContain('Dear Jadhav Kumar,');
-    expect(html).toContain('Open role');
+    expect(html).toContain('Position');
     expect(html).toContain('Sales Officer');
     expect(html).toContain('SKILLNIX-2026-0049');
     expect(html).toContain('Chennai');
@@ -39,7 +39,7 @@ Skillnix Recruitment Services`,
     const html = convertPlainEmailBody(
       `Dear there,
 
-Employer: a leading organization
+Employer: a confidential hiring partner
 Location: Remote
 
 Best regards,
@@ -48,8 +48,34 @@ Skillnix`,
     );
     expect(html).toContain('Dear Candidate,');
     expect(html).toContain('Role details');
-    expect(html).not.toContain('Open role');
-    expect(html).toContain('a leading organization');
+    expect(html).not.toContain('>Position<');
+    expect(html).toContain('a confidential hiring partner');
+  });
+
+  it('keeps Role / Employer / Location in one card even with blank lines between', () => {
+    const html = convertPlainEmailBody(
+      `Dear Candidate,
+
+I am writing to share a new opening that may align with your experience.
+
+Position: Cbh
+
+Employer: a confidential hiring partner
+
+Location: Hyderabad
+
+Best regards,
+Skillnix`,
+      { brandColor: '#7c3aed' }
+    );
+    expect(html).toContain('Position');
+    expect(html).toContain('Cbh');
+    expect(html).toContain('Employer');
+    expect(html).toContain('Location');
+    expect(html).toContain('Hyderabad');
+    // One opportunity card — not repeated Role details headers
+    expect((html.match(/Role details/g) || []).length).toBe(0);
+    expect((html.match(/em-card/g) || []).length).toBe(1);
   });
 
   it('title-cases role names', () => {

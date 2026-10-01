@@ -78,6 +78,25 @@ router.get('/export/download', async (req, res) => {
 
 router.use(verifyToken, requireMisCompany);
 
+router.get('/stats', async (req, res) => {
+  try {
+    // Identity comes only from the auth token — never from query/body
+    const data = await svc.getMisStats(req.user);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
+router.get('/reports', async (req, res) => {
+  try {
+    const data = await svc.getMisReports(req.user, req.query);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
 router.get('/', async (req, res) => {
   try {
     const data = await svc.listContacts(req.user, req.query);

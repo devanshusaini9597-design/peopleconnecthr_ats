@@ -883,7 +883,7 @@ function subscribeInviteHtml({
 }
 
 /**
- * Open-role marketing body — same layout language as transactional update emails.
+ * Open-role marketing body — one professional card (position + details), clear CTA.
  */
 function roleSpotlightHtml({
   candidateName = 'Candidate',
@@ -905,63 +905,94 @@ function roleSpotlightHtml({
     "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
   const rawName = String(candidateName || '').trim();
   const name = escapeHtml(
-    !rawName || /^there$/i.test(rawName) ? 'Candidate' : rawName
+    !rawName || /^(there|candidates?)$/i.test(rawName) ? 'Candidate' : rawName
   );
   void company;
-  const roleRaw = String(position || 'a new role').trim() || 'a new role';
-  const role = escapeHtml(roleRaw);
+  const roleRaw = String(position || '').trim();
+  const role = escapeHtml(roleRaw || 'this opportunity');
   const code = escapeHtml(String(jobCode || '').trim());
   const employerLabel = escapeHtml(String(employer || '').trim());
+  const loc = escapeHtml(String(location || '').trim());
+  const exp = escapeHtml(String(experience || '').trim());
+  const pay = escapeHtml(String(ctc || '').trim());
   const rawBrief = String(summary || '').trim();
   const brief = looksLikeJdDump(rawBrief) ? '' : escapeHtml(rawBrief);
   const href = String(applyUrl || '').trim().replace(/[?&]+$/g, '');
   const applyOk = /^https?:\/\//i.test(href);
-  const detailPanel = infoPanelHtml(
-    [
-      code ? { label: 'Job ID', value: code } : null,
-      employerLabel ? { label: 'Employer', value: employerLabel } : null,
-      ctc ? { label: 'Compensation', value: ctc } : null,
-      experience ? { label: 'Experience', value: experience } : null,
-      location ? { label: 'Location', value: location } : null,
-    ].filter(Boolean),
-    accent
-  );
-  const roleHeader = `
-<table role="presentation" class="em-card" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0 8px 0;border:1px solid #e5e7eb;border-radius:10px;border-collapse:separate !important;overflow:hidden;">
+
+  const detailRows = [
+    code ? { label: 'Job ID', value: code } : null,
+    employerLabel ? { label: 'Employer', value: employerLabel } : null,
+    pay ? { label: 'Compensation', value: pay } : null,
+    exp ? { label: 'Experience', value: exp } : null,
+    loc ? { label: 'Location', value: loc } : null,
+  ].filter(Boolean);
+
+  const detailRowsHtml = detailRows
+    .map((r, idx) => {
+      const border = idx < detailRows.length - 1 ? 'border-bottom:1px solid #eef2f6;' : '';
+      return `<tr>
+        <td class="em-detail-row" style="padding:12px 0;${border}">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td class="em-detail-label" width="34%" valign="top" style="width:34%;padding:0 12px 0 0;font-family:${font};font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;line-height:1.45;">${escapeHtml(r.label)}</td>
+              <td class="em-detail-value" valign="top" style="padding:0;font-family:${font};font-size:14px;font-weight:600;color:#0f172a;line-height:1.45;word-break:break-word;">${escapeHtml(r.value)}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>`;
+    })
+    .join('');
+
+  const opportunityCard = `
+<table role="presentation" class="em-card" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:18px 0 20px 0;border:1px solid #e5e7eb;border-radius:10px;border-collapse:separate !important;overflow:hidden;">
   <tr>
-    <td style="border-left:4px solid ${accent};background-color:#ffffff;padding:18px 20px;">
-      <p style="margin:0 0 6px 0;font-family:${font};font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:${accent};">Open role</p>
-      <p class="em-role-title" style="margin:0;font-family:${font};font-size:20px;font-weight:700;line-height:1.3;letter-spacing:-0.02em;color:#0f172a;">${role}</p>
+    <td style="border-left:4px solid ${accent};background-color:#ffffff;padding:0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td style="padding:20px 20px 18px 18px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="padding:0 0 16px 0;${detailRows.length ? 'border-bottom:1px solid #eef2f6;' : ''}">
+                  <p style="margin:0 0 6px 0;font-family:${font};font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:${accent};">Position</p>
+                  <p class="em-role-title" style="margin:0;font-family:${font};font-size:20px;font-weight:700;line-height:1.3;letter-spacing:-0.02em;color:#0f172a;">${role}</p>
+                </td>
+              </tr>
+              ${detailRowsHtml ? `<tr><td style="padding:4px 0 0 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${detailRowsHtml}</table></td></tr>` : ''}
+            </table>
+          </td>
+        </tr>
+      </table>
     </td>
   </tr>
 </table>`;
+
   const applyBlock = applyOk
     ? `<div style="margin:18px 0 8px 0;text-align:center;">${brandButtonHtml({
         href,
-        label: 'View this job & apply',
+        label: 'View role & apply',
         brandColor: accent,
         fullWidth: true,
       })}
-      <p style="margin:8px 0 0 0;text-align:center;font-family:${font};font-size:12px;line-height:1.55;color:#94a3b8;">Prefer email? Reply to this message to be considered.</p>
+      <p style="margin:8px 0 0 0;text-align:center;font-family:${font};font-size:12px;line-height:1.55;color:#94a3b8;">Prefer to reply by email? Respond to this message and we will follow up.</p>
     </div>`
     : '';
 
   return `
 <p style="margin:0 0 16px 0;font-family:${font};font-size:16px;line-height:1.6;color:#0f172a;font-weight:600;">Dear ${name},</p>
 <p style="margin:0 0 12px 0;font-family:${font};font-size:15px;line-height:1.7;color:#334155;">
-  We reviewed profiles in our talent network and believe you may be a strong match for this opportunity.
+  I am writing to share a role that may align with your experience. Key details are below for your review.
 </p>
-${roleHeader}
-${detailPanel}
-${brief ? `<p style="margin:0 0 12px 0;font-family:${font};font-size:15px;line-height:1.7;color:#334155;">${brief}</p>` : ''}
+${opportunityCard}
+${brief ? `<p style="margin:0 0 14px 0;font-family:${font};font-size:15px;line-height:1.7;color:#334155;">${brief}</p>` : ''}
 ${applyBlock}
 <p style="margin:0 0 12px 0;font-family:${font};font-size:15px;line-height:1.7;color:#334155;">
   ${applyOk
-    ? 'If you are open to exploring this opportunity, use the button above, reply to this email, or share an updated resume.'
-    : 'If you are open to exploring this opportunity, reply to this email or share an updated resume.'}
+    ? 'If this opportunity is of interest, please apply using the button above, or reply to this email with an updated resume.'
+    : 'If this opportunity is of interest, please reply to this email with an updated resume and we will take the next step.'}
 </p>
 <p style="margin:0;font-family:${font};font-size:15px;line-height:1.7;color:#334155;">
-  If the timing is not right, you can still subscribe for future roles that match your experience.
+  If the timing is not right, you are welcome to stay subscribed for future roles that match your profile.
 </p>`;
 }
 

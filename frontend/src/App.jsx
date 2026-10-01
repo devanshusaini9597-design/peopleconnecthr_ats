@@ -49,6 +49,7 @@ const CustomRolesPage = React.lazy(() => import('./components/CustomRolesPage'))
 const CandidateFieldsPage = React.lazy(() => import('./components/CandidateFieldsPage'))
 const TalentPoolsPage = React.lazy(() => import('./components/TalentPoolsPage'))
 const MisPage = React.lazy(() => import('./components/MisPage'))
+const MisReportsPage = React.lazy(() => import('./components/MisReportsPage'))
 const SSOCallbackPage = React.lazy(() => import('./components/SSOCallbackPage'))
 const SSOSettingsPage = React.lazy(() => import('./components/SSOSettingsPage'))
 const BillingPage = React.lazy(() => import('./components/BillingPage'))
@@ -180,6 +181,7 @@ const router = createBrowserRouter([
       { path: '/recruitment', element: <Suspense fallback={<LoadingFallback />}><ApplicationsPage /></Suspense> },
       { path: '/ats', element: <ATSPage /> },
       { path: '/mis', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales']}><Suspense fallback={<LoadingFallback />}><MisPage /></Suspense></ProtectedRoute> },
+      { path: '/mis-reports', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales']}><Suspense fallback={<LoadingFallback />}><MisReportsPage /></Suspense></ProtectedRoute> },
       { path: '/add-candidate', element: <Navigate to="/ats?add=1" replace /> },
       { path: '/resume-parsing', element: <ResumeParsing /> },
       { path: '/candidate-search', element: <CandidateSearch /> },

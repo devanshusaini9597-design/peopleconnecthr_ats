@@ -70,12 +70,12 @@ export default function EmployeeScopeSelect({
         menuMinWidth={320}
         emptyLabel="No teammates match your search"
       />
-      <p className="text-[11px] text-stone-400 mt-1.5 leading-snug">
+      <p className="text-[11px] text-stone-500 mt-1.5 leading-snug">
         {statsLoading
-          ? 'Updating metrics…'
+          ? 'Refreshing metrics…'
           : isOrg
-            ? `${employees.length} team member${employees.length === 1 ? '' : 's'} available`
-            : 'Showing metrics for this employee’s desk'}
+            ? `${employees.length} team member${employees.length === 1 ? '' : 's'} in scope`
+            : 'Company desk only — freelancer shares are not mixed into these totals'}
       </p>
     </div>
   );

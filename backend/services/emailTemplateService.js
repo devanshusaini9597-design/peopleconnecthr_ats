@@ -388,38 +388,39 @@ ${SIGN_OFF}`,
     base({
       name: 'Talent Pool Nurture',
       category: 'marketing',
-      subject: 'A role that may fit your profile – {{position}} | {{company}}',
+      subject: 'Role opportunity – {{position}} | {{location}}',
       body: `Dear {{candidateName}},
 
-We reviewed profiles in our talent network and believe you may be a strong match for {{position}}.
+I am writing to share a role that may align with your experience and career interests.
 
-Highlights:
-• CTC: {{ctc}}
-• Experience: {{experience}}
-• Location: {{location}}
-• Employer: {{jobEmployer}}
+Position: {{position}}
+Job ID: {{jobCode}}
+Employer: {{jobEmployer}}
+Compensation: {{ctc}}
+Experience: {{experience}}
+Location: {{location}}
 
-If you are open to exploring this opportunity, reply to this email or share an updated resume.
+If you would like to be considered, reply to this email with an updated resume, and our team will follow up promptly.
 
 ${SIGN_OFF}`,
-      variables: ['candidateName', 'position', 'company', 'jobEmployer', 'ctc', 'experience', 'location', 'subscribeLink'],
+      variables: ['candidateName', 'position', 'company', 'jobEmployer', 'ctc', 'experience', 'location', 'jobCode', 'subscribeLink'],
     }),
     base({
       name: 'Open Role Spotlight',
       category: 'marketing',
-      subject: 'Open opportunity – {{position}}',
+      subject: 'Role opportunity – {{position}} | {{location}}',
       body: `Dear {{candidateName}},
 
-We came across your profile and thought this opening may be a strong match.
+I am writing to share a role that may align with your experience. Key details are below for your review.
 
-Role: {{position}}
+Position: {{position}}
 Job ID: {{jobCode}}
 Employer: {{jobEmployer}}
-CTC: {{ctc}}
+Compensation: {{ctc}}
 Experience: {{experience}}
 Location: {{location}}
 
-If you would like to be considered, reply to this email or use the button below to apply.
+Please review the opening using the link below. To express interest, apply online or reply to this email with your latest resume.
 
 {{applyLink}}
 
@@ -432,19 +433,18 @@ ${SIGN_OFF}`,
       subject: 'New opening – {{position}} | {{location}}',
       body: `Dear {{candidateName}},
 
-A role that may fit your background is now open.
+I am writing to share a new opening that may align with your experience.
 
-Role: {{position}}
+Position: {{position}}
 Job ID: {{jobCode}}
 Employer: {{jobEmployer}}
-CTC: {{ctc}}
+Compensation: {{ctc}}
 Experience: {{experience}}
 Location: {{location}}
 
-Apply using the link below:
-{{applyLink}}
+Please review the role using the link below. If you would like to be considered, apply online or reply to this email at your earliest convenience.
 
-Reply if you would like us to consider your profile.
+{{applyLink}}
 
 ${SIGN_OFF}`,
       variables: ['candidateName', 'position', 'company', 'jobEmployer', 'ctc', 'experience', 'location', 'jobCode', 'applyLink', 'subscribeLink'],
@@ -532,6 +532,7 @@ async function ensureDefaultCatalog(userId, organizationId, { syncBodies = false
   }
 
   // Body sync is expensive; only on explicit seed-defaults, not every list.
+  // Also refresh legacy stock wording on known marketing role templates (isDefault only).
   if (syncBodies || added > 0) {
     const subscribe = subscribeTemplatePayload(userId, organizationId);
     await EmailTemplate.findOneAndUpdate(
@@ -567,15 +568,50 @@ async function ensureDefaultCatalog(userId, organizationId, { syncBodies = false
     }
   }
 
+  // Soft-upgrade stock Job Alert copy still using legacy intros (does not touch customised templates)
+  await softUpgradeLegacyRoleTemplates(userId, organizationId, catalog);
+
   return { added, total: catalog.length, organizationId };
+}
+
+async function softUpgradeLegacyRoleTemplates(userId, organizationId, catalogHint) {
+  const catalog = catalogHint || buildDefaultCatalog(userId, organizationId);
+  const legacyIntro =
+    /A role that may fit your background is now open|We came across your profile and thought this opening|We reviewed profiles in our talent network and believe you may be a strong match for \{\{position\}\}/i;
+  const roleSeeds = catalog.filter((s) =>
+    /^(Talent Pool Nurture|Open Role Spotlight|Job Alert – New Opening)$/.test(s.name)
+  );
+  await Promise.all(
+    roleSeeds.map(async (seed) => {
+      const row = await EmailTemplate.findOne({
+        organizationId,
+        name: seed.name,
+        isDefault: true,
+      }).select('_id body');
+      if (row && legacyIntro.test(String(row.body || ''))) {
+        await EmailTemplate.updateOne(
+          { _id: row._id },
+          {
+            $set: {
+              subject: seed.subject,
+              body: seed.body,
+              variables: seed.variables,
+            },
+          }
+        );
+      }
+    })
+  );
 }
 
 async function listTemplates(userId, organizationIdHint) {
   const { organizationId } = await resolveOrgContext(userId, organizationIdHint);
-  // Skip seeding when the org already has templates (main latency fix).
+  // Skip full seeding when the org already has templates (main latency fix).
   const hasAny = await EmailTemplate.exists({ organizationId });
   if (!hasAny) {
     await ensureDefaultCatalog(userId, organizationId, { syncBodies: false });
+  } else {
+    await softUpgradeLegacyRoleTemplates(userId, organizationId);
   }
   const templates = await EmailTemplate.find({ organizationId }).sort({
     isDefault: -1,

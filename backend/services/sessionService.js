@@ -12,6 +12,8 @@ const SESSION_IDLE_DEFAULT_MINUTES = SESSION_MAX_AGE_MS / (60 * 1000);
 /** Old schema default (8 hours). Treat as unset so overnight use stays signed in. */
 const LEGACY_IDLE_DEFAULT_MINUTES = 480;
 const SESSION_REFRESH_MIN_MS = 60 * 1000;
+/** Skip lastActivityAt writes if already touched within this window (cuts Mongo load). */
+const TOUCH_THROTTLE_MS = 60 * 1000;
 
 function effectiveIdleMinutes(raw) {
   const n = Number(raw);
@@ -86,13 +88,31 @@ const issueAuthToken = async (user, req) => {
 
 const touchSession = async (jti) => {
   if (!jti) return;
-  await UserSession.findOneAndUpdate(
-    { jti, revokedAt: null },
+  const cutoff = new Date(Date.now() - TOUCH_THROTTLE_MS);
+  // Atomic throttle: no write when lastActivityAt is already fresh.
+  // Also touch rows missing lastActivityAt (legacy).
+  await UserSession.updateOne(
+    {
+      jti,
+      revokedAt: null,
+      $or: [
+        { lastActivityAt: { $lt: cutoff } },
+        { lastActivityAt: null },
+        { lastActivityAt: { $exists: false } },
+      ],
+    },
     { $set: { lastActivityAt: new Date() } }
   );
 };
 
-const validateSession = async (userId, jti, organizationId) => {
+/**
+ * @param {import('mongoose').Types.ObjectId|string} userId
+ * @param {string} jti
+ * @param {import('mongoose').Types.ObjectId|string|null} organizationId
+ * @param {{ plan?: string, securitySettings?: object }|null} [orgDoc]
+ *        Optional org already loaded by the caller (avoids a second findById).
+ */
+const validateSession = async (userId, jti, organizationId, orgDoc = null) => {
   if (!jti) return { valid: true };
 
   const session = await UserSession.findOne({ jti, userId, revokedAt: null });
@@ -111,7 +131,7 @@ const validateSession = async (userId, jti, organizationId) => {
   }
 
   if (organizationId) {
-    const org = await Organization.findById(organizationId).select('plan securitySettings');
+    const org = orgDoc || await Organization.findById(organizationId).select('plan securitySettings');
     if (org && planHasFeature(org.plan, 'security.sessionPolicy')) {
       const idleMinutes = effectiveIdleMinutes(org.securitySettings?.sessionIdleMinutes);
       const idleMs = idleMinutes * 60 * 1000;
@@ -252,4 +272,5 @@ module.exports = {
   revokeSession,
   JWT_SECRET,
   SESSION_MAX_AGE_MS,
+  TOUCH_THROTTLE_MS,
 };

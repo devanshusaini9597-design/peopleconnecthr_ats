@@ -180,15 +180,17 @@ export default function QuickListManager({
       toastRef.current.warning(`Enter a ${singular} name`);
       return;
     }
+    const wasEditing = Boolean(editing);
+    const editingId = editing?._id;
     setSaving(true);
     try {
-      const url = editing
-        ? `${BASE_API_URL}${apiEndpoint}/${editing._id}`
+      const url = wasEditing
+        ? `${BASE_API_URL}${apiEndpoint}/${editingId}`
         : `${BASE_API_URL}${apiEndpoint}`;
       const body = { name, description: '' };
       if (supportsRequiresPan) body.requiresPan = !!draftRequiresPan;
       const res = await authenticatedFetch(url, {
-        method: editing ? 'PUT' : 'POST',
+        method: wasEditing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
@@ -198,9 +200,9 @@ export default function QuickListManager({
         toastRef.current.error(err.message || `Could not save ${singular}`);
         return;
       }
-      toastRef.current.success(editing ? `${title.slice(0, -1) || singular} updated` : `${singular.charAt(0).toUpperCase()}${singular.slice(1)} added`);
+      toastRef.current.success(wasEditing ? `${title.slice(0, -1) || singular} updated` : `${singular.charAt(0).toUpperCase()}${singular.slice(1)} added`);
       resetEditor();
-      if (!editing) {
+      if (!wasEditing) {
         pageRef.current = 1;
         setPage(1);
       }
@@ -452,12 +454,25 @@ export default function QuickListManager({
                 disabled={!!loadError}
                 className={searchClass}
               />
+              {loading && query.trim().length >= PICKLIST_MIN_SEARCH ? (
+                <Loader2
+                  size={14}
+                  className={`absolute ${isFreelancer ? 'right-3' : 'right-3.5'} top-1/2 -translate-y-1/2 text-brand-600 animate-spin pointer-events-none`}
+                  aria-label="Searching"
+                />
+              ) : null}
             </div>
             {searchPending && (
               <p className="mt-1.5 px-0.5 text-[11px] text-stone-500">
                 Enter at least {PICKLIST_MIN_SEARCH} characters to search.
               </p>
             )}
+            {loading && query.trim().length >= PICKLIST_MIN_SEARCH ? (
+              <p className="mt-1.5 px-0.5 text-[11px] font-medium text-brand-700 inline-flex items-center gap-1.5">
+                <Loader2 size={11} className="animate-spin" />
+                Searching {singular}s…
+              </p>
+            ) : null}
           </div>
 
           {/* Directory list */}

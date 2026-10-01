@@ -15,6 +15,19 @@ function orgInitials(name) {
   return parts.slice(0, 2).map((p) => p[0]).join('').toUpperCase();
 }
 
+/** Soften ALL-CAPS names for readable recipient lines without changing stored data. */
+function displayPersonName(name) {
+  const raw = String(name || '').trim();
+  if (!raw) return '';
+  const letters = raw.replace(/[^A-Za-z]/g, '');
+  if (letters && letters === letters.toUpperCase()) {
+    return raw
+      .toLowerCase()
+      .replace(/\b([a-z])/g, (m) => m.toUpperCase());
+  }
+  return raw;
+}
+
 function OrgBrandMark({ name, logo }) {
   const [broken, setBroken] = useState(false);
   const src = resolveOrgLogoSrc(logo);
@@ -180,57 +193,58 @@ export default function CandidateEmailModal(props) {
   const toLine = usingAudience
     ? (audienceCount > 0 ? `All ${audienceCount.toLocaleString()} matching contacts` : 'Everyone matching this search')
     : (isBulk
-      ? bulkEmailRecipients.map((c) => c.name || c.email).join(', ')
-      : `${emailRecipient.name} <${emailRecipient.email}>`);
+      ? bulkEmailRecipients.map((c) => displayPersonName(c.name) || c.email).join(', ')
+      : `${displayPersonName(emailRecipient.name) || emailRecipient.name} <${emailRecipient.email}>`);
 
   const channelActive =
-    'border-brand-600 bg-brand-50/50 ring-1 ring-brand-600/20 shadow-sm';
-  const channelIdle = 'border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50/80';
+    'border-brand-500 bg-gradient-to-br from-brand-50/80 via-white to-teal-50/40 ring-1 ring-brand-500/25 shadow-md shadow-brand-900/10';
+  const channelIdle =
+    'border-stone-200/90 bg-white hover:border-brand-300 hover:bg-stone-50/60 hover:shadow-sm shadow-sm shadow-stone-900/5';
 
   return (
-    <div className="fixed inset-0 z-[260] bg-stone-950/45 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[260] bg-stone-950/50 backdrop-blur-[3px] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
       <div
-        className="bg-white w-full sm:max-w-3xl h-[100dvh] sm:h-auto sm:max-h-[90vh] rounded-none sm:rounded-2xl border-0 sm:border border-stone-200/80 shadow-none sm:shadow-[0_28px_80px_-24px_rgba(28,25,23,0.42)] flex flex-col overflow-hidden"
+        className="bg-white w-full sm:max-w-3xl h-[100dvh] sm:h-auto sm:max-h-[min(90vh,52rem)] rounded-t-2xl sm:rounded-2xl border-0 sm:border border-stone-200/80 shadow-[0_-12px_40px_-16px_rgba(28,25,23,0.35)] sm:shadow-[0_28px_80px_-24px_rgba(28,25,23,0.42)] flex flex-col overflow-hidden"
         role="dialog"
         aria-modal="true"
       >
         <div className="relative flex-shrink-0 border-b border-stone-200/80">
           <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-brand-700 via-teal-500 to-brand-600" aria-hidden />
-          <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 bg-gradient-to-b from-stone-50/90 to-white">
-            <div className="flex items-start justify-between gap-2">
+          <div className="px-4 sm:px-6 pt-[max(1rem,env(safe-area-inset-top))] sm:pt-5 pb-3 sm:pb-4 bg-gradient-to-b from-stone-50/90 to-white">
+            <div className="flex items-start justify-between gap-2 min-w-0">
               <OrgBrandMark name={orgMeta.name} logo={orgMeta.logo} />
               <button
                 type="button"
                 onClick={closeModal}
-                className="p-2 -mr-1 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 border border-transparent hover:border-stone-200 transition"
+                className="p-2 -mr-1 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 border border-transparent hover:border-stone-200 transition shadow-sm shrink-0"
                 aria-label="Close"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div className="mt-3 sm:mt-4 sm:pl-[3.25rem]">
+            <div className="mt-3 sm:mt-4 sm:pl-[3.25rem] min-w-0">
               <h3 className="text-[15px] sm:text-base font-semibold text-stone-900 tracking-tight">
                 {isBulk
                   ? `Compose ${campaignOnly ? 'campaign' : 'message'} · ${sendLabel} ${recipientNoun}`
                   : (campaignOnly ? 'Compose campaign message' : 'Compose message')}
               </h3>
-              <p className="text-sm text-stone-600 mt-1.5 line-clamp-2 sm:truncate" title={toLine}>
+              <p className="text-sm text-stone-600 mt-1.5 truncate" title={toLine}>
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-400 mr-1.5">To</span>
                 <span className="font-medium text-stone-800">
-                  {isBulk && recipientCount > 3
-                    ? `${recipientCount.toLocaleString()} recipients`
+                  {isBulk
+                    ? `${recipientCount.toLocaleString()} recipient${recipientCount === 1 ? '' : 's'}`
                     : toLine}
                 </span>
               </p>
-              {isBulk && recipientCount > 3 ? (
-                <p className="text-[11px] text-stone-400 mt-0.5 line-clamp-1" title={toLine}>
+              {isBulk && recipientCount > 0 && recipientCount <= 6 ? (
+                <p className="text-[11px] text-stone-400 mt-0.5 line-clamp-2 sm:line-clamp-1" title={toLine}>
                   {toLine}
                 </p>
               ) : null}
               {usingAudience ? (
                 <p className="text-xs text-stone-500 mt-1.5 leading-relaxed">
-                  Full matching list is delivered in one action. Contacts without email are skipped.
+                  Sends to everyone matching the current filters. Contacts without an email address are skipped.
                 </p>
               ) : null}
               {emailSenderInfo?.fromEmail && (
@@ -252,7 +266,7 @@ export default function CandidateEmailModal(props) {
                 </p>
                 <h3 className="text-sm font-semibold text-stone-900 mt-1">Delivery channel</h3>
                 <p className="text-xs text-stone-500 mt-0.5">
-                  Choose how this message should be delivered.
+                  Select how this message will be sent.
                 </p>
               </div>
               <div className="grid gap-2.5 sm:gap-3 grid-cols-1 sm:grid-cols-2">
@@ -263,24 +277,24 @@ export default function CandidateEmailModal(props) {
                     setSelectedTemplate?.(null);
                     setComposePhase('method');
                   }}
-                  className={`rounded-xl border px-3.5 sm:px-4 py-3 sm:py-3.5 text-left transition ${
+                  className={`rounded-2xl border px-3.5 sm:px-4 py-3.5 sm:py-4 text-left transition-all duration-200 ${
                     emailChannel === 'transactional' ? channelActive : channelIdle
                   }`}
                 >
                   <div className="flex items-center gap-2.5 text-stone-900">
                     <span
-                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-xl shrink-0 shadow-sm ${
                         emailChannel === 'transactional'
-                          ? 'bg-brand-600 text-white'
+                          ? 'bg-gradient-to-br from-brand-600 to-teal-700 text-white shadow-brand-500/30'
                           : 'bg-stone-100 text-stone-500'
                       }`}
                     >
                       <Mail size={15} />
                     </span>
-                    <span className="text-sm font-semibold">Transactional</span>
+                    <span className="text-sm font-semibold tracking-tight">Transactional</span>
                   </div>
-                  <p className="text-xs text-stone-500 mt-2 leading-relaxed">
-                    Interviews, offers, documents, and one-to-one follow-ups
+                  <p className="text-xs text-stone-500 mt-2.5 leading-relaxed">
+                    Interviews, offers, documents, and direct follow-ups
                   </p>
                 </button>
 
@@ -294,23 +308,23 @@ export default function CandidateEmailModal(props) {
                     setComposePhase('method');
                   }}
                   disabled={!channelsAvailable.marketing}
-                  className={`rounded-xl border px-3.5 sm:px-4 py-3 sm:py-3.5 text-left transition ${
+                  className={`rounded-2xl border px-3.5 sm:px-4 py-3.5 sm:py-4 text-left transition-all duration-200 ${
                     emailChannel === 'marketing' ? channelActive : channelIdle
                   } ${!channelsAvailable.marketing ? 'opacity-45 cursor-not-allowed' : ''}`}
                 >
                   <div className="flex items-center gap-2.5 text-stone-900">
                     <span
-                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-xl shrink-0 shadow-sm ${
                         emailChannel === 'marketing'
-                          ? 'bg-brand-600 text-white'
+                          ? 'bg-gradient-to-br from-brand-600 to-teal-700 text-white shadow-brand-500/30'
                           : 'bg-stone-100 text-stone-500'
                       }`}
                     >
                       <Megaphone size={15} />
                     </span>
-                    <span className="text-sm font-semibold">Campaign</span>
+                    <span className="text-sm font-semibold tracking-tight">Campaign</span>
                   </div>
-                  <p className="text-xs text-stone-500 mt-2 leading-relaxed">
+                  <p className="text-xs text-stone-500 mt-2.5 leading-relaxed">
                     Outreach, nurture sequences, and talent-pool campaigns
                   </p>
                   {!channelsAvailable.marketing && (
@@ -354,24 +368,24 @@ export default function CandidateEmailModal(props) {
                     setSelectedTemplate?.(null);
                     setComposePhase('write');
                   }}
-                  className={`rounded-xl border px-3.5 sm:px-4 py-3 sm:py-3.5 text-left transition ${
+                  className={`rounded-2xl border px-3.5 sm:px-4 py-3.5 sm:py-4 text-left transition-all duration-200 ${
                     emailMode === 'template' ? channelActive : channelIdle
                   }`}
                 >
                   <div className="flex items-center gap-2.5 text-stone-900">
                     <span
-                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-xl shrink-0 shadow-sm ${
                         emailMode === 'template'
-                          ? 'bg-brand-600 text-white'
+                          ? 'bg-gradient-to-br from-brand-600 to-teal-700 text-white shadow-brand-500/30'
                           : 'bg-stone-100 text-stone-500'
                       }`}
                     >
                       <FileText size={15} />
                     </span>
-                    <span className="text-sm font-semibold">Template library</span>
+                    <span className="text-sm font-semibold tracking-tight">Template library</span>
                   </div>
-                  <p className="text-xs text-stone-500 mt-2 leading-relaxed">
-                    Start from an approved template, then edit subject and body
+                  <p className="text-xs text-stone-500 mt-2.5 leading-relaxed">
+                    Start from an approved template, then refine subject and body
                   </p>
                 </button>
 
@@ -382,24 +396,24 @@ export default function CandidateEmailModal(props) {
                     setSelectedTemplate?.(null);
                     setComposePhase('write');
                   }}
-                  className={`rounded-xl border px-3.5 sm:px-4 py-3 sm:py-3.5 text-left transition ${
+                  className={`rounded-2xl border px-3.5 sm:px-4 py-3.5 sm:py-4 text-left transition-all duration-200 ${
                     emailMode === 'quick' ? channelActive : channelIdle
                   }`}
                 >
                   <div className="flex items-center gap-2.5 text-stone-900">
                     <span
-                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-xl shrink-0 shadow-sm ${
                         emailMode === 'quick'
-                          ? 'bg-brand-600 text-white'
+                          ? 'bg-gradient-to-br from-brand-600 to-teal-700 text-white shadow-brand-500/30'
                           : 'bg-stone-100 text-stone-500'
                       }`}
                     >
                       <Zap size={15} />
                     </span>
-                    <span className="text-sm font-semibold">Custom draft</span>
+                    <span className="text-sm font-semibold tracking-tight">Custom draft</span>
                   </div>
-                  <p className="text-xs text-stone-500 mt-2 leading-relaxed">
-                    Write a one-off message without a template
+                  <p className="text-xs text-stone-500 mt-2.5 leading-relaxed">
+                    Write a one-off message without using a template
                   </p>
                 </button>
               </div>
@@ -551,7 +565,7 @@ export default function CandidateEmailModal(props) {
           ) : null}
         </div>
 
-        <div className="px-4 sm:px-6 py-3 sm:py-3.5 border-t border-stone-200/80 flex flex-col gap-2.5 sm:flex-row sm:items-center flex-shrink-0 bg-stone-50/90 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="px-4 sm:px-6 py-3 sm:py-3.5 border-t border-stone-200/80 flex flex-col gap-2.5 sm:flex-row sm:items-center flex-shrink-0 bg-gradient-to-t from-stone-100/80 to-stone-50/90 pb-[max(0.85rem,env(safe-area-inset-bottom))]">
           <p className="text-xs text-stone-500 sm:mr-auto inline-flex items-center gap-1.5 order-2 sm:order-1 justify-center sm:justify-start">
             <span
               className={`h-1.5 w-1.5 rounded-full ${
@@ -559,18 +573,18 @@ export default function CandidateEmailModal(props) {
               }`}
             />
             {composePhase === 'channel'
-              ? 'Select a delivery channel'
+              ? 'Select a delivery channel to continue'
               : composePhase === 'method'
-                ? 'Select template or custom draft'
+                ? 'Choose a template or write a custom draft'
                 : emailChannel === 'marketing'
                   ? 'Campaign channel'
                   : 'Transactional channel'}
           </p>
-          <div className="flex gap-2 w-full sm:w-auto order-1 sm:order-2">
+          <div className="flex gap-2.5 w-full sm:w-auto order-1 sm:order-2">
             <button
               type="button"
               onClick={closeModal}
-              className="btn-secondary flex-1 sm:flex-none justify-center"
+              className="btn-secondary flex-1 sm:flex-none justify-center min-h-[2.75rem] shadow-sm shadow-stone-900/5"
               disabled={isSendingEmail}
             >
               Cancel
@@ -580,7 +594,7 @@ export default function CandidateEmailModal(props) {
                 type="button"
                 onClick={emailMode === 'template' ? sendTemplateEmail : sendSingleEmail}
                 disabled={!canSend}
-                className="btn-primary flex-1 sm:flex-none justify-center min-w-0 sm:min-w-[9rem] disabled:opacity-50"
+                className="btn-primary flex-1 sm:flex-none justify-center min-h-[2.75rem] min-w-0 sm:min-w-[9rem] disabled:opacity-50 shadow-lg shadow-brand-500/25"
               >
                 {isSendingEmail ? (
                   <>

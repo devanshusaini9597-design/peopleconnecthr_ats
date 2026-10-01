@@ -5,11 +5,22 @@ describe('org list keys for candidate + job picklists', () => {
   test('SEEDS covers every OrgListItem listKey', () => {
     const keys = OrgListItem.schema.path('listKey').enumValues;
     expect(keys).toEqual(
-      expect.arrayContaining(['ctc', 'notice', 'product', 'grade', 'industry', 'location', 'experience'])
+      expect.arrayContaining([
+        'ctc', 'notice', 'product', 'grade', 'industry', 'location', 'experience', 'misStatus',
+      ])
     );
     for (const key of keys) {
       expect(Array.isArray(SEEDS[key])).toBe(true);
       expect(SEEDS[key].length).toBeGreaterThan(0);
+    }
+  });
+
+  test('misStatus seeds are MIS-only and block letters', () => {
+    expect(SEEDS.misStatus).toEqual(
+      expect.arrayContaining(['NEW', 'CONTACTED', 'INTERESTED', 'FOLLOW UP'])
+    );
+    for (const name of SEEDS.misStatus) {
+      expect(name).toBe(String(name).toUpperCase());
     }
   });
 

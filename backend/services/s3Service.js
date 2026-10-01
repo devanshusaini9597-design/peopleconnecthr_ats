@@ -18,6 +18,12 @@ const logger = require('../utils/logger');
 
 const KINDS = {
   resume: { bucketEnv: 'S3_RESUME_BUCKET', prefixEnv: 'S3_RESUME_PREFIX', prefixDefault: 'resumes' },
+  /** Partner / freelance-application CVs — kept separate from candidate resumes. */
+  partnerResume: {
+    bucketEnv: 'S3_RESUME_BUCKET',
+    prefixEnv: 'S3_PARTNER_RESUME_PREFIX',
+    prefixDefault: 'partner-resumes',
+  },
   logo: { bucketEnv: 'S3_LOGO_BUCKET', prefixEnv: 'S3_LOGO_PREFIX', prefixDefault: 'logos' },
   profile: { bucketEnv: 'S3_PROFILE_BUCKET', prefixEnv: 'S3_PROFILE_PREFIX', prefixDefault: 'profiles' },
   email: { bucketEnv: 'S3_EMAIL_BUCKET', prefixEnv: 'S3_EMAIL_PREFIX', prefixDefault: 'mail-archive' },
@@ -106,6 +112,16 @@ function kindFromKey(key) {
   if (k.startsWith(`${kindConfig('email').prefix}/`) || k.startsWith('mail-archive/')) return 'email';
   if (k.startsWith(`${kindConfig('logo').prefix}/`) || k.startsWith('logos/') || k.startsWith('org-logo-')) return 'logo';
   if (k.startsWith(`${kindConfig('profile').prefix}/`) || k.startsWith('profiles/') || k.startsWith('profile-')) return 'profile';
+  if (
+    k.startsWith(`${kindConfig('partnerResume').prefix}/`)
+    || k.startsWith('partner-resumes/')
+  ) {
+    return 'partnerResume';
+  }
+  // Legacy local uploads used filenames like partner-<timestamp>-<rand>.pdf
+  if (/^partner-\d+/.test(path.posix.basename(k)) && !k.startsWith('resumes/')) {
+    return 'partnerResume';
+  }
   if (k.startsWith(`${kindConfig('resume').prefix}/`) || k.startsWith('resumes/')) return 'resume';
   return null;
 }
@@ -122,6 +138,9 @@ function candidateKeys(rel) {
   const base = path.posix.basename(key);
   if (base.startsWith('org-logo-') && !key.startsWith('logos/')) keys.push(`logos/${base}`);
   if (base.startsWith('profile-') && !key.startsWith('profiles/')) keys.push(`profiles/${base}`);
+  if (/^partner-\d+/.test(base) && !key.startsWith('partner-resumes/') && !key.startsWith(`${kindConfig('partnerResume').prefix}/`)) {
+    keys.push(`${kindConfig('partnerResume').prefix}/${base}`);
+  }
   return [...new Set(keys)];
 }
 
@@ -138,12 +157,13 @@ async function uploadAsset({ kind, body, filename, originalName, contentType }) 
     logger.info(`[S3] ${kind} upload skipped — S3 not configured`);
     return null;
   }
-  const ext = path.extname(filename || originalName || '') || (kind === 'resume' ? '.pdf' : '.png');
+  const ext = path.extname(filename || originalName || '')
+    || ((kind === 'resume' || kind === 'partnerResume') ? '.pdf' : '.png');
   const safeName = String(filename || `${kind}-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`)
     .replace(/[^a-zA-Z0-9._-]/g, '-');
   const key = `${cfg.prefix}/${safeName}`;
   try {
-    const isPrivate = kind === 'email';
+    const isPrivate = kind === 'email' || kind === 'partnerResume' || kind === 'resume';
     await client.send(new PutObjectCommand({
       Bucket: cfg.bucket,
       Key: key,
@@ -178,11 +198,57 @@ async function uploadResumeFromFile(localFilePath, originalName) {
   });
 }
 
+async function uploadPartnerResumeFromFile(localFilePath, originalName) {
+  if (!fs.existsSync(localFilePath)) {
+    logger.error('[S3] Partner resume local file not found:', localFilePath);
+    return null;
+  }
+  const body = fs.readFileSync(localFilePath);
+  const ext = path.extname(originalName) || path.extname(localFilePath) || '.pdf';
+  const filename = `partner-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+  return uploadAsset({
+    kind: 'partnerResume',
+    body,
+    filename,
+    originalName,
+    contentType: getContentType(ext),
+  });
+}
+
 function isS3Resume(resumeValue) {
   if (!resumeValue || typeof resumeValue !== 'string') return false;
   const s = storedToKey(resumeValue);
   const prefix = kindConfig('resume').prefix;
   return s.startsWith(`${prefix}/`) || s.startsWith('resumes/');
+}
+
+function isS3PartnerResume(resumeValue) {
+  if (!resumeValue || typeof resumeValue !== 'string') return false;
+  return kindFromKey(resumeValue) === 'partnerResume';
+}
+
+async function getPartnerResumeStream(s3Key) {
+  const client = getClient();
+  if (!client) return null;
+  const tried = candidateKeys(s3Key);
+  for (const key of tried) {
+    if (kindFromKey(key) !== 'partnerResume' && !key.startsWith('partner-resumes/')) continue;
+    try {
+      const response = await client.send(new GetObjectCommand({
+        Bucket: resolveBucketForKey(key) || defaultBucket(),
+        Key: key,
+      }));
+      return {
+        stream: response.Body,
+        contentType: response.ContentType || getContentType(path.extname(key)),
+        key,
+      };
+    } catch {
+      /* try next */
+    }
+  }
+  logger.error('[S3] getPartnerResumeStream failed for:', storedToKey(s3Key));
+  return null;
 }
 
 function isS3Asset(value) {
@@ -329,9 +395,12 @@ module.exports = {
   isEmailArchiveConfigured,
   uploadAsset,
   uploadResumeFromFile,
+  uploadPartnerResumeFromFile,
   isS3Resume,
+  isS3PartnerResume,
   isS3Asset,
   getResumeStream,
+  getPartnerResumeStream,
   getAssetBuffer,
   sendAssetToResponse,
   deleteStoredAsset,
@@ -346,6 +415,7 @@ module.exports = {
   resolveBucketForKey,
   get S3_BUCKET() { return defaultBucket(); },
   get S3_RESUME_PREFIX() { return kindConfig('resume').prefix; },
+  get S3_PARTNER_RESUME_PREFIX() { return kindConfig('partnerResume').prefix; },
   get S3_EMAIL_BUCKET() { return kindConfig('email').bucket; },
   get S3_EMAIL_PREFIX() { return kindConfig('email').prefix; },
 };

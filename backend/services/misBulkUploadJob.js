@@ -145,7 +145,7 @@ async function ingestSheet(sheet, { seenEmails, pending, errors, batchId }) {
       phone: '',
       source: map.source ? cellStr(row, map.source) : '',
     };
-    for (const key of ['position', 'companyName', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'location', 'skills', 'product', 'client', 'fls', 'remark']) {
+    for (const key of ['position', 'companyName', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'location', 'skills', 'product', 'client', 'fls', 'remark', 'status']) {
       raw[key] = map[key] ? cellStr(row, map[key]) : '';
     }
 
@@ -191,7 +191,7 @@ async function ingestSheet(sheet, { seenEmails, pending, errors, batchId }) {
       source: normalizeText(fixed.source) || 'MIS Upload',
       marketingConsent: true,
     };
-    for (const key of ['position', 'companyName', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'location', 'skills', 'product', 'client', 'fls', 'remark']) {
+    for (const key of ['position', 'companyName', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'location', 'skills', 'product', 'client', 'fls', 'remark', 'status']) {
       if (fixed[key]) payload[key] = normalizeText(fixed[key]);
     }
     const parsedDate = map.recordDate
