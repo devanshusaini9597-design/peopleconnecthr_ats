@@ -1405,6 +1405,7 @@ async function moveToCandidates(user, ids = [], options = {}) {
         }
       }
 
+      const trackerDate = row.recordDate || row.createdAt || null;
       const payload = {
         name: normalizeText(name),
         email,
@@ -1429,6 +1430,11 @@ async function moveToCandidates(user, ids = [], options = {}) {
         createdBy: actorId,
         fromMis: true,
         misContactId: row._id,
+        // Keep original MIS tracker/import date so Candidates sort does not jump to "just now"
+        appliedAt: trackerDate ? new Date(trackerDate) : undefined,
+        date: trackerDate
+          ? new Date(trackerDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+          : undefined,
       };
       if (payload.location && !payload.state) {
         payload.state = LocationService.detectState(payload.location) || '';

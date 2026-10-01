@@ -551,27 +551,7 @@ export default function MisPage() {
       setPagination(nextPagination);
       setScope(data.scope || 'owner');
       setLastSyncedAt(new Date());
-      // Keep overview cards aligned with the live list total for the active desk
-      const listTotal = Number(nextPagination.total);
-      if (Number.isFinite(listTotal) && listTotal >= 0) {
-        const hasFilters = Boolean(q || Object.values(appliedFilters || {}).some((v) => v && v !== 'all' && v !== ''));
-        if (!hasFilters) {
-          setStats((prev) => {
-            if (!prev) {
-              return {
-                total: deskView === 'all' ? listTotal : 0,
-                company: deskView === 'company' ? listTotal : 0,
-                mine: deskView === 'mine' ? listTotal : 0,
-                newThisMonth: 0,
-              };
-            }
-            if (deskView === 'all') return { ...prev, total: listTotal };
-            if (deskView === 'company') return { ...prev, company: listTotal };
-            if (deskView === 'mine') return { ...prev, mine: listTotal };
-            return prev;
-          });
-        }
-      }
+      // Overview cards stay fixed from /api/mis/stats — never overwrite from desk-tab list totals.
       const maxPage = Math.max(1, Number(nextPagination.pages) || 1);
       if (pageNum > maxPage) {
         setPage(maxPage);
@@ -1009,25 +989,25 @@ export default function MisPage() {
       label: 'Status',
       className: 'w-auto min-w-[120px]',
       render: (row) => {
-        const label = formatMisStatusLabel(row.status || 'NEW');
         const moved = Boolean(row.movedToCandidateAt || row.movedToCandidateId);
-        return (
-          <div className="flex flex-col items-start gap-1">
+        if (moved) {
+          return (
             <span
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold border whitespace-nowrap ${misStatusBadgeClass(row.status)}`}
-              title="MIS contact status"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold border whitespace-nowrap bg-indigo-50 text-indigo-700 border-indigo-200"
+              title={row.movedToCandidateAt ? `Moved ${formatDate(row.movedToCandidateAt)}` : 'Moved to Candidates'}
             >
-              {label}
+              In Candidates
             </span>
-            {moved ? (
-              <span
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide bg-indigo-50 text-indigo-700 border border-indigo-100 whitespace-nowrap"
-                title={row.movedToCandidateAt ? `Moved ${formatDate(row.movedToCandidateAt)}` : 'Moved to Candidates'}
-              >
-                In Candidates
-              </span>
-            ) : null}
-          </div>
+          );
+        }
+        const label = formatMisStatusLabel(row.status || 'NEW');
+        return (
+          <span
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold border whitespace-nowrap ${misStatusBadgeClass(row.status)}`}
+            title="MIS contact status"
+          >
+            {label}
+          </span>
         );
       },
     },
