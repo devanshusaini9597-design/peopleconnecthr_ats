@@ -943,13 +943,24 @@ export default function MisPage() {
       className: 'w-auto min-w-[120px]',
       render: (row) => {
         const label = formatMisStatusLabel(row.status || 'NEW');
+        const moved = Boolean(row.movedToCandidateAt || row.movedToCandidateId);
         return (
-          <span
-            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold border whitespace-nowrap ${misStatusBadgeClass(row.status)}`}
-            title="MIS contact status"
-          >
-            {label}
-          </span>
+          <div className="flex flex-col items-start gap-1">
+            <span
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold border whitespace-nowrap ${misStatusBadgeClass(row.status)}`}
+              title="MIS contact status"
+            >
+              {label}
+            </span>
+            {moved ? (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide bg-indigo-50 text-indigo-700 border border-indigo-100 whitespace-nowrap"
+                title={row.movedToCandidateAt ? `Moved ${formatDate(row.movedToCandidateAt)}` : 'Moved to Candidates'}
+              >
+                In Candidates
+              </span>
+            ) : null}
+          </div>
         );
       },
     },
@@ -1009,17 +1020,27 @@ export default function MisPage() {
       key: 'actions',
       label: 'Actions',
       className: 'w-auto',
-      render: (row) => (
-        <button
-          type="button"
-          onClick={() => requestMove([row._id])}
-          className="h-8 px-2.5 rounded-lg border border-stone-200 bg-white text-xs font-semibold text-stone-700 inline-flex items-center gap-1.5 hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-all whitespace-nowrap"
-          title="Move to Candidates"
-        >
-          <Users size={13} />
-          To Candidates
-        </button>
-      ),
+      render: (row) => {
+        const moved = Boolean(row.movedToCandidateAt || row.movedToCandidateId);
+        if (moved) {
+          return (
+            <span className="text-[11px] font-semibold text-indigo-600 whitespace-nowrap" title="Already in Candidates">
+              Moved
+            </span>
+          );
+        }
+        return (
+          <button
+            type="button"
+            onClick={() => requestMove([row._id])}
+            className="h-8 px-2.5 rounded-lg border border-stone-200 bg-white text-xs font-semibold text-stone-700 inline-flex items-center gap-1.5 hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-all whitespace-nowrap"
+            title="Add to Candidates"
+          >
+            <Users size={13} />
+            To Candidates
+          </button>
+        );
+      },
     },
   ], [safePage, toggleConsent, requestMove]);
 
@@ -1245,7 +1266,7 @@ export default function MisPage() {
       const res = await authenticatedFetch('/api/mis/move-to-candidates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: moveIds, removeFromMis: true }),
+        body: JSON.stringify({ ids: moveIds, removeFromMis: false }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Move failed');
@@ -1682,7 +1703,7 @@ export default function MisPage() {
       />
 
       {/* Directory workspace: desks + search + table stay together (no scroll gap on tab switch) */}
-      <div className="card-ats-bordered relative overflow-hidden min-h-[320px]">
+      <div className="card-ats-bordered relative overflow-visible min-h-[320px]">
         <div
           className="px-3 sm:px-5 pt-3 sm:pt-4 pb-0 border-b border-stone-100/90 bg-gradient-to-b from-stone-50/50 to-white"
           data-tour="mis-desk-tabs"
@@ -2428,20 +2449,21 @@ export default function MisPage() {
         }}
         type={moveResult ? 'success' : 'info'}
         eyebrow="Transfer"
-        title={moveResult ? 'Transfer complete' : `Move ${moveIds.length} contact${moveIds.length === 1 ? '' : 's'} to Candidates?`}
+        title={moveResult ? 'Transfer complete' : `Add ${moveIds.length} contact${moveIds.length === 1 ? '' : 's'} to Candidates?`}
         message={
           moveResult
             ? (moveResult.message || 'Transfer complete.')
-            : 'Creates candidate records from the selected contacts, then removes those contacts from MIS. Existing candidate emails and phone numbers are skipped.'
+            : 'Creates candidate records on your desk from the selected contacts. Contacts stay in MIS and are marked In Candidates. Existing candidate emails and phone numbers are skipped.'
         }
-        confirmText={moveResult ? 'Close' : 'Move to Candidates'}
+        confirmText={moveResult ? 'Close' : 'Add to Candidates'}
         cancelText={moveResult ? undefined : 'Cancel'}
         showCancel={!moveResult}
         isLoading={moving}
         zClass="z-[140]"
         stats={moveResult ? [
           { label: 'Moved', value: moveResult.moved ?? 0, tone: 'emerald' },
-          { label: 'Already there', value: moveResult.skippedDuplicate ?? 0, tone: 'amber' },
+          { label: 'Already moved', value: moveResult.skippedAlreadyMoved ?? 0, tone: 'brand' },
+          { label: 'Duplicates', value: moveResult.skippedDuplicate ?? 0, tone: 'amber' },
           { label: 'Skipped', value: moveResult.skippedInvalid ?? 0, tone: 'red' },
         ] : [
           { label: 'Selected', value: moveIds.length, tone: 'brand' },

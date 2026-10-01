@@ -71,6 +71,23 @@ const MisContactSchema = new mongoose.Schema({
   /** Random secret for public unsubscribe links (store raw; treat as capability URL). */
   unsubscribeSecret: { type: String, default: '', index: true },
 
+  /**
+   * Set when this MIS contact was transferred into Candidates.
+   * Contact stays in MIS for marketing history; badge shows the transfer.
+   */
+  movedToCandidateAt: { type: Date, default: null, index: true },
+  movedToCandidateId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Candidate',
+    default: null,
+    index: true,
+  },
+  movedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+
   uploadBatchId: { type: String, default: '', index: true },
 }, { timestamps: true });
 
@@ -81,6 +98,7 @@ MisContactSchema.index({ organizationId: 1, status: 1, createdAt: -1 });
 MisContactSchema.index({ organizationId: 1, recordDate: -1, createdAt: -1 });
 MisContactSchema.index({ organizationId: 1, updatedAt: -1 });
 MisContactSchema.index({ organizationId: 1, name: 1 });
+MisContactSchema.index({ organizationId: 1, movedToCandidateAt: 1 });
 
 MisContactSchema.methods.ensureUnsubscribeSecret = function ensureUnsubscribeSecret() {
   if (!this.unsubscribeSecret) {

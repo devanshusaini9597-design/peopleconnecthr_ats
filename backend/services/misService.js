@@ -389,7 +389,7 @@ async function listContacts(user, query = {}) {
     const total = await resolveTotal();
     const idDocs = await MisContact.find(filter)
       .sort(misListSort())
-      .select('_id phone contact email name position location state companyName client product skills experience ctc expectedCtc noticePeriod fls source status marketingConsent unsubscribedAt recordDate createdAt')
+      .select('_id phone contact email name position location state companyName client product skills experience ctc expectedCtc noticePeriod fls source status marketingConsent unsubscribedAt recordDate createdAt movedToCandidateAt movedToCandidateId')
       .skip(idSkip)
       .limit(idLimit + 1)
       .maxTimeMS(20000)
@@ -423,6 +423,8 @@ async function listContacts(user, query = {}) {
         unsubscribedAt: d.unsubscribedAt || null,
         recordDate: d.recordDate || null,
         createdAt: d.createdAt || null,
+        movedToCandidateAt: d.movedToCandidateAt || null,
+        movedToCandidateId: d.movedToCandidateId ? String(d.movedToCandidateId) : null,
       })),
       total: total == null ? idSkip + ids.length + (hasMore ? 1 : 0) : total,
       capped: false,
@@ -1064,15 +1066,17 @@ async function sendMarketingToMis(user, body = {}) {
 }
 
 /**
- * Move MIS contacts into Candidates (create Candidate, then remove from MIS).
- * Skips emails/phones already in Candidates and rows missing required phone.
+ * Copy MIS contacts into Candidates (keeps MIS row; marks as moved).
+ * New candidates are owned by the acting employee (createdBy + SPOC).
+ * Skips already-moved rows, existing candidate email/phone conflicts, and invalid rows.
  */
 async function moveToCandidates(user, ids = [], options = {}) {
   assertMisCompany(user);
-  const idList = (ids || []).map(String).filter(Boolean);
+  const idList = [...new Set((ids || []).map(String).filter(Boolean))];
   if (!idList.length) throw httpError('Select at least one MIS contact');
 
-  const removeFromMis = options.removeFromMis !== false;
+  // Keep MIS history by default. Explicit removeFromMis=true is still allowed for cleanup.
+  const removeFromMis = options.removeFromMis === true;
   const Candidate = require('../models/Candidate');
   const LocationService = require('./locationService');
   const { findOrgPhoneConflict, findOrgEmailConflict } = require('./dedupeService');
@@ -1082,17 +1086,28 @@ async function moveToCandidates(user, ids = [], options = {}) {
   const rows = await MisContact.find(filter).lean();
   if (!rows.length) throw httpError('No MIS contacts found', 404);
 
+  const actorId = user.id || user._id;
   let moved = 0;
   let skippedDuplicate = 0;
+  let skippedAlreadyMoved = 0;
   let skippedInvalid = 0;
   const errors = [];
   const movedIds = [];
+  const movedCandidateIds = [];
 
   for (const row of rows) {
     const email = normalizeEmail(row.email);
     const contact = phoneDigits(row.phone || row.contact);
     const name = trimStr(row.name);
     const ctc = trimStr(row.ctc) || 'TO BE UPDATED';
+
+    if (row.movedToCandidateAt || row.movedToCandidateId) {
+      skippedAlreadyMoved += 1;
+      if (errors.length < 40) {
+        errors.push({ id: row._id, email, message: 'Already moved to Candidates' });
+      }
+      continue;
+    }
 
     if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
       skippedInvalid += 1;
@@ -1113,6 +1128,17 @@ async function moveToCandidates(user, ids = [], options = {}) {
           if (errors.length < 40) {
             errors.push({ id: row._id, email, message: `Already a candidate (${emailHit.name || 'existing'})` });
           }
+          // Mark MIS row so the directory reflects the existing candidate link.
+          await MisContact.updateOne(
+            { _id: row._id, organizationId: user.organizationId, movedToCandidateAt: null },
+            {
+              $set: {
+                movedToCandidateAt: new Date(),
+                movedToCandidateId: emailHit._id || null,
+                movedBy: actorId,
+              },
+            }
+          );
           continue;
         }
         const phoneHit = await findOrgPhoneConflict(user.organizationId, contact);
@@ -1125,6 +1151,16 @@ async function moveToCandidates(user, ids = [], options = {}) {
               message: `Phone already on candidate ${phoneHit.name || ''}`.trim(),
             });
           }
+          await MisContact.updateOne(
+            { _id: row._id, organizationId: user.organizationId, movedToCandidateAt: null },
+            {
+              $set: {
+                movedToCandidateAt: new Date(),
+                movedToCandidateId: phoneHit._id || null,
+                movedBy: actorId,
+              },
+            }
+          );
           continue;
         }
       }
@@ -1150,7 +1186,7 @@ async function moveToCandidates(user, ids = [], options = {}) {
         remark: trimStr(row.remark),
         status: 'APPLIED',
         organizationId: user.organizationId,
-        createdBy: user.id || user._id,
+        createdBy: actorId,
       };
       if (payload.location && !payload.state) {
         payload.state = LocationService.detectState(payload.location) || '';
@@ -1162,8 +1198,21 @@ async function moveToCandidates(user, ids = [], options = {}) {
 
       const doc = new Candidate(payload);
       await doc.save();
+
+      await MisContact.updateOne(
+        { _id: row._id, organizationId: user.organizationId },
+        {
+          $set: {
+            movedToCandidateAt: new Date(),
+            movedToCandidateId: doc._id,
+            movedBy: actorId,
+          },
+        }
+      );
+
       moved += 1;
       movedIds.push(String(row._id));
+      movedCandidateIds.push(String(doc._id));
     } catch (err) {
       skippedInvalid += 1;
       if (errors.length < 40) {
@@ -1180,14 +1229,28 @@ async function moveToCandidates(user, ids = [], options = {}) {
     deleted = del.deletedCount || 0;
   }
 
+  const notFound = Math.max(0, idList.length - rows.length);
+  const parts = [
+    `Moved ${moved} to Candidates`,
+    skippedAlreadyMoved ? `${skippedAlreadyMoved} already moved` : null,
+    skippedDuplicate ? `${skippedDuplicate} already in Candidates` : null,
+    skippedInvalid ? `${skippedInvalid} skipped` : null,
+    notFound ? `${notFound} not found` : null,
+  ].filter(Boolean);
+
   return {
     moved,
     deleted,
+    keptInMis: removeFromMis ? 0 : moved,
     skippedDuplicate,
+    skippedAlreadyMoved,
     skippedInvalid,
+    notFound,
+    selected: idList.length,
     total: rows.length,
+    candidateIds: movedCandidateIds,
     errors: errors.slice(0, 30),
-    message: `Moved ${moved} to Candidates · ${skippedDuplicate} already there · ${skippedInvalid} skipped`,
+    message: parts.join(' · '),
   };
 }
 

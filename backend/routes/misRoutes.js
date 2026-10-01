@@ -154,7 +154,8 @@ router.post('/bulk-update', async (req, res) => {
 router.post('/move-to-candidates', async (req, res) => {
   try {
     const data = await svc.moveToCandidates(req.user, req.body?.ids || [], {
-      removeFromMis: req.body?.removeFromMis !== false,
+      // Keep MIS row by default so the directory retains history + "moved" badge.
+      removeFromMis: req.body?.removeFromMis === true,
     });
     res.json({ success: true, ...data });
   } catch (error) {

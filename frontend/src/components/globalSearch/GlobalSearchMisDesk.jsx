@@ -297,7 +297,7 @@ export default function GlobalSearchMisDesk({
       const res = await authenticatedFetch('/api/mis/move-to-candidates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: selectedIds, removeFromMis: true }),
+        body: JSON.stringify({ ids: selectedIds, removeFromMis: false }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Move failed');
@@ -366,16 +366,22 @@ export default function GlobalSearchMisDesk({
     {
       key: 'actions',
       label: 'Actions',
-      render: (row) => (
-        <button
-          type="button"
-          onClick={() => { setSelectedIds([String(row._id)]); setMoveOpen(true); }}
-          className="h-8 px-2.5 rounded-lg border border-stone-200 bg-white text-xs font-semibold text-stone-700 inline-flex items-center gap-1.5 hover:border-brand-300 hover:text-brand-700"
-        >
-          <Users size={13} />
-          To Candidates
-        </button>
-      ),
+      render: (row) => {
+        const moved = Boolean(row.movedToCandidateAt || row.movedToCandidateId);
+        if (moved) {
+          return <span className="text-[11px] font-semibold text-indigo-600 whitespace-nowrap">Moved</span>;
+        }
+        return (
+          <button
+            type="button"
+            onClick={() => { setSelectedIds([String(row._id)]); setMoveOpen(true); }}
+            className="h-8 px-2.5 rounded-lg border border-stone-200 bg-white text-xs font-semibold text-stone-700 inline-flex items-center gap-1.5 hover:border-brand-300 hover:text-brand-700"
+          >
+            <Users size={13} />
+            To Candidates
+          </button>
+        );
+      },
     },
   ], [page, dateSort, onDateSort]);
 
@@ -579,9 +585,9 @@ export default function GlobalSearchMisDesk({
         onClose={() => { if (!moving) setMoveOpen(false); }}
         onConfirm={moveToCandidates}
         type="info"
-        title={`Move ${selectedIds.length} contact${selectedIds.length === 1 ? '' : 's'} to Candidates?`}
-        message="Creates candidate records from the selected contacts, then removes those contacts from MIS."
-        confirmText="Move to Candidates"
+        title={`Add ${selectedIds.length} contact${selectedIds.length === 1 ? '' : 's'} to Candidates?`}
+        message="Creates candidate records on your desk. Contacts stay in MIS and are marked In Candidates. Duplicates and invalid rows are skipped with a clear count."
+        confirmText="Add to Candidates"
         isLoading={moving}
       />
       <ConfirmationModal
