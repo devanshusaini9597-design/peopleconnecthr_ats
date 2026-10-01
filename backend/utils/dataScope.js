@@ -670,15 +670,17 @@ function misListFilter(organizationId, user, extra = {}) {
 }
 
 /**
- * MIS mutate scope: owner = all; employees = only rows they created (personal desk).
+ * MIS mutate scope:
+ * - owner / admin → any contact in the organisation
+ * - other MIS roles → only rows they created (not shared Organisation desk rows)
  */
 function misWriteFilter(organizationId, user, extra = {}) {
   const orgMatch = organizationIdMatch(organizationId) || { organizationId };
   if (!user || isFreelancer(user) || !isMisCompanyRole(user)) {
     return { ...orgMatch, _id: { $in: [] }, ...extra };
   }
-  if (user.role === 'owner') {
-    return misListFilter(organizationId, user, extra);
+  if (user.role === 'owner' || user.role === 'admin') {
+    return { ...orgMatch, ...extra };
   }
   const { userIdStr, userIdObj } = userIdParts(user);
   const me = userIdObj ? [userIdObj, userIdStr] : [userIdStr];

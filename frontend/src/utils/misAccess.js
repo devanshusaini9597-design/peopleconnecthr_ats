@@ -62,3 +62,18 @@ export function misDeskHint(deskView) {
   if (deskView === 'company') return 'Shared organisation directory';
   return 'Organisation directory and your records';
 }
+
+/** Owner and admin may mutate any MIS contact in the organisation. */
+export function canEditAnyMisContact(user) {
+  return Boolean(user && (user.role === 'owner' || user.role === 'admin'));
+}
+
+/** Employees may mutate only contacts they created (not Organisation desk rows). */
+export function canEditMisContact(user, row) {
+  if (!user || !row) return false;
+  if (canEditAnyMisContact(user)) return true;
+  if (!canAccessMis(user)) return false;
+  const me = String(user.id || user._id || '');
+  const ownerId = String(row.createdBy?._id || row.createdBy || '');
+  return Boolean(me && ownerId && me === ownerId);
+}

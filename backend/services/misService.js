@@ -983,9 +983,18 @@ async function bulkUpdate(user, ids = [], updates = {}) {
 
   const filter = misWriteFilter(user.organizationId, user, { _id: { $in: idList } });
   const result = await MisContact.updateMany(filter, { $set });
+  const matched = result.matchedCount ?? result.n ?? 0;
+  const modified = result.modifiedCount ?? result.nModified ?? 0;
+  if (!matched) {
+    throw httpError(
+      'No editable contacts in this selection. Employees can only edit records they created.',
+      403,
+      { code: 'MIS_WRITE_FORBIDDEN' }
+    );
+  }
   return {
-    matched: result.matchedCount ?? result.n ?? 0,
-    modified: result.modifiedCount ?? result.nModified ?? 0,
+    matched,
+    modified,
     marketingConsent: consentUpdate,
   };
 }

@@ -4,6 +4,7 @@ import { WhatsAppIcon } from './icons/BrandIcons';
 
 /**
  * Bulk bar for MIS contacts — sits inside the table card (not sticky over the app header).
+ * Keep z-index low so the app header / profile menu always stacks above this bar.
  */
 export default function MisBulkToolbar({
   selectedIds = [],
@@ -28,7 +29,7 @@ export default function MisBulkToolbar({
     && typeof onSelectAllFiltered === 'function';
 
   return (
-    <div data-tour="mis-bulk" className="relative z-30 animate-fade-in border-b border-brand-100/80 bg-gradient-to-r from-brand-50/95 via-white to-white">
+    <div data-tour="mis-bulk" className="relative z-10 animate-fade-in border-b border-brand-100/80 bg-gradient-to-r from-brand-50/95 via-white to-white">
       <div className="px-3 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-brand-500 to-teal-700 text-white flex items-center justify-center text-sm font-bold tabular-nums shadow-md shadow-brand-500/20 ring-1 ring-white/20 flex-shrink-0">
@@ -85,7 +86,7 @@ export default function MisBulkToolbar({
               <Pencil size={14} strokeWidth={1.75} />
               Edit
             </button>
-            <div className="relative z-40">
+            <div className="relative">
               <button
                 type="button"
                 onClick={onConsentMenuToggle}
@@ -103,8 +104,8 @@ export default function MisBulkToolbar({
               </button>
               {consentMenuOpen ? (
                 <>
-                  <div className="fixed inset-0 z-[60]" onClick={onConsentMenuToggle} aria-hidden />
-                  <div className="absolute right-0 top-full mt-2 z-[70] w-56 rounded-xl border border-stone-200 bg-white shadow-xl shadow-stone-900/15">
+                  <div className="fixed inset-0 z-[20]" onClick={onConsentMenuToggle} aria-hidden />
+                  <div className="absolute right-0 top-full mt-2 z-[25] w-56 rounded-xl border border-stone-200 bg-white shadow-xl shadow-stone-900/15">
                     <div className="px-3.5 py-2.5 border-b border-stone-100 bg-stone-50/80 rounded-t-xl">
                       <p className="text-[11px] font-bold uppercase tracking-wider text-stone-500">Marketing consent</p>
                       <p className="text-[11px] text-stone-400 mt-0.5">Applies to {selectedIds.length} selected</p>

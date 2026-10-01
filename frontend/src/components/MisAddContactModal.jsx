@@ -88,7 +88,8 @@ const toBlock = (s) => String(s ?? '').trim().replace(/\s+/g, ' ').toUpperCase()
 /**
  * Candidates-style multi-step form that saves to MIS only (never Candidate table).
  */
-export default function MisAddContactModal({ open, onClose, onCreated, toast }) {
+export default function MisAddContactModal({ open, onClose, onCreated, onUpdated, toast, initialContact = null }) {
+  const isEdit = Boolean(initialContact?._id);
   const { user } = useAuth();
   const countryCodes = useCountries();
   const { isTop } = useModalLayer(open);
@@ -122,13 +123,36 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
   const flsLocked = Boolean(deskDefaults?.locked?.fls && deskDefaults?.fls);
 
   const reset = useCallback(() => {
-    const next = { ...EMPTY };
-    if (deskDefaults?.fls) next.fls = deskDefaults.fls;
-    if (deskDefaults?.client) next.client = deskDefaults.client;
-    if (deskDefaults?.source) next.source = deskDefaults.source;
-    if (deskDefaults?.product) next.product = deskDefaults.product;
-    if (deskDefaults?.location) next.location = deskDefaults.location;
-    setFormData(next);
+    if (initialContact?._id) {
+      setFormData({
+        name: initialContact.name || '',
+        email: initialContact.email || '',
+        contact: String(initialContact.contact || initialContact.phone || '').replace(/\D/g, ''),
+        position: initialContact.position || '',
+        companyName: initialContact.companyName || '',
+        location: initialContact.location || '',
+        experience: initialContact.experience || '',
+        ctc: initialContact.ctc || '',
+        expectedCtc: initialContact.expectedCtc || '',
+        noticePeriod: initialContact.noticePeriod || '',
+        fls: initialContact.fls || '',
+        status: initialContact.status || 'NEW',
+        client: initialContact.client || '',
+        source: initialContact.source || 'MIS Manual',
+        product: initialContact.product || '',
+        skills: initialContact.skills || '',
+        remark: initialContact.remark || '',
+        marketingConsent: initialContact.marketingConsent !== false,
+      });
+    } else {
+      const next = { ...EMPTY };
+      if (deskDefaults?.fls) next.fls = deskDefaults.fls;
+      if (deskDefaults?.client) next.client = deskDefaults.client;
+      if (deskDefaults?.source) next.source = deskDefaults.source;
+      if (deskDefaults?.product) next.product = deskDefaults.product;
+      if (deskDefaults?.location) next.location = deskDefaults.location;
+      setFormData(next);
+    }
     setFormSection('basic');
     setStepDirection('forward');
     setFormErrors({});
@@ -136,11 +160,11 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
     setSaving(false);
     setCountryIso('IN');
     setCountryCode('+91');
-  }, [deskDefaults]);
+  }, [deskDefaults, initialContact]);
 
   useEffect(() => {
     if (open) reset();
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, initialContact?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchMasterData = useCallback(async () => {
     try {
@@ -400,30 +424,31 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
     setSaving(true);
     try {
       const digits = String(formData.contact || '').replace(/\D/g, '');
-      const res = await authenticatedFetch('/api/mis', {
-        method: 'POST',
+      const payload = {
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        phone: digits,
+        contact: digits,
+        position: formData.position,
+        companyName: formData.companyName,
+        location: formData.location,
+        experience: formData.experience,
+        ctc: formData.ctc,
+        expectedCtc: formData.expectedCtc,
+        noticePeriod: formData.noticePeriod,
+        fls: formData.fls,
+        status: toBlock(formData.status) || 'NEW',
+        client: formData.client,
+        source: formData.source || 'MIS Manual',
+        product: formData.product,
+        skills: formData.skills,
+        remark: formData.remark,
+        marketingConsent: Boolean(formData.marketingConsent),
+      };
+      const res = await authenticatedFetch(isEdit ? `/api/mis/${initialContact._id}` : '/api/mis', {
+        method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: formData.name.trim(),
-          email: formData.email.trim(),
-          phone: digits,
-          contact: digits,
-          position: formData.position,
-          companyName: formData.companyName,
-          location: formData.location,
-          experience: formData.experience,
-          ctc: formData.ctc,
-          expectedCtc: formData.expectedCtc,
-          noticePeriod: formData.noticePeriod,
-          fls: formData.fls,
-          status: toBlock(formData.status) || 'NEW',
-          client: formData.client,
-          source: formData.source || 'MIS Manual',
-          product: formData.product,
-          skills: formData.skills,
-          remark: formData.remark,
-          marketingConsent: Boolean(formData.marketingConsent),
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -436,13 +461,14 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
           setFormSection('basic');
           setStepBanner('This phone number already exists in MIS');
         }
-        throw new Error(data.message || 'Could not add contact');
+        throw new Error(data.message || (isEdit ? 'Could not update contact' : 'Could not add contact'));
       }
-      toast?.success?.('Contact saved to MIS');
-      onCreated?.(data.data);
+      toast?.success?.(isEdit ? 'Contact updated' : 'Contact saved to MIS');
+      if (isEdit) onUpdated?.(data.data || data);
+      else onCreated?.(data.data);
       handleClose();
     } catch (err) {
-      toast?.error?.(err.message || 'Could not add contact');
+      toast?.error?.(err.message || (isEdit ? 'Could not update contact' : 'Could not add contact'));
     } finally {
       setSaving(false);
     }
@@ -484,11 +510,11 @@ export default function MisAddContactModal({ open, onClose, onCreated, toast }) 
                 </div>
                 <div className="min-w-0">
                   <h2 id="mis-form-title" className="text-base sm:text-lg font-bold text-stone-900 tracking-tight truncate">
-                    Add contact
+                    {isEdit ? 'Edit contact' : 'Add contact'}
                   </h2>
                   <p className="text-[11px] sm:text-xs text-stone-500 mt-0.5 truncate">
                     Step {stepIdx + 1} of 3 · {steps[stepIdx]?.label}
-                    <span className="hidden sm:inline"> — same layout as Add Candidate · saved to MIS</span>
+                    <span className="hidden sm:inline">{isEdit ? ' — update MIS record' : ' — same layout as Add Candidate · saved to MIS'}</span>
                   </p>
                 </div>
               </div>

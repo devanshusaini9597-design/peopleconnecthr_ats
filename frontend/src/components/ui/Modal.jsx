@@ -72,7 +72,7 @@ const Modal = ({
 
   return createPortal(
     <div
-      className={`fixed inset-0 ${zClass} flex items-end sm:items-center justify-center ${overlayPad} overflow-x-hidden overflow-y-auto overscroll-contain animate-fade-in`}
+      className={`fixed inset-0 ${zClass} flex items-end sm:items-center justify-center ${overlayPad} overflow-hidden overscroll-none animate-fade-in`}
       inert={lockOff ? '' : undefined}
       aria-hidden={lockOff || undefined}
     >

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Pencil } from 'lucide-react';
 import Modal from './ui/Modal';
 import PremiumSelect from './ui/PremiumSelect';
@@ -25,6 +25,7 @@ const FIELDS = [
 
 /**
  * Bulk edit selected MIS contacts — tick fields to apply.
+ * Single scroll surface (no nested scrollbar); drag to scroll the field list.
  */
 export default function MisBulkEditModal({
   open,
@@ -35,6 +36,8 @@ export default function MisBulkEditModal({
 }) {
   const [enabled, setEnabled] = useState({});
   const [values, setValues] = useState({});
+  const scrollRef = useRef(null);
+  const dragRef = useRef({ active: false, moved: false, startY: 0, scrollTop: 0 });
 
   useEffect(() => {
     if (!open) return;
@@ -69,16 +72,43 @@ export default function MisBulkEditModal({
     onSubmit?.(updates);
   };
 
+  const onDragStart = (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest('button, a, input, select, textarea, label, [role="button"], [role="listbox"]')) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    dragRef.current = { active: true, moved: false, startY: e.pageY, scrollTop: el.scrollTop };
+    el.dataset.dragging = '1';
+  };
+
+  const onDragMove = (e) => {
+    const state = dragRef.current;
+    if (!state.active) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    e.preventDefault();
+    const dy = e.pageY - state.startY;
+    if (Math.abs(dy) > 3) state.moved = true;
+    el.scrollTop = state.scrollTop - dy;
+  };
+
+  const onDragEnd = () => {
+    const el = scrollRef.current;
+    if (el) delete el.dataset.dragging;
+    dragRef.current.active = false;
+  };
+
   return (
     <Modal
       open={open}
       onClose={isLoading ? undefined : onClose}
       title="Edit selected contacts"
-      description={`Update fields on ${selectedCount} selected contact${selectedCount === 1 ? '' : 's'}. Fields that are not ticked remain unchanged.`}
+      description={`Update fields on ${selectedCount} selected contact${selectedCount === 1 ? '' : 's'}. Unticked fields stay unchanged.`}
       size="md"
       icon={Pencil}
       closeOnBackdrop={!isLoading}
       zClass="z-[140]"
+      bodyClassName="p-0 flex-1 min-h-0 min-w-0 overflow-hidden bg-white"
       footer={(
         <>
           <button type="button" className="btn-secondary" disabled={isLoading} onClick={onClose}>
@@ -90,12 +120,22 @@ export default function MisBulkEditModal({
             disabled={isLoading || activeCount === 0}
             onClick={handleSave}
           >
-            Apply {activeCount ? `(${activeCount})` : ''}
+            {isLoading ? 'Applying…' : `Apply${activeCount ? ` (${activeCount})` : ''}`}
           </button>
         </>
       )}
     >
-      <div className="space-y-3 max-h-[min(60vh,420px)] overflow-y-auto pr-1">
+      <div
+        ref={scrollRef}
+        className="h-[min(56vh,420px)] overflow-y-auto overscroll-contain px-3.5 sm:px-5 py-3.5 space-y-3 cursor-grab active:cursor-grabbing select-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden data-[dragging=1]:cursor-grabbing"
+        onMouseDown={onDragStart}
+        onMouseMove={onDragMove}
+        onMouseUp={onDragEnd}
+        onMouseLeave={onDragEnd}
+      >
+        <p className="text-[11px] text-stone-500 font-medium">
+          Tick a field, enter a value, then Apply. Drag anywhere on this list to scroll.
+        </p>
         {FIELDS.map((f) => (
           <div
             key={f.key}
@@ -122,7 +162,7 @@ export default function MisBulkEditModal({
             ) : f.textarea ? (
               <textarea
                 rows={2}
-                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15"
+                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 cursor-text"
                 value={values[f.key] || ''}
                 onChange={(e) => setVal(f.key, e.target.value)}
                 placeholder={f.label}
@@ -130,7 +170,7 @@ export default function MisBulkEditModal({
             ) : (
               <input
                 type="text"
-                className="w-full h-10 rounded-lg border border-stone-200 px-3 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 uppercase"
+                className="w-full h-10 rounded-lg border border-stone-200 px-3 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 uppercase cursor-text"
                 value={values[f.key] || ''}
                 onChange={(e) => setVal(f.key, e.target.value)}
                 placeholder={f.label}

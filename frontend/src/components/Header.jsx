@@ -219,7 +219,7 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
   ].filter((i) => i.show);
 
   return (
-    <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-stone-200/60 flex-shrink-0">
+    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-xl border-b border-stone-200/60 flex-shrink-0 isolate">
       <div className="flex items-center justify-between h-14 sm:h-16 px-2.5 sm:px-6 gap-1.5 sm:gap-4 min-w-0">
         <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
           <button
@@ -297,7 +297,7 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
             </button>
 
             {showUserMenu && (
-              <div className="absolute right-0 mt-2 w-[min(280px,calc(100vw-1.25rem))] bg-white rounded-2xl shadow-xl border border-stone-200/80 overflow-hidden z-50 animate-fade-in">
+              <div className="absolute right-0 mt-2 w-[min(280px,calc(100vw-1.25rem))] bg-white rounded-2xl shadow-2xl shadow-stone-900/15 border border-stone-200/90 overflow-hidden z-[60] animate-fade-in">
                 <div className="h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
                 <div className="px-4 py-4 bg-gradient-to-br from-brand-50/40 via-white to-teal-50/30">
                   <div className="flex items-start gap-3">

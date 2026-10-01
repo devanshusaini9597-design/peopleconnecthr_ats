@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Megaphone, Search, Upload, RefreshCw, Trash2, Loader2, Info,
   CheckSquare, Square, MinusSquare, Plus, Users, X, Filter, RotateCcw, Download, Briefcase, Sparkles,
-  Layers, ChevronDown, Building2, UserRound, Inbox, CalendarPlus, UserCheck,
+  Layers, ChevronDown, Building2, UserRound, Inbox, CalendarPlus, UserCheck, Pencil,
 } from 'lucide-react';
 import { authenticatedFetch, authenticatedUpload, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -25,7 +25,7 @@ import { fetchPicklist, PICKLIST_DROPDOWN_LIMIT } from '../utils/orgListFetch';
 import { DEFAULT_CTC_BANDS } from '../utils/ctcRanges';
 import { dedupeByName } from '../utils/dedupeMasterData';
 import { guardTableCopy } from '../utils/tableCopyGuard';
-import { canAccessMis, canSeeMisAllDesk, normalizeMisDesk, misPageSubtitle, misTipCaption, misDeskHint } from '../utils/misAccess';
+import { canAccessMis, canSeeMisAllDesk, normalizeMisDesk, misPageSubtitle, misTipCaption, misDeskHint, canEditMisContact } from '../utils/misAccess';
 import { MIS_TOUR_KEY, MIS_TOUR_STEPS } from './mis/misConstants';
 import ProductTour from './ui/ProductTour';
 import TourHelpFab from './ui/TourHelpFab';
@@ -375,6 +375,7 @@ export default function MisPage() {
   // uploadUi: { phase, percent, fileName, result? }
   const [pendingUploadFiles, setPendingUploadFiles] = useState([]);
   const [addOpen, setAddOpen] = useState(false);
+  const [editContact, setEditContact] = useState(null);
   const [rankOpen, setRankOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -807,7 +808,7 @@ export default function MisPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Bulk edit failed');
-      toast.success(`Updated ${data.modified ?? selectedIds.length} contact${(data.modified ?? selectedIds.length) === 1 ? '' : 's'}`);
+      toast.success(`Updated ${data.modified ?? 0} contact${(data.modified ?? 0) === 1 ? '' : 's'}`);
       setBulkEditOpen(false);
       await load();
     } catch (err) {
@@ -1037,27 +1038,40 @@ export default function MisPage() {
       className: 'w-auto',
       render: (row) => {
         const moved = Boolean(row.movedToCandidateAt || row.movedToCandidateId);
-        if (moved) {
-          return (
-            <span className="text-[11px] font-semibold text-indigo-600 whitespace-nowrap" title="Already in Candidates">
-              Moved
-            </span>
-          );
-        }
+        const canEdit = canEditMisContact(user, row);
         return (
-          <button
-            type="button"
-            onClick={() => requestMove([row._id])}
-            className="h-8 px-2.5 rounded-lg border border-stone-200 bg-white text-xs font-semibold text-stone-700 inline-flex items-center gap-1.5 hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-all whitespace-nowrap"
-            title="Add to Candidates"
-          >
-            <Users size={13} />
-            To Candidates
-          </button>
+          <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+            {canEdit ? (
+              <button
+                type="button"
+                onClick={() => setEditContact(row)}
+                className="h-8 px-2.5 rounded-lg border border-stone-200 bg-white text-xs font-semibold text-stone-700 inline-flex items-center gap-1.5 hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-all"
+                title="Edit contact"
+              >
+                <Pencil size={13} />
+                Edit
+              </button>
+            ) : null}
+            {moved ? (
+              <span className="text-[11px] font-semibold text-indigo-600" title="Already in Candidates">
+                Moved
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => requestMove([row._id])}
+                className="h-8 px-2.5 rounded-lg border border-stone-200 bg-white text-xs font-semibold text-stone-700 inline-flex items-center gap-1.5 hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 transition-all"
+                title="Add to Candidates"
+              >
+                <Users size={13} />
+                To Candidates
+              </button>
+            )}
+          </div>
         );
       },
     },
-  ], [safePage, toggleConsent, requestMove]);
+  ], [safePage, toggleConsent, requestMove, user]);
 
   const onUploadMany = async (files) => {
     const list = (Array.isArray(files) ? files : [files]).filter(Boolean);
@@ -2393,12 +2407,20 @@ export default function MisPage() {
       </Modal>
 
       <MisAddContactModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
+        open={addOpen || Boolean(editContact)}
+        initialContact={editContact}
+        onClose={() => {
+          setAddOpen(false);
+          setEditContact(null);
+        }}
         toast={toast}
         onCreated={() => {
           setPage(1);
           load(1);
+          loadStats();
+        }}
+        onUpdated={() => {
+          load();
           loadStats();
         }}
       />
