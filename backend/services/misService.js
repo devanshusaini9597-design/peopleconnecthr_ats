@@ -556,14 +556,219 @@ function andMisFilter(base, clause) {
 }
 
 /**
+ * Restore MIS directory rows deleted by the old "move removes from MIS" flow,
+ * and mark remaining MIS↔Candidate email matches as moved.
+ * Safe / idempotent — only inserts missing emails and sets missing markers.
+ */
+const misRestoreCooldown = new Map();
+
+function isMisOriginCandidate(candidate) {
+  if (!candidate) return false;
+  if (candidate.fromMis === true) return true;
+  if (candidate.misContactId) return true;
+  const src = String(candidate.source || '').trim();
+  if (!src) return false;
+  return /^(mis)(\b|[_\s-]|$)/i.test(src) || /\bmis\b/i.test(src);
+}
+
+async function reconcileMisMoveHistory(user, { force = false } = {}) {
+  assertMisCompany(user);
+  const organizationId = user.organizationId;
+  if (!organizationId) throw httpError('Organization required', 403);
+
+  const orgKey = String(organizationId);
+  const now = Date.now();
+  if (!force) {
+    const last = misRestoreCooldown.get(orgKey) || 0;
+    if (now - last < 2 * 60 * 1000) {
+      return { skipped: true, restored: 0, marked: 0, linked: 0 };
+    }
+  }
+  misRestoreCooldown.set(orgKey, now);
+
+  const Candidate = require('../models/Candidate');
+  const User = require('../models/User');
+  const orgMatch = organizationIdMatch(organizationId) || { organizationId };
+
+  const [misRows, candidates] = await Promise.all([
+    MisContact.find(orgMatch).select('_id email movedToCandidateAt movedToCandidateId phone contact').lean(),
+    Candidate.find(orgMatch)
+      .select('_id email name contact phone position location state companyName experience ctc expectedCtc noticePeriod skills product client fls source remark createdBy createdAt fromMis misContactId')
+      .lean(),
+  ]);
+
+  const misByEmail = new Map();
+  for (const row of misRows) {
+    const email = normalizeEmail(row.email);
+    if (email) misByEmail.set(email, row);
+  }
+
+  const candByEmail = new Map();
+  for (const c of candidates) {
+    const email = normalizeEmail(c.email);
+    if (email && !candByEmail.has(email)) candByEmail.set(email, c);
+  }
+
+  let marked = 0;
+  let linked = 0;
+  const markOps = [];
+  for (const row of misRows) {
+    const email = normalizeEmail(row.email);
+    const hit = email ? candByEmail.get(email) : null;
+    if (!hit) continue;
+    if (row.movedToCandidateAt && row.movedToCandidateId) {
+      linked += 1;
+      continue;
+    }
+    markOps.push({
+      updateOne: {
+        filter: { _id: row._id, organizationId },
+        update: {
+          $set: {
+            movedToCandidateAt: row.movedToCandidateAt || hit.createdAt || new Date(),
+            movedToCandidateId: hit._id,
+          },
+        },
+      },
+    });
+  }
+  if (markOps.length) {
+    const res = await MisContact.bulkWrite(markOps, { ordered: false });
+    marked = res.modifiedCount || markOps.length;
+  }
+
+  const creatorIds = [...new Set(
+    candidates
+      .filter((c) => isMisOriginCandidate(c) && !misByEmail.has(normalizeEmail(c.email)))
+      .map((c) => String(c.createdBy || ''))
+      .filter((id) => id && id.length === 24)
+  )];
+  const creators = creatorIds.length
+    ? await User.find({ _id: { $in: creatorIds } }).select('_id role').lean()
+    : [];
+  const roleById = new Map(creators.map((u) => [String(u._id), u.role]));
+
+  let restored = 0;
+  const inserts = [];
+  for (const c of candidates) {
+    if (!isMisOriginCandidate(c)) continue;
+    const email = normalizeEmail(c.email);
+    if (!email || misByEmail.has(email)) continue;
+    if (!trimStr(c.name)) continue;
+
+    const creatorRole = roleById.get(String(c.createdBy || ''));
+    const deskScope = creatorRole === 'owner' ? 'org' : 'personal';
+    const phone = phoneDigits(c.phone || c.contact);
+    const doc = {
+      organizationId,
+      createdBy: c.createdBy || user.id || user._id,
+      deskScope,
+      name: normalizeText(trimStr(c.name)),
+      email,
+      contact: phone || trimStr(c.contact || c.phone),
+      phone: phone || trimStr(c.phone || c.contact),
+      position: normalizeText(trimStr(c.position)),
+      location: normalizeText(trimStr(c.location)),
+      state: normalizeText(trimStr(c.state)),
+      companyName: normalizeText(trimStr(c.companyName)),
+      experience: normalizeText(trimStr(c.experience)),
+      ctc: normalizeText(trimStr(c.ctc)),
+      expectedCtc: normalizeText(trimStr(c.expectedCtc)),
+      noticePeriod: normalizeText(trimStr(c.noticePeriod)),
+      skills: normalizeText(trimStr(c.skills)),
+      product: normalizeText(trimStr(c.product)),
+      client: normalizeText(trimStr(c.client)),
+      fls: normalizeText(trimStr(c.fls)),
+      source: normalizeText(trimStr(c.source) || 'MIS'),
+      remark: trimStr(c.remark),
+      status: 'NEW',
+      marketingConsent: true,
+      recordDate: c.createdAt || null,
+      movedToCandidateAt: c.createdAt || new Date(),
+      movedToCandidateId: c._id,
+      movedBy: c.createdBy || null,
+      createdAt: c.createdAt || new Date(),
+      updatedAt: new Date(),
+    };
+    inserts.push(doc);
+    misByEmail.set(email, doc);
+  }
+
+  if (inserts.length) {
+    try {
+      const inserted = await MisContact.insertMany(inserts, { ordered: false });
+      restored = inserted.length;
+      const linkOps = inserted
+        .filter((row) => row.movedToCandidateId)
+        .map((row) => ({
+          updateOne: {
+            filter: { _id: row.movedToCandidateId, organizationId },
+            update: { $set: { fromMis: true, misContactId: row._id } },
+          },
+        }));
+      if (linkOps.length) {
+        await Candidate.bulkWrite(linkOps, { ordered: false }).catch(() => {});
+      }
+    } catch (err) {
+      // Duplicate-key races: count successful inserts if partial
+      if (err?.insertedDocs?.length) restored = err.insertedDocs.length;
+      else if (err?.writeErrors) {
+        restored = Math.max(0, inserts.length - err.writeErrors.length);
+      } else {
+        logger.warn({ err: err.message, organizationId: orgKey }, 'MIS restore insert failed');
+      }
+    }
+  }
+
+  // Tag remaining MIS-origin candidates that already match an MIS email
+  const tagOps = [];
+  for (const c of candidates) {
+    if (!isMisOriginCandidate(c) && !c.fromMis) continue;
+    if (c.fromMis && c.misContactId) continue;
+    const email = normalizeEmail(c.email);
+    const mis = email ? misByEmail.get(email) : null;
+    if (!mis?._id) continue;
+    tagOps.push({
+      updateOne: {
+        filter: { _id: c._id, organizationId },
+        update: { $set: { fromMis: true, misContactId: mis._id } },
+      },
+    });
+  }
+  if (tagOps.length) {
+    await Candidate.bulkWrite(tagOps, { ordered: false }).catch(() => {});
+  }
+
+  if (restored || marked) {
+    logger.info({ organizationId: orgKey, restored, marked }, 'MIS move history reconciled');
+  }
+
+  return {
+    skipped: false,
+    restored,
+    marked,
+    linked,
+    scannedCandidates: candidates.length,
+    scannedMis: misRows.length,
+  };
+}
+
+/**
  * Scoped MIS dashboard KPIs — identical desk math as the list tabs (countMisDesk).
- * Cards: total / company / mine / newThisMonth.
+ * Cards: total / company / mine / newThisMonth / movedToCandidates.
  */
 async function getMisStats(user) {
   assertMisActor(user);
   const organizationId = user.organizationId;
   const me = userCreatedByIds(user);
   const orgMatch = organizationIdMatch(organizationId) || { organizationId };
+
+  let reconcile = null;
+  try {
+    reconcile = await reconcileMisMoveHistory(user);
+  } catch (err) {
+    logger.warn({ err: err.message }, 'MIS move history reconcile skipped');
+  }
 
   let monthRange = null;
   try {
@@ -578,22 +783,35 @@ async function getMisStats(user) {
     ? { ...orgMatch, createdBy: { $in: me }, createdAt: monthRange }
     : { _id: { $in: [] } };
 
-  const [total, company, mine, newThisMonth] = await Promise.all([
+  const movedScopeFilter = misListFilter(organizationId, user, {
+    movedToCandidateAt: { $exists: true, $ne: null },
+  });
+  const activeScopeFilter = misListFilter(organizationId, user, {
+    $or: [{ movedToCandidateAt: null }, { movedToCandidateAt: { $exists: false } }],
+  });
+
+  const [total, company, mine, newThisMonth, movedToCandidates, activeInMis] = await Promise.all([
     countMisDesk(user, organizationId, 'all').then((n) => (n == null ? 0 : n)),
     countMisDesk(user, organizationId, 'company').then((n) => (n == null ? 0 : n)),
     countMisDesk(user, organizationId, 'mine').then((n) => (n == null ? 0 : n)),
     countMs(newThisMonthQ),
+    countMs(movedScopeFilter),
+    countMs(activeScopeFilter),
   ]);
 
-  // Consistency check: for non-owners, total must equal company + own personal
-  // (already how countMisDesk('all') works). Surface scope for the UI.
   return {
     total: Number(total) || 0,
     mine: Number(mine) || 0,
     company: Number(company) || 0,
     newThisMonth: Number(newThisMonth) || 0,
+    movedToCandidates: Number(movedToCandidates) || 0,
+    activeInMis: Number(activeInMis) || 0,
     scope: user.role === 'owner' ? 'owner' : 'employee',
     createdBySelf: me.length > 0,
+    reconcile: reconcile && !reconcile.skipped ? {
+      restored: reconcile.restored || 0,
+      marked: reconcile.marked || 0,
+    } : null,
     generatedAt: new Date().toISOString(),
   };
 }
@@ -1187,6 +1405,8 @@ async function moveToCandidates(user, ids = [], options = {}) {
         status: 'APPLIED',
         organizationId: user.organizationId,
         createdBy: actorId,
+        fromMis: true,
+        misContactId: row._id,
       };
       if (payload.location && !payload.state) {
         payload.state = LocationService.detectState(payload.location) || '';
@@ -1491,6 +1711,7 @@ module.exports = {
   bulkUpload,
   getBulkUploadJob,
   moveToCandidates,
+  reconcileMisMoveHistory,
   sendMarketingToMis,
   startExportContacts,
   getExportJob,

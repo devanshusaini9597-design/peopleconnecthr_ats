@@ -559,15 +559,30 @@ export default function MisPage() {
         mine: Number(data.mine) || 0,
         company: Number(data.company) || 0,
         newThisMonth: Number(data.newThisMonth) || 0,
+        movedToCandidates: Number(data.movedToCandidates) || 0,
+        activeInMis: Number(data.activeInMis) || 0,
         scope: data.scope,
         generatedAt: data.generatedAt,
       });
+      const restored = Number(data.reconcile?.restored) || 0;
+      const marked = Number(data.reconcile?.marked) || 0;
+      if (restored > 0 || marked > 0) {
+        toast.info(
+          restored > 0
+            ? `Restored ${restored.toLocaleString()} previously moved MIS contact${restored === 1 ? '' : 's'} from Candidates${marked ? ` · marked ${marked.toLocaleString()} In Candidates` : ''}`
+            : `Marked ${marked.toLocaleString()} contact${marked === 1 ? '' : 's'} as In Candidates`,
+          5000,
+          { key: 'mis-reconcile' }
+        );
+        // Reload directory so restored rows appear immediately
+        loadRef.current?.(undefined, { silent: true, announce: false }).catch(() => {});
+      }
     } catch {
       setStats(null);
     } finally {
       setStatsLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   const loadRef = useRef(load);
   loadRef.current = load;
@@ -1639,7 +1654,11 @@ export default function MisPage() {
               icon={Inbox}
               label="All contacts"
               value={stats?.total ?? 0}
-              caption="Shared directory and your records"
+              caption={
+                stats?.movedToCandidates
+                  ? `${Number(stats.activeInMis || 0).toLocaleString()} active · ${Number(stats.movedToCandidates).toLocaleString()} in Candidates`
+                  : 'Shared directory and your records'
+              }
               gradient="from-sky-500 to-brand-400"
               loading={statsLoading}
               aligned
@@ -1660,7 +1679,11 @@ export default function MisPage() {
             icon={UserRound}
             label="My records"
             value={stats?.mine ?? 0}
-            caption="Contacts you added"
+            caption={
+              stats?.movedToCandidates
+                ? `Includes contacts marked In Candidates`
+                : 'Contacts you added'
+            }
             gradient="from-brand-500 to-teal-500"
             loading={statsLoading}
             aligned
@@ -1682,6 +1705,11 @@ export default function MisPage() {
             }}
           />
         </div>
+        {stats?.movedToCandidates ? (
+          <p className="mt-2 text-[12px] text-indigo-700/90 font-medium">
+            {Number(stats.movedToCandidates).toLocaleString()} contact{stats.movedToCandidates === 1 ? '' : 's'} in this directory are already in Candidates (kept in MIS for history).
+          </p>
+        ) : null}
         <p className="mt-2.5 text-[12px] text-stone-500 leading-snug flex items-start gap-1.5 min-w-0">
           <Info size={13} className="shrink-0 text-brand-600 mt-0.5" />
           <span className="min-w-0" title={misTipCaption(user)}>{misTipCaption(user)}</span>

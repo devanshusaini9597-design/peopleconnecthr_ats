@@ -165,6 +165,9 @@ const CandidateSchema = new mongoose.Schema({
 
   // ── Ownership & sharing ────────────────────────────────────────────
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
+  /** True when this candidate was created from an MIS contact transfer. */
+  fromMis: { type: Boolean, default: false, index: true },
+  misContactId: { type: mongoose.Schema.Types.ObjectId, ref: 'MisContact', default: null, index: true },
   sharedWith: [{
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     sharedAt: { type: Date, default: Date.now },

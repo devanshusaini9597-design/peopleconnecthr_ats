@@ -88,6 +88,16 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+router.post('/reconcile-moved', async (req, res) => {
+  try {
+    const data = await svc.reconcileMisMoveHistory(req.user, { force: true });
+    const stats = await svc.getMisStats(req.user);
+    res.json({ success: true, reconcile: data, ...stats });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
 router.get('/reports', async (req, res) => {
   try {
     const data = await svc.getMisReports(req.user, req.query);
