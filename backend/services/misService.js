@@ -311,6 +311,24 @@ function buildMisQueryFilter(user, query = {}) {
   if (andParts.length) {
     filter.$and = [...(Array.isArray(filter.$and) ? filter.$and : []), ...andParts];
   }
+
+  // Moved-to-Candidates filter stays inside role visibility (misListFilter),
+  // and skips desk-tab narrowing so the card count matches the list.
+  const movedFlag = String(query.moved || query.movedToCandidates || '').toLowerCase().trim();
+  if (movedFlag === '1' || movedFlag === 'yes' || movedFlag === 'moved') {
+    filter.$and = [
+      ...(Array.isArray(filter.$and) ? filter.$and : []),
+      { movedToCandidateAt: { $exists: true, $ne: null } },
+    ];
+    return filter;
+  }
+  if (movedFlag === '0' || movedFlag === 'no' || movedFlag === 'active') {
+    filter.$and = [
+      ...(Array.isArray(filter.$and) ? filter.$and : []),
+      { $or: [{ movedToCandidateAt: null }, { movedToCandidateAt: { $exists: false } }] },
+    ];
+  }
+
   return applyMisDeskView(filter, user, query.desk || query.deskScope || query.view);
 }
 
@@ -358,6 +376,10 @@ function misQueryHasExtraFilters(query = {}) {
   if (query.consent === 'yes' || query.consent === 'no') return true;
   if (query.unsubscribed === '1' || query.unsubscribed === '0') return true;
   if (trimStr(query.status) && String(query.status).toUpperCase() !== 'ALL') return true;
+  const movedFlag = String(query.moved || query.movedToCandidates || '').toLowerCase().trim();
+  if (movedFlag === '1' || movedFlag === 'yes' || movedFlag === 'moved' || movedFlag === '0' || movedFlag === 'no' || movedFlag === 'active') {
+    return true;
+  }
   const keys = [
     'location', 'source', 'position', 'companyName', 'company', 'client', 'product', 'skills',
     'ctcMin', 'ctcMax', 'expectedCtcMin', 'expectedCtcMax', 'expMin', 'expMax',

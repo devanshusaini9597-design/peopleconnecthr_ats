@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Megaphone, Search, Upload, RefreshCw, Trash2, Loader2, Info,
   CheckSquare, Square, MinusSquare, Plus, Users, X, Filter, RotateCcw, Download, Briefcase, Sparkles,
-  Layers, ChevronDown, Building2, UserRound, Inbox, CalendarPlus,
+  Layers, ChevronDown, Building2, UserRound, Inbox, CalendarPlus, UserCheck,
 } from 'lucide-react';
 import { authenticatedFetch, authenticatedUpload, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -40,6 +40,7 @@ const EMPTY_MIS_FILTERS = {
   consent: 'all',
   unsubscribed: 'all',
   status: '',
+  moved: 'all',
   location: '',
   position: '',
   companyName: '',
@@ -232,6 +233,7 @@ function appendMisFilters(params, filters = {}) {
   if (filters.unsubscribed === '1' || filters.unsubscribed === '0') {
     params.set('unsubscribed', filters.unsubscribed);
   }
+  if (filters.moved === '1' || filters.moved === '0') params.set('moved', filters.moved);
   if (String(filters.status || '').trim()) params.set('status', String(filters.status).trim().toUpperCase());
   TEXT_FILTER_KEYS.forEach((key) => {
     if (String(filters[key] || '').trim()) params.set(key, String(filters[key]).trim());
@@ -247,6 +249,7 @@ function countActiveMisFilters(filters = {}) {
   let n = 0;
   if (filters.consent === 'yes' || filters.consent === 'no') n += 1;
   if (filters.unsubscribed === '1' || filters.unsubscribed === '0') n += 1;
+  if (filters.moved === '1' || filters.moved === '0') n += 1;
   if (String(filters.status || '').trim()) n += 1;
   TEXT_FILTER_KEYS.forEach((key) => {
     if (String(filters[key] || '').trim()) n += 1;
@@ -339,9 +342,58 @@ export default function MisPage() {
       return p;
     }, { replace: true });
     setPage(1);
-  }, [setSearchParams, user, deskFromUrl]);  const [showFilters, setShowFilters] = useState(false);
+  }, [setSearchParams, user, deskFromUrl]);
+  const [showFilters, setShowFilters] = useState(false);
   const [draftFilters, setDraftFilters] = useState(() => ({ ...EMPTY_MIS_FILTERS }));
   const [appliedFilters, setAppliedFilters] = useState(() => ({ ...EMPTY_MIS_FILTERS }));
+  const showingMovedOnly = appliedFilters.moved === '1';
+
+  const openDeskCard = useCallback((desk) => {
+    setDraftFilters((prev) => ({ ...prev, moved: 'all', datePeriod: prev.datePeriod === 'month' && desk !== 'mine' ? '' : prev.datePeriod }));
+    setAppliedFilters((prev) => ({ ...prev, moved: 'all' }));
+    setDeskView(desk);
+  }, [setDeskView]);
+
+  const showMovedToCandidates = useCallback(async () => {
+    announceLoadRef.current = false;
+    const next = { ...EMPTY_MIS_FILTERS, moved: '1' };
+    setDraftFilters(next);
+    setAppliedFilters(next);
+    setDraft('');
+    setQ('');
+    setPage(1);
+    if (canSeeAllDesk) setDeskView('all');
+    toast.info('Showing contacts already in Candidates', 2800, { key: 'mis-moved-view' });
+    try {
+      const res = await authenticatedFetch('/api/mis/reconcile-moved', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      setStats((prev) => ({
+        ...(prev || {}),
+        total: Number(data.total) || prev?.total || 0,
+        mine: Number(data.mine) || prev?.mine || 0,
+        company: Number(data.company) || prev?.company || 0,
+        newThisMonth: Number(data.newThisMonth) || prev?.newThisMonth || 0,
+        movedToCandidates: Number(data.movedToCandidates) || 0,
+        activeInMis: Number(data.activeInMis) || 0,
+        generatedAt: data.generatedAt || prev?.generatedAt,
+      }));
+      const restored = Number(data.reconcile?.restored) || 0;
+      const marked = Number(data.reconcile?.marked) || 0;
+      if (restored > 0 || marked > 0) {
+        toast.success(
+          restored > 0
+            ? `Restored ${restored.toLocaleString()} contact${restored === 1 ? '' : 's'} into MIS history`
+            : `Marked ${marked.toLocaleString()} contact${marked === 1 ? '' : 's'} as In Candidates`,
+          4000,
+          { key: 'mis-reconcile' }
+        );
+      }
+    } catch {
+      /* ignore reconcile errors — list filter still applies */
+    }
+  }, [canSeeAllDesk, setDeskView, toast]);
+
   const [loading, setLoading] = useState(true);
   const [listRefreshing, setListRefreshing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
@@ -1500,7 +1552,7 @@ export default function MisPage() {
 
   const clearOneFilter = (key) => {
     const next = { ...appliedFilters };
-    if (key === 'consent' || key === 'unsubscribed') next[key] = 'all';
+    if (key === 'consent' || key === 'unsubscribed' || key === 'moved') next[key] = 'all';
     else if (key === 'datePeriod') {
       next.datePeriod = '';
       next.dateFrom = '';
@@ -1542,6 +1594,8 @@ export default function MisPage() {
     if (appliedFilters.consent === 'no') chips.push({ key: 'consent', label: 'Consent', value: 'No consent' });
     if (appliedFilters.unsubscribed === '0') chips.push({ key: 'unsubscribed', label: 'Subscription', value: 'Active' });
     if (appliedFilters.unsubscribed === '1') chips.push({ key: 'unsubscribed', label: 'Subscription', value: 'Unsubscribed' });
+    if (appliedFilters.moved === '1') chips.push({ key: 'moved', label: 'Lifecycle', value: 'In Candidates' });
+    if (appliedFilters.moved === '0') chips.push({ key: 'moved', label: 'Lifecycle', value: 'Not moved' });
     if (String(appliedFilters.status || '').trim()) {
       chips.push({
         key: 'status',
@@ -1648,21 +1702,17 @@ export default function MisPage() {
 
       {/* Overview cards — top of page so KPIs stay above the directory */}
       <section className="min-w-0" aria-label="Directory overview" data-tour="mis-tip">
-        <div className={`grid grid-cols-1 min-[420px]:grid-cols-2 ${canSeeAllDesk ? 'xl:grid-cols-4' : 'xl:grid-cols-3'} gap-3`}>
+        <div className={`grid grid-cols-1 min-[420px]:grid-cols-2 ${canSeeAllDesk ? 'xl:grid-cols-5' : 'xl:grid-cols-4'} gap-3`}>
           {canSeeAllDesk ? (
             <StatCard
               icon={Inbox}
               label="All contacts"
               value={stats?.total ?? 0}
-              caption={
-                stats?.movedToCandidates
-                  ? `${Number(stats.activeInMis || 0).toLocaleString()} active · ${Number(stats.movedToCandidates).toLocaleString()} in Candidates`
-                  : 'Shared directory and your records'
-              }
+              caption={`${Number(stats?.activeInMis || 0).toLocaleString()} active in MIS`}
               gradient="from-sky-500 to-brand-400"
               loading={statsLoading}
               aligned
-              onClick={() => setDeskView('all')}
+              onClick={() => openDeskCard('all')}
             />
           ) : null}
           <StatCard
@@ -1673,21 +1723,27 @@ export default function MisPage() {
             gradient="from-indigo-500 to-blue-400"
             loading={statsLoading}
             aligned
-            onClick={() => setDeskView('company')}
+            onClick={() => openDeskCard('company')}
           />
           <StatCard
             icon={UserRound}
             label="My records"
             value={stats?.mine ?? 0}
-            caption={
-              stats?.movedToCandidates
-                ? `Includes contacts marked In Candidates`
-                : 'Contacts you added'
-            }
+            caption="Contacts you added"
             gradient="from-brand-500 to-teal-500"
             loading={statsLoading}
             aligned
-            onClick={() => setDeskView('mine')}
+            onClick={() => openDeskCard('mine')}
+          />
+          <StatCard
+            icon={UserCheck}
+            label="In Candidates"
+            value={stats?.movedToCandidates ?? 0}
+            caption={showingMovedOnly ? 'Filtered view · click another card to exit' : 'Moved from MIS · click to view'}
+            gradient="from-violet-500 to-indigo-500"
+            loading={statsLoading}
+            aligned
+            onClick={showMovedToCandidates}
           />
           <StatCard
             icon={CalendarPlus}
@@ -1698,18 +1754,13 @@ export default function MisPage() {
             loading={statsLoading}
             aligned
             onClick={() => {
+              setDraftFilters({ ...EMPTY_MIS_FILTERS, datePeriod: 'month' });
+              setAppliedFilters({ ...EMPTY_MIS_FILTERS, datePeriod: 'month' });
               setDeskView('mine');
-              setAppliedFilters((prev) => ({ ...prev, datePeriod: 'month', dateFrom: '', dateTo: '' }));
-              setDraftFilters((prev) => ({ ...prev, datePeriod: 'month', dateFrom: '', dateTo: '' }));
               setPage(1);
             }}
           />
         </div>
-        {stats?.movedToCandidates ? (
-          <p className="mt-2 text-[12px] text-indigo-700/90 font-medium">
-            {Number(stats.movedToCandidates).toLocaleString()} contact{stats.movedToCandidates === 1 ? '' : 's'} in this directory are already in Candidates (kept in MIS for history).
-          </p>
-        ) : null}
         <p className="mt-2.5 text-[12px] text-stone-500 leading-snug flex items-start gap-1.5 min-w-0">
           <Info size={13} className="shrink-0 text-brand-600 mt-0.5" />
           <span className="min-w-0" title={misTipCaption(user)}>{misTipCaption(user)}</span>
