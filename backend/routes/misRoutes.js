@@ -151,7 +151,7 @@ router.post('/bulk-update', async (req, res) => {
   }
 });
 
-router.post('/move-to-candidates', requireOwner, async (req, res) => {
+router.post('/move-to-candidates', async (req, res) => {
   try {
     const data = await svc.moveToCandidates(req.user, req.body?.ids || [], {
       removeFromMis: req.body?.removeFromMis !== false,

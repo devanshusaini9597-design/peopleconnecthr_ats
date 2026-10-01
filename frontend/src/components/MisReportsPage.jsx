@@ -78,13 +78,13 @@ export default function MisReportsPage() {
   const scopeSubtitle = report?.scope === 'organisation'
     ? 'Organisation-wide MIS metrics for the company owner'
     : isVisibleScope
-      ? 'Shared directory plus your personal records — other employees’ private desks stay hidden'
-      : 'Metrics for contacts you added — not other employees’ records';
+      ? 'Metrics for the shared directory and your own records'
+      : 'Metrics for contacts you added';
   const scopeHint = report?.scope === 'organisation'
     ? 'Period totals use the tracker date when available, otherwise the import timestamp. Charts follow the selected period.'
     : isVisibleScope
-      ? 'Totals cover the shared directory and your personal records only. Other employees’ private desks are excluded.'
-      : 'Period totals use the date you added each contact. Charts and duplicacy cover only your MIS records.';
+      ? 'Totals cover the shared directory and your own records within authorised access.'
+      : 'Period totals use the date you added each contact. Charts and duplicacy cover your MIS records.';
 
   const periodLabel = report?.periodLabel
     || (dateRange === 'custom' && customFrom && customTo
@@ -259,7 +259,7 @@ export default function MisReportsPage() {
           isSelfScope
             ? 'Contacts you added in this period'
             : isVisibleScope
-              ? 'Shared directory and your personal records in this period'
+              ? 'Shared directory and your own records in this period'
               : 'Contacts across the organisation directory'
         }
       >
@@ -296,12 +296,12 @@ export default function MisReportsPage() {
           />
           <StatCard
             icon={UserRound}
-            label="Personal records"
+            label="My records"
             value={totals.personalInPeriod ?? 0}
             caption={
               isSelfScope
-                ? 'Your personal-desk contacts in period'
-                : 'Employee-owned contacts in period'
+                ? 'Contacts on your My records desk in this period'
+                : 'Contacts created by team members in this period'
             }
             gradient="from-brand-500 to-teal-500"
             loading={showLoading}
@@ -350,7 +350,7 @@ export default function MisReportsPage() {
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-500 to-blue-400" />
             <h3 className="text-sm font-bold text-stone-900">Desk mix</h3>
             <p className="text-xs text-stone-500 mt-0.5 mb-4">
-              Shared directory versus personal records in this period.
+              Shared directory versus My records in this period.
             </p>
             {showLoading ? (
               <div className="h-56 flex items-center justify-center text-sm text-stone-400">Loading…</div>

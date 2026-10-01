@@ -32,7 +32,7 @@ export const MIS_TOUR_STEPS = [
   {
     target: '[data-tour="mis-bulk"]',
     title: 'Bulk actions',
-    body: 'When contacts are selected, email, message, update consent, or delete them together. Owners can move selected contacts into Candidates.',
+    body: 'When contacts are selected, email, message, update consent, delete, or move them into Candidates together.',
     placement: 'bottom',
   },
   {

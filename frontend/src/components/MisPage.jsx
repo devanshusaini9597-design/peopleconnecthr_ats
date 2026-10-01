@@ -893,6 +893,7 @@ export default function MisPage() {
       render: (row) => <span className="text-sm text-stone-600 whitespace-nowrap">{row.email || '—'}</span>,
     },
     { key: 'location', label: 'Location', className: 'w-auto', render: (row) => dash(row.location) },
+    { key: 'state', label: 'State', className: 'w-auto', render: (row) => dash(row.state) },
     {
       key: 'position',
       label: 'Position',
@@ -945,7 +946,7 @@ export default function MisPage() {
         return (
           <span
             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold border whitespace-nowrap ${misStatusBadgeClass(row.status)}`}
-            title="MIS contact status (separate from Candidates pipeline)"
+            title="MIS contact status"
           >
             {label}
           </span>
@@ -973,7 +974,8 @@ export default function MisPage() {
           </button>
         );
       },
-    },    { key: 'client', label: 'Client', className: 'w-auto', render: (row) => dash(row.client) },
+    },
+    { key: 'client', label: 'Client', className: 'w-auto', render: (row) => dash(row.client) },
     { key: 'product', label: 'Product / Skill', className: 'w-auto', render: (row) => dash(row.product) },
     {
       key: 'source',
@@ -998,12 +1000,12 @@ export default function MisPage() {
       label: 'Date',
       className: 'w-auto',
       render: (row) => (
-        <span className="text-sm text-stone-600 whitespace-nowrap tabular-nums" title={row.recordDate ? 'From tracker' : 'Import day (tracker date was not stored)'}>
+        <span className="text-sm text-stone-600 whitespace-nowrap tabular-nums" title={row.recordDate ? 'Tracker date' : 'Import date'}>
           {formatDate(row.recordDate || row.createdAt)}
         </span>
       ),
     },
-    ...(isOwner ? [{
+    {
       key: 'actions',
       label: 'Actions',
       className: 'w-auto',
@@ -1018,8 +1020,8 @@ export default function MisPage() {
           To Candidates
         </button>
       ),
-    }] : []),
-  ], [safePage, toggleConsent, requestMove, isOwner]);
+    },
+  ], [safePage, toggleConsent, requestMove]);
 
   const onUploadMany = async (files) => {
     const list = (Array.isArray(files) ? files : [files]).filter(Boolean);
@@ -1742,7 +1744,7 @@ export default function MisPage() {
             onConsentMenuToggle={() => setConsentMenuOpen((v) => !v)}
             consentMenuOpen={consentMenuOpen}
             onSetConsent={requestBulkConsent}
-            onMoveToCandidates={isOwner ? () => requestMove(selectedIds) : null}
+            onMoveToCandidates={() => requestMove(selectedIds)}
             onDelete={() => setDeleteConfirmOpen(true)}
             filteredCount={filteredCount}
             isAllFilteredSelected={isAllFilteredSelected}

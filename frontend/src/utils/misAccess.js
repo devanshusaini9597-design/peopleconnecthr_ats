@@ -12,7 +12,7 @@ export function canAccessMis(user) {
   return Boolean(user && MIS_COMPANY_ROLES.includes(user.role));
 }
 
-/** All-desk tab: owner + admin only (not other employees or freelancers). */
+/** All-desk tab: owner and admin only. */
 export function canSeeMisAllDesk(user) {
   return Boolean(user && (user.role === 'owner' || user.role === 'admin'));
 }
@@ -38,23 +38,23 @@ export function misPageSubtitle(user, total, formattedTotal) {
     return `${label} ${noun} across the organisation`;
   }
   if (role === 'admin') {
-    return `${label} ${noun} in your visible desks`;
+    return `${label} ${noun} in your authorised desks`;
   }
-  return `${label} ${noun} in your desk`;
+  return `${label} ${noun} in your directory`;
 }
 
 export function misTipCaption(user) {
   const role = user?.role;
   if (role === 'owner') {
-    return 'Switch desks to review organisation-wide or personal records. Select contacts to email, export, or move to Candidates.';
+    return 'Switch desks to review the directory. Select contacts to email, export, or move to Candidates.';
   }
   if (role === 'admin') {
-    return 'All combines the shared directory with your own records. Other employees’ personal desks remain private.';
+    return 'Switch desks to work across the shared directory and your own records. Select contacts for outreach or to move to Candidates.';
   }
   if (role === 'sales') {
-    return 'My records is your working desk. Organisation shows the shared company directory for outreach.';
+    return 'My records is your working desk. Organisation shows the shared directory. Select contacts to outreach or move to Candidates.';
   }
-  return 'My records is your default desk. Organisation shows the shared directory — not other employees’ personal records.';
+  return 'My records is your default desk. Use Organisation for the shared directory. Select contacts to outreach or move to Candidates.';
 }
 
 export function misDeskHint(deskView) {

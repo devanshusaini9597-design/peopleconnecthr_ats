@@ -2,7 +2,6 @@ import React, { useMemo, useState, useCallback, useRef } from 'react';
 import {
   CheckSquare, Square, MinusSquare, Megaphone, Users,
 } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
 import { authenticatedFetch } from '../../utils/fetchUtils';
 import { useToast } from '../Toast';
 import EmptyState from '../ui/EmptyState';
@@ -51,8 +50,6 @@ export default function GlobalSearchMisDesk({
 }) {
   const toast = useToast();
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const isOwner = user?.role === 'owner' || user?.role === 'admin';
   const { tableScrollRef, onTableDragScrollStart, onTableDragScrollMove, onTableDragScrollEnd } = useTableDragScroll();
 
   const [selectedIds, setSelectedIds] = useState([]);
@@ -366,7 +363,7 @@ export default function GlobalSearchMisDesk({
     { key: 'source', label: 'Source', render: (row) => (row.source ? <span className="text-sm px-2.5 py-0.5 bg-stone-100 text-stone-600 rounded-full">{row.source}</span> : <span className="text-stone-300">—</span>) },
     { key: 'uploadedBy', label: 'Uploaded by', render: (row) => <span className="text-sm text-stone-700">{row.createdBy?.name || row.createdBy?.email || '—'}</span> },
     { key: 'date', label: <DateSortHeader value={dateSort} onChange={onDateSort} />, render: (row) => <span className="text-sm text-stone-600 tabular-nums">{formatDate(row.recordDate || row.createdAt)}</span> },
-    ...(isOwner ? [{
+    {
       key: 'actions',
       label: 'Actions',
       render: (row) => (
@@ -379,8 +376,8 @@ export default function GlobalSearchMisDesk({
           To Candidates
         </button>
       ),
-    }] : []),
-  ], [page, isOwner, dateSort, onDateSort]);
+    },
+  ], [page, dateSort, onDateSort]);
 
   const showOverlay = Boolean(loading);
   const totalPages = (countPending || countPlus)
@@ -407,7 +404,7 @@ export default function GlobalSearchMisDesk({
           onConsentMenuToggle={() => setConsentMenuOpen((v) => !v)}
           consentMenuOpen={consentMenuOpen}
           onSetConsent={setConsent}
-          onMoveToCandidates={isOwner ? () => setMoveOpen(true) : null}
+          onMoveToCandidates={() => setMoveOpen(true)}
           onDelete={() => setDeleteOpen(true)}
           filteredCount={totalCount}
           isAllFilteredSelected={isAllFilteredSelected}

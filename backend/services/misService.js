@@ -389,7 +389,7 @@ async function listContacts(user, query = {}) {
     const total = await resolveTotal();
     const idDocs = await MisContact.find(filter)
       .sort(misListSort())
-      .select('_id phone contact email name position location state companyName client product skills experience ctc status marketingConsent unsubscribedAt')
+      .select('_id phone contact email name position location state companyName client product skills experience ctc expectedCtc noticePeriod fls source status marketingConsent unsubscribedAt recordDate createdAt')
       .skip(idSkip)
       .limit(idLimit + 1)
       .maxTimeMS(20000)
@@ -414,9 +414,15 @@ async function listContacts(user, query = {}) {
         skills: d.skills || '',
         experience: d.experience || '',
         ctc: d.ctc || '',
+        expectedCtc: d.expectedCtc || '',
+        noticePeriod: d.noticePeriod || '',
+        fls: d.fls || '',
+        source: d.source || '',
         status: d.status || 'NEW',
         marketingConsent: d.marketingConsent !== false,
         unsubscribedAt: d.unsubscribedAt || null,
+        recordDate: d.recordDate || null,
+        createdAt: d.createdAt || null,
       })),
       total: total == null ? idSkip + ids.length + (hasMore ? 1 : 0) : total,
       capped: false,
@@ -1062,7 +1068,7 @@ async function sendMarketingToMis(user, body = {}) {
  * Skips emails/phones already in Candidates and rows missing required phone.
  */
 async function moveToCandidates(user, ids = [], options = {}) {
-  assertMisOwner(user);
+  assertMisCompany(user);
   const idList = (ids || []).map(String).filter(Boolean);
   if (!idList.length) throw httpError('Select at least one MIS contact');
 
