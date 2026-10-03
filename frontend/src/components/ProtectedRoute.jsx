@@ -24,7 +24,7 @@ function freelancerCanOpen(pathname) {
   return FREELANCER_PATHS.some((allow) => p === allow || p.startsWith(`${allow}/`));
 }
 
-export default function ProtectedRoute({ children, requiredRoles }) {
+export default function ProtectedRoute({ children, requiredRoles, internalPreview = false }) {
   const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
   const [resendLoading, setResendLoading] = useState(false);
@@ -117,6 +117,10 @@ export default function ProtectedRoute({ children, requiredRoles }) {
   }
 
   if (requiredRoles && user && !requiredRoles.includes(user.role)) {
+    return <ForbiddenPage />;
+  }
+
+  if (internalPreview && (!user?.internalPreviewAccess || user?.isDemo)) {
     return <ForbiddenPage />;
   }
 

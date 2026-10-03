@@ -5,7 +5,8 @@ const jwt = require('jsonwebtoken');
 const axios = require('axios');
 const crypto = require('crypto');
 const { JWT_SECRET } = require('../middleware/authMiddleware');
-const { getEntitlements, planHasFeature } = require('../config/planFeatures');
+const { planHasFeature } = require('../config/planFeatures');
+const { sessionEntitlements, sessionPreviewFlags } = require('../utils/sessionEntitlements');
 const SSOConfig = require('../models/SSOConfig');
 const Organization = require('../models/Organization');
 const User = require('../models/User');
@@ -66,7 +67,7 @@ async function completeSsoLogin(user, org, req, res) {
   await user.save();
 
   const token = await issueAuthToken(user, req);
-  const entitlements = getEntitlements(org.plan);
+  const entitlements = sessionEntitlements(user, org);
   const code = ssoExchangeStore.createCode({
     token,
     user: {
@@ -78,6 +79,7 @@ async function completeSsoLogin(user, org, req, res) {
       isEmailVerified: user.isEmailVerified,
       onboardingCompleted: user.onboardingCompleted,
       profilePicture: user.profilePicture || '',
+      ...sessionPreviewFlags(user, org),
     },
     organization: {
       name: org.name,

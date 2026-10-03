@@ -7,7 +7,7 @@ const User = require('../models/User');
 const Organization = require('../models/Organization');
 const { JWT_SECRET } = require('../middleware/authMiddleware');
 const { issueAuthToken, reissueSessionToken, revokeAllSessionsForUser } = require('./sessionService');
-const { getEntitlements } = require('../config/planFeatures');
+const { sessionEntitlements, sessionPreviewFlags } = require('../utils/sessionEntitlements');
 const { ensureOrgPlanForDomain } = require('../utils/orgDomain');
 const { sendEmail } = require('./emailService');
 const { wrapBrandedEmailHtml, brandButtonHtml, loadSendingEmailBrand, escapeHtml: escapeHtmlLocal } = require('./emailBrandLayout');
@@ -136,10 +136,10 @@ async function completeLogin(user, req) {
   if (user.organizationId) {
     await ensureOrgPlanForDomain(user.organizationId, user.email);
     organization = await Organization.findById(user.organizationId)
-      .select('name slug logo plan planExpiresAt atsSettings settings securitySettings domain')
+      .select('name slug logo plan planExpiresAt atsSettings settings securitySettings domain allowedDomains isDemo')
       .lean();
     if (organization) {
-      entitlements = getEntitlements(organization.plan);
+      entitlements = sessionEntitlements(user, organization);
     }
   }
 
@@ -175,6 +175,7 @@ async function completeLogin(user, req) {
         isDemo: Boolean(user.isDemo),
         customRoleId: user.customRoleId || null,
         isPlatformOperator: require('../utils/orgDomain').isPlatformOperator(user),
+        ...sessionPreviewFlags(user, organization),
         permissions,
       },
       organization,

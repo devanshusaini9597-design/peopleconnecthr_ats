@@ -78,3 +78,23 @@ describe('planFeatures.getEntitlements', () => {
     expect(planHasFeature('enterprise', 'deployment.dedicated')).toBe(true);
   });
 });
+
+describe('planFeatures.canUseFeature internal preview', () => {
+  const { canUseFeature, isInternalPreviewFeature } = require('../config/planFeatures');
+
+  test('unfinished keys are marked internal preview', () => {
+    expect(isInternalPreviewFeature('analytics.dei')).toBe(true);
+    expect(isInternalPreviewFeature('messaging.sequences')).toBe(true);
+    expect(isInternalPreviewFeature('dashboard.basic')).toBe(false);
+  });
+
+  test('customers do not get unfinished features even on enterprise', () => {
+    expect(canUseFeature('enterprise', 'analytics.dei', { internalPreviewAccess: false })).toBe(false);
+    expect(canUseFeature('enterprise', 'sso', { internalPreviewAccess: false })).toBe(true);
+  });
+
+  test('Skillnix preview access keeps unfinished features', () => {
+    expect(canUseFeature('enterprise', 'workflows.approvals', { internalPreviewAccess: true })).toBe(true);
+    expect(canUseFeature('professional', 'careers.formBuilder', { internalPreviewAccess: true })).toBe(true);
+  });
+});

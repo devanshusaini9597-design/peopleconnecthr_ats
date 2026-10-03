@@ -21,6 +21,19 @@ const PLAN_ALIASES = {
   free_trial: 'professional'
 };
 
+export const INTERNAL_PREVIEW_FEATURES = [
+  'analytics.dei',
+  'candidates.collaboration',
+  'careers.formBuilder',
+  'messaging.sequences',
+  'messaging.consent',
+  'scorecards.templates',
+  'referrals.program',
+  'workflows.approvals',
+];
+
+const INTERNAL_PREVIEW_SET = new Set(INTERNAL_PREVIEW_FEATURES);
+
 const FEATURES = {
   'dashboard.basic': 'starter',
   'careers.customDomain': 'enterprise',
@@ -127,6 +140,13 @@ export const planHasFeature = (plan, featureKey) => {
   const requiredPlan = FEATURES[featureKey];
   if (!requiredPlan) return false;
   return rankOf(plan) >= rankOf(requiredPlan);
+};
+
+export const isInternalPreviewFeature = (featureKey) => INTERNAL_PREVIEW_SET.has(featureKey);
+
+export const canUseFeature = (plan, featureKey, ctx = {}) => {
+  if (isInternalPreviewFeature(featureKey) && !ctx.internalPreviewAccess) return false;
+  return planHasFeature(plan, featureKey);
 };
 
 export const getEntitlements = (plan) => {

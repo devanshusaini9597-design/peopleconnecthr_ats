@@ -237,7 +237,7 @@ router.get('/usage', requireRecruiterOrAbove, async (req, res) => {
 
 router.get('/entitlements', async (req, res) => {
   try {
-    const result = await org.getOrgEntitlements(req.user.organizationId);
+    const result = await org.getOrgEntitlements(req.user.organizationId, req.user);
     res.json({ success: true, ...result });
   } catch (error) {
     handle(res, error);

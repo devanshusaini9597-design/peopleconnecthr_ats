@@ -7,7 +7,8 @@ const path = require('path');
 const Organization = require('../models/Organization');
 const User = require('../models/User');
 const AuditLog = require('../models/AuditLog');
-const { getEntitlements, planHasFeature } = require('../config/planFeatures');
+const { planHasFeature } = require('../config/planFeatures');
+const { sessionEntitlements } = require('../utils/sessionEntitlements');
 const s3Service = require('./s3Service');
 
 const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
@@ -600,10 +601,10 @@ async function getUsage(organizationId) {
   return org.usageCurrent;
 }
 
-async function getOrgEntitlements(organizationId) {
-  const org = await Organization.findById(organizationId).select('plan');
+async function getOrgEntitlements(organizationId, user) {
+  const org = await Organization.findById(organizationId).select('plan domain allowedDomains isDemo');
   if (!org) throw httpError('Organization not found', 404);
-  return { plan: org.plan, entitlements: getEntitlements(org.plan) };
+  return { plan: org.plan, entitlements: sessionEntitlements(user, org) };
 }
 
 function buildAuditLogFilter(organizationId, query) {

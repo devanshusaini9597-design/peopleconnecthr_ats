@@ -29,6 +29,24 @@ const PLAN_ALIASES = {
   free_trial: 'professional'
 };
 
+/**
+ * Unfinished product surfaces. Kept in the codebase for Skillnix / vendor orgs,
+ * hidden from demo tenants and paying SaaS customers until they are ready.
+ * Removing these keys (or deleting the pages) would hide them for Skillnix too.
+ */
+const INTERNAL_PREVIEW_FEATURES = [
+  'analytics.dei',
+  'candidates.collaboration',
+  'careers.formBuilder',
+  'messaging.sequences',
+  'messaging.consent',
+  'scorecards.templates',
+  'referrals.program',
+  'workflows.approvals',
+];
+
+const INTERNAL_PREVIEW_SET = new Set(INTERNAL_PREVIEW_FEATURES);
+
 const FEATURES = {
   // Core recruiting
   'dashboard.basic': 'starter',
@@ -158,6 +176,19 @@ const planHasFeature = (plan, featureKey) => {
   return rankOf(plan) >= rankOf(requiredPlan);
 };
 
+const isInternalPreviewFeature = (featureKey) => INTERNAL_PREVIEW_SET.has(featureKey);
+
+/**
+ * Plan check plus internal-preview gate.
+ * @param {string} plan
+ * @param {string} featureKey
+ * @param {{ internalPreviewAccess?: boolean }} [ctx]
+ */
+const canUseFeature = (plan, featureKey, ctx = {}) => {
+  if (isInternalPreviewFeature(featureKey) && !ctx.internalPreviewAccess) return false;
+  return planHasFeature(plan, featureKey);
+};
+
 /**
  * Returns the full list of feature keys a plan is entitled to.
  * Useful for sending `entitlements: string[]` to the frontend at login.
@@ -172,6 +203,9 @@ module.exports = {
   PLAN_ORDER,
   PLAN_ALIASES,
   FEATURES,
+  INTERNAL_PREVIEW_FEATURES,
   planHasFeature,
+  isInternalPreviewFeature,
+  canUseFeature,
   getEntitlements
 };

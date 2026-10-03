@@ -109,6 +109,7 @@ const verifyToken = async (req, res, next) => {
       email: user.email,
       name: user.name,
       customRoleId: user.customRoleId || null,
+      isDemo: Boolean(user.isDemo),
       jti: decoded.jti
     };
     
@@ -163,6 +164,7 @@ const optionalAuth = async (req, res, next) => {
           role: user.role,
           email: user.email,
           name: user.name,
+          isDemo: Boolean(user.isDemo),
           jti: decoded.jti
         };
       }

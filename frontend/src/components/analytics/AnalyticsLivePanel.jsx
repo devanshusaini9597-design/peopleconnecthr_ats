@@ -11,6 +11,8 @@ import { PIPELINE_COLORS } from './constants';
 import KpiCard from './KpiCard';
 import { buildAtsHref } from '../../utils/atsLinks';
 import { guardTableCopy } from '../../utils/tableCopyGuard';
+import { useAuth } from '../../context/AuthContext';
+import { canUseFeature } from '../../config/planFeatures';
 
 function formatTimeToHire(days) {
   if (days == null || Number.isNaN(Number(days))) return '—';
@@ -32,6 +34,10 @@ export default function AnalyticsLivePanel({
   onTableDragScrollMove,
   onTableDragScrollEnd,
 }) {
+  const { organization, user } = useAuth();
+  const showDei = canUseFeature(organization?.plan, 'analytics.dei', {
+    internalPreviewAccess: Boolean(user?.internalPreviewAccess),
+  });
   const atsView = stats.atsView || (userId || stats.scope === 'employee' ? 'mine' : 'all');
   const employeeId = userId || stats.scopedUserId || '';
   const period = stats.dateRange || dateRange || 'month';
@@ -267,7 +273,7 @@ export default function AnalyticsLivePanel({
         )}
       </div>
 
-      {!isFreelancer ? (
+      {!isFreelancer && showDei ? (
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>

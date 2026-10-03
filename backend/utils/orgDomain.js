@@ -4,34 +4,15 @@
 const Organization = require('../models/Organization');
 const { getEmailDomain, validateWorkEmail } = require('./workEmail');
 const { applyPlanLimits } = require('../config/planLimits');
-
-function parseDomainList(value) {
-  return String(value || '')
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-/** Domains that receive Enterprise plan (not a global unlock). Override via ENTERPRISE_ORG_DOMAINS. */
-function getEnterpriseOrgDomains() {
-  const fromEnv = parseDomainList(process.env.ENTERPRISE_ORG_DOMAINS);
-  // Default enterprise orgs (override via ENTERPRISE_ORG_DOMAINS)
-  return fromEnv.length
-    ? fromEnv
-    : ['skillnix.com', 'peopleconnecthr.com', 'devlumiq.com', 'skillnixrecruitment.com'];
-}
+const {
+  getEnterpriseOrgDomains,
+  getPlatformOperatorDomains,
+  hasInternalPreviewAccess,
+} = require('./vendorDomains');
 
 function isEnterpriseOrgDomain(domain) {
   if (!domain) return false;
   return getEnterpriseOrgDomains().includes(String(domain).toLowerCase().trim());
-}
-
-/** Vendor domains that can review trial requests. Override via PLATFORM_OPERATOR_DOMAINS. */
-function getPlatformOperatorDomains() {
-  const fromEnv = parseDomainList(process.env.PLATFORM_OPERATOR_DOMAINS);
-  return fromEnv.length
-    ? fromEnv
-    : ['skillnix.com', 'peopleconnecthr.com', 'devlumiq.com', 'skillnixrecruitment.com'];
 }
 
 function isPlatformOperatorEmail(email) {
@@ -141,6 +122,7 @@ module.exports = {
   getPlatformOperatorDomains,
   isPlatformOperatorEmail,
   isPlatformOperator,
+  hasInternalPreviewAccess,
   planForOrgDomain,
   collectOrgInviteDomains,
   validateInviteEmail,

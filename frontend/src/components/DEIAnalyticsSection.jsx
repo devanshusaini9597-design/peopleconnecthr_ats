@@ -3,7 +3,7 @@ import { Users2, Lock, Loader2, ShieldCheck, VenusAndMars, Globe2, Medal, Access
 import EmptyState from './ui/EmptyState';
 import { authenticatedFetch } from '../utils/fetchUtils';
 import { useAuth } from '../context/AuthContext';
-import { planHasFeature } from '../config/planFeatures';
+import { canUseFeature } from '../config/planFeatures';
 import { appendUserId } from '../utils/analyticsScope';
 
 /**
@@ -88,13 +88,15 @@ const BreakdownCard = ({ title, rows }) => {
 };
 
 const DEIAnalyticsSection = ({ userId = '' }) => {
-  const { organization } = useAuth();
+  const { organization, user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [entitled, setEntitled] = useState(true);
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    if (organization && !planHasFeature(organization.plan, 'analytics.dei')) {
+    if (organization && !canUseFeature(organization.plan, 'analytics.dei', {
+      internalPreviewAccess: Boolean(user?.internalPreviewAccess),
+    })) {
       setEntitled(false);
       setLoading(false);
       return;
@@ -112,11 +114,12 @@ const DEIAnalyticsSection = ({ userId = '' }) => {
         setLoading(false);
       }
     })();
-  }, [organization, userId]);
+  }, [organization, user?.internalPreviewAccess, userId]);
 
   if (!organization) return null;
 
   if (!entitled) {
+    if (!user?.internalPreviewAccess) return null;
     return (
       <div className="card-ats-bordered p-8 text-center relative overflow-hidden">
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 to-orange-400" />

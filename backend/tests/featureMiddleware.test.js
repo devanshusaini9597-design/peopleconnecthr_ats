@@ -54,4 +54,55 @@ describe('featureMiddleware.requireFeature', () => {
     expect(next).toHaveBeenCalledTimes(1);
     expect(res.status).not.toHaveBeenCalled();
   });
+
+  test('403s FEATURE_UNAVAILABLE for unfinished modules on customer orgs', async () => {
+    mongoose.model.mockReturnValue({
+      findById: () => ({
+        select: () => Promise.resolve({ plan: 'enterprise', domain: 'acme-staffing.com', isDemo: false }),
+      }),
+    });
+    const req = { user: { organizationId: 'org1', email: 'ada@acme-staffing.com', isDemo: false } };
+    const res = mockRes();
+    const next = jest.fn();
+    await requireFeature('analytics.dei')(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json.mock.calls[0][0].code).toBe('FEATURE_UNAVAILABLE');
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test('allows unfinished modules for Skillnix Recruitment orgs', async () => {
+    mongoose.model.mockReturnValue({
+      findById: () => ({
+        select: () => Promise.resolve({
+          plan: 'enterprise',
+          domain: 'skillnixrecruitment.com',
+          isDemo: false,
+        }),
+      }),
+    });
+    const req = { user: { organizationId: 'org1', email: 'recruiter@skillnixrecruitment.com', isDemo: false } };
+    const res = mockRes();
+    const next = jest.fn();
+    await requireFeature('analytics.dei')(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  test('blocks unfinished modules for demo accounts even on enterprise', async () => {
+    mongoose.model.mockReturnValue({
+      findById: () => ({
+        select: () => Promise.resolve({
+          plan: 'enterprise',
+          domain: 'demo.peopleconnecthr.com',
+          isDemo: true,
+        }),
+      }),
+    });
+    const req = { user: { organizationId: 'org1', email: 'owner@demo.peopleconnecthr.com', isDemo: true } };
+    const res = mockRes();
+    const next = jest.fn();
+    await requireFeature('messaging.sequences')(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
+  });
 });

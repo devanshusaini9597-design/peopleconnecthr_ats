@@ -12,7 +12,8 @@ const logger = require('../utils/logger');
  */
 
 const mongoose = require('mongoose');
-const { planHasFeature } = require('../config/planFeatures');
+const { planHasFeature, isInternalPreviewFeature } = require('../config/planFeatures');
+const { hasInternalPreviewAccess } = require('../utils/vendorDomains');
 
 /**
  * Returns middleware that checks the org's plan includes `featureKey`.
@@ -45,7 +46,8 @@ const requireFeature = (featureKey) => {
       }
 
       const Organization = mongoose.model('Organization');
-      const org = await Organization.findById(req.user.organizationId).select('plan');
+      const org = await Organization.findById(req.user.organizationId)
+        .select('plan domain allowedDomains isDemo');
 
       if (!org) {
         return res.status(404).json({ success: false, message: 'Organization not found' });
@@ -58,6 +60,15 @@ const requireFeature = (featureKey) => {
           message: `This feature (${featureKey}) is not included in your current plan. Please upgrade to continue.`,
           feature: featureKey,
           currentPlan: org.plan
+        });
+      }
+
+      if (isInternalPreviewFeature(featureKey) && !hasInternalPreviewAccess(req.user, org)) {
+        return res.status(403).json({
+          success: false,
+          code: 'FEATURE_UNAVAILABLE',
+          message: 'This feature is not available.',
+          feature: featureKey,
         });
       }
 

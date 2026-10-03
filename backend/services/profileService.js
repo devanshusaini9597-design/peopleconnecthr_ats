@@ -7,7 +7,7 @@ const bcrypt = require('bcrypt');
 const User = require('../models/User');
 const Organization = require('../models/Organization');
 const Candidate = require('../models/Candidate');
-const { getEntitlements } = require('../config/planFeatures');
+const { sessionEntitlements, sessionPreviewFlags } = require('../utils/sessionEntitlements');
 const { normalizeText } = require('../utils/textNormalize');
 const { ensureOrgPlanForDomain } = require('../utils/orgDomain');
 const { createdByFilter } = require('../utils/dataScope');
@@ -43,10 +43,10 @@ async function getProfile(userId) {
   if (user.organizationId) {
     await ensureOrgPlanForDomain(user.organizationId, user.email);
     organization = await Organization.findById(user.organizationId)
-      .select('name slug logo plan planExpiresAt atsSettings settings usageCurrent usageLimits domain')
+      .select('name slug logo plan planExpiresAt atsSettings settings usageCurrent usageLimits domain allowedDomains isDemo')
       .lean();
     if (organization) {
-      entitlements = getEntitlements(organization.plan);
+      entitlements = sessionEntitlements(user, organization);
     }
   }
 
@@ -84,6 +84,7 @@ async function getProfile(userId) {
       isDemo: Boolean(user.isDemo),
       customRoleId: user.customRoleId || null,
       isPlatformOperator: require('../utils/orgDomain').isPlatformOperator(user),
+      ...sessionPreviewFlags(user, organization),
       createdAt: user.createdAt,
       lastLoginAt: user.lastLoginAt,
       permissions,

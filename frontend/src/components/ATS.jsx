@@ -6,7 +6,7 @@ import { authenticatedFetch } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import usePageTour from '../hooks/usePageTour';
 import { useAuth } from '../context/AuthContext';
-import { planHasFeature } from '../config/planFeatures';
+import { canUseFeature } from '../config/planFeatures';
 import { ctcRanges } from '../utils/ctcRanges';
 import { canViewOrgAnalytics } from '../utils/analyticsScope';
 import useEmployeeAnalyticsScope from '../hooks/useEmployeeAnalyticsScope';
@@ -293,7 +293,9 @@ const ATS = forwardRef((props, ref) => {
   }, [listQueryOptions, candidatesViewMode, employeeScope.userId, setSelectedIds]);
 
   useEffect(() => {
-    if (!planHasFeature(orgPlan, 'analytics.dei')) return undefined;
+    if (!canUseFeature(orgPlan, 'analytics.dei', { internalPreviewAccess: Boolean(user?.internalPreviewAccess) })) {
+      return undefined;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -303,7 +305,7 @@ const ATS = forwardRef((props, ref) => {
       } catch { /* optional */ }
     })();
     return () => { cancelled = true; };
-  }, [orgPlan, setBlindMode]);
+  }, [orgPlan, user?.internalPreviewAccess, setBlindMode]);
 
   useEffect(() => {
     if (!form.showModal) return undefined;

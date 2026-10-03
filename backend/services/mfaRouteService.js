@@ -5,7 +5,8 @@
 const jwt = require('jsonwebtoken');
 
 const { verifyToken, JWT_SECRET } = require('../middleware/authMiddleware');
-const { getEntitlements, planHasFeature } = require('../config/planFeatures');
+const { planHasFeature } = require('../config/planFeatures');
+const { sessionEntitlements, sessionPreviewFlags } = require('../utils/sessionEntitlements');
 const User = require('../models/User');
 const Organization = require('../models/Organization');
 const {
@@ -30,10 +31,10 @@ async function buildLoginPayload(user) {
   let entitlements = [];
   if (user.organizationId) {
     organization = await Organization.findById(user.organizationId)
-      .select('name slug logo plan planExpiresAt atsSettings settings deploymentTier securitySettings')
+      .select('name slug logo plan planExpiresAt atsSettings settings deploymentTier securitySettings domain allowedDomains isDemo')
       .lean();
     if (organization) {
-      entitlements = getEntitlements(organization.plan);
+      entitlements = sessionEntitlements(user, organization);
     }
   }
   return {
@@ -46,7 +47,8 @@ async function buildLoginPayload(user) {
       isEmailVerified: user.isEmailVerified,
       onboardingCompleted: user.onboardingCompleted,
       profilePicture: user.profilePicture || '',
-      mfaEnabled: user.mfaEnabled
+      mfaEnabled: user.mfaEnabled,
+      ...sessionPreviewFlags(user, organization),
     },
     organization,
     entitlements

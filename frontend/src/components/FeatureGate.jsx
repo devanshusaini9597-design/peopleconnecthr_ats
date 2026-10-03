@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { planHasFeature } from '../config/planFeatures';
+import { canUseFeature } from '../config/planFeatures';
 
 /**
  * Plan-based gate — the sibling of <RoleGate roles={[...]}>.
@@ -18,11 +18,13 @@ import { planHasFeature } from '../config/planFeatures';
  * API route is a bypassable paywall, not real gating.
  */
 export default function FeatureGate({ feature, children, fallback = null }) {
-  const { organization, isLoading } = useAuth();
+  const { organization, user, isLoading } = useAuth();
 
   if (isLoading) return null;
 
-  if (!organization || !planHasFeature(organization.plan, feature)) {
+  if (!organization || !canUseFeature(organization.plan, feature, {
+    internalPreviewAccess: Boolean(user?.internalPreviewAccess),
+  })) {
     return fallback;
   }
 
