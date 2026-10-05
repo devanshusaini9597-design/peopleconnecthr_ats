@@ -15,7 +15,7 @@ const { isPlatformOperator } = require('../utils/orgDomain');
 const { JWT_SECRET } = require('../middleware/authMiddleware');
 const logger = require('../utils/logger');
 
-const SALES_INBOX = 'contact@skillnixrecruitment.com';
+const SALES_INBOX = 'sales@peopleconnecthr.com';
 const SALES_NOTIFY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 function httpError(message, statusCode = 400, extra = {}) {

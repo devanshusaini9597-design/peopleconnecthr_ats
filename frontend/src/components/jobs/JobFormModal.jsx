@@ -455,8 +455,10 @@ export default function JobFormModal({
         authenticatedFetch(`${BASE_API_URL}/api/jobs/next-code`)
           .then(async (res) => {
             const data = await res.json().catch(() => ({}));
-            if (res.ok && data.jobCode) setNextJobCode(data.jobCode);
-            else setNextJobCode('');
+            if (res.ok && data.jobCode) {
+              setNextJobCode(data.jobCode);
+              setFormData((prev) => prev.jobCode ? prev : { ...prev, jobCode: data.jobCode, customJobCode: true });
+            } else setNextJobCode('');
           })
           .catch(() => setNextJobCode(''))
           .finally(() => setLoadingNextCode(false));
@@ -630,7 +632,7 @@ export default function JobFormModal({
       title={editingJob ? 'Edit requisition' : 'New requisition'}
       description={
         editingJob
-          ? (formData.jobCode ? `Job ID ${formData.jobCode}` : 'A job ID is assigned when you save.')
+          ? (formData.jobCode ? `Job ID ${formData.jobCode}` : 'Job ID is required')
           : onStart
             ? (nextJobCode ? `Reserved ID ${nextJobCode}` : 'Select how this requisition should be created')
             : (nextJobCode
@@ -967,7 +969,7 @@ export default function JobFormModal({
                 {loadingNextCode && !editingJob ? (
                   <Loader2 size={12} className="animate-spin inline" />
                 ) : (
-                  displayJobCode || 'Assigned on save'
+                  displayJobCode || 'Job ID required'
                 )}
               </span>
             </div>
@@ -976,49 +978,20 @@ export default function JobFormModal({
               onChange={(next) => patch({ priority: next })}
             />
             <div className="min-w-0">
-              <FieldLabel>Job ID</FieldLabel>
-              {editingJob && !formData.customJobCode ? (
-                <div className={`${fieldClass} bg-stone-50 text-stone-700 cursor-default`}>
-                  {formData.jobCode || '—'}
-                </div>
-              ) : !editingJob && !formData.customJobCode ? (
-                <div className={`${fieldClass} bg-stone-50 text-stone-700 cursor-default flex items-center gap-2`}>
-                  {loadingNextCode ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin text-stone-400" />
-                      <span className="text-stone-400 font-normal normal-case">Preparing identifier…</span>
-                    </>
-                  ) : (
-                    displayJobCode || 'Assigned when you save'
-                  )}
-                </div>
-              ) : (
-                <input
-                  type="text"
-                  className={fieldClass}
-                  placeholder="E.G. SKILLNIX-2026-0001"
-                  value={formData.jobCode || ''}
-                  onChange={(e) => patch({ jobCode: String(e.target.value || '').toUpperCase().replace(/\s+/g, '-') })}
-                  maxLength={40}
-                />
-              )}
-              <label className="mt-2 inline-flex items-center gap-2 cursor-pointer text-[12px] text-stone-600">
-                <input
-                  type="checkbox"
-                  className="rounded border-stone-300 text-brand-600 focus:ring-brand-500"
-                  checked={!!formData.customJobCode}
-                  onChange={(e) => {
-                    const on = e.target.checked;
-                    patch({
-                      customJobCode: on,
-                      jobCode: on
-                        ? (formData.jobCode || nextJobCode || editingJob?.jobCode || '')
-                        : (editingJob?.jobCode || formData.jobCode || ''),
-                    });
-                  }}
-                />
-                Use a custom job ID
-              </label>
+              <FieldLabel required>Job ID</FieldLabel>
+              <input
+                type="text"
+                required
+                className={fieldClass}
+                placeholder="E.G. PCHR-2026-0001"
+                value={formData.jobCode || ''}
+                onChange={(e) => patch({
+                  jobCode: String(e.target.value || '').toUpperCase().replace(/\s+/g, '-'),
+                  customJobCode: true,
+                })}
+                maxLength={40}
+              />
+              <p className="mt-1.5 text-[12px] text-stone-500">Required. Letters, numbers, and hyphens. Must be unique in your workspace.</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-4 min-w-0 [&>*]:min-w-0">
               <div className="min-w-0" onFocus={() => scrollPreview('header')}>

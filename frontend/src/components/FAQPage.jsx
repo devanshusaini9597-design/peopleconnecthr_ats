@@ -229,9 +229,9 @@ export default function FAQPage() {
                       <ArrowRight className="w-5 h-5" />
                     </Link>
                   </Magnetic>
-                  <a href="mailto:contact@peopleconnecthr.com" className="inline-flex items-center gap-2 text-brand-100 hover:text-white font-medium transition-colors">
+                  <a href="mailto:info@peopleconnecthr.com" className="inline-flex items-center gap-2 text-brand-100 hover:text-white font-medium transition-colors">
                     <Mail className="w-4 h-4" />
-                    contact@peopleconnecthr.com
+                    info@peopleconnecthr.com
                   </a>
                 </div>
               </div>

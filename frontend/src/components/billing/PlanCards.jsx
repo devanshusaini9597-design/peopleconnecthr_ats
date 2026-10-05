@@ -5,6 +5,7 @@ import {
 import {
   PLAN_LIMITS, PLAN_FEATURES, PLAN_META, formatLimit,
 } from './billingConstants';
+import { formatPlanPrice, GST_LABEL } from '../../utils/planPrice';
 
 export function PlanCards({
   paidPlans,
@@ -87,8 +88,9 @@ export function PlanCards({
             <div className="mb-6">
               {plan.price != null ? (
                 <p className="flex items-baseline gap-1">
-                  <span className="text-4xl font-bold text-stone-900 tracking-tight tabular-nums">${plan.price}</span>
+                  <span className="text-4xl font-bold text-stone-900 tracking-tight tabular-nums">{formatPlanPrice(plan.price)}</span>
                   <span className="text-stone-500 font-medium">/month</span>
+                  <span className="text-xs font-semibold text-stone-400 ml-2">{GST_LABEL}</span>
                 </p>
               ) : (
                 <p className="text-4xl font-bold text-stone-900 tracking-tight">Custom</p>
@@ -112,12 +114,21 @@ export function PlanCards({
               </button>
             ) : isEnterprise ? (
               <a
-                href="mailto:sales@skillnix.app?subject=Enterprise%20plan%20inquiry"
+                href="mailto:sales@peopleconnecthr.com?subject=Custom%20plan%20inquiry"
                 className="btn-secondary w-full group/cta"
               >
                 <Headphones className="w-4 h-4" /> Contact sales
                 <ArrowRight className="billing-plan-cta-arrow w-4 h-4" />
               </a>
+            ) : !checkoutOk ? (
+              <button
+                type="button"
+                disabled
+                className="btn-secondary w-full opacity-70 cursor-not-allowed"
+                title="Self-serve checkout is not enabled on this environment"
+              >
+                Checkout not enabled
+              </button>
             ) : (
               <button
                 type="button"

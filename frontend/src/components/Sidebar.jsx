@@ -3,6 +3,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { planHasFeature, planHasAnyIntegration } from '../config/planFeatures';
+import { userCanUsePreview } from '../utils/previewAccess';
 import ConfirmationModal from './ConfirmationModal';
 import {
   SECTIONS,
@@ -52,7 +53,10 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
           (item) => {
             if (item.onlyRoles && !item.onlyRoles.includes(userRole)) return false;
             if (item.platformOnly && !authUser?.isPlatformOperator) return false;
-            if (item.internalPreview && !authUser?.internalPreviewAccess) return false;
+            if (item.internalPreview) {
+              if (authUser?.isDemo) return false;
+              if (item.feature ? !userCanUsePreview(authUser, item.feature) : !authUser?.internalPreviewAccess) return false;
+            }
             if (item.hideForRoles && item.hideForRoles.includes(userRole)) return false;
             if (item.externalCareers && !organization?.slug) return false;
             if (item.externalPartners && !organization?.slug) return false;
@@ -95,7 +99,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
         })
       }))
       .filter((section) => section.items.length > 0)
-  ), [userRole, orgPlan, usePermissionPack, permissionSet, authUser?.isPlatformOperator, authUser?.internalPreviewAccess, organization?.slug]);
+  ), [userRole, orgPlan, usePermissionPack, permissionSet, authUser?.isPlatformOperator, authUser?.internalPreviewAccess, authUser?.isDemo, organization?.slug]);
 
   const pathToGroup = useMemo(() => {
     const map = {};
@@ -259,7 +263,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
               <img
                 src="/logo.png"
                 alt="People Connect HR"
-                className="w-9 h-9 rounded-xl object-cover flex-shrink-0 shadow-lg shadow-teal-500/25 ring-1 ring-teal-400/20"
+                className="w-9 h-9 rounded-xl object-contain bg-white flex-shrink-0 shadow-lg shadow-teal-500/25 ring-1 ring-teal-400/20"
               />
             )}
             {!collapsed && (

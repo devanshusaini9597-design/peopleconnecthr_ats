@@ -54,4 +54,30 @@ router.get('/org-logo/:orgId', async (req, res) => {
   }
 });
 
+/** GET /api/public/org-brand?org=&orgSlug=&orgId= — tenant chrome for public preference pages */
+router.get('/org-brand', async (req, res) => {
+  try {
+    const { resolvePublicMarketingBrand } = require('../services/emailBrandLayout');
+    const brand = await resolvePublicMarketingBrand({
+      orgSlug: req.query.org || req.query.orgSlug,
+      orgId: req.query.orgId,
+    });
+    res.json({ success: true, data: brand });
+  } catch (_) {
+    res.status(200).json({
+      success: true,
+      data: {
+        name: 'People Connect HR',
+        slug: '',
+        logoUrl: '',
+        websiteUrl: 'https://www.peopleconnecthr.com',
+        supportEmail: 'info@peopleconnecthr.com',
+        companyAddress: '',
+        brandColor: '#0d9488',
+        socialLinks: {},
+      },
+    });
+  }
+});
+
 module.exports = router;

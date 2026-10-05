@@ -10,13 +10,12 @@ export function HomeFooter() {
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8 mb-10 sm:mb-12">
             <div className="sm:col-span-2">
               <div className="flex items-center space-x-2.5 mb-5 sm:mb-6">
-                <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0">
-                  <img src="/logo.png" alt="People Connect HR" className="w-full h-full object-cover" />
+                <div className="h-12 w-48 rounded-lg overflow-hidden shrink-0 bg-white">
+                  <img src="/logo.png" alt="People Connect HR" className="w-full h-full object-contain" />
                 </div>
-                <span className="text-xl font-bold text-white">People Connect HR</span>
               </div>
               <p className="text-stone-400 mb-4 sm:mb-6 max-w-sm text-sm sm:text-base">
-                The modern applicant tracking system designed for ambitious teams. Hire smarter, scale faster.
+                Applicant tracking for one organization: jobs, candidates, interviews, careers, and mail, limited by the plan you are on.
               </p>
               <p className="text-stone-500 text-sm">Built for modern recruiting teams.</p>
             </div>
@@ -42,7 +41,8 @@ export function HomeFooter() {
               <ul className="space-y-3 text-sm text-stone-400">
                 <li><Link to="/faq" className="hover:text-white transition-colors">FAQ</Link></li>
                 <li><Link to="/contact" className="hover:text-white transition-colors">Contact</Link></li>
-                <li><a href="mailto:contact@peopleconnecthr.com" className="hover:text-white transition-colors inline-flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Talk to Sales</a></li>
+                <li><a href="mailto:sales@peopleconnecthr.com" className="hover:text-white transition-colors inline-flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Talk to Sales</a></li>
+                <li><a href="mailto:info@peopleconnecthr.com" className="hover:text-white transition-colors">info@peopleconnecthr.com</a></li>
                 <li><Link to="/login" className="hover:text-white transition-colors">Login</Link></li>
                 <li><Link to="/register" className="hover:text-white transition-colors">Start Free Trial</Link></li>
               </ul>

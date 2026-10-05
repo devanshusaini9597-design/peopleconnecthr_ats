@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Unlock, PauseCircle, Lock, BookmarkPlus, Trash2, MoreHorizontal, ChevronRight,
-  AlertTriangle, Sparkles,
+  AlertTriangle, Sparkles, Pin,
 } from 'lucide-react';
 
 const MENU_W = 268;
@@ -82,6 +82,7 @@ export default function JobCardActionsMenu({
   onSaveTemplate,
   onDelete,
   onToggleUrgent,
+  onTogglePin,
 }) {
   const btnRef = useRef(null);
   const menuRef = useRef(null);
@@ -183,6 +184,16 @@ export default function JobCardActionsMenu({
               iconClass="bg-stone-100 text-stone-600 border-stone-200"
               label="Close job"
               hint="Stop accepting candidates"
+            />
+          ) : null}
+
+          {typeof onTogglePin === 'function' ? (
+            <ActionRow
+              onClick={onTogglePin}
+              icon={Pin}
+              iconClass={job?.pinned ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-stone-100 text-stone-600 border-stone-200'}
+              label={job?.pinned ? 'Unpin job' : 'Pin job'}
+              hint={job?.pinned ? 'Remove from the Pinned tab' : 'Keep this opening at the top'}
             />
           ) : null}
 

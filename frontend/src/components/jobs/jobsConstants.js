@@ -35,6 +35,7 @@ export const STATUS_OPTIONS = [
 
 export const FILTER_OPTIONS = [
   { value: 'All', label: 'All statuses' },
+  { value: 'Pinned', label: 'Pinned' },
   { value: 'Draft', label: 'Draft' },
   { value: 'Open', label: 'Open' },
   { value: 'On Hold', label: 'On Hold' },

@@ -37,8 +37,11 @@ const INTERNAL_PREVIEW_SET = new Set(INTERNAL_PREVIEW_FEATURES);
 const FEATURES = {
   'dashboard.basic': 'starter',
   'careers.customDomain': 'enterprise',
+  'mail.sendingDomain': 'enterprise',
   'jobs.customPipeline': 'professional',
   'jobs.bulkImport': 'professional',
+  'data.backup': 'professional',
+  'data.oldImport': 'professional',
   'candidates.advancedSearch': 'professional',
   'candidates.savedSearches': 'professional',
 
@@ -139,13 +142,20 @@ const rankOf = (plan) => {
 export const planHasFeature = (plan, featureKey) => {
   const requiredPlan = FEATURES[featureKey];
   if (!requiredPlan) return false;
+  if (plan === 'free_trial' && (featureKey === 'data.backup' || featureKey === 'data.oldImport')) {
+    return false;
+  }
   return rankOf(plan) >= rankOf(requiredPlan);
 };
 
 export const isInternalPreviewFeature = (featureKey) => INTERNAL_PREVIEW_SET.has(featureKey);
 
 export const canUseFeature = (plan, featureKey, ctx = {}) => {
-  if (isInternalPreviewFeature(featureKey) && !ctx.internalPreviewAccess) return false;
+  if (isInternalPreviewFeature(featureKey)) {
+    if (ctx.isDemo) return false;
+    const modules = Array.isArray(ctx.previewModules) ? ctx.previewModules : [];
+    if (!ctx.internalPreviewAccess && !modules.includes(featureKey)) return false;
+  }
   return planHasFeature(plan, featureKey);
 };
 

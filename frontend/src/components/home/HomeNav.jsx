@@ -22,15 +22,12 @@ export function HomeNav({
           <div className="flex justify-between items-center h-20">
             <Link to="/" className="flex items-center space-x-2.5 group">
               <motion.div
-                whileHover={{ rotate: -8, scale: 1.08 }}
+                whileHover={{ scale: 1.03 }}
                 transition={{ type: 'spring', stiffness: 300, damping: 15 }}
-                className="w-10 h-10 rounded-xl overflow-hidden shadow-md shadow-brand-500/25 ring-1 ring-brand-500/20 flex-shrink-0"
+                className="h-12 w-[210px] max-w-[52vw] rounded-xl overflow-hidden bg-white ring-1 ring-brand-500/15 flex-shrink-0"
               >
-                <img src="/logo.png" alt="People Connect HR" className="w-full h-full object-cover" />
+                <img src="/logo.png" alt="People Connect HR" className="w-full h-full object-contain p-0.5" />
               </motion.div>
-              <span className="text-xl font-bold text-stone-900 tracking-tight group-hover:text-brand-800 transition-colors">
-                People Connect HR
-              </span>
             </Link>
 
             {/* Desktop Menu */}

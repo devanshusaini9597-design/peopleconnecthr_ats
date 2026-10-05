@@ -8,7 +8,7 @@ const Job = require('../models/Job');
 const User = require('../models/User');
 const Organization = require('../models/Organization');
 const { verifyToken } = require('../middleware/authMiddleware');
-const { requireRecruiterOrAbove, checkPlanLimit } = require('../middleware/rbacMiddleware');
+const { requireRecruiterOrAbove, checkPlanLimit, checkOrgPlanLimit, planLimitExceededPayload } = require('../middleware/rbacMiddleware');
 const { jobListFilter, isFreelancer } = require('../utils/dataScope');
 const {
   openJobsSinceFilter,
@@ -224,7 +224,8 @@ router.get('/', verifyToken, async (req, res) => {
     const staffFields = isFreelancer(req.user) ? 'name role' : 'name email role';
     const jobs = await Job.find(query).setOptions(
       req.user.organizationId ? { _tenantId: req.user.organizationId } : {}
-    ).populate('hiringManager', staffFields).populate('createdBy', staffFields).sort({ createdAt: -1 });
+    ).populate('hiringManager', staffFields).populate('createdBy', staffFields)
+      .sort({ pinned: -1, pinnedAt: -1, createdAt: -1 });
     for (const job of jobs) {
       if (!job.isTemplate && !job.publicId) {
         await ensurePublicId(job);
@@ -439,11 +440,14 @@ router.post('/', verifyToken, requireRecruiterOrAbove, checkPlanLimit('jobs'), a
     await syncHiringManager(jobData, jobData.organizationId);
 
     if (!jobData.isTemplate) {
-      const useCustom = req.body.customJobCode === true && String(req.body.jobCode || '').trim();
+      const rawCode = String(req.body.jobCode || '').trim();
+      if (!rawCode) {
+        return res.status(400).json({ message: 'Job ID is required' });
+      }
       jobData.jobCode = await resolveJobCodeForCreate(
         jobData.organizationId,
-        useCustom ? req.body.jobCode : '',
-        { forceAuto: !useCustom }
+        rawCode,
+        { forceAuto: false }
       );
       jobData.publicId = await allocatePublicId();
     } else {
@@ -475,6 +479,8 @@ router.post('/', verifyToken, requireRecruiterOrAbove, checkPlanLimit('jobs'), a
     eventBus.emit(eventTypes.JOB_CREATED, {
       organizationId: req.user.organizationId,
       userId: req.user.id,
+      resourceType: 'job',
+      resourceId: newJob._id,
       jobId: newJob._id,
       title: newJob.title,
     });
@@ -529,16 +535,31 @@ router.put('/:id', verifyToken, requireRecruiterOrAbove, async (req, res) => {
       return res.status(400).json({ message: 'Select an industry/tag before publishing this job.' });
     }
 
+    if (updates.pinned !== undefined) {
+      updates.pinned = updates.pinned === true || updates.pinned === 'true';
+      updates.pinnedAt = updates.pinned ? new Date() : null;
+    }
+
     if (jobCodeInput !== undefined && !existing.isTemplate) {
       const trimmed = String(jobCodeInput || '').trim();
-      if (trimmed) {
-        const orgId = scope.organizationId || req.user.organizationId;
-        updates.jobCode = await assertJobCodeUnique(orgId, trimmed, req.params.id);
+      if (!trimmed) {
+        return res.status(400).json({ message: 'Job ID is required' });
       }
+      const orgId = scope.organizationId || req.user.organizationId;
+      updates.jobCode = await assertJobCodeUnique(orgId, trimmed, req.params.id);
     }
 
     const becomingOpen = isNewlyOpenTransition(existing.status, updates.status || existing.status);
     if (becomingOpen && !existing.isTemplate) {
+      // Publishing a draft/held job to Open consumes a job slot — enforce the plan ceiling
+      // here too (the POST / create path is already gated, this covers draft→open).
+      const orgForLimit = await Organization.findById(req.user.organizationId).select('plan usageLimits');
+      if (orgForLimit) {
+        const limitCheck = await checkOrgPlanLimit(orgForLimit, 'jobs');
+        if (!limitCheck.ok) {
+          return res.status(403).json(planLimitExceededPayload('jobs', limitCheck.current, limitCheck.limit, orgForLimit.plan));
+        }
+      }
       updates.openedAt = new Date();
       updates.seenBy = [];
       // Mark Open ⇒ publish to careers so share links work immediately

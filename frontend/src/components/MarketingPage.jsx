@@ -7,15 +7,16 @@ const PAGES = {
     title: 'Pricing that scales with hiring',
     subtitle: 'Start free. Upgrade when your team is ready for enterprise controls.',
     body: (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-10">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-10">
         {[
-          { name: 'Starter', price: '$29', items: ['Core ATS', 'Pipeline', 'MFA', 'Basic analytics'] },
-          { name: 'Professional', price: '$99', items: ['AI tools', 'Inbox & sequences', 'Skills taxonomy', 'Assessments', 'BYOK email/calendar'] },
-          { name: 'Enterprise', price: 'Custom', items: ['SSO + SCIM', 'DEI suite', 'IP allowlist', 'SIEM / DWH', 'Dedicated deployment'] }
+          { name: 'Free Trial', price: 'Free', items: ['21 days', '5 users (roles the owner assigns)', '15 job postings', '2,000 emails', 'No backup'] },
+          { name: 'Starter', price: '₹2,499', items: ['Monthly', '3 users (owner plus 2)', '30 job postings', '6,000 emails', 'No backup', 'No old data import'] },
+          { name: 'Premium', price: '₹8,499', items: ['Monthly, or 25% off yearly', '10 users (owner plus 9)', '50 job postings', '10,000 emails', 'Backup included', 'Old data import'] },
+          { name: 'Custom', price: 'Custom', items: ['Users, jobs, and mail quoted with sales', 'Backup and import as scoped', 'Dedicated commercial terms'] }
         ].map((p) => (
-          <div key={p.name} className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+          <div key={p.name} className="rounded-3xl border border-stone-200 bg-white p-6 shadow-xl shadow-stone-200/50">
             <h3 className="text-lg font-bold text-stone-900">{p.name}</h3>
-            <p className="text-3xl font-bold text-brand-700 mt-2">{p.price}<span className="text-sm font-medium text-stone-400">/mo</span></p>
+            <p className="text-3xl font-bold text-brand-700 mt-2">{p.price}{p.price.startsWith('₹') ? <span className="text-sm font-medium text-stone-400">/month + 18% GST</span> : null}</p>
             <ul className="mt-4 space-y-2">
               {p.items.map((i) => (
                 <li key={i} className="flex items-start gap-2 text-sm text-stone-600">
@@ -31,18 +32,18 @@ const PAGES = {
   },
   features: {
     title: 'Everything modern recruiting teams need',
-    subtitle: 'Pipeline, AI screening, assessments, DEI, and enterprise security — in one SaaS ATS.',
+    subtitle: 'Jobs, candidates, interviews, a careers page, and mail — limited by the plan on the workspace.',
     body: (
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-10">
         {[
-          ['Unified inbox', 'Email, SMS, WhatsApp in one thread'],
-          ['Skills taxonomy', 'Structured match scoring'],
-          ['Proctored assessments', 'Integrity risk scoring'],
-          ['Sequences', 'Multi-step nurture automation'],
-          ['DEI controls', 'Blind screening & slate alerts'],
-          ['BYOK integrations', 'Bring your own keys for AI, SMS, storage']
+          ['Pipeline', 'Stages on each job. Custom names on Professional and Enterprise.'],
+          ['Careers page', 'Public openings candidates can search and apply to.'],
+          ['Plan mail', 'Included. Replies go to your address. Usage counts this month.'],
+          ['Reports', 'Hiring and email delivery for this organization.'],
+          ['Billing', 'Live seats, jobs, candidates, and emails left on the plan.'],
+          ['Enterprise domain', 'Send as your domain, and host the careers site on your hostname.']
         ].map(([t, d]) => (
-          <div key={t} className="rounded-2xl border border-stone-200 bg-white p-5">
+          <div key={t} className="rounded-3xl border border-stone-200 bg-white p-6 shadow-lg shadow-stone-200/40">
             <h3 className="font-bold text-stone-900">{t}</h3>
             <p className="text-sm text-stone-500 mt-1">{d}</p>
           </div>
@@ -52,22 +53,22 @@ const PAGES = {
   },
   enterprise: {
     title: 'Built for enterprise IT & HR',
-    subtitle: 'SSO, SCIM, audit logs, retention, legal hold, and dedicated deployment options.',
+    subtitle: 'Unlimited usage, SSO, SCIM, a verified sending domain, and a careers hostname.',
     icon: Building2
   },
   security: {
     title: 'Security & compliance first',
-    subtitle: 'MFA, IP allowlists, encrypted BYOK credentials, GDPR export/erase, and audit trails.',
+    subtitle: 'Separate workspaces, role-based access, MFA, and an audit log on Professional and Enterprise.',
     icon: Shield
   },
   integrations: {
-    title: 'Plug-and-play BYOK integrations',
-    subtitle: 'Connect your own OpenAI, Twilio, DocuSign, Checkr, Slack, calendars, CRM, and HRIS.',
+    title: 'What connects to the workspace',
+    subtitle: 'Platform mail is included. Calendar and Slack follow the plan. Enterprise adds SSO, SCIM, and your own sending domain.',
     icon: Plug
   },
   'ai-automation': {
     title: 'AI that assists — you stay in control',
-    subtitle: 'JD generation, semantic search, resume scoring, interview summaries — with your keys.',
+    subtitle: 'Resume help and drafting are available where the plan includes them. Mail and pipeline do not depend on them.',
     icon: Sparkles
   },
   faq: {
@@ -76,9 +77,9 @@ const PAGES = {
     body: (
       <div className="mt-10 space-y-4 max-w-2xl">
         {[
-          ['Do you support SSO?', 'Yes — SAML/OIDC on Enterprise, plus SCIM provisioning.'],
-          ['Is messaging BYOK?', 'Yes. Bring Twilio/WhatsApp and SMTP/SendGrid credentials per org.'],
-          ['Can we self-host AI?', 'Use Azure OpenAI or Anthropic via BYOK adapters — no vendor lock-in on model keys.']
+          ['Do you support SSO?', 'Yes. SSO and SCIM are on the Enterprise plan.'],
+          ['How does email work?', 'Mail is included with the plan. You set the reply-to address. Enterprise can verify a sending domain. You do not set up a mail vendor.'],
+          ['Where do I see limits?', 'The dashboard and Billing show seats, open jobs, candidates, and emails used this month.']
         ].map(([q, a]) => (
           <div key={q} className="rounded-2xl border border-stone-200 bg-white p-5">
             <h3 className="font-semibold text-stone-900">{q}</h3>
@@ -109,8 +110,8 @@ const PAGES = {
     body: <p className="mt-8 text-sm text-stone-600 max-w-2xl leading-relaxed">By using SkillNix you agree to lawful use of the platform for recruiting. You are responsible for candidate consent where required by local law (including messaging). Enterprise customers may execute a separate MSA/DPA.</p>
   },
   customers: {
-    title: 'Trusted by growing hiring teams',
-    subtitle: 'From startups to multi-brand agencies.',
+    title: 'One workspace per organization',
+    subtitle: 'In-house teams, agencies, and enterprise orgs use the same product. The plan changes the ceilings.',
     body: (
       <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-4">
         {['Faster shortlists', 'Cleaner pipelines', 'Audit-ready hiring'].map((t) => (
@@ -138,7 +139,7 @@ export default function MarketingPage() {
     <div className="min-h-dvh bg-gradient-to-b from-brand-50 via-white to-stone-50 overflow-x-hidden">
       <header className="border-b border-stone-200/80 bg-white/80 backdrop-blur sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <Link to="/" className="font-bold text-brand-800 tracking-tight">SkillNix</Link>
+          <Link to="/" className="font-bold text-stone-900 tracking-tight">People Connect HR</Link>
           <nav className="hidden sm:flex items-center gap-4 text-sm text-stone-600">
             {nav.map(([to, label]) => <Link key={to} to={to}>{label}</Link>)}
           </nav>

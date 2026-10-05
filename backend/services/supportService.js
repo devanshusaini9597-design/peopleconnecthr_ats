@@ -25,7 +25,8 @@ const STATUS_LABELS = {
   resolved: 'Resolved',
 };
 
-const SUPPORT_INBOX = 'support@skillnixrecruitment.com';
+const PRODUCT_NAME = 'People Connect HR';
+const SUPPORT_INBOX = 'info@peopleconnecthr.com';
 const DAILY_LIMIT = 8;
 const COMPANY_DESK_ROLES = new Set([
   'owner',
@@ -44,12 +45,18 @@ function httpError(message, statusCode = 400) {
 
 function teamInbox() {
   const raw = process.env.SUPPORT_TEAM_EMAIL || SUPPORT_INBOX;
-  const list = String(raw)
+  return [...new Set(String(raw)
     .split(',')
     .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-  if (!list.includes(SUPPORT_INBOX)) list.push(SUPPORT_INBOX);
-  return [...new Set(list)];
+    .filter(Boolean))];
+}
+
+function primarySupportInbox() {
+  return teamInbox()[0] || SUPPORT_INBOX;
+}
+
+function supportDeskName(brand) {
+  return `${brand?.name || PRODUCT_NAME} Support`;
 }
 
 function appBaseUrl() {
@@ -62,7 +69,7 @@ function makeTicketRef() {
   const m = String(now.getUTCMonth() + 1).padStart(2, '0');
   const d = String(now.getUTCDate()).padStart(2, '0');
   const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `SN-${y}${m}${d}-${rand}`;
+  return `PC-${y}${m}${d}-${rand}`;
 }
 
 function canAccessCompanyDesk(user) {
@@ -98,7 +105,7 @@ async function createTicket(user, body = {}) {
     createdAt: { $gte: startOfDay },
   });
   if (todayCount >= DAILY_LIMIT) {
-    throw httpError(`Daily support limit reached. Email ${SUPPORT_INBOX} if this is urgent.`, 429);
+    throw httpError(`Daily support limit reached. Email ${primarySupportInbox()} if this is urgent.`, 429);
   }
 
   let orgName = '';
@@ -315,7 +322,7 @@ async function sendSupportMail(to, subject, html, text, options = {}) {
     system: true,
     organizationId: undefined,
     userId: undefined,
-    senderName: options.senderName || 'Skillnix Support',
+    senderName: options.senderName || `${PRODUCT_NAME} Support`,
   };
   await sendEmail(to, subject, html, text, systemOpts);
 }
@@ -337,7 +344,7 @@ async function createFreelancerSupportNotification(ticket, { title, message, sen
 }
 
 function signatureBlock(brand) {
-  const org = escapeHtml(brand.name || 'Skillnix');
+  const org = escapeHtml(brand.name || PRODUCT_NAME);
   return `
     <p style="margin:28px 0 0 0;color:#64748b;font-size:13px;line-height:1.6;">
       Kind regards,<br/>
@@ -399,9 +406,9 @@ async function notifyTeamNewTicket(ticket) {
       `Open desk: ${deskUrl}`,
     ].join('\n'),
     {
-      senderName: 'Skillnix Support',
-      senderEmail: SUPPORT_INBOX,
-      replyToEmail: ticket.userEmail || SUPPORT_INBOX,
+      senderName: supportDeskName(brand),
+      senderEmail: primarySupportInbox(),
+      replyToEmail: ticket.userEmail || primarySupportInbox(),
       cc: inbox.slice(1).join(',') || undefined,
     }
   );
@@ -438,7 +445,7 @@ async function notifySubmitterConfirmation(ticket) {
         ${brandButtonHtml({ href: ticketUrl, label: 'View ticket in ATS', brandColor: brand.brandColor })}
       </div>
       <p style="margin:18px 0 0 0;color:#64748b;font-size:13px;line-height:1.6;">
-        Prefer email? Write to <a href="mailto:${SUPPORT_INBOX}" style="color:#0f766e;font-weight:600;">${SUPPORT_INBOX}</a> and include ${escapeHtml(ticket.ticketRef)}.
+        Prefer email? Write to <a href="mailto:${primarySupportInbox()}" style="color:#0f766e;font-weight:600;">${primarySupportInbox()}</a> and include ${escapeHtml(ticket.ticketRef)}.
       </p>
       ${signatureBlock(brand)}`,
   });
@@ -456,15 +463,15 @@ async function notifySubmitterConfirmation(ticket) {
       `Status: ${STATUS_LABELS[ticket.status] || 'Open'}`,
       '',
       `View in ATS: ${ticketUrl}`,
-      `Or email ${SUPPORT_INBOX} with your ticket ID.`,
+      `Or email ${primarySupportInbox()} with your ticket ID.`,
       '',
       'Kind regards,',
-      `${brand.name || 'Skillnix'} Support`,
+      supportDeskName(brand),
     ].join('\n'),
     {
-      senderName: `${brand.name || 'Skillnix'} Support`,
-      senderEmail: SUPPORT_INBOX,
-      replyToEmail: SUPPORT_INBOX,
+      senderName: supportDeskName(brand),
+      senderEmail: primarySupportInbox(),
+      replyToEmail: primarySupportInbox(),
     }
   );
   return true;
@@ -505,9 +512,9 @@ async function notifyTeamFreelancerFollowUp(ticket, reply) {
     html,
     `${ticket.ticketRef} · Follow-up\n\n${reply.body}\n\nFrom: ${reply.authorName || ''} <${reply.authorEmail || ''}>\nDesk: ${deskUrl}`,
     {
-      senderName: 'Skillnix Support',
-      senderEmail: SUPPORT_INBOX,
-      replyToEmail: reply.authorEmail || ticket.userEmail || SUPPORT_INBOX,
+      senderName: supportDeskName(brand),
+      senderEmail: primarySupportInbox(),
+      replyToEmail: reply.authorEmail || ticket.userEmail || primarySupportInbox(),
       cc: inbox.slice(1).join(',') || undefined,
     }
   );
@@ -560,12 +567,12 @@ async function notifyFreelancerSupportReply(ticket, reply, actor) {
       `Open in ATS: ${ticketUrl}`,
       '',
       'Kind regards,',
-      `${brand.name || 'Skillnix'} Support`,
+      supportDeskName(brand),
     ].join('\n'),
     {
-      senderName: `${brand.name || 'Skillnix'} Support`,
-      senderEmail: SUPPORT_INBOX,
-      replyToEmail: actor?.email || SUPPORT_INBOX,
+      senderName: supportDeskName(brand),
+      senderEmail: primarySupportInbox(),
+      replyToEmail: actor?.email || primarySupportInbox(),
     }
   );
 }
@@ -612,12 +619,12 @@ async function notifyFreelancerStatusChange(ticket, previousStatus, actor) {
       `View in ATS: ${ticketUrl}`,
       '',
       'Kind regards,',
-      `${brand.name || 'Skillnix'} Support`,
+      supportDeskName(brand),
     ].join('\n'),
     {
-      senderName: `${brand.name || 'Skillnix'} Support`,
-      senderEmail: SUPPORT_INBOX,
-      replyToEmail: SUPPORT_INBOX,
+      senderName: supportDeskName(brand),
+      senderEmail: primarySupportInbox(),
+      replyToEmail: primarySupportInbox(),
     }
   );
 }

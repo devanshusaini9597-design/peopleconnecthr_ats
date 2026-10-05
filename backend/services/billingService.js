@@ -21,6 +21,10 @@ async function getBillingStatus(organizationId) {
   const org = await Organization.findById(organizationId);
   const stripeSub = await stripeService.getSubscriptionSummary(org);
   const entitlements = getEntitlements(org.plan);
+  const { getPlanUsage } = require('./planUsageService');
+  const planUsage = await getPlanUsage(organizationId);
+  const byKey = Object.fromEntries(planUsage.meters.map((row) => [row.key, row]));
+  const ceiling = (row) => (row?.unlimited ? -1 : row?.limit ?? 0);
 
   let trialDaysLeft = null;
   if (org.plan === 'free_trial' && org.planExpiresAt) {
@@ -31,8 +35,19 @@ async function getBillingStatus(organizationId) {
     plan: org.plan,
     planExpiresAt: org.planExpiresAt,
     trialDaysLeft,
-    usage: org.usageCurrent,
-    limits: org.usageLimits,
+    usage: {
+      users: byKey.users?.used || 0,
+      jobs: byKey.jobs?.used || 0,
+      candidates: byKey.candidates?.used || 0,
+      emailsSent: byKey.emails?.used || 0,
+    },
+    limits: {
+      maxUsers: ceiling(byKey.users),
+      maxJobs: ceiling(byKey.jobs),
+      maxCandidates: ceiling(byKey.candidates),
+      maxEmailsPerMonth: ceiling(byKey.emails),
+    },
+    planUsage,
     planDefaultLimits: getLimitsForPlan(org.plan),
     entitlementCount: entitlements.length,
     stripeConfigured: stripeService.isStripeConfigured(),
@@ -49,10 +64,10 @@ async function getBillingStatus(organizationId) {
 /** IDs MUST match Organization.plan enum (free_trial/starter/professional/enterprise). */
 function getPlansCatalog() {
   const catalog = [
-    { id: 'free_trial', name: 'Free Trial', price: 0, durationDays: 14 },
-    { id: 'starter', name: 'Starter', price: 29, checkoutEnabled: !!stripeService.PRICE_BY_PLAN.starter },
-    { id: 'professional', name: 'Professional', price: 99, checkoutEnabled: !!stripeService.PRICE_BY_PLAN.professional },
-    { id: 'enterprise', name: 'Enterprise', price: null, custom: true, checkoutEnabled: false },
+    { id: 'free_trial', name: 'Free Trial', price: 0, durationDays: 21 },
+    { id: 'starter', name: 'Starter', price: 2499, currency: 'INR', checkoutEnabled: !!stripeService.PRICE_BY_PLAN.starter },
+    { id: 'professional', name: 'Premium', price: 8499, currency: 'INR', yearlyDiscountPct: 25, checkoutEnabled: !!stripeService.PRICE_BY_PLAN.professional },
+    { id: 'enterprise', name: 'Custom', price: null, custom: true, checkoutEnabled: false },
   ];
 
   return catalog.map((p) => ({

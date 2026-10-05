@@ -8,8 +8,8 @@
  * How it works:
  * - Each feature key maps to the minimum plan tier required to use it.
  * - `free_trial` is treated as Professional for feature checks (PLG trial).
- * - Enterprise is granted per-org via Organization.plan (ENTERPRISE_ORG_DOMAINS
- *   allowlist: skillnix.com, peopleconnecthr.com, devlumiq.com), not by aliasing every plan.
+ * - Enterprise is granted per-org via Organization.plan (optional ENTERPRISE_ORG_DOMAINS
+ *   env for product-operator auto-upgrade), not by aliasing every plan.
  * - To move a feature between tiers later, change one line here — no need to
  *   touch route files or frontend components.
  *
@@ -30,9 +30,9 @@ const PLAN_ALIASES = {
 };
 
 /**
- * Unfinished product surfaces. Kept in the codebase for Skillnix / vendor orgs,
- * hidden from demo tenants and paying SaaS customers until they are ready.
- * Removing these keys (or deleting the pages) would hide them for Skillnix too.
+ * Unfinished product surfaces. Kept in the repo. Hidden from client tenants
+ * until enabled per Organization from the platform dashboard (or a product-operator org).
+ * Never shown on demo workspaces.
  */
 const INTERNAL_PREVIEW_FEATURES = [
   'analytics.dei',
@@ -51,8 +51,11 @@ const FEATURES = {
   // Core recruiting
   'dashboard.basic': 'starter',
   'careers.customDomain': 'enterprise',
+  'mail.sendingDomain': 'enterprise',
   'jobs.customPipeline': 'professional',
   'jobs.bulkImport': 'professional',
+  'data.backup': 'professional',
+  'data.oldImport': 'professional',
   'candidates.advancedSearch': 'professional',
   'candidates.savedSearches': 'professional',
 
@@ -173,19 +176,23 @@ const planHasFeature = (plan, featureKey) => {
     // silently allowing access to something that was never registered.
     return false;
   }
+  if (plan === 'free_trial' && (featureKey === 'data.backup' || featureKey === 'data.oldImport')) {
+    return false;
+  }
   return rankOf(plan) >= rankOf(requiredPlan);
 };
 
 const isInternalPreviewFeature = (featureKey) => INTERNAL_PREVIEW_SET.has(featureKey);
 
 /**
- * Plan check plus internal-preview gate.
- * @param {string} plan
- * @param {string} featureKey
- * @param {{ internalPreviewAccess?: boolean }} [ctx]
+ * Plan check plus unfinished-module gate (clients off unless org flag / operator).
  */
 const canUseFeature = (plan, featureKey, ctx = {}) => {
-  if (isInternalPreviewFeature(featureKey) && !ctx.internalPreviewAccess) return false;
+  if (isInternalPreviewFeature(featureKey)) {
+    if (ctx.isDemo) return false;
+    const modules = Array.isArray(ctx.previewModules) ? ctx.previewModules : [];
+    if (!ctx.internalPreviewAccess && !modules.includes(featureKey)) return false;
+  }
   return planHasFeature(plan, featureKey);
 };
 

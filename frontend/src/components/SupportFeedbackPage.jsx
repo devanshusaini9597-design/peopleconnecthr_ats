@@ -41,7 +41,17 @@ const emptyForm = { category: 'query', subject: '', message: '' };
 
 export default function SupportFeedbackPage() {
   const toast = useToast();
-  const { user } = useAuth();
+  const { user, organization } = useAuth();
+  const supportEmail = (() => {
+    const raw = String(organization?.domain || organization?.allowedDomains?.[0] || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/^www\./, '')
+      .split('/')[0];
+    if (raw.includes('.')) return `support@${raw}`;
+    return 'info@peopleconnecthr.com';
+  })();
   const [form, setForm] = useState(emptyForm);
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -106,7 +116,7 @@ export default function SupportFeedbackPage() {
       if (!res.ok) throw new Error(data.message || 'Could not send');
       const ref = data.data?.ticketRef || 'ticket opened';
       if (data.data?.teamEmailSent === false) {
-        toast.error(`Ticket ${ref} saved, but team email failed — email support@skillnixrecruitment.com with this ID`);
+        toast.error(`Ticket ${ref} saved, but team email failed — email ${supportEmail} with this ID`);
       } else if (data.data?.confirmationEmailSent === false) {
         toast.success(`Ticket ${ref} submitted. Confirmation email failed — check spam or email support directly.`);
       } else {
@@ -478,8 +488,8 @@ export default function SupportFeedbackPage() {
 
       <p className="text-[12px] text-stone-400 text-center sm:text-left leading-relaxed">
         Prefer email?{' '}
-        <a href="mailto:support@skillnixrecruitment.com" className="text-brand-700 font-semibold inline-flex items-center gap-1 hover:underline break-all">
-          <Mail size={12} className="shrink-0" /> support@skillnixrecruitment.com
+        <a href={`mailto:${supportEmail}`} className="text-brand-700 font-semibold inline-flex items-center gap-1 hover:underline break-all">
+          <Mail size={12} className="shrink-0" /> {supportEmail}
         </a>
         {' '}· include your ticket ID for fastest routing.
       </p>

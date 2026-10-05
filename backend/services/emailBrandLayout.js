@@ -100,14 +100,9 @@ function skillnixEmailLogoUrl() {
   return site ? `${site}/skillnix-logo-email.png` : '';
 }
 
-function isPlatformWordmarkOrg(org) {
-  const name = String(org?.name || '');
-  const domain = String(org?.domain || '');
-  const logo = String(org?.logo || '');
-  return /skillnix/i.test(name)
-    || /skillnix/i.test(domain)
-    || /skillnix-logo/i.test(logo)
-    || /peopleconnecthr/i.test(domain);
+function productLogoUrl() {
+  const site = publicSiteBase();
+  return site ? `${site}/logo.png` : '';
 }
 
 function hostedHttpLogo(logo) {
@@ -153,7 +148,7 @@ function envSocial(key) {
 
 function platformSocialLinks() {
   return {
-    linkedin: envSocial('linkedin') || 'https://www.linkedin.com/company/skillnix-recruitment-services',
+    linkedin: envSocial('linkedin'),
     facebook: envSocial('facebook'),
     instagram: envSocial('instagram'),
     twitter: envSocial('twitter'),
@@ -202,8 +197,8 @@ function hostFromUrl(url) {
 }
 
 /**
- * Company identity for the mailbox that is actually sending.
- * noreply@peopleconnecthr.com → People Connect HR, etc.
+ * Mailbox identity when we only know the From address (no Organization).
+ * Product domain → People Connect HR. Any other domain is a tenant mailbox.
  */
 function identityForFromEmail(fromEmailOrDomain) {
   const domain = emailDomainOf(fromEmailOrDomain);
@@ -214,58 +209,18 @@ function identityForFromEmail(fromEmailOrDomain) {
   const supportFallback = String(process.env.SUPPORT_TEAM_EMAIL || '')
     .split(',')[0]
     .trim();
-  const skillnixLogo = withLogoCacheBust(skillnixEmailLogoUrl());
+  const productLogo = productLogoUrl();
 
-  const known = {
-    'peopleconnecthr.com': {
-      name: 'People Connect HR',
-      websiteUrl: site || 'https://www.peopleconnecthr.com',
-      supportEmail: supportFallback || 'contact@peopleconnecthr.com',
-      brandColor: '#0d9488',
-      logoUrl: skillnixLogo,
-      wordmark: true,
-      socialLinks: platformSocialLinks(),
-    },
-    'skillnixrecruitment.com': {
-      name: 'Skillnix Recruitment Services',
-      websiteUrl: 'https://skillnixrecruitment.com',
-      supportEmail: supportFallback || 'contact@skillnixrecruitment.com',
-      brandColor: '#0f766e',
-      logoUrl: skillnixLogo,
-      wordmark: true,
-      socialLinks: platformSocialLinks(),
-      companyAddress:
-        process.env.SKILLNIX_COMPANY_ADDRESS ||
-        'Skillnix Recruitment Services Private Limited | Gurudwara Gali near Railway crossing, Shyampur, Rishikesh',
-    },
-    'skillnix.com': {
-      name: 'Skillnix',
-      websiteUrl: 'https://skillnixrecruitment.com',
-      supportEmail: supportFallback || 'contact@skillnix.com',
-      brandColor: '#0f766e',
-      logoUrl: skillnixLogo,
-      wordmark: true,
-      socialLinks: platformSocialLinks(),
-      companyAddress:
-        process.env.SKILLNIX_COMPANY_ADDRESS ||
-        'Skillnix Recruitment Services Private Limited | Gurudwara Gali near Railway crossing, Shyampur, Rishikesh',
-    },
-    'devlumiq.com': {
-      name: 'Devlumiq',
-      websiteUrl: site || 'https://www.peopleconnecthr.com',
-      supportEmail: supportFallback || 'noreply@devlumiq.com',
-      brandColor: '#5b21b6',
-      logoUrl: skillnixLogo,
-      wordmark: true,
-      socialLinks: platformSocialLinks(),
-    },
-  };
-
-  const preset = known[domain];
-  if (preset) {
+  if (domain === 'peopleconnecthr.com') {
     return {
-      ...preset,
-      name: envMailboxBrandName(domain) || preset.name,
+      name: envMailboxBrandName(domain) || 'People Connect HR',
+      websiteUrl: site || 'https://www.peopleconnecthr.com',
+      supportEmail: supportFallback || 'info@peopleconnecthr.com',
+      brandColor: '#0d9488',
+      logoUrl: productLogo,
+      wordmark: false,
+      socialLinks: platformSocialLinks(),
+      companyAddress: '',
       fromEmail,
       domain,
       known: true,
@@ -273,16 +228,17 @@ function identityForFromEmail(fromEmailOrDomain) {
   }
 
   return {
-    name: envMailboxBrandName(domain) || titleFromDomain(domain) || 'Skillnix Recruitment',
-    websiteUrl: site || 'https://www.peopleconnecthr.com',
-    supportEmail: supportFallback || (domain ? `contact@${domain}` : ''),
-    brandColor: '#5b21b6',
-    logoUrl: skillnixLogo,
-    wordmark: true,
+    name: envMailboxBrandName(domain) || titleFromDomain(domain) || 'People Connect HR',
+    websiteUrl: domain ? `https://${domain}` : (site || 'https://www.peopleconnecthr.com'),
+    supportEmail: supportFallback || (domain ? `info@${domain}` : 'info@peopleconnecthr.com'),
+    brandColor: '#0d9488',
+    logoUrl: '',
+    wordmark: false,
     fromEmail,
     domain,
     known: false,
     socialLinks: {},
+    companyAddress: '',
   };
 }
 
@@ -309,30 +265,26 @@ async function loadOrgEmailBrand(organizationId) {
   if (!organizationId) return fallback;
   try {
     const org = await Organization.findById(organizationId)
-      .select('name domain logo atsSettings.brandColor atsSettings.whiteLabel atsSettings.companyBrand updatedAt')
+      .select('name domain logo atsSettings.brandColor atsSettings.whiteLabel atsSettings.companyBrand atsSettings.internalPreview updatedAt')
       .lean();
     if (!org) return fallback;
 
-    const social = normalizeSocialLinks(org.atsSettings?.companyBrand?.socialLinks || {});
+    const companyBrand = org.atsSettings?.companyBrand || {};
+    const social = normalizeSocialLinks(companyBrand.socialLinks || {});
     const whiteLabelName = String(org.atsSettings?.whiteLabel?.emailFromName || '').trim();
     const name = whiteLabelName || String(org.name || '').trim() || fallback.name;
     const brandColor = String(org.atsSettings?.brandColor || '').trim() || fallback.brandColor;
     const orgDomain = emailDomainOf(org.domain);
-    const platformForOrg = orgDomain ? identityForFromEmail(`noreply@${orgDomain}`) : null;
-    const knownPlatform = platformForOrg?.known ? platformForOrg : null;
 
     let logoUrl = '';
     let wordmark = false;
-    if (isPlatformWordmarkOrg(org) || isWordmarkLogo(org.logo)) {
+    if (isWordmarkLogo(org.logo)) {
       logoUrl = skillnixEmailLogoUrl();
       wordmark = true;
     } else {
       logoUrl = hostedHttpLogo(org.logo);
       if (!logoUrl && org.logo) {
         logoUrl = publicOrgLogoUrl(org._id, org.updatedAt || Date.now());
-      }
-      if (!logoUrl) {
-        logoUrl = knownPlatform?.logoUrl || '';
       }
       wordmark = isWordmarkLogo(logoUrl);
     }
@@ -342,12 +294,14 @@ async function loadOrgEmailBrand(organizationId) {
       ? (/^https?:\/\//i.test(websiteRaw) ? websiteRaw : `https://${websiteRaw}`)
       : orgDomain
         ? `https://${orgDomain}`
-        : (knownPlatform?.websiteUrl || fallback.websiteUrl);
+        : fallback.websiteUrl;
 
-    // Always prefer org-domain noreply for From/Reply-To identity (never the platform mailbox fallback).
     const orgFromEmail = orgDomain
       ? `noreply@${orgDomain}`
-      : (knownPlatform?.fromEmail || fallback.fromEmail || '');
+      : (fallback.fromEmail || '');
+
+    const brandSupport = String(companyBrand.supportEmail || '').trim();
+    const brandAddress = String(companyBrand.companyAddress || '').trim();
 
     return {
       name,
@@ -357,20 +311,66 @@ async function loadOrgEmailBrand(organizationId) {
       wordmark,
       fromEmail: orgFromEmail,
       websiteUrl,
-      supportEmail: knownPlatform?.supportEmail || fallback.supportEmail || '',
-      companyAddress: knownPlatform?.companyAddress || '',
+      supportEmail: brandSupport || (orgDomain ? `contact@${orgDomain}` : fallback.supportEmail || ''),
+      companyAddress: brandAddress,
       socialLinks: {
-        ...(hasAnySocial(social)
-          ? social
-          : knownPlatform
-            ? platformSocialLinks()
-            : fallback.socialLinks || {}),
+        ...social,
         website: websiteUrl,
       },
     };
   } catch (_) {
     return fallback;
   }
+}
+
+function productMarketingBrand() {
+  const site = publicSiteBase() || 'https://www.peopleconnecthr.com';
+  return {
+    name: 'People Connect HR',
+    slug: '',
+    logoUrl: `${site}/logo.png`,
+    websiteUrl: site,
+    supportEmail: String(process.env.SUPPORT_TEAM_EMAIL || 'info@peopleconnecthr.com').split(',')[0].trim(),
+    companyAddress: '',
+    brandColor: '#0d9488',
+    socialLinks: platformSocialLinks(),
+  };
+}
+
+/**
+ * Public subscribe/unsubscribe chrome: explicit org query, else product brand.
+ * Set PUBLIC_MARKETING_ORG_SLUG to pin unscoped /subscribe to a tenant.
+ */
+async function resolvePublicMarketingBrand({ orgSlug, orgId } = {}) {
+  const slug = String(orgSlug || '').trim().toLowerCase();
+  const id = String(orgId || '').trim();
+  let org = null;
+  try {
+    if (id && /^[a-fA-F0-9]{24}$/.test(id)) {
+      org = await Organization.findById(id).select('name slug').lean();
+    }
+    if (!org && slug) {
+      org = await Organization.findOne({ slug }).select('name slug').lean();
+    }
+    if (!org) {
+      const def = String(process.env.PUBLIC_MARKETING_ORG_SLUG || '').trim().toLowerCase();
+      if (def) org = await Organization.findOne({ slug: def }).select('name slug').lean();
+    }
+  } catch (_) {
+    org = null;
+  }
+  if (!org?._id) return productMarketingBrand();
+  const brand = await loadOrgEmailBrand(org._id);
+  return {
+    name: brand.name,
+    slug: org.slug || '',
+    logoUrl: brand.logoUrl || '',
+    websiteUrl: brand.websiteUrl || publicSiteBase(),
+    supportEmail: brand.supportEmail || '',
+    companyAddress: brand.companyAddress || '',
+    brandColor: brand.brandColor || '#0d9488',
+    socialLinks: brand.socialLinks || {},
+  };
 }
 
 /**
@@ -566,7 +566,7 @@ function wrapBrandedEmailHtml({
   publicLogo = false,
   logoMode = '',
 } = {}) {
-  const resolvedName = String(orgName || '').trim() || 'Skillnix Recruitment';
+  const resolvedName = String(orgName || '').trim() || 'People Connect HR';
   const brand = escapeHtml(resolvedName);
   const accent = /^#[0-9a-fA-F]{3,8}$/.test(String(brandColor || '').trim())
     ? String(brandColor).trim()
@@ -1154,6 +1154,7 @@ module.exports = {
   loadOrgEmailBrand,
   loadPlatformEmailBrand,
   loadSendingEmailBrand,
+  resolvePublicMarketingBrand,
   identityForFromEmail,
   wrapBrandedEmailHtml,
   brandButtonHtml,

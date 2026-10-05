@@ -3,16 +3,26 @@ import {
   LayoutDashboard, Calendar, Users, FileText, Plug, BarChart3,
   Lock, ShieldCheck, Server, Zap,
   Briefcase, CheckCircle2, Mail, MessageSquare, Webhook, FileSignature,
-  Building2, Award, Rocket, CreditCard,
+  Building2, Award, Rocket, CreditCard, Gift,
 } from 'lucide-react';
 
 /* ============================================================
    Data
    ============================================================ */
 
-export const LOGO_CLOUD = [
-  'TechCorp India', 'Global Solutions', 'Digital Innovations',
-  'Smart Systems', 'Future Tech', 'Enterprise Services',
+/** Screenshots live in frontend/public/landing. Replace the file; the frame keeps the layout. */
+export const PRODUCT_SHOTS = {
+  dashboard: { src: '/landing/dashboard.png', alt: 'People Connect HR dashboard', caption: 'Dashboard · plan usage', variant: 'dashboard' },
+  pipeline: { src: '/landing/pipeline.png', alt: 'Candidate pipeline', caption: 'Pipeline', variant: 'pipeline' },
+  mail: { src: '/landing/mail.png', alt: 'Email settings with plan allowance', caption: 'Mail on your plan', variant: 'mail' },
+  reports: { src: '/landing/reports.png', alt: 'Email and hiring reports', caption: 'Reports', variant: 'reports' },
+  billing: { src: '/landing/billing.png', alt: 'Billing and remaining plan capacity', caption: 'Billing', variant: 'billing' },
+  careers: { src: '/landing/careers.png', alt: 'Branded careers page', caption: 'Careers page', variant: 'careers' },
+};
+
+export const WORKSPACE_MODULES = [
+  'Dashboard', 'Jobs', 'Pipeline', 'Candidates', 'Interviews',
+  'Careers page', 'Mail', 'Reports', 'Billing',
 ];
 
 export const USE_CASES = [
@@ -39,10 +49,10 @@ export const USE_CASES = [
 ];
 
 export const GUARANTEES = [
-  { icon: CheckCircle2, title: '14-day free trial', desc: 'Full access to all features. No credit card required to start.' },
-  { icon: Server, title: '99.9% uptime guarantee', desc: 'Enterprise-grade reliability with 24/7 monitoring and support.' },
-  { icon: Lock, title: 'Data security & compliance', desc: 'GDPR compliant with encryption at rest and in transit. Your data is safe.' },
-  { icon: Award, title: 'Dedicated customer success', desc: 'Personal onboarding and ongoing support for Professional and Enterprise plans.' },
+  { icon: CheckCircle2, title: '21-day trial', desc: 'A new workspace starts on a 21-day trial. Seats, jobs, and email follow the trial plan. Backup is not included on trial.' },
+  { icon: Server, title: 'One organization, one database', desc: 'Each customer’s jobs, people, and mail stay inside their own workspace.' },
+  { icon: Lock, title: 'Roles and MFA', desc: 'Owners, admins, and recruiters see only what their role allows. MFA is available on the account.' },
+  { icon: Award, title: 'Enterprise controls', desc: 'SSO, SCIM, a verified sending domain, and a careers hostname are on the Enterprise plan.' },
 ];
 
 export const NAV_LINKS = [
@@ -59,10 +69,10 @@ export const DEMO_VIDEO = {
   title: 'People Connect HR Platform Overview',
   duration: '3:45',
   chapters: [
-    { t: '0:15', label: 'Dashboard & Pipeline', icon: LayoutDashboard },
-    { t: '1:20', label: 'AI Resume Parsing', icon: FileText },
-    { t: '2:10', label: 'Interview Scheduling', icon: Calendar },
-    { t: '2:55', label: 'Analytics & Reports', icon: BarChart3 },
+    { t: '0:15', label: 'Dashboard & plan usage', icon: LayoutDashboard },
+    { t: '1:20', label: 'Pipeline & candidates', icon: FileText },
+    { t: '2:10', label: 'Mail on your plan', icon: Mail },
+    { t: '2:55', label: 'Reports & billing', icon: BarChart3 },
   ],
 };
 
@@ -70,9 +80,9 @@ export const FAQ_CATEGORIES = ['All', 'Product', 'Billing', 'Security', 'Integra
 
 export const FAQS = [
   { cat: 'Product', q: 'What is People Connect HR?', a: 'People Connect HR is a modern Applicant Tracking System (ATS) that helps companies manage their entire hiring process - from job postings to candidate tracking, interview scheduling, and final hiring decisions.' },
-  { cat: 'Billing', q: 'Is there a free trial?', a: 'Yes, we offer a 14-day free trial on our Starter plan. No credit card is required to sign up. You can explore all features before committing.' },
-  { cat: 'Product', q: 'Can I import existing candidates?', a: 'Absolutely. You can import candidates via Excel/CSV files. Our AI-powered resume parsing automatically extracts skills, experience, and contact information, saving you hours of manual data entry.' },
-  { cat: 'Integrations', q: 'What integrations do you support?', a: 'We support email integration (Gmail, Outlook, Zoho), calendar sync (Google Calendar, Outlook), video conferencing tools, e-signature platforms, and job board postings. We also offer API access for custom integrations.' },
+  { cat: 'Billing', q: 'Is there a free trial?', a: 'Yes. A new workspace starts on a 21-day trial with 5 users, 15 job postings, and 2,000 emails. Backup is not included on trial. List prices exclude 18% GST.' },
+  { cat: 'Product', q: 'Can I import existing candidates?', a: 'Old data import is included on Premium and Custom. Starter does not include historical import. Imports count toward your plan limits.' },
+  { cat: 'Integrations', q: 'How does email work?', a: 'Mail is included with the plan. You set the sender name and the reply-to address. The platform sends the message. Enterprise workspaces can verify their own domain so mail can come from noreply@yourcompany.com. Customers do not configure a mail vendor.' },
   { cat: 'Security', q: 'How is my data secured?', a: 'Your data is protected with enterprise-grade encryption at rest and in transit. We offer two-factor authentication, role-based access control, and regular security audits. We comply with data protection regulations.' },
   { cat: 'Product', q: 'Can I customize the hiring pipeline?', a: 'Yes! You can create custom pipeline stages that match your exact hiring workflow. Whether you need simple screening or complex multi-stage interviews, People Connect HR adapts to your process.' },
   { cat: 'Product', q: 'Do you support skills assessments?', a: 'Yes — our Professional and Enterprise plans include built-in skills assessment tools. You can send customized tests to candidates and automatically score results to make better hiring decisions.' },
@@ -86,74 +96,53 @@ export const FAQ_CAT_ICON = {
 };
 
 export const INTEGRATIONS = [
-  { icon: <Mail size={20} />, label: 'Gmail & Outlook Integration' },
-  { icon: <Calendar size={20} />, label: 'Google Calendar Sync' },
-  { icon: <MessageSquare size={20} />, label: 'Slack & Teams Notifications' },
-  { icon: <FileSignature size={20} />, label: 'Digital Offer Letters' },
-  { icon: <Webhook size={20} />, label: 'Custom Webhooks & API' },
-  { icon: <Plug size={20} />, label: 'Job Board Integrations' },
+  { icon: <Mail size={20} />, label: 'Plan mail, reply-to, and sending domain' },
+  { icon: <Calendar size={20} />, label: 'Google and Outlook calendar' },
+  { icon: <MessageSquare size={20} />, label: 'Slack on Professional and above' },
+  { icon: <FileSignature size={20} />, label: 'Offer templates on Enterprise' },
+  { icon: <Webhook size={20} />, label: 'Webhooks and API' },
+  { icon: <ShieldCheck size={20} />, label: 'SSO and SCIM on Enterprise' },
 ];
 
 export const INDUSTRY_SOLUTIONS = [
   {
-    icon: Building2, title: 'Technology & IT',
-    desc: 'Streamline technical hiring with skills assessment integration and automated candidate screening for developers, engineers, and tech roles.',
-    roles: ['Software Engineers', 'DevOps Engineers', 'Data Scientists', 'Product Managers'],
+    icon: Building2, title: 'In-house recruiting',
+    desc: 'One company, one careers page, and a pipeline the hiring managers can follow. Seats and open jobs stay inside the plan.',
+    roles: ['HR teams', 'Hiring managers', 'Interviewers', 'Recruiters'],
   },
   {
-    icon: Users, title: 'Healthcare & Medical',
-    desc: 'Compliant hiring workflows for healthcare organizations with credential verification and specialized candidate tracking for medical professionals.',
-    roles: ['Doctors & Nurses', 'Medical Staff', 'Healthcare Administrators', 'Specialists'],
+    icon: Users, title: 'Recruitment agencies',
+    desc: 'Run many openings from one workspace, with a public careers page candidates can search and apply on.',
+    roles: ['Agency recruiters', 'Client openings', 'High-volume roles', 'Talent pools'],
   },
   {
-    icon: Briefcase, title: 'Finance & Banking',
-    desc: 'Secure hiring processes for financial institutions with background check integration and compliance-ready workflows for banking and fintech roles.',
-    roles: ['Financial Analysts', 'Investment Bankers', 'Risk Managers', 'Compliance Officers'],
+    icon: Briefcase, title: 'Growing teams',
+    desc: 'Professional adds custom pipelines, assessments, campaigns, calendar, and a higher monthly mail allowance.',
+    roles: ['Custom stages', 'Assessments', 'Campaigns', 'Audit log'],
   },
   {
-    icon: Award, title: 'Manufacturing & Industrial',
-    desc: 'High-volume hiring solutions for manufacturing with shift scheduling integration and skills-based candidate matching for industrial roles.',
-    roles: ['Production Managers', 'Quality Engineers', 'Plant Supervisors', 'Technicians'],
+    icon: Award, title: 'Enterprise workspaces',
+    desc: 'Unlimited seats, jobs, candidates, and email, plus SSO, SCIM, a verified sending domain, and a careers hostname.',
+    roles: ['SSO & SCIM', 'Own sending domain', 'Own careers domain', 'Approvals'],
   },
 ];
 
-export const COMPANY_STATS = [
-  { value: '500+', label: 'Companies Trust Us' },
-  { value: '50K+', label: 'Candidates Managed' },
-  { value: '10K+', label: 'Successful Hires' },
-  { value: '99.9%', label: 'Customer Satisfaction' },
-];
-
-export const TESTIMONIALS = [
-  {
-    quote: "People Connect HR transformed our hiring process completely. We went from manual tracking to a professional ATS in just one day. Our team productivity increased by 40%.",
-    name: 'Rajesh Kumar',
-    role: 'HR Director',
-    company: 'TechCorp India',
-  },
-  {
-    quote: "The AI resume parsing feature alone saved us hours of manual data entry. Now we can focus on interviewing the right candidates instead of paperwork.",
-    name: 'Priya Sharma',
-    role: 'Recruitment Manager',
-    company: 'Global Solutions',
-  },
-  {
-    quote: 'The calendar integration and automated scheduling eliminated all the back-and-forth emails. Our time-to-hire dropped from 45 days to just 18 days.',
-    name: 'Amit Patel',
-    role: 'CEO',
-    company: 'Digital Innovations',
-  },
+export const PLAN_CAPS = [
+  { plan: 'Free Trial', seats: '5', jobs: '15', candidates: '2,000', emails: '2,000' },
+  { plan: 'Starter', seats: '3', jobs: '30', candidates: '3,000', emails: '6,000 / month' },
+  { plan: 'Premium', seats: '10', jobs: '50', candidates: '10,000', emails: '10,000 / month' },
+  { plan: 'Custom', seats: 'Quoted', jobs: 'Quoted', candidates: 'Quoted', emails: 'Quoted' },
 ];
 
 export const FEATURES = [
   {
     icon: <LayoutDashboard className="w-6 h-6" />, title: 'Visual Pipeline Management',
-    desc: 'Drag-and-drop kanban boards give you complete visibility into your hiring process. Track candidates through every stage with color-coded status indicators.',
+    desc: 'Move candidates through the stages on each job. Professional and Enterprise can rename the pipeline to match how that team actually hires.',
     big: true,
   },
   {
     icon: <Calendar className="w-6 h-6" />, title: 'Automated Interview Scheduling',
-    desc: 'Sync with Google Calendar and Outlook to eliminate scheduling conflicts. Send automated reminders to reduce no-shows and streamline coordination.',
+    desc: 'Book interviews on the job, keep the time in the workspace timezone, and notify the team. Calendar sync is included on Professional and Enterprise.',
   },
   {
     icon: <Award className="w-6 h-6" />, title: 'Structured Evaluation Scorecards',
@@ -165,18 +154,18 @@ export const FEATURES = [
   },
   {
     icon: <Plug className="w-6 h-6" />, title: 'Seamless Integrations',
-    desc: 'Connect with your existing tools including email providers, calendar systems, video conferencing platforms, and job boards for a unified workflow.',
+    desc: 'Mail is included with the plan. Replies go to your company address. Enterprise workspaces can verify their own sending domain. Calendar, Slack, webhooks, and SSO connect where the plan allows.',
   },
   {
     icon: <BarChart3 className="w-6 h-6" />, title: 'Advanced Analytics & Reporting',
-    desc: 'Track key metrics like time-to-hire, source effectiveness, and pipeline conversion rates. Generate board-ready reports with one click.',
+    desc: 'See funnel, source, and delivery in the workspace. Email reports show what was sent this month against the plan, in the organization timezone.',
   },
 ];
 
 export const STEPS = [
-  { step: '01', title: 'Set Up Your Workspace', desc: 'Create your company profile, configure your hiring pipeline stages, and invite team members. Get started in under 30 minutes.' },
-  { step: '02', title: 'Post Jobs & Source Candidates', desc: 'Publish openings to your branded career page. Import candidates from job boards or use AI resume parsing for direct applications.' },
-  { step: '03', title: 'Manage & Hire Successfully', desc: 'Track candidates through visual pipelines, schedule interviews automatically, and collaborate with structured feedback to make confident hiring decisions.' },
+  { step: '01', title: 'Open a workspace', desc: 'Create the organization, pick the plan, and invite the people who will hire. Seats count against the plan.' },
+  { step: '02', title: 'Publish jobs', desc: 'Openings go on your careers page. Applicants and imports become candidates, up to the plan limit.' },
+  { step: '03', title: 'Move them through the hire', desc: 'Pipeline, interviews, scorecards, and mail stay on the same person. Reports show what this workspace used this month.' },
 ];
 
 export const COMPARISON = {
@@ -187,10 +176,10 @@ export const COMPARISON = {
     'No visibility into why positions remain open for months',
   ],
   after: [
-    'Centralized pipeline with complete candidate history in one place',
-    'Structured scorecards provide consistent, comparable feedback',
-    'Automated calendar sync eliminates scheduling conflicts',
-    'Real-time analytics identify bottlenecks and optimize hiring process',
+    'One pipeline, one candidate record, and a careers page for the organization',
+    'Scorecards keep interview feedback on the candidate',
+    'Mail is included, replies go to your address, and usage shows against the plan',
+    'Reports and billing show what this workspace has used',
   ],
 };
 
@@ -199,33 +188,36 @@ export const TOUR_TABS = [
     id: 'pipeline',
     label: 'Pipeline',
     icon: LayoutDashboard,
-    heading: 'A pipeline your whole team actually looks at',
+    shot: 'pipeline',
+    heading: 'Every candidate sits on a stage',
     bullets: [
-      'Drag candidates between stages, or automate moves with rules',
-      'Color-coded by stage for an instant read on pipeline health',
-      'Custom stages per job on Professional & Enterprise',
+      'The pipeline is the job. Move people as the interview progresses.',
+      'Professional and Enterprise can rename stages for that role.',
+      'The same candidate record is what mail, interviews, and reports use.',
     ],
   },
   {
     id: 'scheduling',
-    label: 'Scheduling',
-    icon: Calendar,
-    heading: 'Interviews that book themselves',
+    label: 'Mail',
+    icon: Mail,
+    shot: 'mail',
+    heading: 'Mail is part of the plan, not a separate vendor screen',
     bullets: [
-      'One-click scheduling synced to Google or Outlook calendars',
-      'Interviewer availability resolved automatically, no back-and-forth',
-      'Automated reminders cut candidate no-shows',
+      'One-to-one mail is included. Campaigns follow the plan.',
+      'You set the name and the address replies should reach.',
+      'Enterprise can verify a sending domain and send as noreply@yourcompany.com.',
     ],
   },
   {
     id: 'analytics',
-    label: 'Analytics',
+    label: 'Reports',
     icon: BarChart3,
-    heading: 'See the funnel, not just the spreadsheet',
+    shot: 'reports',
+    heading: 'Reports stay inside the workspace',
     bullets: [
-      'Time-to-hire, source quality, and stage conversion at a glance',
-      'Export board-ready reports in a click',
-      'Scheduled reports land in your inbox automatically',
+      'Hiring analytics and email delivery are counted for this organization.',
+      'Email reports show this month against the plan, in your timezone.',
+      'Owners see remaining seats, jobs, candidates, and emails on Billing.',
     ],
   },
 ];
@@ -237,24 +229,55 @@ export const CHART_DATA = [
 
 export const PLANS = [
   {
-    id: 'starter', icon: Briefcase, name: 'Starter',
-    tagline: 'For lean teams getting organized.',
-    monthly: 0, annual: 0,
-    features: ['Core ATS workspace', 'Jobs, candidates & pipeline', 'Basic analytics', 'MFA / 2FA', 'Duplicate candidate detection', 'Candidate surveys & localized portal'],
+    id: 'free_trial', icon: Gift, name: 'Free Trial',
+    tagline: 'Try hiring on People Connect HR for 21 days.',
+    monthly: 0, annual: null,
+    features: [
+      '21 days',
+      '5 users (owner plus admin, manager, recruiters, sales — roles the owner assigns)',
+      '15 job postings',
+      '2,000 emails',
+      'No backup',
+    ],
     cta: 'Start Free Trial', to: '/register', mail: false, highlight: false,
   },
   {
-    id: 'professional', icon: Zap, name: 'Professional',
-    tagline: 'For growing teams that need depth and automation.',
-    monthly: 79, annual: 63,
-    features: ['Everything in Starter', 'Talent pools & assessments', 'Calendar (Google/Outlook) + BYO email', 'LLM resume scoring (BYOK AI keys)', 'Video conferencing BYOK & self-schedule', 'Semantic search, JD generator & AI drafting'],
+    id: 'starter', icon: Briefcase, name: 'Starter',
+    tagline: 'For lean teams getting organized.',
+    monthly: 2499, annual: null,
+    features: [
+      'Billed monthly',
+      '3 users (owner plus 2 seats the owner assigns)',
+      '30 job postings',
+      '6,000 emails',
+      'No backup',
+      'No old data import',
+    ],
+    cta: 'Get Started', to: '/register', mail: false, highlight: false,
+  },
+  {
+    id: 'professional', icon: Zap, name: 'Premium',
+    tagline: 'For growing teams that need depth and backup.',
+    monthly: 8499, annual: Math.round(8499 * 0.75), yearlyOffPct: 25,
+    features: [
+      'Monthly, or 25% off yearly',
+      '10 users (owner plus 9 seats the owner assigns)',
+      '50 job postings',
+      '10,000 emails',
+      'Backup included',
+      'Old data import',
+    ],
     cta: 'Get Started', to: '/register', mail: false, highlight: true,
   },
   {
-    id: 'enterprise', icon: Building2, name: 'Enterprise',
-    tagline: 'For agencies & multi-brand hiring orgs.',
+    id: 'enterprise', icon: Building2, name: 'Custom',
+    tagline: 'Scoped to your seats, jobs, mail, and support.',
     monthly: null, annual: null,
-    features: ['Everything in Professional', 'SSO (SAML/OIDC) + SCIM', 'Storage/KMS/CRM/HRIS/SIEM BYOK', 'IP allowlist, retention & legal hold', 'Approvals, offer templates & white-label CMS', 'Dedicated / VPC deployment option'],
-    cta: 'Talk to Sales', to: 'mailto:sales@skillnix.app', mail: true, highlight: false,
+    features: [
+      'Users, jobs, and mail volume agreed with sales',
+      'Backup and data import as scoped',
+      'Dedicated onboarding and commercial terms',
+    ],
+    cta: 'Talk to Sales', to: 'mailto:sales@peopleconnecthr.com', mail: true, highlight: false,
   },
 ];

@@ -181,11 +181,11 @@ export function FaqSection() {
               <div className="relative z-10">
                 <div className="inline-flex items-center gap-1.5 text-brand-100 text-xs sm:text-sm font-semibold mb-4 px-3 py-1 rounded-full bg-white/10 border border-white/15 max-w-full">
                   <Sparkles className="w-4 h-4 shrink-0" />
-                  <span>Free for 14 days, no card required</span>
+                  <span>Free for 21 days, no card required</span>
                 </div>
                 <h2 className="text-2xl sm:text-3xl md:text-5xl font-bold mb-4 sm:mb-6 text-white tracking-tight break-words px-1">Ready to transform your hiring?</h2>
                 <p className="text-base sm:text-lg md:text-xl text-brand-50/90 mb-8 sm:mb-10 max-w-2xl mx-auto">
-                  Join hundreds of forward-thinking companies building their dream teams with People Connect HR.
+                  Start a workspace, invite the team, and hire from one pipeline.
                 </p>
                 <div className="flex flex-col sm:flex-row justify-center items-stretch sm:items-center gap-3 sm:gap-6 max-w-sm sm:max-w-none mx-auto">
                   <Magnetic className="w-full sm:w-auto">

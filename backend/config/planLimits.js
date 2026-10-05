@@ -8,23 +8,25 @@
  * (Stripe webhook, sales-assisted plan moves).
  */
 
+const TRIAL_DURATION_DAYS = 21;
+
 const PLAN_USAGE_LIMITS = {
   free_trial: {
-    maxUsers: 25,
-    maxJobs: 50,
-    maxCandidates: 5000,
-    maxEmailsPerMonth: 10000,
+    maxUsers: 5,
+    maxJobs: 15,
+    maxCandidates: 2000,
+    maxEmailsPerMonth: 2000,
   },
   starter: {
-    maxUsers: 5,
-    maxJobs: 10,
-    maxCandidates: 500,
-    maxEmailsPerMonth: 1000,
+    maxUsers: 3,
+    maxJobs: 30,
+    maxCandidates: 3000,
+    maxEmailsPerMonth: 6000,
   },
   professional: {
-    maxUsers: 25,
+    maxUsers: 10,
     maxJobs: 50,
-    maxCandidates: 5000,
+    maxCandidates: 10000,
     maxEmailsPerMonth: 10000,
   },
   enterprise: {
@@ -58,6 +60,7 @@ const applyPlanLimits = (org, plan) => {
 };
 
 module.exports = {
+  TRIAL_DURATION_DAYS,
   PLAN_USAGE_LIMITS,
   getLimitsForPlan,
   applyPlanLimits,

@@ -34,7 +34,7 @@ export default function BrandLogo({
         SIZE_CLASS[size] || SIZE_CLASS.md,
         rounded ? 'rounded-xl' : '',
         shadow ? 'shadow-lg shadow-brand-500/20' : '',
-        'object-cover flex-shrink-0 bg-teal-900/5',
+        'object-contain flex-shrink-0 bg-white',
         className,
       ]
         .filter(Boolean)

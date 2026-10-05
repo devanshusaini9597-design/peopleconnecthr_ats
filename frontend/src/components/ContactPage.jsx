@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Mail, Phone, MessageSquare, MapPin, Clock, Send, CheckCircle2, Building2, Users, Award, ArrowRight, Sparkles } from 'lucide-react';
-import { Reveal, Magnetic, fadeUp } from './home/motionPrimitives';
+import { INFO_EMAIL, SALES_EMAIL, CONTACT_PHONE, CONTACT_PHONE_DISPLAY, infoMailto, salesMailto } from '../config/companyContact';
 
 export default function ContactPage() {
   const [contactForm, setContactForm] = useState({
@@ -15,30 +15,34 @@ export default function ContactPage() {
   const handleSubmit = (e) => {
     e.preventDefault();
     setFormSent(true);
-    // In production, this would send to your backend
+    const subject = contactForm.subject === 'sales'
+      ? `Sales inquiry — ${contactForm.company || contactForm.name}`
+      : `Contact — ${contactForm.subject || 'general'} — ${contactForm.company || contactForm.name}`;
+    const body = `Name: ${contactForm.name}\nEmail: ${contactForm.email}\nCompany: ${contactForm.company || '(none)'}\nSubject: ${contactForm.subject || 'other'}\n\n${contactForm.message}`;
+    window.location.href = contactForm.subject === 'sales' ? salesMailto(subject, body) : infoMailto(subject, body);
   };
 
   const contactMethods = [
     {
       icon: Mail,
-      title: 'Email Us',
-      value: 'contact@peopleconnecthr.com',
-      description: 'We\'ll respond within 24 hours',
-      link: 'mailto:contact@peopleconnecthr.com'
+      title: 'General & support',
+      value: INFO_EMAIL,
+      description: 'Product questions, support, and everything except sales',
+      link: `mailto:${INFO_EMAIL}`
+    },
+    {
+      icon: Mail,
+      title: 'Sales',
+      value: SALES_EMAIL,
+      description: 'Plans, demos, and commercial inquiries only',
+      link: `mailto:${SALES_EMAIL}`
     },
     {
       icon: Phone,
       title: 'Call Us',
-      value: '+91 98765 43210',
+      value: CONTACT_PHONE_DISPLAY,
       description: 'Mon-Fri, 9AM-6PM IST',
-      link: 'tel:+919876543210'
-    },
-    {
-      icon: MessageSquare,
-      title: 'Live Chat',
-      value: 'Available 24/7',
-      description: 'Get instant support',
-      link: '#chat'
+      link: `tel:${CONTACT_PHONE}`
     },
   ];
 
@@ -73,15 +77,12 @@ export default function ContactPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 group">
             <motion.div
-              whileHover={{ rotate: -8, scale: 1.08 }}
+              whileHover={{ scale: 1.03 }}
               transition={{ type: 'spring', stiffness: 300, damping: 15 }}
-              className="w-10 h-10 rounded-xl overflow-hidden shadow-md shadow-brand-500/25 ring-1 ring-brand-500/20 flex-shrink-0"
+              className="h-12 w-[200px] rounded-xl overflow-hidden bg-white ring-1 ring-brand-500/15 flex-shrink-0"
             >
-              <img src="/logo.png" alt="People Connect HR" className="w-full h-full object-cover" />
+              <img src="/logo.png" alt="People Connect HR" className="w-full h-full object-contain" />
             </motion.div>
-            <span className="text-xl font-bold text-stone-900 tracking-tight group-hover:text-brand-800 transition-colors">
-              People Connect HR
-            </span>
           </Link>
           <div className="flex items-center gap-3">
             <Link to="/login" className="text-sm font-semibold text-stone-600 hover:text-brand-700 transition-colors px-4 py-2 rounded-xl hover:bg-brand-50/60">
@@ -323,7 +324,7 @@ export default function ContactPage() {
                   Ready to transform your hiring?
                 </h2>
                 <p className="text-base sm:text-lg text-brand-50/90 mb-8 sm:mb-10 max-w-2xl mx-auto">
-                  Join hundreds of forward-thinking companies building their dream teams with People Connect HR.
+                  Start a workspace, invite the team, and hire from one pipeline.
                 </p>
                 <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
                   <Magnetic>

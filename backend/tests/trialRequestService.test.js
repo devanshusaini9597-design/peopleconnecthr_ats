@@ -21,15 +21,15 @@ describe('trialRequestService', () => {
     expect(typeof svc.rejectTrialRequest).toBe('function');
     expect(typeof svc.approveWithToken).toBe('function');
     expect(typeof svc.assertPlatformOperator).toBe('function');
-    expect(svc.SALES_INBOX).toBe('contact@skillnixrecruitment.com');
+    expect(svc.SALES_INBOX).toBe('sales@peopleconnecthr.com');
   });
 
-  it('defaults the sales inbox to contact@skillnixrecruitment.com', () => {
+  it('defaults the sales inbox to sales@peopleconnecthr.com', () => {
     delete process.env.SALES_TEAM_EMAIL;
     delete process.env.SUPPORT_TEAM_EMAIL;
     jest.resetModules();
     const { salesInbox } = require('../services/trialRequestService');
-    expect(salesInbox()).toEqual(['contact@skillnixrecruitment.com']);
+    expect(salesInbox()).toEqual(['sales@peopleconnecthr.com']);
   });
 
   it('salesInbox prefers SALES_TEAM_EMAIL over SUPPORT_TEAM_EMAIL', () => {

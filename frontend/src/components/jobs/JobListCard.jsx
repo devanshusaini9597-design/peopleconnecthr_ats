@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  AlertTriangle, Briefcase, Building2, Check, Copy, Eye, MapPin, Pencil, Share2, UserCheck,
+  AlertTriangle, Briefcase, Building2, Check, Copy, Eye, MapPin, Pencil, Pin, Share2, UserCheck,
 } from 'lucide-react';
 import JobApplicantCounts from './JobApplicantCounts';
 import JobCardActionsMenu from './JobCardActionsMenu';
@@ -20,6 +20,7 @@ export default function JobListCard({
   onHold,
   onClose,
   onToggleUrgent,
+  onTogglePin,
   onSaveTemplate,
   onDelete,
   onCopiedJobId,
@@ -93,6 +94,12 @@ export default function JobListCard({
             {unread ? (
               <span className="inline-flex items-center rounded-full bg-brand-600 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.04em] text-white">
                 New
+              </span>
+            ) : null}
+            {job.pinned ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.04em] text-amber-800">
+                <Pin size={9} strokeWidth={2.5} />
+                Pinned
               </span>
             ) : null}
             {urgent ? (
@@ -197,6 +204,19 @@ export default function JobListCard({
         <div className="flex shrink-0 items-center gap-1.5">
           <button
             type="button"
+            onClick={() => onTogglePin?.(job)}
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border shadow-sm transition-colors ${
+              job.pinned
+                ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                : 'border-stone-200 bg-white text-stone-600 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800'
+            }`}
+            title={job.pinned ? 'Unpin job' : 'Pin job'}
+            aria-label={job.pinned ? 'Unpin job' : 'Pin job'}
+          >
+            <Pin size={14} strokeWidth={2} />
+          </button>
+          <button
+            type="button"
             onClick={() => onEdit(job)}
             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 shadow-sm transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
             title="Edit job"
@@ -231,6 +251,7 @@ export default function JobListCard({
             onHold={onHold}
             onClose={onClose}
             onToggleUrgent={onToggleUrgent}
+            onTogglePin={() => onTogglePin?.(job)}
             onSaveTemplate={onSaveTemplate}
             onDelete={onDelete}
           />

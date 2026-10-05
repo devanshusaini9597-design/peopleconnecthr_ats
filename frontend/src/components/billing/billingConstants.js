@@ -29,15 +29,15 @@ export const BILLING_TOUR_STEPS = [
   {
     target: '[data-tour="billing-plans"]',
     title: 'Upgrade',
-    body: 'Pick Starter or Professional for self-serve Stripe checkout, or contact sales for Enterprise.',
+    body: 'Pick Starter or Premium for self-serve checkout, or contact sales for Custom.',
     placement: 'top',
   },
 ];
 
 export const PLAN_LIMITS = {
-  free_trial: { maxUsers: 25, maxJobs: 50, maxCandidates: 5000, maxEmailsPerMonth: 10000 },
-  starter: { maxUsers: 5, maxJobs: 10, maxCandidates: 500, maxEmailsPerMonth: 1000 },
-  professional: { maxUsers: 25, maxJobs: 50, maxCandidates: 5000, maxEmailsPerMonth: 10000 },
+  free_trial: { maxUsers: 5, maxJobs: 15, maxCandidates: 2000, maxEmailsPerMonth: 2000 },
+  starter: { maxUsers: 3, maxJobs: 30, maxCandidates: 3000, maxEmailsPerMonth: 6000 },
+  professional: { maxUsers: 10, maxJobs: 50, maxCandidates: 10000, maxEmailsPerMonth: 10000 },
   enterprise: { maxUsers: -1, maxJobs: -1, maxCandidates: -1, maxEmailsPerMonth: -1 },
 };
 
@@ -46,29 +46,29 @@ export const FALLBACK_PLANS = [
     id: 'free_trial',
     name: 'Free Trial',
     price: 0,
-    durationDays: 14,
+    durationDays: 21,
     limits: PLAN_LIMITS.free_trial,
     entitlementCount: getEntitlements('professional').length,
   },
   {
     id: 'starter',
     name: 'Starter',
-    price: 29,
+    price: 2499,
     checkoutEnabled: true,
     limits: PLAN_LIMITS.starter,
     entitlementCount: getEntitlements('starter').length,
   },
   {
     id: 'professional',
-    name: 'Professional',
-    price: 99,
+    name: 'Premium',
+    price: 8499,
     checkoutEnabled: true,
     limits: PLAN_LIMITS.professional,
     entitlementCount: getEntitlements('professional').length,
   },
   {
     id: 'enterprise',
-    name: 'Enterprise',
+    name: 'Custom',
     price: null,
     custom: true,
     checkoutEnabled: false,
@@ -79,27 +79,28 @@ export const FALLBACK_PLANS = [
 
 export const PLAN_FEATURES = {
   starter: [
+    'No backup',
+    'No old data import',
     'Core ATS workspace',
     'Jobs, candidates & pipeline',
     'Basic analytics',
     'MFA / 2FA',
-    'Duplicate detection & candidate surveys',
   ],
   professional: [
     'Everything in Starter',
+    'Backup included',
+    'Old data import',
     'Talent pools & assessments',
     'Calendar + BYO email + video BYOK',
     'LLM resume scoring (not parsing)',
     'Semantic search & AI drafting tools',
-    'Self-schedule booking & referrals',
   ],
   enterprise: [
-    'Everything in Professional',
+    'Quoted users, jobs, and mail',
+    'Backup and import as scoped',
     'SSO (SAML/OIDC) + SCIM',
-    'Storage, KMS, CRM, HRIS, SIEM BYOK',
-    'IP allowlist, retention & legal hold',
-    'Approvals, offer templates, white-label CMS',
-    'Dedicated / VPC deployment option',
+    'Dedicated onboarding',
+    'Custom commercial terms',
   ],
 };
 
@@ -114,14 +115,14 @@ export const PLAN_META = {
     icon: Zap,
     accent: 'from-brand-600 to-teal-700',
     chip: 'bg-brand-50 text-brand-700',
-    blurb: 'For growing teams that need depth and automation.',
+    blurb: 'For growing teams that need depth, backup, and import.',
     highlight: true,
   },
   enterprise: {
     icon: Building2,
     accent: 'from-slate-800 to-stone-950',
     chip: 'bg-slate-100 text-slate-700',
-    blurb: 'For agencies and multi-brand hiring orgs.',
+    blurb: 'Quoted seats, jobs, mail, and commercial terms.',
   },
 };
 

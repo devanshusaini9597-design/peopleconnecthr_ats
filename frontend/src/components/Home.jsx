@@ -5,21 +5,16 @@ import {
   useMotionValue, useReducedMotion,
 } from 'motion/react';
 import {
-  LayoutDashboard, Users, Plug,
-  ArrowRight, Zap, Check, Server,
-  CheckCircle2, Mail,
-  Star, Quote, TrendingUp, Clock, Sparkles, Building2, Rocket,
-  Play, Film, X,
+  ArrowRight, Check, CheckCircle2, TrendingUp, Sparkles, Building2, Play, X,
 } from 'lucide-react';
 import {
-  fadeUp, staggerContainer, Reveal, SpotlightCard, TiltCard, Magnetic,
-  CountUpStat, MiniAreaChart,
+  fadeUp, staggerContainer, Reveal, SpotlightCard, Magnetic,
 } from './home/motionPrimitives';
 import {
-  LOGO_CLOUD, USE_CASES, GUARANTEES, DEMO_VIDEO,
-  INTEGRATIONS, TESTIMONIALS,
-  FEATURES, STEPS, COMPARISON, TOUR_TABS, CHART_DATA, COMPANY_STATS,
+  USE_CASES, DEMO_VIDEO,
+  COMPARISON, TOUR_TABS, PLAN_CAPS, WORKSPACE_MODULES, PRODUCT_SHOTS,
 } from './home/homeData';
+import { ProductFrame } from './home/ProductFrame';
 import { ScrollToTopButton } from './home/ScrollToTopButton';
 import { HomePageStyles } from './home/HomePageStyles';
 import { HomeNav } from './home/HomeNav';
@@ -127,39 +122,32 @@ const Home = () => {
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center w-full">
           <motion.div initial="hidden" animate="show" variants={staggerContainer}>
             <motion.div variants={fadeUp} className="mb-6 sm:mb-8">
-              <motion.div
-                whileHover={{ scale: 1.05 }}
-                transition={{ duration: 0.3 }}
-                className="inline-flex items-center gap-3 px-6 py-3 rounded-full bg-gradient-to-r from-brand-100 to-teal-100 border border-brand-200/50 shadow-lg shadow-brand-500/20"
-              >
                 <motion.div
-                  whileHover={{ rotate: 360 }}
-                  transition={{ duration: 0.6 }}
-                  className="w-10 h-10 rounded-xl overflow-hidden shadow-md"
+                  whileHover={{ scale: 1.03 }}
+                  transition={{ duration: 0.3 }}
+                  className="inline-flex items-center h-16 sm:h-[4.5rem] w-[min(320px,86vw)] rounded-2xl overflow-hidden bg-white border border-brand-200/50 shadow-lg shadow-brand-500/20"
                 >
-                  <img src="/logo.png" alt="People Connect HR" className="w-full h-full object-cover" />
+                  <img src="/logo.png" alt="People Connect HR" className="w-full h-full object-contain p-1" />
                 </motion.div>
-                <span className="text-lg sm:text-xl font-bold text-stone-900">People Connect HR</span>
-              </motion.div>
             </motion.div>
 
             <motion.div variants={fadeUp} className="inline-flex mb-8 sm:mb-10 mx-auto overflow-visible">
               <div className="relative inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-brand-600 to-teal-700 text-white font-semibold text-sm shadow-xl shadow-brand-500/30 border border-brand-500/30">
                 <Sparkles className="w-4 h-4 shrink-0 animate-pulse" />
-                <span>AI resume parsing is live</span>
+                <span>Applicant tracking for teams that hire every week</span>
                 <div className="absolute inset-0 rounded-full bg-gradient-to-r from-brand-400 to-teal-500 opacity-0 animate-ping" />
               </div>
             </motion.div>
 
             <motion.h1 variants={fadeUp} className="text-[2.15rem] leading-[1.15] sm:text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight mb-6 sm:mb-8 text-stone-900 sm:leading-[1.08] break-words px-1">
-              Hire Smarter.<br />
+              One workspace<br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-500 via-teal-600 to-brand-800 bg-[length:200%_auto] animate-aurora">
-                Scale Faster.
+                for the whole hire.
               </span>
             </motion.h1>
 
             <motion.p variants={fadeUp} className="mt-3 sm:mt-4 text-base sm:text-lg md:text-xl text-stone-600 max-w-2xl mx-auto mb-10 sm:mb-12 leading-relaxed px-1">
-              The modern ATS that grows with your team. Track candidates, schedule interviews, and close hires — all in one workspace built like your dashboard.
+              Jobs, candidates, interviews, careers pages, and mail live in one organization. Every workspace is limited by its plan: seats, open jobs, candidates, and emails this month.
             </motion.p>
 
             <motion.div variants={fadeUp} className="flex flex-col sm:flex-row justify-center items-stretch sm:items-center gap-4 sm:gap-6 max-w-md sm:max-w-none mx-auto w-full">
@@ -189,7 +177,7 @@ const Home = () => {
                 <CheckCircle2 className="w-5 h-5 text-brand-600 shrink-0" /> No credit card required
               </span>
               <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 backdrop-blur-sm border border-stone-200/80 shadow-sm">
-                <CheckCircle2 className="w-5 h-5 text-brand-600 shrink-0" /> 14-day free trial
+                <CheckCircle2 className="w-5 h-5 text-brand-600 shrink-0" /> 21-day free trial
               </span>
               <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 backdrop-blur-sm border border-stone-200/80 shadow-sm">
                 <CheckCircle2 className="w-5 h-5 text-brand-600 shrink-0" /> Cancel anytime
@@ -204,76 +192,9 @@ const Home = () => {
             transition={{ duration: 0.9, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
             className="mt-12 sm:mt-16 lg:mt-20 relative px-0 lg:px-10 overflow-visible"
           >
-            <TiltCard className="relative mx-auto max-w-5xl overflow-visible">
-              <div className="shine-sweep bg-white p-1.5 sm:p-2.5 rounded-xl sm:rounded-2xl shadow-2xl shadow-stone-900/10 border border-stone-200/80 overflow-hidden text-left ring-1 ring-brand-500/5">
-                <div className="rounded-lg sm:rounded-xl overflow-hidden border border-stone-100 flex min-w-0">
-                  {/* Dark stone sidebar with teal accents — matches the real app shell */}
-                  <div className="hidden md:flex flex-col w-44 bg-gradient-to-b from-stone-900 via-stone-950 to-stone-950 p-4 space-y-2.5 shrink-0 relative">
-                    <div className="absolute top-0 right-0 w-px h-full bg-gradient-to-b from-teal-500/50 via-teal-500/10 to-transparent" />
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-500 to-teal-700 flex items-center justify-center shadow-md shadow-brand-500/30">
-                        <LayoutDashboard className="w-3.5 h-3.5 text-white" />
-                      </div>
-                      <div className="h-2.5 w-16 bg-white/25 rounded"></div>
-                    </div>
-                    <div className="flex items-center gap-2 h-8 px-2 rounded-lg bg-teal-500/15 border border-teal-400/20">
-                      <div className="w-1 h-4 rounded-full bg-teal-400" />
-                      <div className="h-2 w-16 bg-teal-300/40 rounded"></div>
-                    </div>
-                    <div className="h-7 w-full px-2 flex items-center"><div className="h-2 w-3/4 bg-white/10 rounded"></div></div>
-                    <div className="h-7 w-full px-2 flex items-center"><div className="h-2 w-5/6 bg-white/10 rounded"></div></div>
-                    <div className="h-7 w-full px-2 flex items-center"><div className="h-2 w-2/3 bg-white/10 rounded"></div></div>
-                    <div className="mt-auto pt-4 border-t border-white/5">
-                      <div className="h-2 w-12 bg-white/10 rounded mb-2"></div>
-                      <div className="h-2 w-20 bg-white/10 rounded"></div>
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0 bg-stone-50 p-3 sm:p-5 lg:p-6 space-y-3 sm:space-y-4">
-                    <div className="flex justify-between items-center gap-2">
-                      <div className="min-w-0">
-                        <div className="h-2.5 sm:h-3 w-16 sm:w-24 bg-stone-200 rounded mb-1.5"></div>
-                        <div className="h-3 sm:h-4 w-28 sm:w-40 max-w-full bg-stone-300/80 rounded"></div>
-                      </div>
-                      <div className="h-8 sm:h-9 w-16 sm:w-28 shrink-0 bg-gradient-to-r from-brand-600 to-teal-700 rounded-lg sm:rounded-xl shadow-md shadow-brand-500/20"></div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-1.5 sm:gap-3">
-                      {[
-                        { c: 'bg-sky-50', b: 'bg-sky-500', label: 'Open jobs' },
-                        { c: 'bg-emerald-50', b: 'bg-emerald-500', label: 'Offers' },
-                        { c: 'bg-brand-50', b: 'bg-brand-500', label: 'In pipeline' },
-                      ].map((s, i) => (
-                        <div key={i} className={`h-16 sm:h-24 ${s.c} rounded-xl sm:rounded-2xl border border-white/80 p-2 sm:p-3 flex flex-col justify-between shadow-sm`}>
-                          <div className="h-2 w-1/2 bg-white/80 rounded"></div>
-                          <div>
-                            <div className={`h-2 sm:h-2.5 w-6 sm:w-10 rounded mb-1 ${s.b}`}></div>
-                            <div className="hidden sm:block h-1.5 w-14 bg-white/60 rounded"></div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {/* Mini kanban — 3 cols on mobile, 5 on sm+ */}
-                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 sm:gap-2 pt-1">
-                      {[
-                        { name: 'Applied', dot: 'bg-sky-500', hideMobile: false },
-                        { name: 'Screening', dot: 'bg-amber-500', hideMobile: false },
-                        { name: 'Interview', dot: 'bg-brand-500', hideMobile: false },
-                        { name: 'Offer', dot: 'bg-violet-500', hideMobile: true },
-                        { name: 'Hired', dot: 'bg-emerald-500', hideMobile: true },
-                      ].map((col, i) => (
-                        <div key={i} className={`${col.hideMobile ? 'hidden sm:block' : ''} bg-white rounded-lg sm:rounded-xl border border-stone-200/80 shadow-sm p-1.5 sm:p-2 space-y-1 sm:space-y-1.5 hover:border-brand-200 transition-colors`}>
-                          <div className="flex items-center gap-1 min-w-0">
-                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${col.dot}`}></span>
-                            <div className="h-1.5 w-8 sm:w-10 max-w-full bg-stone-200 rounded"></div>
-                          </div>
-                          <div className="h-5 sm:h-7 bg-stone-50 rounded-md sm:rounded-lg border border-stone-100"></div>
-                          {i < 3 && <div className="hidden sm:block h-5 sm:h-7 bg-stone-50/80 rounded-md sm:rounded-lg border border-stone-100"></div>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </TiltCard>
+            <div className="relative mx-auto max-w-5xl">
+              <ProductFrame {...PRODUCT_SHOTS.dashboard} />
+            </div>
 
             {/* Floating stat chips for a premium modern-SaaS feel */}
             <motion.div
@@ -286,8 +207,8 @@ const Home = () => {
                 <TrendingUp className="w-4 h-4 text-emerald-600" />
               </div>
               <div className="min-w-0">
-                <div className="text-sm font-bold text-stone-900 leading-tight whitespace-nowrap">Time-to-hire ↓ 38%</div>
-                <div className="text-[11px] text-stone-500 whitespace-nowrap">vs. spreadsheet hiring</div>
+                <div className="text-sm font-bold text-stone-900 leading-tight whitespace-nowrap">Plan usage, live</div>
+                <div className="text-[11px] text-stone-500 whitespace-nowrap">Seats, jobs, candidates, mail</div>
               </div>
             </motion.div>
             <motion.div
@@ -300,8 +221,8 @@ const Home = () => {
                 <CheckCircle2 className="w-4 h-4 text-brand-600" />
               </div>
               <div className="min-w-0">
-                <div className="text-sm font-bold text-stone-900 leading-tight whitespace-nowrap">12 offers this week</div>
-                <div className="text-[11px] text-stone-500 whitespace-nowrap">across 4 open reqs</div>
+                <div className="text-sm font-bold text-stone-900 leading-tight whitespace-nowrap">Mail included</div>
+                <div className="text-[11px] text-stone-500 whitespace-nowrap">Replies go to your address</div>
               </div>
             </motion.div>
           </motion.div>
@@ -314,11 +235,11 @@ const Home = () => {
           <Reveal>
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-brand-100 to-teal-100 border border-brand-200/50 mb-8 mx-auto">
               <Building2 className="w-4 h-4 text-brand-600" />
-              <span className="text-xs font-semibold text-brand-700 uppercase tracking-wider">Trusted by hiring teams at</span>
+              <span className="text-xs font-semibold text-brand-700 uppercase tracking-wider">Inside every workspace</span>
             </div>
           </Reveal>
           <Reveal stagger className="flex flex-wrap justify-center items-center gap-x-6 sm:gap-x-12 gap-y-4 sm:gap-y-6">
-            {LOGO_CLOUD.map((name, i) => (
+            {WORKSPACE_MODULES.map((name, i) => (
               <motion.div
                 key={i}
                 variants={fadeUp}
@@ -343,74 +264,45 @@ const Home = () => {
           <Reveal>
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-brand-100 to-teal-100 border border-brand-200/50 mb-6 mx-auto">
               <TrendingUp className="w-4 h-4 text-brand-600" />
-              <span className="text-sm font-semibold text-brand-700">Our Impact</span>
+              <span className="text-sm font-semibold text-brand-700">What each plan includes</span>
             </div>
             <p className="text-center text-sm sm:text-base font-semibold text-stone-500 uppercase tracking-wider mb-10 sm:mb-12">
-              The numbers behind the switch
+              The same ceilings the product enforces
             </p>
           </Reveal>
-          <Reveal stagger className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8">
-            <motion.div variants={fadeUp} whileHover={{ y: -8 }} className="relative group">
-              <div className="relative bg-white rounded-3xl p-6 sm:p-8 border border-stone-200/80 shadow-xl shadow-stone-200/50 overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-brand-500/5 to-teal-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                <div className="relative z-10 flex flex-col items-center text-center">
-                  <motion.div
-                    whileHover={{ rotate: 360, scale: 1.1 }}
-                    transition={{ duration: 0.6 }}
-                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-brand-500 to-teal-600 flex items-center justify-center shadow-lg shadow-brand-500/30 mb-4"
-                  >
-                    <Building2 size={24} className="text-white" />
-                  </motion.div>
-                  <CountUpStat end={500} suffix="+" label="Companies Trust Us" color="text-transparent" />
-                </div>
-              </div>
-            </motion.div>
-            <motion.div variants={fadeUp} whileHover={{ y: -8 }} className="relative group">
-              <div className="relative bg-white rounded-3xl p-6 sm:p-8 border border-stone-200/80 shadow-xl shadow-stone-200/50 overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                <div className="relative z-10 flex flex-col items-center text-center">
-                  <motion.div
-                    whileHover={{ rotate: 360, scale: 1.1 }}
-                    transition={{ duration: 0.6 }}
-                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/30 mb-4"
-                  >
-                    <Users size={24} className="text-white" />
-                  </motion.div>
-                  <CountUpStat end={50} suffix="K+" label="Candidates Managed" color="text-transparent" />
-                </div>
-              </div>
-            </motion.div>
-            <motion.div variants={fadeUp} whileHover={{ y: -8 }} className="relative group">
-              <div className="relative bg-white rounded-3xl p-6 sm:p-8 border border-stone-200/80 shadow-xl shadow-stone-200/50 overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-teal-500/5 to-brand-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                <div className="relative z-10 flex flex-col items-center text-center">
-                  <motion.div
-                    whileHover={{ rotate: 360, scale: 1.1 }}
-                    transition={{ duration: 0.6 }}
-                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-teal-500 to-brand-600 flex items-center justify-center shadow-lg shadow-teal-500/30 mb-4"
-                  >
-                    <TrendingUp size={24} className="text-white" />
-                  </motion.div>
-                  <CountUpStat end={10} suffix="K+" label="Successful Hires" color="text-transparent" />
-                </div>
-              </div>
-            </motion.div>
-            <motion.div variants={fadeUp} whileHover={{ y: -8 }} className="relative group">
-              <div className="relative bg-white rounded-3xl p-6 sm:p-8 border border-stone-200/80 shadow-xl shadow-stone-200/50 overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-orange-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                <div className="relative z-10 flex flex-col items-center text-center">
-                  <motion.div
-                    whileHover={{ rotate: 360, scale: 1.1 }}
-                    transition={{ duration: 0.6 }}
-                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/30 mb-4"
-                  >
-                    <CheckCircle2 size={24} className="text-white" />
-                  </motion.div>
-                  <div className="text-3xl sm:text-4xl lg:text-5xl font-bold text-stone-900 mb-2">99.9%</div>
-                  <div className="text-xs sm:text-sm text-stone-500 font-medium">Satisfaction</div>
-                </div>
-              </div>
-            </motion.div>
+          <Reveal stagger className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 items-stretch">
+            {PLAN_CAPS.map((row) => {
+              const featured = row.plan === 'Premium';
+              const cells = [
+                ['Seats', row.seats],
+                ['Open jobs', row.jobs],
+                ['Candidates', row.candidates],
+                ['Email', row.emails],
+              ];
+              return (
+                <motion.div
+                  key={row.plan}
+                  variants={fadeUp}
+                  whileHover={{ y: -6 }}
+                  className={`relative overflow-hidden rounded-3xl border p-6 sm:p-7 shadow-xl ${
+                    featured
+                      ? 'border-brand-300 bg-gradient-to-br from-brand-600 to-teal-700 text-white shadow-brand-500/25'
+                      : 'border-stone-200/80 bg-white text-stone-900 shadow-stone-200/50'
+                  }`}
+                >
+                  <div className={`absolute -right-8 -top-8 h-28 w-28 rounded-full blur-2xl ${featured ? 'bg-white/20' : 'bg-brand-200/40'}`} />
+                  <p className={`relative text-xs font-bold uppercase tracking-[0.18em] ${featured ? 'text-white/80' : 'text-brand-700'}`}>{row.plan}</p>
+                  <div className="relative mt-5 grid grid-cols-2 gap-3">
+                    {cells.map(([label, value]) => (
+                      <div key={label} className={`rounded-2xl px-3 py-3 ${featured ? 'bg-white/10 ring-1 ring-white/15' : 'bg-stone-50 ring-1 ring-stone-100'}`}>
+                        <p className={`text-[10px] font-semibold uppercase tracking-wider ${featured ? 'text-white/70' : 'text-stone-400'}`}>{label}</p>
+                        <p className="mt-1 text-lg font-bold tracking-tight">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              );
+            })}
           </Reveal>
         </div>
       </section>

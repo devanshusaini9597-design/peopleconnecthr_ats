@@ -17,7 +17,7 @@ export function DemoSection() {
       `Name: ${demoForm.name}\nWork email: ${demoForm.email}\nCompany: ${demoForm.company}\nTeam size: ${demoForm.teamSize}\n\nMessage:\n${demoForm.message || '(none)'}`
     );
     setDemoSent(true);
-    window.location.href = `mailto:contact@peopleconnecthr.com?subject=${subject}&body=${body}`;
+    window.location.href = `mailto:sales@peopleconnecthr.com?subject=${subject}&body=${body}`;
   };
 
   return (

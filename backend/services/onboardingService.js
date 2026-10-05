@@ -10,6 +10,7 @@ const { wrapBrandedEmailHtml, brandButtonHtml, loadPlatformEmailBrand, loadOrgEm
 const logger = require('../utils/logger');
 const { validateWorkEmail, getEmailDomain, isValidEmailFormat } = require('../utils/workEmail');
 const { planForOrgDomain, validateInviteEmail } = require('../utils/orgDomain');
+const { applyPlanLimits, TRIAL_DURATION_DAYS } = require('../config/planLimits');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../middleware/authMiddleware');
 
@@ -580,7 +581,11 @@ async function createOrg(userId, { name, domain: domainInput }) {
     allowedDomains: domain ? [domain] : [],
     plan,
     productPlans: { ats: plan },
+    planExpiresAt: plan === 'free_trial'
+      ? new Date(Date.now() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000)
+      : undefined,
   });
+  applyPlanLimits(org, plan);
   await org.save();
 
   user.organizationId = org._id;
@@ -743,7 +748,7 @@ async function inviteTeammate(actor, { email, role, name, customRoleId, reportsT
       inviteHtml,
       `Accept your invitation: ${inviteUrl} (expires in 7 days)`,
       {
-        senderName: orgName || 'Skillnix Recruitment',
+        senderName: orgName || 'People Connect HR',
         userId: actor.id,
         organizationId: actor.organizationId,
         senderEmail: actor.email,

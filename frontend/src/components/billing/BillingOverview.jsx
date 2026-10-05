@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatPlanPrice } from '../../utils/planPrice';
 import {
   CreditCard, Zap, Users, Briefcase, Receipt, Sparkles,
   Layers, ClipboardList, Calendar, Clock, Gauge,
@@ -98,7 +99,7 @@ export function BillingOverview({
             step: '2',
             icon: Zap,
             title: 'Choose a plan',
-            body: 'Scroll to plans — Starter ($29) or Professional ($99). Enterprise is sales-quoted.',
+            body: 'Scroll to plans — Starter (₹2,499) or Premium (₹8,499), plus 18% GST. Custom is sales-quoted.',
             tone: 'bg-sky-50 text-sky-600',
           },
           {
@@ -169,7 +170,7 @@ export function BillingOverview({
               {status?.subscription?.subscriptionId
                 ? 'Paid subscription active. Manage payment method, invoices, and cancellation in the Stripe portal.'
                 : currentPlan === 'free_trial'
-                  ? `You’re on a trial${trialDaysLeft != null ? ` with ${trialDaysLeft} day${trialDaysLeft === 1 ? '' : 's'} left` : ''}. Upgrade before it ends to keep Professional-level access.`
+                  ? `You’re on a trial${trialDaysLeft != null ? ` with ${trialDaysLeft} day${trialDaysLeft === 1 ? '' : 's'} left` : ''}. Upgrade before it ends to keep Premium-level access.`
                   : 'Usage meters show remaining capacity. Upgrade anytime for higher ceilings and more features.'}
             </p>
 
@@ -197,10 +198,10 @@ export function BillingOverview({
                 </p>
                 <p className="text-3xl font-bold tabular-nums">
                   {currentPlan === 'free_trial' ? (
-                    <span className="text-2xl">from $29<span className="text-base font-medium text-stone-400">/mo</span></span>
+                    <span className="text-2xl">from {formatPlanPrice(2499)}<span className="text-base font-medium text-stone-400">/mo</span></span>
                   ) : (
                     <>
-                      ${currentPlanMeta.price}
+                      {formatPlanPrice(currentPlanMeta.price)}
                       <span className="text-base font-medium text-stone-400">/mo</span>
                     </>
                   )}

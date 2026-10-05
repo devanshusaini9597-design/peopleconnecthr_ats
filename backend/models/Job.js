@@ -114,6 +114,10 @@ const jobSchema = new mongoose.Schema({
   // ── Template system ────────────────────────────────────────────────
   isTemplate: { type: Boolean, default: false },
 
+  /** Jobs page: keep this opening at the top of the list. */
+  pinned: { type: Boolean, default: false },
+  pinnedAt: { type: Date },
+
   // ── Metadata ───────────────────────────────────────────────────────
   openings: { type: Number, default: 1 },                  // Number of positions to fill
   priority: { type: String, enum: ['low', 'medium', 'high', 'urgent'], default: 'medium' },
@@ -145,6 +149,7 @@ jobSchema.index({ organizationId: 1, jobCode: 1 }, { unique: true, sparse: true 
 jobSchema.index({ publicId: 1 }, { unique: true, sparse: true });
 jobSchema.index({ organizationId: 1, status: 1 });
 jobSchema.index({ organizationId: 1, createdAt: -1 });
+jobSchema.index({ organizationId: 1, pinned: -1, pinnedAt: -1, createdAt: -1 });
 jobSchema.index({ organizationId: 1, isPublished: 1, status: 1 }); // Careers page query
 jobSchema.index({ organizationId: 1, department: 1 });
 jobSchema.index({ 'assignedRecruiters': 1 });

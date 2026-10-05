@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Plus, BookOpen, Briefcase, Loader2, Search, Share2, Copy, ExternalLink,
-  ChevronLeft, ChevronRight, AlertTriangle, Globe2, Trash2,
+  ChevronLeft, ChevronRight, AlertTriangle, Globe2, Trash2, Pin,
 } from 'lucide-react';
 import JDLibraryModal from '../components/JDLibraryModal';
 import EmptyState from '../components/ui/EmptyState';
@@ -205,7 +205,7 @@ const Jobs = () => {
 
   const filteredJobs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return jobs.filter((job) => {
+    const rows = jobs.filter((job) => {
       const title = (job.role || job.title || '').toLowerCase();
       const loc = (job.location || '').toLowerCase();
       const matchesSearch = !q || title.includes(q) || loc.includes(q) ||
@@ -215,9 +215,19 @@ const Jobs = () => {
         String(job.grade || '').toLowerCase().includes(q) ||
         (job.skills || []).some((s) => String(s).toLowerCase().includes(q));
       const isUrgent = String(job.priority || '').toLowerCase() === 'urgent';
+      const isPinned = Boolean(job.pinned);
       const matchesStatus = statusFilter === 'All'
-        || (statusFilter === 'Urgent' ? isUrgent : job.status === statusFilter);
+        || (statusFilter === 'Urgent' ? isUrgent : statusFilter === 'Pinned' ? isPinned : job.status === statusFilter);
       return matchesSearch && matchesStatus;
+    });
+    return [...rows].sort((a, b) => {
+      const ap = a.pinned ? 1 : 0;
+      const bp = b.pinned ? 1 : 0;
+      if (ap !== bp) return bp - ap;
+      const at = new Date(a.pinnedAt || 0).getTime();
+      const bt = new Date(b.pinnedAt || 0).getTime();
+      if (ap && at !== bt) return bt - at;
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
     });
   }, [jobs, searchQuery, statusFilter]);
 
@@ -234,6 +244,7 @@ const Jobs = () => {
     hold: jobs.filter((j) => j.status === 'On Hold').length,
     closed: jobs.filter((j) => j.status === 'Closed').length,
     urgent: jobs.filter((j) => String(j.priority || '').toLowerCase() === 'urgent').length,
+    pinned: jobs.filter((j) => Boolean(j.pinned)).length,
     unread: jobs.filter((j) => isJobUnread(j)).length,
   }), [jobs, isJobUnread]);
 
@@ -301,6 +312,11 @@ const Jobs = () => {
       toast.error('Job title is required');
       return;
     }
+    const requiredJobCode = String(formData.jobCode || '').trim();
+    if (!requiredJobCode) {
+      toast.error('Job ID is required');
+      return;
+    }
     setSaving(true);
     let locations = splitLocations(formData.locations, formData.location);
     if (!locations.length) {
@@ -352,13 +368,8 @@ const Jobs = () => {
         && (!editingJob || editingJob.status === 'Draft'),
     };
 
-    const customCode = String(formData.jobCode || '').trim();
-    if (formData.customJobCode && customCode) {
-      payload.jobCode = customCode;
-      payload.customJobCode = true;
-    } else if (editingJob && customCode && customCode !== String(editingJob.jobCode || '')) {
-      payload.jobCode = customCode;
-    }
+    payload.jobCode = requiredJobCode;
+    payload.customJobCode = true;
 
     try {
       const url = editingJob ? `${API_URL}/${editingJob._id}` : API_URL;
@@ -435,6 +446,28 @@ const Jobs = () => {
       }
     } catch (error) {
       toast.error(error.message || 'Failed to update status');
+    }
+  };
+
+  const handleTogglePin = async (job) => {
+    setMenuOpenId(null);
+    const next = !job.pinned;
+    try {
+      const res = await authenticatedFetch(`${API_URL}/${job._id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ pinned: next }),
+      });
+      if (isUnauthorized(res)) return handleUnauthorized();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Could not update pin');
+      }
+      setJobs((prev) => prev.map((j) => (
+        j._id === job._id ? { ...j, pinned: next, pinnedAt: next ? new Date().toISOString() : null } : j
+      )));
+      toast.success(next ? 'Job pinned to the top' : 'Job unpinned');
+    } catch (error) {
+      toast.error(error.message || 'Could not update pin');
     }
   };
 
@@ -685,6 +718,7 @@ const Jobs = () => {
             <div className="inline-flex flex-wrap rounded-xl border border-stone-200 bg-stone-50/80 p-1 gap-0.5">
               {[
                 { key: 'All', label: 'All', count: counts.all },
+                { key: 'Pinned', label: 'Pinned', count: counts.pinned },
                 { key: 'Draft', label: 'Draft', count: counts.draft },
                 { key: 'Open', label: 'Open', count: counts.open },
                 { key: 'On Hold', label: 'On Hold', count: counts.hold },
@@ -701,15 +735,20 @@ const Jobs = () => {
                       active
                         ? s.key === 'Urgent'
                           ? 'bg-red-600 text-white shadow-sm shadow-red-600/25'
-                          : 'bg-brand-600 text-white shadow-sm shadow-brand-600/20'
+                          : s.key === 'Pinned'
+                            ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/25'
+                            : 'bg-brand-600 text-white shadow-sm shadow-brand-600/20'
                         : s.key === 'Urgent'
                           ? 'text-red-700 hover:bg-red-50 hover:text-red-800'
-                          : 'text-stone-600 hover:bg-white hover:text-stone-900'
+                          : s.key === 'Pinned'
+                            ? 'text-amber-700 hover:bg-amber-50 hover:text-amber-800'
+                            : 'text-stone-600 hover:bg-white hover:text-stone-900'
                     }`}
                   >
                     {s.key === 'Urgent' ? <AlertTriangle size={13} strokeWidth={2.25} /> : null}
+                    {s.key === 'Pinned' ? <Pin size={13} strokeWidth={2.25} /> : null}
                     {s.label}
-                    <span className={active ? 'text-white/80' : s.key === 'Urgent' ? 'text-red-400' : 'text-stone-400'}>{s.count}</span>
+                    <span className={active ? 'text-white/80' : s.key === 'Urgent' ? 'text-red-400' : s.key === 'Pinned' ? 'text-amber-500' : 'text-stone-400'}>{s.count}</span>
                   </button>
                 );
               })}
@@ -770,12 +809,13 @@ const Jobs = () => {
                   onShare={openShareModal}
                   onOpenApplicants={(j, kind) => navigate(buildAtsHref({
                     jobId: j.jobCode || j._id,
-                    appSource: kind === 'added' ? 'added' : kind === 'duplicates' ? 'duplicates' : 'careers',
+                    appSource: kind === 'added' ? 'added' : kind === 'duplicates' ? 'duplicates' : undefined,
                   }))}
                   onMarkOpen={() => { setMenuOpenId(null); handleStatusChange(job, 'Open'); }}
                   onHold={() => { setMenuOpenId(null); handleStatusChange(job, 'On Hold'); }}
                   onClose={() => { setMenuOpenId(null); handleStatusChange(job, 'Closed'); }}
                   onToggleUrgent={() => handleToggleUrgent(job)}
+                  onTogglePin={() => handleTogglePin(job)}
                   onSaveTemplate={() => { setMenuOpenId(null); handleSaveAsTemplate(job); }}
                   onDelete={() => {
                     setMenuOpenId(null);
@@ -853,7 +893,7 @@ const Jobs = () => {
           if (job?.jobCode || job?._id) {
             navigate(buildAtsHref({
               jobId: job.jobCode || job._id,
-              appSource: kind === 'added' ? 'added' : kind === 'duplicates' ? 'duplicates' : kind === 'applied' ? 'careers' : undefined,
+              appSource: kind === 'added' ? 'added' : kind === 'duplicates' ? 'duplicates' : undefined,
             }));
           }
         }}

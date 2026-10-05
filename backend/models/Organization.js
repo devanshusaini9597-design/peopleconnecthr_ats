@@ -19,11 +19,13 @@ const organizationSchema = new mongoose.Schema({
   planExpiresAt: { type: Date },
   /** Isolated sales workspace. Never a customer tenant. */
   isDemo: { type: Boolean, default: false, index: true },
+  /** Hidden from the live operator directory. Data is kept. */
+  archivedAt: { type: Date, default: null, index: true },
   usageLimits: {
     maxUsers: { type: Number, default: 5 },
-    maxJobs: { type: Number, default: 10 },
-    maxCandidates: { type: Number, default: 500 },
-    maxEmailsPerMonth: { type: Number, default: 1000 }
+    maxJobs: { type: Number, default: 15 },
+    maxCandidates: { type: Number, default: 2000 },
+    maxEmailsPerMonth: { type: Number, default: 2000 }
   },
   usageCurrent: {
     users: { type: Number, default: 1 },
@@ -117,6 +119,42 @@ const organizationSchema = new mongoose.Schema({
       hidePoweredBy: { type: Boolean, default: false },
       emailFromName: { type: String, default: '', trim: true }
     },
+    /**
+     * Outbound mail identity for this tenant. Sending domain is verified
+     * through the platform mail account; customers only see DNS records.
+     */
+    mailIdentity: {
+      fromName: { type: String, default: '', trim: true },
+      replyToEmail: { type: String, default: '', trim: true, lowercase: true },
+      sendingDomain: { type: String, default: '', trim: true, lowercase: true },
+      domainStatus: { type: String, enum: ['none', 'pending', 'verified', 'failed'], default: 'none' },
+      domainKey: { type: String, default: '' },
+      dnsRecords: { type: [mongoose.Schema.Types.Mixed], default: [] },
+      verifiedAt: { type: Date, default: null },
+      lastCheckedAt: { type: Date, default: null },
+      physicalAddress: { type: String, default: '', trim: true },
+      lastTest: {
+        at: { type: Date, default: null },
+        toEmail: { type: String, default: '' },
+        ok: { type: Boolean, default: false },
+        message: { type: String, default: '' },
+        actorName: { type: String, default: '' },
+      },
+      auditLog: [{
+        at: { type: Date, default: Date.now },
+        actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        actorName: { type: String, default: '' },
+        action: { type: String, default: '' },
+        detail: { type: String, default: '' },
+      }],
+    },
+    /**
+     * Unfinished product modules (DEI, sequences, …). Off for every tenant,
+     * including Skillnix — enable per Organization, not by hardcoded domain.
+     */
+    internalPreview: { type: Boolean, default: false },
+    /** Individual unfinished-module keys. Used when internalPreview is not all-on. */
+    previewModules: { type: [String], default: [] },
     // Career page builder blocks (careers.pageBuilder / careers.whiteLabelBuilder).
     pageBlocks: { type: [mongoose.Schema.Types.Mixed], default: [] },
     // Candidate portal localization (portal.localization).
@@ -159,6 +197,8 @@ const organizationSchema = new mongoose.Schema({
         github: { type: String, default: '' },
         website: { type: String, default: '' }
       },
+      supportEmail: { type: String, default: '', trim: true, lowercase: true },
+      companyAddress: { type: String, default: '', trim: true },
       seoTitle: { type: String, default: '' },
       seoDescription: { type: String, default: '' },
       customCss: { type: String, default: '' }
