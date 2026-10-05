@@ -52,38 +52,29 @@ const verifyToken = async (req, res, next) => {
     }
 
     if (user.signupStatus === 'pending_approval' || user.signupStatus === 'rejected') {
+      const freelancer = user.role === 'freelancer';
       return res.status(403).json({
         success: false,
         code: 'SIGNUP_PENDING_APPROVAL',
-        message: 'Your trial request is still under review. Our team will contact you shortly.',
+        message: freelancer
+          ? 'Your freelance recruiter application is still under review.'
+          : 'Your trial request is still under review. Our team will contact you shortly.',
       });
     }
 
-    // Session policy (idle timeout / revocation)
-    if (decoded.jti) {
-      const sessionCheck = await validateSession(user._id, decoded.jti, user.organizationId);
-      if (!sessionCheck.valid) {
-        return res.status(401).json({
-          success: false,
-          code: sessionCheck.code,
-          message: sessionCheck.message
-        });
-      }
-      await touchSession(decoded.jti);
-    }
-
-    // Check organization if attached
+    // Load org once — reused for session idle policy + isActive / IP allowlist checks.
+    let org = null;
     if (user.organizationId) {
       const Organization = mongoose.model('Organization');
-      const org = await Organization.findById(user.organizationId).select('+isActive securitySettings plan');
-      
+      org = await Organization.findById(user.organizationId).select('+isActive securitySettings plan');
+
       if (org && org.isActive === false) {
         return res.status(401).json({ success: false, code: 'ORG_DEACTIVATED', message: 'Your organization has been deactivated.' });
       }
 
       // Login already required an email OTP. Authenticator MFA stays optional in settings.
       const { planHasFeature } = require('../config/planFeatures');
-      if (planHasFeature(org.plan, 'security.ipAllowlist')) {
+      if (planHasFeature(org?.plan, 'security.ipAllowlist')) {
         const allowlist = org.securitySettings?.ipAllowlist || [];
         if (allowlist.length) {
           const clientIp = getClientIp(req);
@@ -96,6 +87,19 @@ const verifyToken = async (req, res, next) => {
           }
         }
       }
+    }
+
+    // Session policy (idle timeout / revocation) — pass org to avoid a second findById
+    if (decoded.jti) {
+      const sessionCheck = await validateSession(user._id, decoded.jti, user.organizationId, org);
+      if (!sessionCheck.valid) {
+        return res.status(401).json({
+          success: false,
+          code: sessionCheck.code,
+          message: sessionCheck.message
+        });
+      }
+      await touchSession(decoded.jti);
     }
 
     req.user = {

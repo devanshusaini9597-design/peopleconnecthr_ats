@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, AlertCircle } from 'lucide-react';
+import { guardTableCopy } from '../../../utils/tableCopyGuard';
 
 /** Deprecated duplicates review modal — preserved from ATS.jsx */
 export default function DuplicatesModal(props) {
@@ -22,8 +23,8 @@ export default function DuplicatesModal(props) {
               <p className="text-sm text-stone-600 mb-4">These records were detected as duplicates and were not imported:</p>
               
               {/* Duplicates Table */}
-              <div className="overflow-x-auto border-2 border-red-200 rounded-lg">
-                <table className="w-full text-sm">
+              <div className="overflow-x-auto border-2 border-red-200 rounded-lg select-none" onCopy={guardTableCopy}>
+                <table className="w-full text-sm select-none">
                   <thead className="bg-red-50 border-b-2 border-red-200 sticky top-12">
                     <tr>
                       <th className="px-4 py-3 text-left font-bold text-red-700 whitespace-nowrap">Row</th>

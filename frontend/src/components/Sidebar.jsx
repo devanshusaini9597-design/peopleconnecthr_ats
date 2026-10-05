@@ -16,6 +16,7 @@ import useJobNavUpdates from '../hooks/useJobNavUpdates';
 import useAnnouncementNavUpdates from '../hooks/useAnnouncementNavUpdates';
 import useReportShareNavUpdates from '../hooks/useReportShareNavUpdates';
 import useSupportNavUpdates from '../hooks/useSupportNavUpdates';
+import useInboxNavUpdates from '../hooks/useInboxNavUpdates';
 
 const Sidebar = ({ isOpen, setIsOpen }) => {
   const [collapsed, setCollapsed] = useState(false);
@@ -27,7 +28,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
   const navigate = useNavigate();
   const { organization, user: authUser, logout } = useAuth();
   const userRole = authUser?.role || 'recruiter';
-  const flushNavAwayFromAts = userRole === 'freelancer' && location.pathname === '/ats';
+  const flushNavAwayFromAts = location.pathname === '/ats';
   const orgPlan = organization?.plan;
   const permissions = authUser?.permissions;
   const hasModuleKeys = Array.isArray(permissions) && permissions.some((p) => String(p).startsWith('modules.'));
@@ -53,6 +54,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
             if (item.platformOnly && !authUser?.isPlatformOperator) return false;
             if (item.hideForRoles && item.hideForRoles.includes(userRole)) return false;
             if (item.externalCareers && !organization?.slug) return false;
+            if (item.externalPartners && !organization?.slug) return false;
             if (usePermissionPack) {
               const freelancerBypass = userRole === 'freelancer' && (
                 item.onlyRoles?.includes('freelancer') || item.freelancerAlways
@@ -81,6 +83,13 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
               external: true,
             };
           }
+          if (item.externalPartners && organization?.slug) {
+            return {
+              ...item,
+              path: `/partners/${organization.slug}`,
+              external: true,
+            };
+          }
           return item;
         })
       }))
@@ -94,7 +103,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
   }, [visibleSections]);
 
   const [openGroups, setOpenGroups] = useState(() => {
-    const initial = new Set(['main', 'recruitment', 'lists', 'communication']);
+    const initial = new Set(['main', 'recruitment', 'mis', 'freelancer', 'communication']);
     const key = pathToGroup[location.pathname];
     if (key) initial.add(key);
     return initial;
@@ -174,6 +183,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
   const newAnnouncementsCount = useAnnouncementNavUpdates();
   const newReportSharesCount = useReportShareNavUpdates();
   const newSupportCount = useSupportNavUpdates();
+  const inboxUnreadCount = useInboxNavUpdates();
   const navBadges = useMemo(() => {
     const badges = {};
     if (newJobsCount > 0) {
@@ -183,8 +193,9 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
     if (newAnnouncementsCount > 0) badges['/announcements'] = newAnnouncementsCount;
     if (newReportSharesCount > 0) badges['/analytics'] = newReportSharesCount;
     if (newSupportCount > 0) badges['/feedback'] = newSupportCount;
+    if (inboxUnreadCount > 0) badges['/inbox'] = inboxUnreadCount;
     return badges;
-  }, [newJobsCount, newAnnouncementsCount, newReportSharesCount, newSupportCount]);
+  }, [newJobsCount, newAnnouncementsCount, newReportSharesCount, newSupportCount, inboxUnreadCount]);
 
   useEffect(() => {
     const keys = visibleSections

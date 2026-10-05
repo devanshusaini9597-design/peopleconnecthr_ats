@@ -19,8 +19,8 @@ export const CAND_TOUR_STEPS = [
   },
   {
     target: '[data-tour="cand-search"]',
-    title: 'Search, columns & export',
-    body: 'Search the list, open Filters, choose Columns (new org fields appear here automatically), or Export. Import stays in the page header.',
+    title: 'Search, job scope & columns',
+    body: 'Search the talent pool. The prefix limits which field is matched. Pick a Job to see only that requisition — leave Job blank for every candidate.',
     placement: 'bottom',
   },
   {
@@ -75,11 +75,14 @@ export const EMPTY_ADVANCED_FILTERS = {
   skills: '', product: '', spoc: '', client: '',
   expMin: '', expMax: '', ctcMin: '', ctcMax: '',
   expectedCtcMin: '', expectedCtcMax: '', date: '',
+  candidateCode: '', applicationCode: '',
 };
 
 /** Quick search scopes for the candidates toolbar */
 export const CANDIDATE_SEARCH_SCOPES = [
-  { value: 'all', label: 'All fields' },
+  { value: 'all', label: 'Anywhere' },
+  { value: 'candidateId', label: 'Candidate ID' },
+  { value: 'applicationId', label: 'Application ID' },
   { value: 'name', label: 'Name' },
   { value: 'email', label: 'Email' },
   { value: 'position', label: 'Position' },
@@ -127,6 +130,7 @@ export function getInitialFormState() {
     product: '',
     pan: '',
     legalhold: false,
+    jobId: '',
   };
 }
 

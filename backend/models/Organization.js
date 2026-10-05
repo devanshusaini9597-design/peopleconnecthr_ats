@@ -17,6 +17,8 @@ const organizationSchema = new mongoose.Schema({
     default: 'free_trial'
   },
   planExpiresAt: { type: Date },
+  /** Isolated sales workspace. Never a customer tenant. */
+  isDemo: { type: Boolean, default: false, index: true },
   usageLimits: {
     maxUsers: { type: Number, default: 5 },
     maxJobs: { type: Number, default: 10 },
@@ -35,7 +37,9 @@ const organizationSchema = new mongoose.Schema({
   settings: {
     timezone: { type: String, default: 'Asia/Kolkata' },
     currency: { type: String, default: 'INR' },
-    dateFormat: { type: String, default: 'DD/MM/YYYY' }
+    dateFormat: { type: String, default: 'DD/MM/YYYY' },
+    /** One-time clear of auto-inferred MIS→Candidates marks (email-match false positives). */
+    misFalseMoveResetV1: { type: Date, default: null },
   },
   /**
    * Org-level editable system role packs (enterprise).
@@ -72,6 +76,12 @@ const organizationSchema = new mongoose.Schema({
     enum: ['shared', 'dedicated'],
     default: 'shared'
   },
+  // Monotonic ID sequences. Never decrement on delete — CAND/APP numbers are not reused.
+  codeSeq: {
+    candidate: { type: Number, default: 0 },
+    application: { type: Number, default: 0 },
+    partner: { type: Number, default: 0 },
+  },
   atsSettings: {
     pipelineStages: {
       type: [String],
@@ -85,6 +95,9 @@ const organizationSchema = new mongoose.Schema({
     enableCareersPage: { type: Boolean, default: true },
     careersPageTitle: { type: String, default: '' },
     careersPageDescription: { type: String, default: '' },
+    freelancerPageEnabled: { type: Boolean, default: true },
+    freelancerPageTitle: { type: String, default: '' },
+    freelancerPageDescription: { type: String, default: '' },
     // Custom domain for the careers page (Enterprise, 'careers.customDomain').
     // Code-side this is just "resolve org by domain instead of by slug" —
     // the customer must additionally CNAME this domain to the frontend's
@@ -169,7 +182,19 @@ const organizationSchema = new mongoose.Schema({
       headers: { type: [String], default: [] },
       map: { type: mongoose.Schema.Types.Mixed, default: {} },
       savedAt: { type: Date }
-    }
+    },
+    /** Shared marketing mailbox (Hostinger IMAP) — poll team@ into ATS Inbox. */
+    sharedInbox: {
+      enabled: { type: Boolean, default: false },
+      host: { type: String, default: 'imap.hostinger.com', trim: true },
+      port: { type: Number, default: 993 },
+      user: { type: String, default: '', trim: true, lowercase: true },
+      passwordEnc: { type: String, default: '' },
+      lastUid: { type: Number, default: 0 },
+      uidValidity: { type: String, default: '' },
+      lastSyncAt: { type: Date, default: null },
+      lastError: { type: String, default: '' },
+    },
   },
   billingCustomerId: { type: String, default: '' },
   billingSubscriptionId: { type: String, default: '' },

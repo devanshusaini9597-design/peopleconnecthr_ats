@@ -12,6 +12,7 @@ const { candidateListScope } = require('../../utils/dataScope');
 const { promoteNamesSafe: promoteSkillsSafe } = require('../../services/skillCatalogSync');
 const { promoteNamesSafe: promotePositionsSafe } = require('../../services/positionCatalogSync');
 const { resolveStage, stageKey, loadOrgStages } = require('../../services/pipelineStageSync');
+const { stampUploaderSpoc, canEditCandidateSpoc } = require('../../utils/spocIdentity');
 
 // Bulk create candidates from parsed resumes (no file upload)
 async function bulkCreateFromParsed(req, res) {
@@ -25,6 +26,7 @@ async function bulkCreateFromParsed(req, res) {
         const created = [];
         const skipped = [];
         const errors = [];
+        const accountSpoc = await stampUploaderSpoc(req.user);
 
         const LocationService = require('../../services/locationService');
 
@@ -73,7 +75,10 @@ async function bulkCreateFromParsed(req, res) {
                     status: 'Applied',
                     createdBy: userId,
                     organizationId: req.user.organizationId || undefined,
-                    date: new Date().toISOString().split('T')[0]
+                    date: new Date().toISOString().split('T')[0],
+                    spoc: (canEditCandidateSpoc(req.user) && String(c.spoc || '').trim())
+                      ? normalizeText(String(c.spoc).trim())
+                      : accountSpoc,
                 };
 
                 if (payload.location && LocationService.detectState) {
@@ -387,7 +392,19 @@ async function bulkDeleteCandidates(req, res) {
             });
         }
 
-        const result = await Candidate.deleteMany({ _id: { $in: ids }, ...candidateWriteScope(req) });
+        const scope = candidateWriteScope(req);
+        const removable = await Candidate.find({ _id: { $in: ids }, ...scope }).select('_id').lean();
+        const removableIds = removable.map((c) => c._id);
+        if (removableIds.length) {
+            try {
+                const { purgeApplicationsForCandidates } = require('../../services/applicationService');
+                await purgeApplicationsForCandidates(req.user.organizationId, removableIds);
+            } catch (purgeErr) {
+                const logger = require('../../utils/logger');
+                logger.warn('[bulkDelete] application purge skipped:', purgeErr.message);
+            }
+        }
+        const result = await Candidate.deleteMany({ _id: { $in: removableIds }, ...scope });
 
         res.json({
             success: true,
@@ -483,7 +500,9 @@ async function bulkUpdateCandidates(req, res) {
         let matchedCount = 0;
         let modifiedCount = 0;
         const { statusChangeUpdate, statusesEqual } = require('../../utils/candidateStatusHistory');
+        const { buildStageEvent, recordStageEvents } = require('../../services/stageHistoryService');
         const actorLabel = req.user?.name || req.user?.email || 'Recruiter';
+        const stageEvents = [];
 
         for (let i = 0; i < idList.length; i += CHUNK) {
             const chunk = idList.slice(i, i + CHUNK);
@@ -494,7 +513,7 @@ async function bulkUpdateCandidates(req, res) {
 
             if ('status' in $set) {
                 // Per-doc updates so we only append history when status actually changes.
-                const rows = await Candidate.find(filter).select('_id status').lean();
+                const rows = await Candidate.find(filter).select('_id status organizationId createdBy spoc source').lean();
                 const ops = [];
                 for (const row of rows) {
                     if (statusesEqual(row.status, $set.status)) {
@@ -510,6 +529,18 @@ async function bulkUpdateCandidates(req, res) {
                         remark: 'Bulk status update',
                     });
                     if (!change) continue;
+                    stageEvents.push(buildStageEvent({
+                        organizationId: row.organizationId || req.user.organizationId,
+                        candidateId: row._id,
+                        fromStage: row.status,
+                        toStage: change.$set.status,
+                        changedAt: change.$set.statusEnteredAt,
+                        changedBy: actorLabel,
+                        createdBy: row.createdBy,
+                        spoc: row.spoc,
+                        source: row.source,
+                        origin: 'status_change',
+                    }));
                     const { status: _s, ...rest } = $set;
                     ops.push({
                         updateOne: {
@@ -529,6 +560,10 @@ async function bulkUpdateCandidates(req, res) {
                 const result = await Candidate.updateMany(filter, { $set });
                 modifiedCount += result.modifiedCount || 0;
             }
+        }
+
+        if (stageEvents.length) {
+            await recordStageEvents(stageEvents);
         }
 
         if (matchedCount === 0) {

@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Building2, Check, ChevronDown, Search } from 'lucide-react';
+import { Building2, Check, ChevronDown, Loader2, Search } from 'lucide-react';
 import PresenceAvatar from './PresenceAvatar';
 
 /**
@@ -19,11 +19,16 @@ export default function PremiumSelect({
   searchable = false,
   searchPlaceholder = 'Search…',
   disabled = false,
+  loading = false,
   className = '',
   emptyLabel = 'No options',
   allowClear = false,
   error = false,
   compact = false,
+  /** Borderless trigger for compound search bars */
+  bare = false,
+  /** Square icon trigger (toolbar) */
+  iconOnly = false,
   id,
   /** Classic software picklist: plain text rows, no icon tiles */
   variant = 'default', // 'default' | 'list'
@@ -40,7 +45,11 @@ export default function PremiumSelect({
   menuMinWidth = 0,
 }) {
   const isList = variant === 'list';
+  const busy = disabled || loading;
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (loading) setOpen(false);
+  }, [loading]);
   const [query, setQuery] = useState('');
   const [remoteOptions, setRemoteOptions] = useState(null);
   const [remoteLoading, setRemoteLoading] = useState(false);
@@ -85,6 +94,14 @@ export default function PremiumSelect({
     return labels.join(', ');
   }, [optionsWithSelected, selectedValues]);
 
+  const triggerLabel = useMemo(() => {
+    if (!selectedValues.length) return '';
+    if (multiple && selectedValues.length > 1) {
+      return `${selectedValues.length} selected`;
+    }
+    return displayLabel;
+  }, [multiple, selectedValues, displayLabel]);
+
   const optionHaystack = (o) =>
     `${o.label || ''} ${o.description || ''} ${o.meta || ''} ${o.searchText || ''}`.toLowerCase();
 
@@ -116,7 +133,11 @@ export default function PremiumSelect({
     const spaceBelow = (oy + vh) - rect.bottom;
     const spaceAbove = rect.top - oy;
     const openUp = spaceBelow < 180 && spaceAbove > spaceBelow;
-    const floor = Math.max(120, Number(menuMinWidth) || (compact || isList ? 220 : 120));
+    const wideList = Boolean(searchable || multiple);
+    const floor = Math.max(
+      120,
+      Number(menuMinWidth) || (wideList ? 340 : (compact || isList ? 240 : 120))
+    );
     const width = Math.max(floor, Math.min(Math.max(rect.width, floor), vw - pad * 2));
     let left = rect.left;
     if (left + width > ox + vw - pad) left = ox + vw - pad - width;
@@ -417,13 +438,18 @@ export default function PremiumSelect({
                       ].join(' ')}
                     >
                       <span className="min-w-0 flex-1">
-                        <span className="block break-words whitespace-normal leading-snug">{opt.label}</span>
+                        <span className="block whitespace-normal break-words leading-snug">{opt.label}</span>
                         {opt.description ? (
-                          <span className="block text-[11px] text-stone-500 break-words whitespace-normal font-normal mt-0.5 leading-snug">
+                          <span className="block text-[11px] text-stone-500 whitespace-normal break-words font-normal mt-0.5 leading-snug">
                             {opt.description}
                           </span>
                         ) : null}
                       </span>
+                      {opt.meta ? (
+                        <span className="flex-shrink-0 inline-flex items-center rounded-md bg-stone-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-stone-600">
+                          {opt.meta}
+                        </span>
+                      ) : null}
                       {active && <Check size={14} className="flex-shrink-0 text-brand-600 mt-0.5" strokeWidth={2.25} />}
                     </button>
                   );
@@ -479,14 +505,14 @@ export default function PremiumSelect({
                       </span>
                     ) : null}
                     <span className="min-w-0 flex-1">
-                      <span className="block break-words whitespace-normal leading-snug">
+                      <span className="block truncate whitespace-nowrap leading-snug">
                         {opt.label}
                         {hasFlag && opt.description ? (
                           <span className="font-medium text-stone-500"> · {opt.description}</span>
                         ) : null}
                       </span>
                       {!hasFlag && opt.description && (
-                        <span className="block text-[11px] text-stone-500 break-words whitespace-normal font-normal mt-0.5 leading-snug">
+                        <span className="block text-[11px] text-stone-500 truncate whitespace-nowrap font-normal mt-0.5 leading-snug">
                           {opt.description}
                         </span>
                       )}
@@ -496,6 +522,11 @@ export default function PremiumSelect({
                         </span>
                       ) : null}
                     </span>
+                    {opt.meta && !person ? (
+                      <span className="flex-shrink-0 inline-flex items-center rounded-md bg-stone-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-stone-600">
+                        {opt.meta}
+                      </span>
+                    ) : null}
                     {active && <Check size={14} className="text-brand-600 flex-shrink-0" strokeWidth={2.25} />}
                   </button>
                 );
@@ -512,35 +543,55 @@ export default function PremiumSelect({
       <button
         type="button"
         id={id}
-        disabled={disabled}
+        disabled={busy}
+        aria-busy={loading || undefined}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
+        aria-label={iconOnly ? (displayLabel || placeholder || 'Select') : undefined}
+        title={displayLabel || placeholder || ''}
         onClick={() => {
-          if (!disabled) setOpen((v) => !v);
+          if (!busy) setOpen((v) => !v);
         }}
         className={[
-          'w-full min-w-0 max-w-full flex items-center text-left transition-all duration-200 border group/select',
-          compact
-            ? 'min-h-11 gap-1.5 rounded-lg px-2.5 py-1.5 bg-white shadow-[0_1px_2px_rgba(28,25,23,0.04)] hover:border-stone-300 hover:shadow-[0_2px_8px_rgba(28,25,23,0.06)]'
-            : isList
-              ? 'h-11 gap-2 rounded-lg px-3.5 bg-white shadow-[0_1px_2px_rgba(28,25,23,0.04)] hover:border-stone-300'
-              : richPeople
-                ? 'min-h-[48px] gap-2.5 rounded-xl px-3 py-2 bg-white shadow-[0_1px_2px_rgba(28,25,23,0.04)] hover:border-stone-300 hover:shadow-[0_2px_8px_rgba(28,25,23,0.06)]'
-                : 'min-h-[42px] gap-2.5 rounded-xl px-3 py-2 bg-white shadow-[0_1px_2px_rgba(28,25,23,0.04)] hover:border-stone-300 hover:shadow-[0_2px_8px_rgba(28,25,23,0.06)]',
-          error
-            ? 'border-red-400 ring-2 ring-red-200'
-            : open
-              ? 'border-brand-500 ring-2 ring-brand-500/15 bg-white shadow-md shadow-brand-500/10'
-              : 'border-stone-200/90',
-          disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
-        ].join(' ')}
+          'w-full min-w-0 max-w-full flex items-center text-left transition-all duration-200 group/select',
+          iconOnly
+            ? (bare
+              ? 'h-11 w-full justify-center gap-0 rounded-none px-0 bg-transparent shadow-none border-0 hover:bg-stone-50/90'
+              : 'h-11 w-11 justify-center gap-0 rounded-lg px-0 bg-white border border-stone-200/90 shadow-[0_1px_2px_rgba(28,25,23,0.04)] hover:border-stone-300')
+            : bare
+            ? 'h-11 gap-1 rounded-none px-2.5 py-0 bg-transparent shadow-none border-0 hover:bg-stone-50/90'
+            : `border ${compact
+              ? 'min-h-11 gap-1.5 rounded-lg px-2.5 py-1.5 bg-white shadow-[0_1px_2px_rgba(28,25,23,0.04)] hover:border-stone-300 hover:shadow-[0_2px_8px_rgba(28,25,23,0.06)]'
+              : isList
+                ? 'h-11 gap-2 rounded-lg px-3.5 bg-white shadow-[0_1px_2px_rgba(28,25,23,0.04)] hover:border-stone-300'
+                : richPeople
+                  ? 'min-h-[48px] gap-2.5 rounded-xl px-3 py-2 bg-white shadow-[0_1px_2px_rgba(28,25,23,0.04)] hover:border-stone-300 hover:shadow-[0_2px_8px_rgba(28,25,23,0.06)]'
+                  : 'min-h-[42px] gap-2.5 rounded-xl px-3 py-2 bg-white shadow-[0_1px_2px_rgba(28,25,23,0.04)] hover:border-stone-300 hover:shadow-[0_2px_8px_rgba(28,25,23,0.06)]'}`,
+          bare
+            ? (open ? 'bg-stone-50' : '')
+            : error
+              ? 'border-red-400 ring-2 ring-red-200'
+              : open
+                ? 'border-brand-500 ring-2 ring-brand-500/15 bg-white shadow-md shadow-brand-500/10'
+                : 'border-stone-200/90',
+          loading ? 'cursor-wait' : disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
+        ].filter(Boolean).join(' ')}
       >
-        {!isList && !compact && renderLeading(
+        {!iconOnly && !isList && !compact && renderLeading(
           selected || (richPeople ? { avatarKind: 'org', label: placeholder } : null),
           !!selected,
           richPeople ? 36 : 32
         )}
+        {iconOnly ? (
+          <>
+            {Icon ? <Icon size={16} strokeWidth={1.75} className={open ? 'text-brand-700' : 'text-stone-500'} /> : (
+              <ChevronDown size={16} strokeWidth={1.75} className={open ? 'text-brand-700' : 'text-stone-500'} />
+            )}
+            <span className="sr-only">{triggerLabel || placeholder}</span>
+          </>
+        ) : (
+          <>
         {compact && Icon ? (
           <span className={`flex-shrink-0 w-5 h-5 rounded-md flex items-center justify-center ${
             open || selected
@@ -552,23 +603,32 @@ export default function PremiumSelect({
         ) : null}
         <span className="min-w-0 flex-1 overflow-hidden" title={displayLabel || placeholder || ''}>
           <span className={`block leading-snug ${
-            compact
-              ? 'text-[12.5px] font-semibold tracking-tight line-clamp-2 break-words whitespace-normal'
-              : isList
-                ? 'text-sm font-semibold truncate whitespace-nowrap'
-                : 'text-sm font-semibold line-clamp-2 break-words whitespace-normal'
-          } ${displayLabel ? 'text-stone-900' : 'text-stone-400'}`}>
-            {displayLabel || placeholder}
+          compact
+            ? 'text-[12.5px] font-semibold tracking-tight whitespace-normal break-words'
+            : isList
+              ? 'text-sm font-semibold whitespace-normal break-words'
+              : 'text-sm font-semibold truncate whitespace-nowrap'
+          } ${triggerLabel ? 'text-stone-900' : 'text-stone-400'}`}>
+            {triggerLabel || placeholder}
           </span>
           {!isList && !compact && selected?.description && (
-            <span className="block text-[11px] text-stone-500 break-words whitespace-normal font-medium mt-0.5 line-clamp-2">{selected.description}</span>
+            <span className="block text-[11px] text-stone-500 truncate whitespace-nowrap font-medium mt-0.5">{selected.description}</span>
           )}
         </span>
+        {loading ? (
+          <span className="flex-shrink-0 inline-flex items-center gap-1.5 text-brand-700">
+            <Loader2 size={compact ? 14 : 15} strokeWidth={2.25} className="animate-spin" />
+            <span className="text-[11px] font-semibold">Loading</span>
+          </span>
+        ) : (
         <ChevronDown
           size={compact ? 14 : 15}
           strokeWidth={2.25}
           className={`flex-shrink-0 text-stone-400 transition-transform duration-200 ${open ? 'rotate-180 text-brand-600' : 'group-hover/select:text-stone-500'}`}
         />
+        )}
+          </>
+        )}
       </button>
       {menu}
     </div>

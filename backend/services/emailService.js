@@ -322,7 +322,13 @@ const sendViaZohoZeptomail = async (to, subject, htmlBody, textBody, options = {
   }
 
   const displayName = senderName || platformFromName(fromEmail);
-  const preferredReply = (replyToEmail || fromEmail).trim();
+  const preferredReply = (() => {
+    const from = String(fromEmail || '').trim();
+    const reply = String(replyToEmail || from).trim();
+    // noreply@* must never Reply-To a different domain (platform fallback leak).
+    if (/^noreply@/i.test(from)) return from;
+    return reply || from;
+  })();
   const recipients = Array.isArray(to) ? to : [to];
 
   const toList = recipients.map((email) => ({
@@ -361,6 +367,9 @@ const sendViaZohoZeptomail = async (to, subject, htmlBody, textBody, options = {
     };
     if (ccList.length > 0) payload.cc = ccList;
     if (bccList.length > 0) payload.bcc = bccList;
+    if (Array.isArray(options.attachments) && options.attachments.length) {
+      payload.attachments = options.attachments;
+    }
     if (String(htmlBody || '').includes(`cid:${SKILLNIX_LOGO_CID}`)) {
       const inline = skillnixInlineImage();
       if (inline) payload.inline_images = [inline];
@@ -406,24 +415,48 @@ const sendViaZohoZeptomail = async (to, subject, htmlBody, textBody, options = {
     const zohoError = error.response?.data?.error;
     const details = Array.isArray(zohoError?.details) ? zohoError.details : [];
     const sm111 = details.find((d) => d && d.code === 'SM_111');
+    const detailCode = details.find((d) => d && d.code)?.code || '';
+    const detailMsg = details
+      .map((d) => d?.message || d?.target_value || '')
+      .filter(Boolean)
+      .join('; ');
     const status = error.response?.status;
     let errorMsg = error.message;
+    let reasonHint = '';
     if (sm111) {
       errorMsg = `ZeptoMail: Sender address not verified. "${sm111.target_value || 'from'}" is not verified in your ZeptoMail agent. Emails are sent from your verified address (check .env ZOHO_ZEPTOMAIL_FROM_EMAIL).`;
+      reasonHint = 'configuration';
+    } else if (
+      /invalid|bounce|undeliverable|mailbox|recipient|does not exist|user unknown/i.test(
+        `${zohoError?.message || ''} ${detailMsg} ${detailCode}`
+      )
+    ) {
+      errorMsg = `ZeptoMail: ${zohoError?.message || detailMsg || 'Recipient address rejected'}`;
+      reasonHint = /invalid|malformed|bad address/i.test(`${zohoError?.message || ''} ${detailMsg}`)
+        ? 'invalid_address'
+        : 'mailbox_unavailable';
     } else if (status === 401) {
       errorMsg = 'ZeptoMail: Invalid API key. Check your Send Mail Token in ZeptoMail dashboard.';
+      reasonHint = 'configuration';
     } else if (status === 403) {
       errorMsg =
         'ZeptoMail 403: Request Denied. Go to ZeptoMail > your Agent > Settings > IP Restriction and remove all IPs (empty list = allow all).';
+      reasonHint = 'configuration';
     } else if (status === 429) {
       errorMsg = 'ZeptoMail rate limit hit. Try again later or upgrade your plan.';
+      reasonHint = 'provider_error';
     } else if (error.code === 'ECONNABORTED') {
       errorMsg = 'ZeptoMail timeout. Network issue or Zoho service is slow.';
+      reasonHint = 'provider_error';
     } else if (error.response?.data?.message) {
       errorMsg = `ZeptoMail: ${error.response.data.message}`;
+    } else if (zohoError?.message) {
+      errorMsg = `ZeptoMail: ${zohoError.message}${detailMsg ? ` (${detailMsg})` : ''}`;
     }
     const err = new Error(errorMsg);
     err.code = 'ZOHO_ZEPTOMAIL_ERROR';
+    err.displayMessage = errorMsg;
+    err.reasonCode = reasonHint || undefined;
     err.sm111 = Boolean(sm111);
     err.sm111Target = sm111?.target_value || '';
     return err;
@@ -526,10 +559,14 @@ const getUserTransporter = async (userId, hints = {}) => {
         const fromEmail = systemMail
           ? resolveSystemFromAddress({ mailbox, userEmail, orgDomain })
           : mailbox.fromEmail;
+        // System mail (OTP / verify / invite): Reply-To must match From (org noreply), never a different mailbox.
+        const replyToEmail = systemMail
+          ? fromEmail
+          : (hints.replyToEmail || fromEmail).trim();
         return {
           transporter: null,
           fromEmail,
-          replyToEmail: (hints.replyToEmail || fromEmail).trim(),
+          replyToEmail,
           userName,
           mailboxDisplayName: String(mailbox.displayName || '').trim(),
           configured: true,
@@ -690,7 +727,7 @@ const getUserTransporter = async (userId, hints = {}) => {
         return {
           transporter: defaultTransporter,
           fromEmail: envFrom,
-          replyToEmail: (hints.replyToEmail || envFrom).trim(),
+          replyToEmail: hints.system ? envFrom : (hints.replyToEmail || envFrom).trim(),
           userName: PLATFORM_FROM_NAME,
           configured: true,
           provider: 'smtp',
@@ -770,8 +807,31 @@ const createSmtpTransporter = (emailSettings) => {
 // Generic email sender — uses per-user transporter if userId provided
 const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
   const { cc, bcc, senderName, senderEmail, userId, organizationId, system } = options;
+  // Bulk callers pass mailSession so we skip repeated DB/config lookups per recipient.
+  const mailSession = options.mailSession && typeof options.mailSession === 'object'
+    ? options.mailSession
+    : null;
+
+  if (!system && userId && !mailSession?.demoChecked) {
+    const { isDemoUserId } = require('./demoWorkspaceService');
+    if (await isDemoUserId(userId)) {
+      const { demoEmailBlockedError } = require('../config/demoRoles');
+      throw demoEmailBlockedError();
+    }
+  }
   const recipientEmail = Array.isArray(to) ? to[0] : to;
-  
+
+  const transporterInfo = mailSession?.transporter
+    ? mailSession.transporter
+    : await getUserTransporter(userId, {
+        recipientEmail,
+        organizationId,
+        senderName,
+        system,
+        // Never hint a different Reply-To for system/noreply mail — it leaks platform mailbox addresses.
+        replyToEmail: system ? undefined : senderEmail,
+      });
+
   const {
     transporter: activeTransporter,
     fromEmail: transporterFrom,
@@ -781,24 +841,25 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
     provider,
     zohoApiKey,
     zohoApiUrl,
-  } = await getUserTransporter(userId, {
-    recipientEmail,
-    organizationId,
-    senderName,
-    system,
-    replyToEmail: senderEmail,
-  });
+  } = transporterInfo;
 
   // Candidate mail: recruiter work address. System mail (OTP / reset / invite): noreply@org-domain.
   let fromEmail = (transporterFrom || '').trim();
-  let replyToEmail = (transporterReplyTo || senderEmail || fromEmail || '').trim();
+  // System / noreply: Reply-To must equal From (org mailbox), never platform fallback.
+  let replyToEmail = system || /^noreply@/i.test(fromEmail)
+    ? fromEmail
+    : (transporterReplyTo || senderEmail || fromEmail || '').trim();
   
   if (!configured || !fromEmail) {
     throw new Error('EMAIL_NOT_CONFIGURED');
   }
+  if (/^noreply@/i.test(fromEmail)) {
+    replyToEmail = fromEmail;
+  }
   
   if (provider === 'zoho-zeptomail' && userId && !system) {
-    const senderStatus = await canUserSendViaZepto(userId);
+    const senderStatus = mailSession?.senderStatus
+      || (await canUserSendViaZepto(userId));
     if (!senderStatus.canSend) {
       const err = new Error(senderStatus.reason || 'USE_VERIFIED_DOMAIN');
       err.code = 'USE_VERIFIED_DOMAIN';
@@ -821,25 +882,30 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
       trackOpens: options.trackOpens,
       trackClicks: options.trackClicks,
       clientReference: options.clientReference,
+      attachments: options.zeptoAttachments,
     });
     try {
       const { recordEmailSend } = require('./emailReportService');
-      await recordEmailSend({
-        organizationId,
-        userId,
-        channel: system ? 'system' : options.channel || 'transactional',
-        provider: 'zeptomail',
-        emailType: options.emailType || '',
-        subject,
-        fromEmail: zeptoResult.fromEmail || fromEmail,
-        replyToEmail: zeptoResult.replyTo || replyToEmail,
-        to: Array.isArray(to) ? to : [to],
-        messageId: zeptoResult.messageId,
-        requestId: zeptoResult.requestId,
-        clientReference: zeptoResult.clientReference,
-        status: 'accepted',
-        providerRaw: { provider: 'zeptomail' },
-      });
+      Promise.resolve(
+        recordEmailSend({
+          organizationId,
+          userId,
+          channel: system ? 'system' : options.channel || 'transactional',
+          provider: 'zeptomail',
+          emailType: options.emailType || '',
+          subject,
+          htmlBody,
+          textBody,
+          fromEmail: zeptoResult.fromEmail || fromEmail,
+          replyToEmail: zeptoResult.replyTo || replyToEmail,
+          to: Array.isArray(to) ? to : [to],
+          messageId: zeptoResult.messageId,
+          requestId: zeptoResult.requestId,
+          clientReference: zeptoResult.clientReference,
+          status: 'accepted',
+          providerRaw: { provider: 'zeptomail' },
+        })
+      ).catch(() => {});
     } catch (_) { /* non-blocking */ }
     return zeptoResult;
   }
@@ -877,6 +943,9 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
   if (bcc) {
     mailOptions.bcc = Array.isArray(bcc) ? bcc : [bcc];
   }
+  if (Array.isArray(options.smtpAttachments) && options.smtpAttachments.length) {
+    mailOptions.attachments = options.smtpAttachments;
+  }
 
   try {
     const info = await activeTransporter.sendMail(mailOptions);
@@ -893,19 +962,23 @@ const sendEmail = async (to, subject, htmlBody, textBody, options = {}) => {
     };
     try {
       const { recordEmailSend } = require('./emailReportService');
-      await recordEmailSend({
-        organizationId,
-        userId,
-        channel: system ? 'system' : 'transactional',
-        provider: 'smtp',
-        emailType: options.emailType || '',
-        subject,
-        fromEmail,
-        replyToEmail,
-        to: Array.isArray(to) ? to : [to],
-        messageId: info.messageId,
-        status: 'sent',
-      });
+      Promise.resolve(
+        recordEmailSend({
+          organizationId,
+          userId,
+          channel: system ? 'system' : 'transactional',
+          provider: 'smtp',
+          emailType: options.emailType || '',
+          subject,
+          htmlBody,
+          textBody,
+          fromEmail,
+          replyToEmail,
+          to: Array.isArray(to) ? to : [to],
+          messageId: info.messageId,
+          status: 'sent',
+        })
+      ).catch(() => {});
     } catch (_) { /* non-blocking */ }
     return smtpResult;
   } catch (error) {

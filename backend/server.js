@@ -89,6 +89,8 @@ const applicationRoutes = require('./routes/applicationRoutes');
 const interviewRoutes = require('./routes/interviewRoutes');
 const billingRoutes = require('./routes/billingRoutes');
 const careersRoutes = require('./routes/careersRoutes');
+const partnerSignupRoutes = require('./routes/partnerSignupRoutes');
+const freelancerApplicationRoutes = require('./routes/freelancerApplicationRoutes');
 const portalRoutes = require('./routes/portalRoutes');
 const integrationRoutes = require('./routes/integrationRoutes');
 const customRoleRoutes = require('./routes/customRoleRoutes');
@@ -145,6 +147,8 @@ const { initWebhookDispatcher } = require('./services/webhookDispatcher');
 const { startReportScheduler } = require('./services/reportScheduler');
 const { startBackupScheduler } = require('./services/backupScheduler');
 const { startFreelanceSlaScheduler } = require('./services/freelanceSlaScheduler');
+const { startPipelineRollupScheduler } = require('./services/pipelineRollupScheduler');
+const { startInboxImapScheduler } = require('./services/inboxImapScheduler');
 
 // ── App Setup ────────────────────────────────────────────────────────
 const app = express();
@@ -240,8 +244,18 @@ function corsOrigin(origin, cb) {
   }
   return cb(null, false);
 }
-app.use(cors({ origin: corsOrigin, credentials: true, optionsSuccessStatus: 200 }));
-app.options('*', cors({ origin: corsOrigin, credentials: true, optionsSuccessStatus: 200 }));
+app.use(cors({
+  origin: corsOrigin,
+  credentials: true,
+  optionsSuccessStatus: 200,
+  exposedHeaders: ['Content-Disposition', 'X-Export-Count', 'X-Export-Capped'],
+}));
+app.options('*', cors({
+  origin: corsOrigin,
+  credentials: true,
+  optionsSuccessStatus: 200,
+  exposedHeaders: ['Content-Disposition', 'X-Export-Count', 'X-Export-Capped'],
+}));
 
 // ── Body Parsing ─────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
@@ -298,6 +312,7 @@ app.use((req, _res, next) => {
 
 // ── Public routes (no auth) ──────────────────────────────────────────
 app.use('/api', require('./routes/authRoutes'));
+app.use('/api/demo', require('./routes/demoRoutes'));
 app.use('/api', homeRoutes);
 app.use('/api/public', publicSubscribeRoutes);
 app.use('/api/public', require('./routes/publicBrandRoutes'));
@@ -310,6 +325,7 @@ app.use('/api/integrations/oauth/outlook-calendar', outlookCalendarOAuthRoutes);
 app.use('/sso', ssoRoutes.publicRouter); // public SAML/OIDC SP endpoints
 app.use('/scim/v2', scimRoutes);
 app.use('/api/careers', careersRoutes);
+app.use('/api/partners', partnerSignupRoutes);
 app.use('/api/portal', portalRoutes);
 app.use('/api/status', statusRoutes);
 app.use('/api/scheduling', schedulingRoutes);
@@ -358,6 +374,7 @@ app.use('/api/company-email-settings', verifyToken, companyEmailSettingsRoutes);
 app.use('/api/notifications', verifyToken, notificationRoutes);
 app.use('/api/team', teamRoutes);
 app.use('/api/freelancer', freelancerRoutes);
+app.use('/api/freelancer-applications', freelancerApplicationRoutes);
 app.use('/api/support', require('./routes/supportRoutes'));
 app.use('/api/talent-pools', verifyToken, talentPoolRoutes); // internally applies requireFeature('candidates.talentPools')
 app.use('/api/mis', require('./routes/misRoutes'));
@@ -493,15 +510,26 @@ const startServer = () => {
   const server = app.listen(PORT, () => {
     global.__ats_server = server; // Store ref for graceful shutdown
     logger.info(`🚀 SkillNix SaaS ATS v3 running on port ${PORT}`);
-    const s3Resume = require('./services/s3Service').isS3Configured();
+    const s3 = require('./services/s3Service');
+    const s3Resume = s3.isS3Configured();
+    const emailBucket = s3.S3_EMAIL_BUCKET;
+    const emailPrefix = s3.S3_EMAIL_PREFIX;
     logger.info(s3Resume
       ? `[File storage] S3 — bucket: ${process.env.S3_BUCKET_NAME} (resumes / logos / profiles)`
       : '[File storage] Local (uploads/)');
-    startNotificationScheduler();
+    if (s3.isEmailArchiveConfigured()) {
+      logger.info(
+        `[Mail archive] S3 — bucket: ${emailBucket} prefix: ${emailPrefix}/ (sent + inbox)`
+      );
+    } else {
+      logger.info('[Mail archive] Disabled — set AWS_* and S3_EMAIL_BUCKET (or S3_BUCKET_NAME)');
+    }    startNotificationScheduler();
     initWebhookDispatcher();
     startReportScheduler();
     startBackupScheduler();
     startFreelanceSlaScheduler();
+    startPipelineRollupScheduler();
+    startInboxImapScheduler();
     logger.info('[Event Bus] Initialized with listeners:', eventBus.eventNames().join(', '));
   });
 
@@ -515,7 +543,8 @@ mongoose.connect(mongoUrl, {
   serverSelectionTimeoutMS: 30000,
   connectTimeoutMS: 30000,
   socketTimeoutMS: 45000,
-  maxPoolSize: 10,
+  // Hobby + multi-user: 10 saturates under auth/presence chatter; 25 stays modest for Atlas.
+  maxPoolSize: Number(process.env.MONGO_MAX_POOL_SIZE) || 25,
   minPoolSize: 2,
   retryWrites: true,
   retryReads: true,

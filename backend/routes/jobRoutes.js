@@ -21,7 +21,8 @@ const {
 const logger = require('../utils/logger');
 const eventBus = require('../events/eventBus');
 const eventTypes = require('../events/eventTypes');
-const { parseUploadedJd, parseJdText } = require('../services/jdImportService');
+const { extractJdFileText } = require('../services/jdImportService');
+const { parseJdWithAi } = require('../services/jdAiExtractService');
 const { promoteNamesSafe } = require('../services/skillCatalogSync');
 const { promoteNamesSafe: promotePositionsSafe } = require('../services/positionCatalogSync');
 const {
@@ -33,6 +34,8 @@ const {
   orgJobCodePrefix,
 } = require('../services/jobCodeService');
 const { allocatePublicId, ensurePublicId } = require('../services/jobPublicIdService');
+const { attachJobPipelineStats } = require('../utils/jobPipelineStats');
+const { attachShareVia } = require('../utils/jobShareAttribution');
 
 const router = express.Router();
 const jdUpload = multer({
@@ -183,19 +186,31 @@ router.post('/parse-jd', verifyToken, requireRecruiterOrAbove, (req, res, next) 
       if (pasted.length < 20) {
         return res.status(400).json({ message: 'Paste a fuller job description (at least a few lines)' });
       }
-      const fields = parseJdText(pasted);
-      logger.info('JD paste parsed', { chars: pasted.length, role: fields.role || null });
-      return res.json({ success: true, data: { ...fields, text: pasted } });
+      const fields = await parseJdWithAi({
+        organizationId: req.user.organizationId,
+        text: pasted,
+      });
+      logger.info('JD paste parsed', { chars: pasted.length, role: fields.role || null, method: fields.meta?.method });
+      return res.json({ success: true, data: fields });
     }
     if (!req.file?.buffer) {
       return res.status(400).json({ message: 'Paste job text or upload a PDF, Word, or TXT file' });
     }
-    const parsed = await parseUploadedJd({
-      buffer: req.file.buffer,
-      mimetype: req.file.mimetype,
-      filename: req.file.originalname,
+    const text = await extractJdFileText(req.file.buffer, req.file.mimetype, req.file.originalname);
+    if (!text || text.length < 20) {
+      return res.status(400).json({ message: 'Could not read text from this file. Try a text-based PDF or TXT.' });
+    }
+    const fields = await parseJdWithAi({
+      organizationId: req.user.organizationId,
+      text,
     });
-    res.json({ success: true, data: parsed });
+    logger.info('JD import parsed', {
+      filename: req.file.originalname,
+      chars: text.length,
+      role: fields.role || null,
+      method: fields.meta?.method,
+    });
+    res.json({ success: true, data: fields });
   } catch (err) {
     res.status(err.statusCode || 400).json({ message: err.message || 'Could not read this JD' });
   }
@@ -215,7 +230,8 @@ router.get('/', verifyToken, async (req, res) => {
         await ensurePublicId(job);
       }
     }
-    res.json(jobs);
+    const withPipeline = await attachJobPipelineStats(req.user.organizationId, jobs);
+    res.json(attachShareVia(withPipeline, req.user));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -376,7 +392,8 @@ router.get('/recent', verifyToken, async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
-    res.json({ success: true, data: rows });
+    const withPipeline = await attachJobPipelineStats(req.user.organizationId, rows);
+    res.json({ success: true, data: withPipeline });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -390,7 +407,9 @@ router.get('/:id', verifyToken, async (req, res) => {
       req.user.organizationId ? { _tenantId: req.user.organizationId } : {}
     ).populate('hiringManager', staffFields).populate('createdBy', staffFields);
     if (!job) return res.status(404).json({ message: 'Job not found' });
-    res.json(job);
+    const [withPipeline] = await attachJobPipelineStats(req.user.organizationId, [job]);
+    const [stamped] = attachShareVia([withPipeline || job], req.user);
+    res.json(stamped || withPipeline || job);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

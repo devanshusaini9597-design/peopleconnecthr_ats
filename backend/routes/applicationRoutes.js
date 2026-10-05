@@ -95,6 +95,32 @@ router.get('/job/:jobId', run(async (req, res) => {
   res.json({ success: true, data: applications });
 }));
 
+router.post('/bulk-tag-job', requireRecruiterOrAbove, run(async (req, res) => {
+  const jobId = req.body?.jobId || req.body?.jobCode;
+  if (!jobId) {
+    return res.status(400).json({ success: false, message: 'Select a Job ID' });
+  }
+  // preview:true returns job merge fields only. Never create applications from bulk mail.
+  if (String(req.body?.preview || '') === '1' || req.body?.preview === true) {
+    const job = await applicationService.resolveJobForOrg(req.user, jobId);
+    if (!job) return res.status(404).json({ success: false, message: 'Job not found' });
+    const meta = await applicationService.jobApplyMeta(req.user, job);
+    return res.json({
+      success: true,
+      data: {
+        job: { _id: job._id, jobCode: job.jobCode, title: job.title || job.role || '' },
+        ...meta,
+      },
+    });
+  }
+  const data = await applicationService.bulkTagCandidatesToJob(req, {
+    ids: req.body?.ids || req.body?.candidateIds || [],
+    misIds: req.body?.misIds || [],
+    jobId,
+  });
+  res.json({ success: true, data });
+}));
+
 router.get('/candidate/:candidateId', run(async (req, res) => {
   const applications = await applicationService.listByCandidate(
     req.user.organizationId,

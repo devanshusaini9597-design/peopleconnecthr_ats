@@ -1,87 +1,155 @@
 import React from 'react';
 import {
-  Mail, Search, Send, Star, X, Inbox as InboxIcon
+  Inbox as InboxIcon, Mail, Search, Send, Star, X, Clock, Ban, AlertCircle, FileText
 } from 'lucide-react';
 import EmptyState from '../ui/EmptyState';
-import PremiumSelect from '../ui/PremiumSelect';
 import { CHANNEL_FILTERS, formatWhen, initials } from './inboxConstants';
+import { listPreview } from './mailBody';
+
+const FOLDERS = [
+  { id: 'inbox', label: 'Inbox', icon: InboxIcon },
+  { id: 'sent', label: 'Sent', icon: Send },
+  { id: 'unread', label: 'Unread', icon: Mail },
+  { id: 'starred', label: 'Starred', icon: Star },
+  { id: 'snoozed', label: 'Snoozed', icon: Clock },
+  { id: 'drafts', label: 'Drafts', icon: FileText },
+  { id: 'archived', label: 'Archived', icon: Ban },
+];
 
 export default function InboxThreadList({
-  showDetailPane,
   listMeta,
   q,
   setQ,
   channel,
   setChannel,
+  folder,
+  setFolder,
+  assigned,
+  setAssigned,
+  assignedLocked = false,
   loading,
   threads,
   selectedId,
   onOpenThread,
   onCompose,
+  folderCounts = {},
 }) {
   return (
-    <div
-      data-tour="inbox-threads"
-      className={`lg:col-span-5 card-ats-bordered relative overflow-hidden flex flex-col min-w-0 min-h-[28rem] ${
-        showDetailPane ? 'hidden lg:flex' : 'flex'
-      }`}
-    >
-      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-      <div className="relative px-4 sm:px-5 pt-4 pb-3 border-b border-stone-100 space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <h2 className="text-[15px] font-bold text-stone-900 tracking-tight">Conversations</h2>
-            <p className="text-[11px] text-stone-400 mt-0.5 truncate">{listMeta}</p>
+    <div data-tour="inbox-threads" className="card-ats-bordered overflow-hidden flex flex-col min-w-0 min-h-[32rem] flex-1">
+      <div className="px-3 sm:px-4 py-3 border-b border-stone-100 bg-white space-y-2.5">
+        <div className="flex items-center gap-2 min-w-0">
+          <p className="text-[12px] text-stone-400 truncate flex-1">{listMeta}</p>
+          <button type="button" className="btn-primary !py-1.5 !px-3 !text-xs flex-shrink-0" onClick={onCompose}>
+            <Send className="w-3.5 h-3.5" />
+            Compose
+          </button>
+        </div>
+        <div className="flex gap-1 overflow-x-auto pb-0.5">
+          {FOLDERS.map((f) => {
+            const Icon = f.icon;
+            const on = folder === f.id;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFolder(f.id)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold whitespace-nowrap border ${
+                  on ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-stone-600 border-stone-200 hover:bg-brand-50'
+                }`}
+              >
+                <Icon className={`w-3.5 h-3.5 ${on && f.id === 'starred' ? 'fill-white' : ''}`} />
+                {f.label}
+                {typeof folderCounts[f.id] === 'number' ? (
+                  <span className={`ml-0.5 min-w-[1.1rem] text-center text-[10px] tabular-nums ${on ? 'text-white/90' : 'text-stone-400'}`}>
+                    {folderCounts[f.id]}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              className="input-ats !pl-10 !pr-9 !h-10 w-full"
+              placeholder="Search mail"
+              aria-label="Search conversations"
+            />
+            {q ? (
+              <button
+                type="button"
+                onClick={() => setQ('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-600"
+                aria-label="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            ) : null}
           </div>
-          <span className="badge-neutral text-[10px] flex-shrink-0 inline-flex items-center gap-1">
-            <Mail className="w-3 h-3" /> Inbox
-          </span>
+          <div className="flex gap-1 overflow-x-auto flex-shrink-0">
+            {CHANNEL_FILTERS.filter((f) => f.value !== 'mixed').map((f) => {
+              const on = channel === f.value;
+              return (
+                <button
+                  key={f.value}
+                  type="button"
+                  onClick={() => setChannel(f.value)}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border whitespace-nowrap ${
+                    on ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-stone-600 border-stone-200 hover:bg-brand-50'
+                  }`}
+                >
+                  {f.value === 'all' ? 'All' : f.label}
+                </button>
+              );
+            })}
+            {assignedLocked ? (
+              <span className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-brand-200 bg-brand-50 text-brand-800 whitespace-nowrap">
+                My mail
+              </span>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setAssigned('me')}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border whitespace-nowrap ${
+                    assigned !== 'all' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-stone-600 border-stone-200'
+                  }`}
+                >
+                  My mail
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAssigned('all')}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border whitespace-nowrap ${
+                    assigned === 'all' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-stone-600 border-stone-200'
+                  }`}
+                >
+                  All mail
+                </button>
+              </>
+            )}
+          </div>
         </div>
-        <div className="relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            className="input-ats !pl-10 !pr-9 w-full"
-            placeholder="Search conversations…"
-            aria-label="Search conversations"
-          />
-          {q && (
-            <button
-              type="button"
-              onClick={() => setQ('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100"
-              aria-label="Clear search"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-        <PremiumSelect
-          compact
-          icon={InboxIcon}
-          value={channel}
-          onChange={(v) => setChannel(v || 'all')}
-          options={CHANNEL_FILTERS}
-          placeholder="All channels"
-        />
       </div>
 
-      <div className="relative flex-1 overflow-y-auto overscroll-contain bg-[linear-gradient(180deg,#fafaf9_0%,#ffffff_40%)]">
+      <div className="flex-1 overflow-y-auto overscroll-contain bg-white">
         {loading ? (
-          <div className="p-3.5 space-y-2">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="h-16 skeleton-ats rounded-xl" />
+          <div className="divide-y divide-stone-100">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+              <div key={i} className="h-12 skeleton-ats mx-3 my-1 rounded-lg" />
             ))}
           </div>
-        ) : threads.length === 0 ? (
-          <div className="p-4 h-full min-h-[16rem] flex items-center justify-center">
+        ) : !(Array.isArray(threads) && threads.length) ? (
+          <div className="p-8 flex items-center justify-center min-h-[16rem]">
             <EmptyState
               compact
               icon={Mail}
               tone="brand"
-              message="Inbox is empty"
-              subMessage="Send a message to start a conversation thread."
+              message="No conversations"
+              subMessage="Replies to team@ appear here after mailbox sync."
               action={(
                 <button type="button" className="btn-primary" onClick={onCompose}>
                   <Send className="w-4 h-4" /> New message
@@ -90,48 +158,47 @@ export default function InboxThreadList({
             />
           </div>
         ) : (
-          threads.map((t) => {
+          (Array.isArray(threads) ? threads : []).map((t) => {
             const active = selectedId === t._id;
-            const name = t.participants?.candidateName || t.subject || 'Conversation';
+            const name = t.fromLabel || t.participants?.candidateName || t.participants?.candidateEmail || (t.isDraft ? (t.draftTo || 'Draft') : 'Unknown sender');
+            const preview = listPreview(t.lastMessagePreview || t.draftBody);
+            const unread = Number(t.unreadCount || 0) > 0;
+            const sn = t.snoozedUntil && new Date(t.snoozedUntil) > new Date();
             return (
               <button
                 key={t._id}
                 type="button"
-                onClick={() => onOpenThread(t._id)}
-                className={`w-full text-left px-4 py-3 border-b border-stone-50 flex items-start gap-3 min-w-0 transition-colors ${
-                  active
-                    ? 'bg-brand-50/80 border-l-2 border-l-brand-500'
-                    : 'hover:bg-brand-50/40 border-l-2 border-l-transparent'
+                onClick={() => onOpenThread(t)}
+                className={`w-full text-left px-3 sm:px-4 h-12 flex items-center gap-3 min-w-0 border-b border-stone-100 ${
+                  active ? 'bg-brand-50' : unread ? 'bg-white' : 'bg-white hover:bg-brand-50/40'
                 }`}
               >
                 <span
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                    active
-                      ? 'bg-brand-600 text-white'
-                      : 'bg-stone-100 text-stone-600 border border-stone-200'
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
+                    unread ? 'bg-brand-600 text-white' : 'bg-stone-200 text-stone-600'
                   }`}
                 >
                   {initials(name)}
                 </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center justify-between gap-2">
-                    <span className={`text-sm truncate ${t.unreadCount ? 'font-bold text-stone-900' : 'font-semibold text-stone-800'}`}>
-                      {name}
-                    </span>
-                    <span className="text-[10px] text-stone-400 whitespace-nowrap flex-shrink-0">
-                      {formatWhen(t.lastMessageAt)}
-                    </span>
+                <span className={`w-[10rem] sm:w-[13rem] truncate flex-shrink-0 text-[13px] ${unread ? 'font-bold text-stone-900' : 'font-medium text-stone-700'}`}>
+                  {name}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[13px]">
+                  <span className={unread ? 'font-semibold text-stone-900' : 'text-stone-800'}>
+                    {t.subject || 'No subject'}
                   </span>
-                  <span className="block text-xs text-stone-500 truncate mt-0.5">
-                    {t.lastMessagePreview || 'No messages yet'}
+                  <span className="text-stone-400 font-normal">
+                    {' — '}
+                    {preview || 'No preview'}
                   </span>
-                  <span className="mt-1.5 flex items-center gap-1.5">
-                    <span className="badge-neutral text-[10px] capitalize">{t.channel}</span>
-                    {t.unreadCount > 0 && (
-                      <span className="badge-brand text-[10px]">{t.unreadCount} new</span>
-                    )}
-                    {t.starred && <Star className="w-3 h-3 text-amber-500 fill-amber-400" />}
-                  </span>
+                </span>
+                <span className="hidden md:inline-flex items-center gap-1.5 flex-shrink-0 text-stone-400">
+                  {t.starred ? <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" /> : null}
+                  {sn ? <Clock className="w-3.5 h-3.5" /> : null}
+                  {unread ? <AlertCircle className="w-3.5 h-3.5 text-brand-600" /> : null}
+                </span>
+                <span className={`w-[4.5rem] sm:w-[5.5rem] text-right text-[11px] flex-shrink-0 tabular-nums ${unread ? 'font-bold text-stone-800' : 'text-stone-400'}`}>
+                  {formatWhen(t.lastMessageAt)}
                 </span>
               </button>
             );

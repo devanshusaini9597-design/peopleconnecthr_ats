@@ -126,7 +126,7 @@ const isAllowedCampaignFrom = (email) => {
 
 /**
  * Optional per-domain default From:
- * ZOHO_CAMPAIGNS_FROM_SKILLNIXRECRUITMENT_COM=alert@skillnixrecruitment.com
+ * ZOHO_CAMPAIGNS_FROM_SKILLNIXRECRUITMENT_COM=team@skillnixrecruitment.com
  * or MAIL_PROFILE_*_FROM for the matching brand.
  */
 const mappedFromForDomain = (domain) => {
@@ -138,7 +138,7 @@ const mappedFromForDomain = (domain) => {
   if (d === 'skillnixrecruitment.com') {
     return (
       process.env.MAIL_PROFILE_SKILLNIXRECRUITMENT_FROM ||
-      'alert@skillnixrecruitment.com'
+      'team@skillnixrecruitment.com'
     ).trim();
   }
   if (d === 'skillnix.com') {
@@ -155,9 +155,9 @@ const mappedFromForDomain = (domain) => {
 };
 
 /**
- * Optional allowlist of Zoho Campaigns Manage Senders (max ~5).
- * ZOHO_CAMPAIGNS_VERIFIED_SENDERS=asmita@...,sarbjeet@...,alert@...
- * When set: login must be in this list or send fails with a clear error (no alert@ fallback).
+ * Optional allowlist of Zoho Campaigns Manage Senders for the shared From mailbox.
+ * Employees do not need to be listed — they are Reply-To only.
+ * ZOHO_CAMPAIGNS_VERIFIED_SENDERS=team@skillnixrecruitment.com
  */
 const verifiedCampaignSenders = () => {
   const raw = String(process.env.ZOHO_CAMPAIGNS_VERIFIED_SENDERS || '')
@@ -185,7 +185,7 @@ const sharedCampaignFromAddress = (domain) => {
   if (!d || !sharedCampaignFromOrgDomains().has(d)) return '';
   return (
     mappedFromForDomain(d) ||
-    `alert@${d}`
+    `team@${d}`
   ).trim().toLowerCase();
 };
 
@@ -199,6 +199,69 @@ const uniqueAllowedFroms = (emails) => {
     out.push(email);
   }
   return out;
+};
+
+function escapeCampaignHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Hidden routing marker only. Never visible to the candidate. */
+function appendCampaignOwnerStamp(html, { name, email } = {}) {
+  const ownerEmail = String(email || '').trim();
+  void name;
+  if (!ownerEmail) return String(html || '');
+  const raw = String(html || '');
+  if (/pc-hiring-contact:/i.test(raw)) return raw;
+  const { hiddenHiringContactHtml } = require('./emailBrandLayout');
+  const inject = hiddenHiringContactHtml(ownerEmail);
+  if (!inject) return raw;
+  if (/<\/body>/i.test(raw)) return raw.replace(/<\/body>/i, `${inject}</body>`);
+  return `${raw}${inject}`;
+}
+
+function rememberInboxSends({ organizationId, userId, recipients, subject, htmlForSend }) {
+  setImmediate(async () => {
+    try {
+      if (!organizationId || !userId) return;
+      const User = require('../models/User');
+      const inbox = require('./inboxService');
+      const user = await User.findById(userId).select('_id name email organizationId').lean();
+      if (!user) return;
+      const list = (recipients || []).slice(0, 80);
+      for (const r of list) {
+        if (!r?.email) continue;
+        await inbox.recordSentMail(organizationId, { ...user, id: user._id }, {
+          toAddress: r.email,
+          candidateName: r.name || '',
+          subject,
+          bodyHtml: htmlForSend || '',
+          body: '',
+        });
+      }
+    } catch (_) { /* inbox copy is best-effort */ }
+  });
+}
+
+/**
+ * Reply-To tag on the shared From mailbox (team+asmita@domain).
+ * Zoho Campaigns only allows ~5 verified From senders. Plus-tags still land in
+ * team@ so Zoho Mail can forward each tag to that employee — no extra senders.
+ */
+const plusTagReplyTo = (sharedFrom, employeeEmail) => {
+  const shared = String(sharedFrom || '').trim().toLowerCase();
+  const emp = String(employeeEmail || '').trim().toLowerCase();
+  const at = shared.indexOf('@');
+  if (at < 1) return emp || shared;
+  const local = shared.slice(0, at);
+  const domain = shared.slice(at + 1);
+  const tag = (emp.split('@')[0] || '').replace(/[^a-z0-9._-]/g, '').slice(0, 40);
+  if (!local || !domain || !tag) return shared;
+  if (`${local}@${domain}` === emp) return shared;
+  return `${local}+${tag}@${domain}`;
 };
 
 /**
@@ -223,12 +286,11 @@ const getOrgMailDomains = async (organizationId) => {
 
 /**
  * Ordered From candidates for Zoho Campaigns.
- * Skillnix (strictVerified): login only — must match a Zoho Manage Senders address.
- * Other orgs: login work email only.
+ * Shared-from orgs (Skillnix): one verified mailbox (team@). Any employee can send.
+ * Other orgs: login work email.
  */
 const collectCampaignFromCandidates = ({ fromEmail, userEmail, sharedFrom } = {}) => {
-  // Skillnix and others: send only as the login work email (no alert@ auto-fallback)
-  void sharedFrom;
+  if (sharedFrom) return uniqueAllowedFroms([sharedFrom]);
   return uniqueAllowedFroms([fromEmail, userEmail]);
 };
 
@@ -244,12 +306,19 @@ const notVerifiedSenderError = (email) => {
   return err;
 };
 
+function campaignFromDisplayName({ sharedFrom, orgName, senderName, userName } = {}) {
+  if (sharedFrom) {
+    return String(orgName || 'Skillnix Recruitment Services').trim() || 'Skillnix Recruitment Services';
+  }
+  return String(senderName || userName || orgName || 'HR Team').trim() || 'HR Team';
+}
+
 /**
  * Resolve campaign From / Reply-To.
  *
- * Skillnix: From + Reply-To = login only when that login is a verified Zoho sender.
- * If not verified → clear error (no silent fallback to alert@).
- * Other orgs: From = login work email.
+ * Shared-from orgs: From = one verified mailbox (team@ / ZOHO_CAMPAIGNS_FROM_*).
+ * Reply-To = the employee (or replyToEmail) so replies land in that inbox.
+ * Other orgs: From = login work email; Reply-To still prefers the employee when set.
  */
 const resolveCampaignFrom = async ({
   fromEmail,
@@ -300,17 +369,43 @@ const resolveCampaignFrom = async ({
 
   const primary = fromCandidates[0];
   const verified = verifiedCampaignSenders();
-  // Skillnix (or any org with allowlist): login must be in Manage Senders list
-  if ((sharedFrom || verified.size) && verified.size && !verified.has(primary)) {
+  // Shared mailbox: employees are never required on Manage Senders.
+  // If an allowlist is set, only the shared From must match it.
+  if (verified.size && !sharedFrom && !verified.has(primary)) {
     throw notVerifiedSenderError(primary);
+  }
+  if (sharedFrom && verified.size && !verified.has(primary)) {
+    logger.warn(
+      { from: primary },
+      '[Campaigns] Shared From is not in ZOHO_CAMPAIGNS_VERIFIED_SENDERS — sending anyway (domain is verified in Zoho)'
+    );
+  }
+
+  const employeeReplyTo = uniqueAllowedFroms([replyToEmail, userEmail, fromEmail])[0] || primary;
+  const replyTo = employeeReplyTo;
+
+  let orgDisplayName = '';
+  if (userOrgId) {
+    try {
+      const { loadOrgEmailBrand } = require('./emailBrandLayout');
+      const brand = await loadOrgEmailBrand(userOrgId);
+      orgDisplayName = String(brand?.name || '').trim();
+    } catch (_) { /* keep empty */ }
   }
 
   return {
     email: primary,
     fromCandidates: [primary],
-    replyTo: primary,
-    contactEmail: uniqueAllowedFroms([replyToEmail, userEmail, fromEmail])[0] || primary,
-    name: (senderName || userName || 'HR Team').trim() || 'HR Team',
+    replyTo,
+    employeeReplyTo,
+    employeeName: userName,
+    contactEmail: employeeReplyTo,
+    name: campaignFromDisplayName({
+      sharedFrom: Boolean(sharedFrom),
+      orgName: orgDisplayName,
+      senderName,
+      userName,
+    }),
     sharedFrom: Boolean(sharedFrom),
     strictVerified: Boolean(sharedFrom || verified.size),
   };
@@ -687,7 +782,7 @@ const countListContacts = async (listkey, status = 'active', settings = null) =>
 const countActiveContacts = async (listkey, settings = null) =>
   countListContacts(listkey, 'active', settings);
 
-const waitForActiveContacts = async (listkey, minCount, timeoutMs = 45000, settings = null) => {
+const waitForActiveContacts = async (listkey, minCount, timeoutMs = 12000, settings = null) => {
   const started = Date.now();
   let last = 0;
   while (Date.now() - started < timeoutMs) {
@@ -700,7 +795,7 @@ const waitForActiveContacts = async (listkey, minCount, timeoutMs = 45000, setti
     } catch (err) {
       logger.warn({ err: err.message }, '[Campaigns] getlistsubscribers poll failed');
     }
-    await sleep(2500);
+    await sleep(1500);
   }
   return last;
 };
@@ -768,19 +863,28 @@ const createTempListWithContacts = async (emails, listName, settings = null) => 
   }
 
   let pendingConfirmCount = 0;
-  for (const email of unique) {
-    try {
-      const sub = await addContact(listkey, email, '', '', topicId, settings);
-      if (sub?.pendingConfirm) pendingConfirmCount += 1;
-    } catch (err) {
-      logger.warn({ email, err: err.message }, '[Campaigns] temp listsubscribe failed');
-    }
+  // Re-subscribe in parallel (topics) — sequential calls made every campaign send take tens of seconds.
+  const SUB_CONCURRENCY = 8;
+  for (let i = 0; i < unique.length; i += SUB_CONCURRENCY) {
+    const slice = unique.slice(i, i + SUB_CONCURRENCY);
+    const outcomes = await Promise.all(
+      slice.map(async (email) => {
+        try {
+          const sub = await addContact(listkey, email, '', '', topicId, settings);
+          return sub?.pendingConfirm ? 1 : 0;
+        } catch (err) {
+          logger.warn({ email, err: err.message }, '[Campaigns] temp listsubscribe failed');
+          return 0;
+        }
+      })
+    );
+    pendingConfirmCount += outcomes.reduce((a, b) => a + b, 0);
   }
 
-  const active = await waitForActiveContacts(listkey, 1, 45000, settings);
+  // Short poll only — createCampaign falls back to ZeptoMail on empty-list (6606).
+  // Waiting 45s here was the main reason the UI timed out while mail still arrived later.
+  const active = await waitForActiveContacts(listkey, 1, 12000, settings);
   if (active < 1) {
-    // Don't hard-fail here — getlistsubscribers is often slow/wrong while createCampaign
-    // still works (especially with Double opt-in off). Caller falls back to Zepto on 6606.
     logger.warn(
       {
         listkeyPrefix: listkey.slice(0, 10),
@@ -1036,9 +1140,24 @@ const createAndSendCampaignOnce = async ({
   let replyToApplied =
     !reply || reply.toLowerCase() === String(fromEmail).toLowerCase();
   let sendKey = campaignKey;
+  let appliedReplyTo = replyToApplied ? String(fromEmail) : '';
 
-  // From = alert@ (verified). Reply-To = login via clone when different.
-  if (!replyToApplied) {
+  const replyTries = [];
+  if (reply && reply.toLowerCase() !== String(fromEmail).toLowerCase()) {
+    replyTries.push(reply);
+  }
+  const tagged = plusTagReplyTo(fromEmail, reply);
+  if (
+    tagged
+    && tagged.toLowerCase() !== String(fromEmail).toLowerCase()
+    && tagged.toLowerCase() !== String(reply || '').toLowerCase()
+  ) {
+    replyTries.push(tagged);
+  }
+
+  // From = shared verified mailbox. Try employee Reply-To, then team+employee@ (forwardable).
+  for (const tryReply of replyTries) {
+    if (replyToApplied) break;
     try {
       const cloned = await cloneCampaignWithReplyTo({
         oldCampaignKey: campaignKey,
@@ -1046,32 +1165,40 @@ const createAndSendCampaignOnce = async ({
         subject,
         fromEmail,
         fromName,
-        replyTo: reply,
+        replyTo: tryReply,
         settings,
       });
       if (cloned.replyToApplied && cloned.campaignKey) {
         sendKey = cloned.campaignKey;
         replyToApplied = true;
+        appliedReplyTo = tryReply;
         logger.info(
-          { from: fromEmail, replyTo: reply, campaignKey: sendKey },
-          '[Campaigns] Reply-To set to login via clone'
+          { from: fromEmail, replyTo: tryReply, campaignKey: sendKey },
+          '[Campaigns] Reply-To set via clone'
         );
       } else {
         logger.warn(
           {
             from: fromEmail,
-            replyTo: reply,
+            replyTo: tryReply,
             actualReplyTo: cloned.actualReplyTo || null,
           },
-          '[Campaigns] Zoho kept Reply-To = From — sending anyway (From=alert@). Forward alert@ or verify login as sender for personal Reply-To.'
+          '[Campaigns] Zoho did not keep this Reply-To'
         );
       }
     } catch (cloneErr) {
       logger.warn(
-        { err: cloneErr.message, from: fromEmail, replyTo: reply },
-        '[Campaigns] Clone reply_to failed — sending From=alert@ without custom Reply-To'
+        { err: cloneErr.message, from: fromEmail, replyTo: tryReply },
+        '[Campaigns] Clone reply_to failed'
       );
     }
+  }
+
+  if (!replyToApplied && replyTries.length) {
+    logger.warn(
+      { from: fromEmail, tried: replyTries },
+      '[Campaigns] Replies will land on the shared From mailbox. Set Zoho Mail filters to forward team+employee@ to that person.'
+    );
   }
 
   const sendRes = await campaignsRequest(
@@ -1091,14 +1218,14 @@ const createAndSendCampaignOnce = async ({
     send: sendRes,
     create: createRes,
     fromEmail,
-    replyTo: reply || fromEmail,
+    replyTo: appliedReplyTo || reply || fromEmail,
     replyToApplied,
   };
 };
 
 /**
- * Send as login From+Reply-To only. No alert@ fallback.
- * If Zoho rejects as unverified → clear error for that login.
+ * Send as the shared From mailbox. Reply-To stays the employee address when different.
+ * If Zoho rejects From as unverified → clear error for that shared mailbox.
  */
 const createAndSendCampaign = async ({
   campaignName,
@@ -1121,7 +1248,7 @@ const createAndSendCampaign = async ({
   }
 
   const addr = emailsToTry[0];
-  const reply = addr; // Reply-To = From (same verified mailbox)
+  const reply = String(replyTo || '').trim() || addr;
   try {
     return await createAndSendCampaignOnce({
       campaignName,
@@ -1148,6 +1275,13 @@ const createAndSendCampaign = async ({
  */
 const sendMarketingEmail = async (to, subject, htmlBody, options = {}) => {
   const { senderName, fromEmail, userId, campaignName, organizationId, listPurpose, replyToEmail } = options;
+  if (userId) {
+    const { isDemoUserId } = require('./demoWorkspaceService');
+    if (await isDemoUserId(userId)) {
+      const { demoEmailBlockedError } = require('../config/demoRoles');
+      throw demoEmailBlockedError();
+    }
+  }
 
   const {
     resolveCampaignsSettings,
@@ -1187,7 +1321,7 @@ const sendMarketingEmail = async (to, subject, htmlBody, options = {}) => {
     throw err;
   }
 
-  // From+Reply-To = login only. Skillnix: must be Zoho-verified sender.
+  // From = shared verified mailbox. Reply-To = employee / requested address.
   const resolved = await resolveCampaignFrom({
     fromEmail: fromEmail || undefined,
     senderName,
@@ -1199,7 +1333,10 @@ const sendMarketingEmail = async (to, subject, htmlBody, options = {}) => {
   const senderAddr = resolved.email;
   const fromName = resolved.name;
   const replyTo = resolved.replyTo || senderAddr;
-  const htmlForSend = String(htmlBody || '');
+  const htmlForSend = appendCampaignOwnerStamp(htmlBody, {
+    name: resolved.employeeName || '',
+    email: resolved.employeeReplyTo || replyToEmail || fromEmail || '',
+  });
   const mailtoAddr = '';
 
   const recipients = (Array.isArray(to) ? to : [to]).map((r) => ({
@@ -1262,6 +1399,7 @@ const sendMarketingEmail = async (to, subject, htmlBody, options = {}) => {
         provider: 'zoho_campaigns',
         emailType: 'campaign',
         subject: String(subject).slice(0, 200),
+        htmlBody: htmlForSend,
         fromEmail: sent.fromEmail || senderAddr,
         replyToEmail: sent.replyTo || replyTo,
         campaignName: safeName || `ATS ${stamp}`,
@@ -1278,6 +1416,14 @@ const sendMarketingEmail = async (to, subject, htmlBody, options = {}) => {
         },
       });
     } catch (_) { /* non-blocking */ }
+
+    rememberInboxSends({
+      organizationId: options.organizationId,
+      userId: options.userId,
+      recipients,
+      subject,
+      htmlForSend,
+    });
 
     return {
       success: true,
@@ -1308,7 +1454,7 @@ const sendMarketingEmail = async (to, subject, htmlBody, options = {}) => {
       if (!err.displayMessage) {
         err.displayMessage =
           `"${senderAddr}" is not a Zoho Campaigns sender yet. ` +
-          'Add it under Zoho Campaigns → Settings → Deliverability → Manage Senders, verify, then retry.';
+          'Add this shared mailbox under Zoho Campaigns → Settings → Deliverability → Manage Senders (domain verify is not enough for From). Employees stay on Reply-To only.';
       }
       throw err;
     }
@@ -1351,6 +1497,13 @@ const sendMarketingEmail = async (to, subject, htmlBody, options = {}) => {
           'Zoho could not activate contacts (pending opt-in), and ZeptoMail fallback also failed. Check email settings, then retry.';
         throw err;
       }
+      rememberInboxSends({
+        organizationId: options.organizationId,
+        userId: options.userId,
+        recipients,
+        subject,
+        htmlForSend,
+      });
       return {
         success: true,
         sent: delivered,
@@ -1402,4 +1555,7 @@ module.exports = {
   isAllowedCampaignFrom,
   sharedCampaignFromAddress,
   sharedCampaignFromOrgDomains,
+  plusTagReplyTo,
+  appendCampaignOwnerStamp,
+  campaignFromDisplayName,
 };

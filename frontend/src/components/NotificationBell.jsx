@@ -219,6 +219,10 @@ const NotificationBell = () => {
       navigate('/jobs');
       return;
     }
+    if (notif.linkUrl) {
+      navigate(notif.linkUrl);
+      return;
+    }
     if (notif.type === 'share_request') {
       const query = notif.candidateName;
       navigate(query ? `/ats?q=${encodeURIComponent(query)}` : '/ats');

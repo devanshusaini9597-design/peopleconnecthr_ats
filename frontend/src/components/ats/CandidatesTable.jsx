@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { CheckSquare, Square, MinusSquare, Search, Share2, Users, Plus } from 'lucide-react';
 import EmptyState from '../ui/EmptyState';
 import { blankCandidateForm } from './atsConstants';
+import { guardTableCopy } from '../../utils/tableCopyGuard';
 
 export default function CandidatesTable(props) {
   const {
@@ -10,10 +11,16 @@ export default function CandidatesTable(props) {
     selectedIds, toggleSelection, isLoadingInitial, viewMode, searchQuery,
     advancedSearchFilters, setEditId, setFormData, setFormErrors, setCountryCode,
     setCountryIso, setShowModal, isFreelancer, initialFormState, openAddCandidate,
+    allMatching = false,
   } = props;
-  const pageIds = visibleCandidates.map((c) => c._id);
+  const pageIds = visibleCandidates.map((c) => String(c._id));
   const hasRows = visibleCandidates.length > 0;
   const showOverlay = Boolean(isLoadingInitial);
+  const selectedSet = useMemo(
+    () => new Set((selectedIds || []).map(String)),
+    [selectedIds],
+  );
+  const isRowSelected = (id) => allMatching || selectedSet.has(String(id));
 
   return (
         <div className="relative min-h-[280px]">
@@ -25,6 +32,7 @@ export default function CandidatesTable(props) {
                 ? 'pointer-events-none select-none opacity-45 blur-[2.5px] saturate-75'
                 : 'opacity-100 blur-0'
             }`}
+            onCopy={guardTableCopy}
             onMouseDown={showOverlay ? undefined : onTableDragScrollStart}
             onMouseMove={showOverlay ? undefined : onTableDragScrollMove}
             onMouseUp={showOverlay ? undefined : onTableDragScrollEnd}
@@ -32,7 +40,7 @@ export default function CandidatesTable(props) {
             aria-busy={showOverlay}
           >
           <table
-            className="cand-table-drag w-max min-w-full text-left border-collapse select-text border border-stone-200"
+            className="cand-table-drag w-max min-w-full text-left border-collapse select-none border border-stone-200"
             role="table"
             aria-label="Candidates list"
             style={{ tableLayout: 'auto' }}
@@ -85,18 +93,18 @@ export default function CandidatesTable(props) {
                 <tr
                   key={candidate._id}
                   className={`transition-colors ${
-                    selectedIds.includes(candidate._id) ? 'bg-brand-50/80' : index % 2 === 0 ? 'bg-white' : 'bg-stone-50/40'
+                    isRowSelected(candidate._id) ? 'bg-brand-50/80' : index % 2 === 0 ? 'bg-white' : 'bg-stone-50/40'
                   } hover:bg-brand-50/50`}
                 >
                   <td className="px-3.5 py-3 text-center w-[52px] border border-stone-200">
                     <button
                       type="button"
-                      aria-label={selectedIds.includes(candidate._id) ? `Deselect ${candidate.name || 'candidate'}` : `Select ${candidate.name || 'candidate'}`}
-                      onClick={() => toggleSelection(candidate._id)}
+                      aria-label={isRowSelected(candidate._id) ? `Deselect ${candidate.name || 'candidate'}` : `Select ${candidate.name || 'candidate'}`}
+                      onClick={() => toggleSelection(String(candidate._id))}
                       className="cursor-pointer flex justify-center mx-auto p-1 rounded hover:bg-stone-100"
                       disabled={showOverlay}
                     >
-                      {selectedIds.includes(candidate._id) ? <CheckSquare className="text-brand-600" size={17} aria-hidden="true" /> : <Square className="text-stone-300 hover:text-stone-400" size={17} aria-hidden="true" />}
+                      {isRowSelected(candidate._id) ? <CheckSquare className="text-brand-600" size={17} aria-hidden="true" /> : <Square className="text-stone-300 hover:text-stone-400" size={17} aria-hidden="true" />}
                     </button>
                   </td>
                   {orderedColumns.map((column) => (

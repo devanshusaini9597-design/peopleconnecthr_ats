@@ -145,7 +145,11 @@ async function updateOrganization(organizationId, body) {
   if (domain !== undefined) update.domain = String(domain).trim().toLowerCase();
   if (settings !== undefined) update.settings = settings;
   if (atsSettings !== undefined) {
-    const nextAts = { ...atsSettings };
+    const currentOrg = await Organization.findById(organizationId).select('atsSettings').lean();
+    const prevAts = currentOrg?.atsSettings && typeof currentOrg.atsSettings === 'object'
+      ? { ...currentOrg.atsSettings }
+      : {};
+    const nextAts = { ...prevAts, ...atsSettings };
     if (Object.prototype.hasOwnProperty.call(nextAts, 'careersCustomDomain')) {
       const v = String(nextAts.careersCustomDomain || '').trim().toLowerCase();
       if (!v) delete nextAts.careersCustomDomain;

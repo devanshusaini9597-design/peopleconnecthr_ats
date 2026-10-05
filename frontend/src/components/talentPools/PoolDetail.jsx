@@ -11,6 +11,7 @@ import { useAuth } from '../../context/AuthContext';
 import { planHasFeature } from '../../config/planFeatures';
 import { MEMBER_PAGE_SIZE, AUTO_OPTIONS } from './talentPoolsConstants';
 import { AddCandidatesModal } from './AddCandidatesModal';
+import { guardTableCopy } from '../../utils/tableCopyGuard';
 
 export const PoolDetail = ({ pool, onBack, toast, onPoolUpdated, onManage }) => {
   const { organization } = useAuth();
@@ -273,8 +274,8 @@ export const PoolDetail = ({ pool, onBack, toast, onPoolUpdated, onManage }) => 
           />
         ) : (
           <>
-            <div className="cand-table-scroll overflow-x-auto">
-              <table className="cand-table-drag w-full text-left border-collapse min-w-[900px] select-text border border-stone-200">
+            <div className="cand-table-scroll overflow-x-auto select-none" onCopy={guardTableCopy}>
+              <table className="cand-table-drag w-full text-left border-collapse min-w-[900px] select-none border border-stone-200">
                 <thead>
                   <tr className="bg-stone-100">
                     <th className="px-3.5 py-3.5 w-[52px] text-center border border-stone-200 bg-stone-100">

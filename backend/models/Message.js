@@ -34,6 +34,9 @@ const messageSchema = new mongoose.Schema({
   subject: { type: String, default: '' },
   body: { type: String, default: '' },
   bodyHtml: { type: String, default: '' },
+  /** S3 key for full HTML archive (mail-archive/.../inbox/...). */
+  archiveKey: { type: String, default: '', index: true },
+  archiveMetaKey: { type: String, default: '' },
   status: {
     type: String,
     enum: ['draft', 'queued', 'sent', 'delivered', 'read', 'failed', 'received'],
@@ -44,7 +47,13 @@ const messageSchema = new mongoose.Schema({
   readAt: { type: Date },
   sentBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   errorMessage: { type: String, default: '' },
-  sentAt: { type: Date, default: Date.now }
+  sentAt: { type: Date, default: Date.now },
+  attachments: [{
+    filename: { type: String, default: '' },
+    contentType: { type: String, default: 'application/octet-stream' },
+    size: { type: Number, default: 0 },
+    storageKey: { type: String, default: '' },
+  }],
 }, { timestamps: true });
 
 messageSchema.index({ threadId: 1, sentAt: 1 });

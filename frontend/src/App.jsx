@@ -6,6 +6,7 @@ import { AuthProvider } from './context/AuthContext';
 
 import Home from './components/Home'
 import Login from './components/Login'
+import DemoPage from './components/DemoPage'
 import TrialApprovePage from './components/TrialApprovePage'
 import Register from './components/Register'
 import VerifyEmailPage from './components/VerifyEmailPage'
@@ -48,6 +49,7 @@ const CustomRolesPage = React.lazy(() => import('./components/CustomRolesPage'))
 const CandidateFieldsPage = React.lazy(() => import('./components/CandidateFieldsPage'))
 const TalentPoolsPage = React.lazy(() => import('./components/TalentPoolsPage'))
 const MisPage = React.lazy(() => import('./components/MisPage'))
+const MisReportsPage = React.lazy(() => import('./components/MisReportsPage'))
 const SSOCallbackPage = React.lazy(() => import('./components/SSOCallbackPage'))
 const SSOSettingsPage = React.lazy(() => import('./components/SSOSettingsPage'))
 const BillingPage = React.lazy(() => import('./components/BillingPage'))
@@ -56,6 +58,7 @@ const ScheduledReportsPage = React.lazy(() => import('./components/ScheduledRepo
 const ApplicationsPage = React.lazy(() => import('./components/ApplicationsPage'))
 const InterviewsPage = React.lazy(() => import('./components/InterviewsPage'))
 const CareersPage = React.lazy(() => import('./components/CareersPage'))
+const PartnerSignupPage = React.lazy(() => import('./components/PartnerSignupPage'))
 const JobDetailPublic = React.lazy(() => import('./components/JobDetailPublic'))
 const CandidatePortal = React.lazy(() => import('./components/CandidatePortal'))
 const AssessmentsPage = React.lazy(() => import('./components/AssessmentsPage'))
@@ -92,6 +95,7 @@ const MarketingPage = React.lazy(() => import('./components/MarketingPage'))
 const SupportFeedbackPage = React.lazy(() => import('./components/SupportFeedbackPage'))
 const CompanySupportDeskPage = React.lazy(() => import('./components/CompanySupportDeskPage'))
 const FreelanceReviewPage = React.lazy(() => import('./components/FreelanceReviewPage'))
+const FreelancerApplicationsPage = React.lazy(() => import('./components/FreelancerApplicationsPage'))
 const TrialRequestsPage = React.lazy(() => import('./components/TrialRequestsPage'))
 
 const LoadingFallback = () => (
@@ -115,6 +119,7 @@ const router = createBrowserRouter([
     children: [
   { path: '/', element: <Home /> },
   { path: '/login', element: <Login /> },
+  { path: '/demo', element: <DemoPage /> },
   { path: '/trial-approve', element: <TrialApprovePage /> },
   { path: '/register', element: <Register /> },
   { path: '/verify-email', element: <VerifyEmailPage /> },
@@ -129,6 +134,7 @@ const router = createBrowserRouter([
   { path: '/accept-freelancer-invite', element: <Suspense fallback={<LoadingFallback />}><AcceptFreelancerInvitePage /></Suspense> },
   { path: '/careers/:orgSlug', element: <Suspense fallback={<LoadingFallback />}><CareersPage /></Suspense> },
   { path: '/careers/:orgSlug/jobs/:jobId', element: <Suspense fallback={<LoadingFallback />}><JobDetailPublic /></Suspense> },
+  { path: '/partners/:orgSlug', element: <Suspense fallback={<LoadingFallback />}><PartnerSignupPage /></Suspense> },
   { path: '/portal', element: <Suspense fallback={<LoadingFallback />}><CandidatePortal /></Suspense> },
   { path: '/assessment/:token', element: <Suspense fallback={<LoadingFallback />}><AssessmentTakePage /></Suspense> },
   { path: '/trust', element: <Suspense fallback={<LoadingFallback />}><TrustCenterPage /></Suspense> },
@@ -170,10 +176,12 @@ const router = createBrowserRouter([
       { path: '/support-desk', element: <Suspense fallback={<LoadingFallback />}><CompanySupportDeskPage /></Suspense> },
       { path: '/trial-requests', element: <Suspense fallback={<LoadingFallback />}><TrialRequestsPage /></Suspense> },
       { path: '/freelance-review', element: <Suspense fallback={<LoadingFallback />}><FreelanceReviewPage /></Suspense> },
+      { path: '/freelancer-applications', element: <ProtectedRoute requiredRoles={['owner', 'admin']}><Suspense fallback={<LoadingFallback />}><FreelancerApplicationsPage /></Suspense></ProtectedRoute> },
       { path: '/applications', element: <Suspense fallback={<LoadingFallback />}><ApplicationsPage /></Suspense> },
       { path: '/recruitment', element: <Suspense fallback={<LoadingFallback />}><ApplicationsPage /></Suspense> },
       { path: '/ats', element: <ATSPage /> },
-      { path: '/mis', element: <ProtectedRoute requiredRoles={['owner']}><Suspense fallback={<LoadingFallback />}><MisPage /></Suspense></ProtectedRoute> },
+      { path: '/mis', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales']}><Suspense fallback={<LoadingFallback />}><MisPage /></Suspense></ProtectedRoute> },
+      { path: '/mis-reports', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales']}><Suspense fallback={<LoadingFallback />}><MisReportsPage /></Suspense></ProtectedRoute> },
       { path: '/add-candidate', element: <Navigate to="/ats?add=1" replace /> },
       { path: '/resume-parsing', element: <ResumeParsing /> },
       { path: '/candidate-search', element: <CandidateSearch /> },
@@ -181,13 +189,14 @@ const router = createBrowserRouter([
       { path: '/skills', element: <Suspense fallback={<LoadingFallback />}><SkillsPage /></Suspense> },
       { path: '/positions', element: <Suspense fallback={<LoadingFallback />}><PositionsPage /></Suspense> },
       { path: '/inbox', element: <Suspense fallback={<LoadingFallback />}><InboxPage /></Suspense> },
+      { path: '/inbox/:threadId', element: <Suspense fallback={<LoadingFallback />}><InboxPage /></Suspense> },
       { path: '/sequences', element: <Suspense fallback={<LoadingFallback />}><SequencesPage /></Suspense> },
       { path: '/dei', element: <Suspense fallback={<LoadingFallback />}><DeiPage /></Suspense> },
       { path: '/form-builder', element: <Suspense fallback={<LoadingFallback />}><FormBuilderPage /></Suspense> },
       { path: '/organization/chatbot', element: <Suspense fallback={<LoadingFallback />}><ChatbotSettingsPage /></Suspense> },
       { path: '/assessments', element: <Suspense fallback={<LoadingFallback />}><AssessmentsPage /></Suspense> },
       { path: '/ai-tools', element: <Suspense fallback={<LoadingFallback />}><AiToolsPage /></Suspense> },
-      { path: '/search', element: <Suspense fallback={<LoadingFallback />}><GlobalSearchPage /></Suspense> },
+      { path: '/search', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales', 'interviewer', 'readonly']}><Suspense fallback={<LoadingFallback />}><GlobalSearchPage /></Suspense></ProtectedRoute> },
       { path: '/collaboration', element: <Suspense fallback={<LoadingFallback />}><CandidateCollaborationPage /></Suspense> },
       { path: '/my-team', element: <Suspense fallback={<LoadingFallback />}><MyTeamPage /></Suspense> },
       { path: '/scorecard-templates', element: <Suspense fallback={<LoadingFallback />}><ScorecardTemplatesPage /></Suspense> },

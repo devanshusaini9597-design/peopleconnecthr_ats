@@ -6,6 +6,7 @@ import ConfirmationModal from './ConfirmationModal';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import { useAuth } from '../context/AuthContext';
+import { guardTableCopy } from '../utils/tableCopyGuard';
 
 const TABS = [
   { id: 'pending_approval', label: 'Pending' },
@@ -116,8 +117,8 @@ export default function TrialRequestsPage() {
             subMessage="New trial submissions from the sign-up page land in Pending."
           />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto select-none" onCopy={guardTableCopy}>
+            <table className="w-full text-sm select-none">
               <thead>
                 <tr className="text-left text-[11px] uppercase tracking-wide text-stone-400 border-b border-stone-100">
                   <th className="px-4 py-3 font-semibold">Buyer</th>

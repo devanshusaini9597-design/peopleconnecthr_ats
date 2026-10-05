@@ -16,7 +16,7 @@ import AnalyticsLivePanel from './analytics/AnalyticsLivePanel';
 import AnalyticsExportPanel from './analytics/AnalyticsExportPanel';
 import AnalyticsControlPanel from './analytics/AnalyticsControlPanel';
 import AnalyticsModals from './analytics/AnalyticsModals';
-import { AnalyticsInlineLoader, AnalyticsPanelOverlay, AnalyticsPanelSkeleton } from './analytics/AnalyticsPanelLoader';
+import { AnalyticsPanelSkeleton } from './analytics/AnalyticsPanelLoader';
 import useAnalytics from './analytics/useAnalytics';
 
 const AnalyticsDashboard = () => {
@@ -34,12 +34,15 @@ const AnalyticsDashboard = () => {
     employeeScope,
     isExporting,
     refreshing,
+    updatedAt,
     activeTab,
     exportFormat,
     setExportFormat,
     reportType,
     setReportType,
     dateRange,
+    cohortMonth,
+    setCohortMonth,
     setDateRange,
     customFrom,
     setCustomFrom,
@@ -93,10 +96,8 @@ const AnalyticsDashboard = () => {
               ? 'Hiring performance across your organization or a selected employee.'
               : 'Hiring performance and data exports for your desk.'}
         />
-        <div className="rounded-lg border border-stone-200 bg-white h-[120px] skeleton-ats" />
-        <AnalyticsInlineLoader label="Loading analytics…" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-2">
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => <div key={i} className="h-[118px] skeleton-ats rounded-2xl" />)}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
+          {[1, 2, 3, 4].map((i) => <div key={i} className="h-[168px] skeleton-ats rounded-2xl" />)}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-2">
           <div className="lg:col-span-2 h-64 skeleton-ats rounded-2xl" />
@@ -125,21 +126,31 @@ const AnalyticsDashboard = () => {
 
   return (
     <>
-      <div className="page-shell-ats animate-page-enter">
+      <div className="page-shell-ats animate-page-enter pb-24">
         <PageHeader
           icon={BarChart3}
           title="Reports & Analytics"
           subtitle={isFreelancer
-            ? 'Hiring metrics for candidates on your desk.'
+            ? 'Hiring performance for candidates on your desk.'
             : employeeScope.canSelect
-              ? 'Hiring performance across your organization or a selected employee.'
-              : 'Hiring performance and data exports for your desk.'}
+              ? 'Hiring performance for the organization or one employee desk.'
+              : 'Hiring performance for your desk.'}
         >
           <button type="button" onClick={() => fetchStats(true)} disabled={refreshing} className="btn-secondary">
             <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
             Refresh
           </button>
         </PageHeader>
+        <p className="text-[12px] text-stone-400 -mt-2 mb-1">
+          {statsLoading || refreshing ? (
+            <span className="text-brand-600 font-medium">Updating figures…</span>
+          ) : updatedAt ? (
+            `Updated ${updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+          ) : (
+            'Up to date'
+          )}
+          {' · Updates every hour · Refresh loads the latest figures now'}
+        </p>
 
         <div className="space-y-2">
           <AnalyticsControlPanel
@@ -156,9 +167,6 @@ const AnalyticsDashboard = () => {
             setCustomTo={setCustomTo}
             periodLabel={stats?.periodLabel || periodLabel}
           />
-          {statsLoading && (
-            <AnalyticsInlineLoader label={`Updating metrics for ${stats?.periodLabel || periodLabel}…`} />
-          )}
         </div>
 
         {dateRange === 'custom' && customRangeInvalid && (
@@ -177,7 +185,6 @@ const AnalyticsDashboard = () => {
         {(isFreelancer || activeTab === 'analytics') && periodReady && (
           <div className="relative min-h-[320px]">
             {statsLoading && !stats && <AnalyticsPanelSkeleton />}
-            {statsLoading && stats && <AnalyticsPanelOverlay label={`Updating ${stats.periodLabel || periodLabel}…`} />}
             {!stats && !statsLoading && <AnalyticsPanelSkeleton />}
             {stats && (
               <div className={statsLoading ? 'opacity-40 pointer-events-none select-none' : ''}>
@@ -195,6 +202,9 @@ const AnalyticsDashboard = () => {
                   onTableDragScrollStart={onTableDragScrollStart}
                   onTableDragScrollMove={onTableDragScrollMove}
                   onTableDragScrollEnd={onTableDragScrollEnd}
+                  cohortMonth={cohortMonth}
+                  onCohortMonth={setCohortMonth}
+                  cohortLoading={statsLoading}
                 />
               </div>
             )}
@@ -203,7 +213,6 @@ const AnalyticsDashboard = () => {
 
         {!isFreelancer && activeTab === 'export' && (
           <div className="relative">
-            {statsLoading && <AnalyticsInlineLoader label="Updating export summary…" />}
             <AnalyticsExportPanel
             exportSuccess={exportSuccess}
             reportType={reportType}

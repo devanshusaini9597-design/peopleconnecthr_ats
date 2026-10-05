@@ -11,10 +11,13 @@ const {
   sendCustomEmail,
   checkUserEmailConfigured,
   canUserSendViaZepto,
+  getUserTransporter,
 } = require('./emailService');
 const { buildQuickEmailContent } = require('./quickEmailContent');
 const { loadOrgEmailBrand } = require('./emailBrandLayout');
 const { signEmail } = require('../utils/subscribeSign');
+const { personalizeBulkText } = require('../utils/bulkPersonalize');
+const { polishMergedBody, polishMergedSubject } = require('../utils/emailMergePolish');
 
 function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
@@ -23,8 +26,40 @@ function httpError(message, statusCode = 400, extra = {}) {
   return err;
 }
 
+function classifyBulkFailureReason(message = '', code = '') {
+  const text = `${code} ${message}`.toLowerCase();
+  if (
+    /invalid email|email address is required|no valid email|missing email|malformed|bad address|not a valid email|invalid recipient|invalid.?to/i.test(
+      text
+    )
+  ) {
+    return 'invalid_address';
+  }
+  if (
+    /bounce|hard.?bounce|soft.?bounce|mailbox (not found|unavailable|does not exist)|user unknown|recipient rejected|no such user|550\b|5\.1\.1|address rejected|undeliverable|does not exist|account does not exist|unknown recipient|inactive mailbox|mailbox full|over quota/i.test(
+      text
+    )
+  ) {
+    return 'mailbox_unavailable';
+  }
+  if (/unsubscrib|opted.?out|opt.?out|no marketing consent|not eligible for marketing/i.test(text)) {
+    return 'unsubscribed';
+  }
+  if (/spam|blocked|blacklist|reputation|suppress/i.test(text)) {
+    return 'blocked';
+  }
+  if (
+    /not configured|not verified|oauth|zoho campaigns|zeptomail|smtp|sender|verified domain|credentials|api key|sm_111|authentication failed/i.test(
+      text
+    )
+  ) {
+    return 'configuration';
+  }
+  return 'provider_error';
+}
+
 async function bumpEmailUsage(organizationId, count = 1) {
-  if (!organizationId) return;
+  if (!organizationId || !count) return;
   try {
     await Organization.findByIdAndUpdate(organizationId, {
       $inc: { 'usageCurrent.emailsSent': count },
@@ -34,29 +69,51 @@ async function bumpEmailUsage(organizationId, count = 1) {
   }
 }
 
+/** Non-blocking usage bump — never delay the HTTP response after mail is accepted. */
+function bumpEmailUsageAsync(organizationId, count = 1) {
+  Promise.resolve(bumpEmailUsage(organizationId, count)).catch(() => {});
+}
+
+const orgSlugCache = new Map();
+
+async function getOrgSlugCached(organizationId) {
+  const key = String(organizationId || '');
+  if (!key) return '';
+  if (orgSlugCache.has(key)) return orgSlugCache.get(key);
+  try {
+    const org = await Organization.findById(organizationId).select('slug').lean();
+    const slug = String(org?.slug || '').trim();
+    orgSlugCache.set(key, slug);
+    return slug;
+  } catch (_) {
+    orgSlugCache.set(key, '');
+    return '';
+  }
+}
+
 async function getSenderStatus(userId) {
   return canUserSendViaZepto(userId);
 }
 
-async function resolveDirectSubscribeUrl(organizationId, email) {
+async function resolveDirectSubscribeUrl(organizationId, email, opts = {}) {
   const emailNorm = String(email || '').trim().toLowerCase();
   if (!emailNorm || !emailNorm.includes('@') || !organizationId) return '';
 
-  try {
-    const Candidate = require('../models/Candidate');
-    const row = await Candidate.findOne({ organizationId, email: emailNorm })
-      .select('marketingConsent.optedIn')
-      .lean();
-    if (row?.marketingConsent?.optedIn === true) return ''; // already subscribed — no CTA
-  } catch (_) {
-    /* show subscribe if lookup fails */
+  // Bulk sends can skip the per-recipient consent DB hit — show subscribe CTA (harmless if already in).
+  if (!opts.skipConsentLookup) {
+    try {
+      const Candidate = require('../models/Candidate');
+      const row = await Candidate.findOne({ organizationId, email: emailNorm })
+        .select('marketingConsent.optedIn')
+        .lean();
+      if (row?.marketingConsent?.optedIn === true) return ''; // already subscribed — no CTA
+    } catch (_) {
+      /* show subscribe if lookup fails */
+    }
   }
 
-  let orgSlug = '';
-  try {
-    const org = await Organization.findById(organizationId).select('slug').lean();
-    orgSlug = String(org?.slug || '').trim();
-  } catch (_) {}
+  const orgSlug =
+    opts.orgSlug != null ? String(opts.orgSlug || '').trim() : await getOrgSlugCached(organizationId);
 
   const backendBase = (
     process.env.EMAIL_LINKS_BACKEND_URL ||
@@ -133,8 +190,8 @@ async function sendTypedEmail(user, body) {
       if (!customMessage) throw httpError('Custom message is required for custom email type');
       result = await sendCustomEmail(
         email,
-        (body.subject || '').trim() || 'Message from recruiting team',
-        customMessage,
+        polishMergedSubject((body.subject || '').trim() || 'Message from recruiting team'),
+        polishMergedBody(customMessage),
         {
           ...emailOptions,
           candidateName: name,
@@ -146,7 +203,7 @@ async function sendTypedEmail(user, body) {
   }
 
   logger.info(`✅ Email sent successfully to ${email} (Type: ${emailType})`);
-  await bumpEmailUsage(user.organizationId, 1);
+  bumpEmailUsageAsync(user.organizationId, 1);
   return { message: `Email sent successfully to ${email}`, data: result };
 }
 
@@ -172,14 +229,39 @@ async function sendBulkTypedEmails(user, body) {
   logger.info(`   Type: ${emailType}`);
   logger.info(`   Total Recipients: ${candidates.length}`);
 
+  const orgSlug = await getOrgSlugCached(user.organizationId);
+  const [brand, transporter, senderStatus] = await Promise.all([
+    loadOrgEmailBrand(user.organizationId),
+    getUserTransporter(user.id, {
+      organizationId: user.organizationId,
+      senderName: user.name || 'HR Team',
+      replyToEmail: user.email,
+    }),
+    canUserSendViaZepto(user.id),
+  ]);
+
+  if (!senderStatus.canSend) {
+    throw httpError(senderStatus.reason || 'USE_VERIFIED_DOMAIN', 400, {
+      code: 'USE_VERIFIED_DOMAIN',
+      displayMessage: senderStatus.reason || 'Please use your company verified email to send.',
+    });
+  }
+
+  const mailSession = {
+    demoChecked: true,
+    transporter,
+    senderStatus,
+  };
+
   const emailOptions = {
     userId: user.id,
     customMessage: customMessage || '',
     senderName: user.name || 'HR Team',
-    brand: await loadOrgEmailBrand(user.organizationId),
+    brand,
     organizationId: user.organizationId,
     emailType,
     channel: 'transactional',
+    mailSession,
   };
   if (cc) emailOptions.cc = cc;
   if (bcc) emailOptions.bcc = bcc;
@@ -187,31 +269,55 @@ async function sendBulkTypedEmails(user, body) {
   const success = [];
   const failed = [];
 
+  // UI bulk drafts usually bake in the first selected person's name — swap that only.
+  const bakedNames = [];
+  const firstName = String(candidates[0]?.name || '').trim();
+  if (firstName) bakedNames.push(firstName);
+
   for (const candidate of candidates) {
     const email = candidate?.email;
     const name = candidate?.name || 'Candidate';
     const position = candidate?.position || '';
-    const department = candidate?.department || 'N/A';
-    const joiningDate = candidate?.joiningDate || 'TBD';
+    const department = String(candidate?.department || '').trim();
+    const joiningDate = String(candidate?.joiningDate || '').trim();
+    const cleanDepartment = /^(n\/?a|none|-)$/i.test(department) ? '' : department;
+    const cleanJoining = /^(tbd|n\/?a|none|to be (confirmed|decided)|-)$/i.test(joiningDate)
+      ? ''
+      : joiningDate;
 
     if (!email || !String(email).includes('@')) {
-      failed.push({ email: email || '', error: 'Invalid email address' });
+      failed.push({
+        email: email || '',
+        error: 'Invalid email address',
+        displayMessage: 'Invalid or missing email address',
+        reasonCode: 'invalid_address',
+      });
       continue;
     }
 
     try {
       const perRecipientOptions = {
         ...emailOptions,
-        subscribeUrl: await resolveDirectSubscribeUrl(user.organizationId, email),
+        // Skip per-recipient consent DB lookup — CTA is fine if already subscribed.
+        subscribeUrl: await resolveDirectSubscribeUrl(user.organizationId, email, {
+          orgSlug,
+          skipConsentLookup: true,
+        }),
       };
       let result;
       // Quick-send edited drafts arrive as custom + subject/body.
       if (emailType === 'custom') {
         if (!customMessage) throw httpError('Custom message is required for custom email type');
+        const personalizedSubject = polishMergedSubject(
+          personalizeBulkText(subject || '', name, bakedNames)
+        );
+        const personalizedBody = polishMergedBody(
+          personalizeBulkText(customMessage, name, bakedNames)
+        );
         result = await sendCustomEmail(
           email,
-          (subject || '').trim() || 'Message from recruiting team',
-          customMessage,
+          personalizedSubject.trim() || 'Message from recruiting team',
+          personalizedBody,
           { ...perRecipientOptions, candidateName: name }
         );
       } else if (emailType === 'interview') {
@@ -221,21 +327,30 @@ async function sendBulkTypedEmails(user, body) {
       } else if (emailType === 'document') {
         result = await sendDocumentEmail(email, name, position, perRecipientOptions);
       } else if (emailType === 'onboarding') {
-        result = await sendOnboardingEmail(email, name, position, department, joiningDate, perRecipientOptions);
+        result = await sendOnboardingEmail(
+          email,
+          name,
+          position,
+          cleanDepartment,
+          cleanJoining,
+          perRecipientOptions
+        );
       } else {
         throw httpError('Invalid email type. Must be: interview, rejection, document, onboarding, or custom');
       }
       success.push({ email, messageId: result?.messageId });
     } catch (err) {
+      const displayMessage = err.displayMessage || err.message || 'Send failed';
       failed.push({
         email,
         error: err.message || 'Send failed',
-        displayMessage: err.displayMessage || err.message,
+        displayMessage,
+        reasonCode: err.reasonCode || classifyBulkFailureReason(displayMessage, err.code || ''),
       });
     }
   }
 
-  await bumpEmailUsage(user.organizationId, success.length);
+  bumpEmailUsageAsync(user.organizationId, success.length);
 
   return {
     message: 'Bulk email campaign completed',
@@ -289,10 +404,19 @@ async function sendMarketing(user, body) {
   if (!subject || !htmlBody) throw httpError('Subject and HTML body are required');
 
   const { sendMarketingEmail, isCampaignsConfigured } = require('./campaignService');
-  if (!isCampaignsConfigured()) {
+  const { resolveCampaignsSettings, isSettingsConfigured } = require('./marketingListService');
+  let marketingOk = isCampaignsConfigured();
+  if (!marketingOk && user.organizationId) {
+    try {
+      marketingOk = isSettingsConfigured(await resolveCampaignsSettings(user.organizationId));
+    } catch (_) {
+      marketingOk = false;
+    }
+  }
+  if (!marketingOk) {
     throw httpError('CAMPAIGNS_NOT_CONFIGURED', 400, {
       displayMessage:
-        'Zoho Campaigns is not configured. Add ZOHO_CAMPAIGNS_CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN (or ZOHO_CAMPAIGNS_API_KEY) and ZOHO_CAMPAIGNS_LIST_KEY to backend .env.',
+        'Campaigns are not configured. Add marketing under Organization → Integrations, or contact your admin.',
     });
   }
 
@@ -308,7 +432,7 @@ async function sendMarketing(user, body) {
   });
 
   return {
-    message: `Marketing campaign started for ${result.sent} recipient(s) via Zoho Campaigns`,
+    message: `Campaign started for ${result.sent} recipient(s)`,
     data: result.data,
   };
 }

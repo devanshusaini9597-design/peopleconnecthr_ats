@@ -17,6 +17,8 @@ export function useBulkCandidateActions({
   setCurrentPage,
   fetchData,
   isFreelancer = false,
+  resolveSelectedPeople,
+  refreshList,
 }) {
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
@@ -32,6 +34,7 @@ export function useBulkCandidateActions({
   const [dedupeResults, setDedupeResults] = useState(null);
   const [showDedupeModal, setShowDedupeModal] = useState(false);
   const [dedupeMerging, setDedupeMerging] = useState(false);
+  const [dedupeMergingDropId, setDedupeMergingDropId] = useState(null);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [bulkEditLoading, setBulkEditLoading] = useState(false);
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
@@ -50,13 +53,22 @@ export function useBulkCandidateActions({
     window.open(`https://wa.me/${cleanPhone}`, '_blank');
   }, []);
 
-  const handleBulkWhatsApp = useCallback(() => {
+  const handleBulkWhatsApp = useCallback(async () => {
     if (selectedIds.length === 0) {
       toast.warning('Please select at least one candidate.');
       return;
     }
-    const selected = candidates.filter((c) => selectedIds.includes(c._id));
-    const withPhone = selected.filter((c) => c.contact && c.contact.replace(/\D/g, '').length >= 7);
+    let selected = (candidates || []).filter((c) => selectedIds.map(String).includes(String(c._id)));
+    if (typeof resolveSelectedPeople === 'function') {
+      try {
+        const extra = await resolveSelectedPeople();
+        if (Array.isArray(extra) && extra.length) selected = extra;
+      } catch (err) {
+        toast.error(err?.message || 'Could not load all selected people.');
+        return;
+      }
+    }
+    const withPhone = selected.filter((c) => String(c.contact || c.phone || '').replace(/\D/g, '').length >= 7);
     if (withPhone.length === 0) {
       toast.warning('No valid phone numbers found in selected candidates.');
       return;
@@ -71,12 +83,12 @@ export function useBulkCandidateActions({
         setConfirmModal((prev) => ({ ...prev, isOpen: false }));
         withPhone.forEach((c, i) => {
           setTimeout(() => {
-            window.open(`https://wa.me/${c.contact.replace(/\D/g, '')}`, '_blank');
+            window.open(`https://wa.me/${String(c.contact || c.phone || '').replace(/\D/g, '')}`, '_blank');
           }, i * 500);
         });
       },
     });
-  }, [selectedIds, candidates, toast]);
+  }, [selectedIds, candidates, toast, resolveSelectedPeople]);
 
   const handleBulkDelete = useCallback(() => {
     if (selectedIds.length === 0) {
@@ -280,17 +292,29 @@ export function useBulkCandidateActions({
 
   const handleFindDuplicates = useCallback(async () => {
     setDedupeLoading(true);
+    setShowDedupeModal(false);
     setDedupeResults(null);
+    setDedupeMerging(false);
+    setDedupeMergingDropId(null);
     try {
       const res = await authenticatedFetch(`${BASE_API_URL}/api/ai/dedupe`, {
         method: 'POST',
         body: JSON.stringify({}),
       });
-      const dataRes = await res.json();
-      if (!res.ok) throw new Error(dataRes.message || 'Dedupe failed');
-      setDedupeResults(dataRes.data);
+      const dataRes = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          dataRes.message
+          || (res.status === 403
+            ? 'Duplicate finder is not available on your plan'
+            : `Duplicate search failed (${res.status})`)
+        );
+      }
+      const payload = dataRes.data || { groups: [], totalGroups: 0 };
+      setDedupeResults(payload);
       setShowDedupeModal(true);
-      if (!dataRes.data?.groups?.length) toast.info('No likely duplicates found');
+      if (!payload?.groups?.length) toast.info('No likely duplicates found by email or phone');
+      else toast.success(`Found ${payload.totalGroups || payload.groups.length} duplicate group(s)`);
     } catch (err) {
       toast.error(err.message || 'Duplicate search failed');
     } finally {
@@ -300,7 +324,9 @@ export function useBulkCandidateActions({
 
   const handleMergeDuplicates = useCallback(async ({ keepId, dropIds }) => {
     if (!keepId || !dropIds?.length) return;
+    const dropSet = new Set(dropIds.map(String));
     setDedupeMerging(true);
+    setDedupeMergingDropId(dropIds.length === 1 ? String(dropIds[0]) : null);
     try {
       const res = await authenticatedFetch(`${BASE_API_URL}/api/ai/dedupe/merge`, {
         method: 'POST',
@@ -309,29 +335,54 @@ export function useBulkCandidateActions({
       const dataRes = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(dataRes.message || 'Merge failed');
 
-      toast.success(`Merged ${dropIds.length} duplicate${dropIds.length === 1 ? '' : 's'} into one record`);
+      toast.success(
+        dropIds.length === 1
+          ? 'Merged 1 duplicate into the kept record'
+          : `Merged ${dropIds.length} duplicates into the kept record`
+      );
 
-      // Refresh groups so merged rows disappear
-      const refresh = await authenticatedFetch(`${BASE_API_URL}/api/ai/dedupe`, {
-        method: 'POST',
-        body: JSON.stringify({}),
-      });
-      const refreshData = await refresh.json().catch(() => ({}));
-      if (refresh.ok) {
-        setDedupeResults(refreshData.data || { groups: [] });
-        if (!refreshData.data?.groups?.length) {
-          setShowDedupeModal(false);
+      // Update only the affected group in-place (no modal remount / re-scan).
+      setDedupeResults((prev) => {
+        const prevGroups = prev?.groups || [];
+        const nextGroups = prevGroups
+          .map((g) => ({
+            ...g,
+            members: (g.members || []).filter((m) => !dropSet.has(String(m._id))),
+          }))
+          .filter((g) => (g.members?.length || 0) > 1);
+        if (!nextGroups.length) {
+          // Close after paint so the last row removal is visible briefly.
+          queueMicrotask(() => setShowDedupeModal(false));
         }
-      }
+        return {
+          ...(prev || {}),
+          groups: nextGroups,
+          totalGroups: nextGroups.length,
+        };
+      });
 
+      // Soft-refresh table in the background — do not block modal UI.
       window.dispatchEvent(new CustomEvent('candidates:changed'));
-      await fetchData(1, { search: searchQuery, position: filterJob });
+      Promise.resolve()
+        .then(() => {
+          if (typeof refreshList === 'function') return refreshList();
+          if (typeof fetchData === 'function') {
+            return fetchData(currentPage, {
+              search: searchQuery,
+              position: filterJob,
+              silent: true,
+            });
+          }
+          return undefined;
+        })
+        .catch(() => {});
     } catch (err) {
       toast.error(err.message || 'Could not merge duplicates');
     } finally {
       setDedupeMerging(false);
+      setDedupeMergingDropId(null);
     }
-  }, [toast, fetchData, searchQuery, filterJob]);
+  }, [toast, fetchData, searchQuery, filterJob, currentPage, refreshList]);
 
   return {
     confirmModal,
@@ -341,6 +392,7 @@ export function useBulkCandidateActions({
     showDedupeModal,
     setShowDedupeModal,
     dedupeMerging,
+    dedupeMergingDropId,
     handleFindDuplicates,
     handleMergeDuplicates,
     bulkEditOpen,

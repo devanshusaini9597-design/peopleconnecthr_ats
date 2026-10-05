@@ -6,8 +6,7 @@ const LocationService = require('../../services/locationService');
 const { normalizeText } = require('../../utils/textNormalize');
 const mongoose = require('mongoose');
 const logger = require('../../utils/logger');
-const { orgOrOwnerScope, candidateWriteScope } = require('./candidateValidation');
-const { isFreelancer } = require('../../utils/dataScope');
+const { orgOrOwnerScope, candidateWriteScope, candidateListFilter, isFreelancer } = require('../../utils/dataScope');
 const { enforceSpocOnWrite, stripSpocUnlessEditor } = require('../../utils/spocIdentity');
 const { normalizePan, validatePanForClient } = require('../../utils/panClientRules');
 const { promoteNamesSafe } = require('../../services/skillCatalogSync');
@@ -49,6 +48,9 @@ async function createCandidate(req, res) {
                       ? freelancerMsg
                       : `Email already exists for ${emailHit.name || 'another candidate'}${emailHit.contact ? ` (${emailHit.contact})` : ''}. Open that profile or use a different email.`,
                     existingId: emailHit._id,
+                    existingName: emailHit.name || '',
+                    existingEmail: emailHit.email || '',
+                    existingPhone: emailHit.contact || emailHit.phone || '',
                 });
             }
             const phoneHit = await findOrgPhoneConflict(req.user.organizationId, contact);
@@ -61,6 +63,9 @@ async function createCandidate(req, res) {
                       ? freelancerMsg
                       : `Phone already exists for ${phoneHit.name || 'another candidate'} (${phoneHit.email || 'no email'}). Open that profile or use a different number.`,
                     existingId: phoneHit._id,
+                    existingName: phoneHit.name || '',
+                    existingEmail: phoneHit.email || '',
+                    existingPhone: phoneHit.contact || phoneHit.phone || '',
                 });
             }
         }
@@ -157,6 +162,11 @@ async function createCandidate(req, res) {
             logger.warn('[deskDefaults] create stamp skipped:', deskErr.message);
         }
 
+        const tagJobRaw = req.body.jobId;
+        delete req.body.jobId;
+        delete req.body.applicationCode;
+        delete req.body.candidateCode;
+
         const newCandidate = new Candidate(req.body);
         await newCandidate.save();
 
@@ -179,7 +189,30 @@ async function createCandidate(req, res) {
                 priority: 'low',
             });
         } catch { /* never block create */ }
-        res.status(201).json({ success: true, message: "Candidate Added Successfully" });
+
+        let taggedJob = null;
+        if (tagJobRaw && req.user.organizationId) {
+            try {
+                const { tagCandidateToJob } = require('../../services/applicationService');
+                const tagged = await tagCandidateToJob(req.user, newCandidate._id, tagJobRaw, {
+                    source: newCandidate.source || 'Recruiter',
+                });
+                if (tagged?.job) taggedJob = tagged.job;
+            } catch (tagErr) {
+                logger.warn('[jobTag] create tag skipped:', tagErr.message);
+            }
+        }
+
+        res.status(201).json({
+            success: true,
+            message: taggedJob
+              ? `Candidate added and tagged to ${taggedJob.jobCode || 'job'}`
+              : 'Candidate Added Successfully',
+            candidateCode: taggedJob
+              ? ((await Candidate.findById(newCandidate._id).select('candidateCode').lean())?.candidateCode || '')
+              : '',
+            taggedJobCode: taggedJob?.jobCode || '',
+        });
     } catch (error) {
         if (error.code === 11000) {
             return res.status(400).json({
@@ -412,7 +445,7 @@ async function updateCandidate(req, res) {
         });
 
         // Desk-scoped writes for recruiters; org-wide for owner/admin/manager.
-        const { createdBy, organizationId, _id, __v, statusHistory, ...safeBody } = req.body;
+        const { createdBy, organizationId, _id, __v, statusHistory, jobId: tagJobRaw, ...safeBody } = req.body;
         // Data safety: never let clients replace/wipe statusHistory via $set.
         const scope = { _id: id, ...candidateWriteScope(req) };
 
@@ -430,6 +463,9 @@ async function updateCandidate(req, res) {
                         code: 'DUPLICATE_EMAIL',
                         message: `Email already exists for ${emailHit.name || 'another candidate'}${emailHit.contact ? ` (${emailHit.contact})` : ''}. Open that profile or use a different email.`,
                         existingId: emailHit._id,
+                        existingName: emailHit.name || '',
+                        existingEmail: emailHit.email || '',
+                        existingPhone: emailHit.contact || emailHit.phone || '',
                     });
                 }
             }
@@ -445,6 +481,9 @@ async function updateCandidate(req, res) {
                         code: 'DUPLICATE_PHONE',
                         message: `Phone already exists for ${phoneHit.name || 'another candidate'} (${phoneHit.email || 'no email'}). Open that profile or use a different number.`,
                         existingId: phoneHit._id,
+                        existingName: phoneHit.name || '',
+                        existingEmail: phoneHit.email || '',
+                        existingPhone: phoneHit.contact || phoneHit.phone || '',
                     });
                 }
             }
@@ -495,7 +534,28 @@ async function updateCandidate(req, res) {
         } catch (err) {
             logger.warn('[talentPool] status enroll skipped:', err.message);
         }
-        res.status(200).json({ success: true, message: "Updated Successfully", data: updatedCandidate });
+
+        let taggedJob = null;
+        if (tagJobRaw && req.user.organizationId) {
+            try {
+                const { tagCandidateToJob } = require('../../services/applicationService');
+                const tagged = await tagCandidateToJob(req.user, updatedCandidate._id, tagJobRaw, {
+                    source: updatedCandidate.source || 'Recruiter',
+                });
+                if (tagged?.job) taggedJob = tagged.job;
+            } catch (tagErr) {
+                logger.warn('[jobTag] update tag skipped:', tagErr.message);
+            }
+        }
+
+        res.status(200).json({
+            success: true,
+            message: taggedJob
+              ? `Updated and tagged to ${taggedJob.jobCode || 'job'}`
+              : 'Updated Successfully',
+            data: updatedCandidate,
+            taggedJobCode: taggedJob?.jobCode || '',
+        });
     } catch (error) {
         if (error.code === 11000) {
             return res.status(400).json({
@@ -512,11 +572,50 @@ async function updateCandidate(req, res) {
 async function getCandidateById(req, res) {
     try {
         if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
-        const candidate = await Candidate.findOne({ _id: req.params.id, ...candidateWriteScope(req) });
+        const candidate = await Candidate.findOne({ _id: req.params.id, ...candidateListFilter(req, req.query?.view) }).lean();
         if (!candidate) {
             return res.status(404).json({ message: 'Candidate not found' });
         }
-        res.status(200).json(candidate);
+
+        let applications = [];
+        let jobId = '';
+        if (req.user.organizationId) {
+            try {
+                const Application = require('../../models/Application');
+                const Job = require('../../models/Job');
+                const apps = await Application.find({
+                    organizationId: req.user.organizationId,
+                    candidateId: candidate._id,
+                })
+                    .select('jobId source stage applicationCode appliedAt createdAt')
+                    .sort({ appliedAt: -1, createdAt: -1 })
+                    .lean();
+                const jobIds = [...new Set(apps.map((a) => a.jobId).filter(Boolean))];
+                const jobs = jobIds.length
+                    ? await Job.find({ _id: { $in: jobIds }, organizationId: req.user.organizationId })
+                        .select('jobCode title role')
+                        .lean()
+                    : [];
+                const byId = new Map(jobs.map((j) => [String(j._id), j]));
+                applications = apps.map((a) => {
+                    const job = byId.get(String(a.jobId));
+                    return {
+                        _id: a._id,
+                        jobId: a.jobId,
+                        jobCode: job?.jobCode || '',
+                        title: job?.title || job?.role || '',
+                        source: a.source || '',
+                        stage: a.stage || '',
+                        applicationCode: a.applicationCode || '',
+                    };
+                });
+                jobId = applications.find((a) => a.jobCode)?.jobCode || '';
+            } catch (appErr) {
+                logger.warn('[getCandidate] applications overlay skipped:', appErr.message);
+            }
+        }
+
+        res.status(200).json({ ...candidate, applications, jobId });
     } catch (err) {
         logger.error('Error fetching candidate:', err);
         res.status(500).json({ message: 'Server error' });
@@ -563,6 +662,13 @@ async function deleteCandidate(req, res) {
 
         if (!deletedCandidate) {
             return res.status(404).json({ success: false, message: "Candidate not found" });
+        }
+
+        try {
+            const { purgeApplicationsForCandidates } = require('../../services/applicationService');
+            await purgeApplicationsForCandidates(req.user.organizationId, [deletedCandidate._id]);
+        } catch (purgeErr) {
+            logger.warn('[deleteCandidate] application purge skipped:', purgeErr.message);
         }
 
         res.status(200).json({ success: true, message: "Candidate deleted successfully" });

@@ -128,44 +128,64 @@ async function findOrgEmailConflict(organizationId, email, { excludeId } = {}) {
 
 /**
  * Find duplicate groups within an organization.
+ * Groups by exact normalized email / phone (O(n)), not O(n²) pairwise scan.
  * @param {string} organizationId
  * @param {{ candidateId?: string, limit?: number }} [options]
  */
 const findDuplicates = async (organizationId, options = {}) => {
-  const query = { organizationId };
-  if (options.candidateId) {
-    query._id = options.candidateId;
-  }
-
   const select = 'name email contact phone position location source date createdAt appliedAt status resume';
-  const candidates = await Candidate.find(query).select(select).lean();
+  const limit = Math.min(Math.max(Number(options.limit) || 50, 1), 200);
 
-  if (options.candidateId && candidates.length === 1) {
-    const target = buildCandidateKey(candidates[0]);
-    const all = await Candidate.find({ organizationId, _id: { $ne: target.id } })
+  if (options.candidateId) {
+    const targetDoc = await Candidate.findOne({ organizationId, _id: options.candidateId })
       .select(select)
       .lean();
+    if (!targetDoc) {
+      return { groups: [], totalGroups: 0 };
+    }
+    const target = buildCandidateKey(targetDoc);
+    const or = [];
+    if (target.normalizedEmail) {
+      or.push({ email: target.normalizedEmail });
+    }
+    if (target.normalizedPhone && target.normalizedPhone.length >= 7) {
+      const escaped = target.normalizedPhone.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      or.push({ contact: { $regex: `${escaped}$` } });
+      or.push({ phone: { $regex: `${escaped}$` } });
+    }
+    if (!or.length) {
+      return { groups: [], totalGroups: 0 };
+    }
+    const peers = await Candidate.find({
+      organizationId,
+      _id: { $ne: targetDoc._id },
+      $or: or,
+    })
+      .select(select)
+      .limit(100)
+      .lean();
 
-    const matches = all.filter((c) => {
+    const matches = peers.filter((c) => {
       const other = buildCandidateKey(c);
-      if (target.normalizedEmail && other.normalizedEmail && target.normalizedEmail === other.normalizedEmail) return true;
-      if (phonesLikelyMatch(target.contact, other.contact)) return true;
-      if (namesLikelyMatch(target.name, other.name) && (
-        (target.normalizedEmail && other.normalizedEmail && target.normalizedEmail.slice(0, 5) === other.normalizedEmail.slice(0, 5)) ||
-        phonesLikelyMatch(target.contact, other.contact)
-      )) return true;
-      return false;
+      if (target.normalizedEmail && other.normalizedEmail && target.normalizedEmail === other.normalizedEmail) {
+        return true;
+      }
+      return phonesLikelyMatch(target.contact, other.contact);
     });
 
     return {
       groups: matches.length
-        ? [{ key: 'candidate_match', reason: 'email_phone_or_name', members: [candidates[0], ...matches] }]
+        ? [{ key: 'candidate_match', reason: 'email_or_phone', members: [targetDoc, ...matches] }]
         : [],
       totalGroups: matches.length ? 1 : 0,
     };
   }
 
-  const keyed = candidates.map(buildCandidateKey);
+  // Projection-only scan — avoid loading full candidate documents.
+  const candidates = await Candidate.find({ organizationId })
+    .select(select)
+    .lean();
+
   const parent = {};
   const find = (i) => {
     if (parent[i] === undefined) parent[i] = i;
@@ -173,40 +193,55 @@ const findDuplicates = async (organizationId, options = {}) => {
     return parent[i];
   };
   const union = (i, j) => {
-    parent[find(i)] = find(j);
+    const a = find(i);
+    const b = find(j);
+    if (a !== b) parent[a] = b;
   };
 
-  for (let i = 0; i < keyed.length; i++) {
-    for (let j = i + 1; j < keyed.length; j++) {
-      const a = keyed[i];
-      const b = keyed[j];
-      let match = false;
-      if (a.normalizedEmail && b.normalizedEmail && a.normalizedEmail === b.normalizedEmail) match = true;
-      else if (phonesLikelyMatch(a.contact, b.contact)) match = true;
-      else if (namesLikelyMatch(a.name, b.name) && a.normalizedEmail && b.normalizedEmail) {
-        const [ea, eb] = [a.normalizedEmail.split('@')[0], b.normalizedEmail.split('@')[0]];
-        if (ea === eb || levenshtein(ea, eb) <= 2) match = true;
-      }
-      if (match) union(i, j);
+  const emailBuckets = new Map();
+  const phoneBuckets = new Map();
+
+  candidates.forEach((c, idx) => {
+    parent[idx] = idx;
+    const key = buildCandidateKey(c);
+    if (key.normalizedEmail) {
+      const list = emailBuckets.get(key.normalizedEmail) || [];
+      list.push(idx);
+      emailBuckets.set(key.normalizedEmail, list);
     }
+    if (key.normalizedPhone && key.normalizedPhone.length >= 7) {
+      const list = phoneBuckets.get(key.normalizedPhone) || [];
+      list.push(idx);
+      phoneBuckets.set(key.normalizedPhone, list);
+    }
+  });
+
+  for (const idxs of emailBuckets.values()) {
+    for (let i = 1; i < idxs.length; i += 1) union(idxs[0], idxs[i]);
+  }
+  for (const idxs of phoneBuckets.values()) {
+    for (let i = 1; i < idxs.length; i += 1) union(idxs[0], idxs[i]);
   }
 
   const groupsMap = new Map();
-  keyed.forEach((k, idx) => {
+  candidates.forEach((c, idx) => {
     const root = find(idx);
     if (!groupsMap.has(root)) groupsMap.set(root, []);
-    groupsMap.get(root).push(candidates[idx]);
+    groupsMap.get(root).push(c);
   });
 
   const groups = [...groupsMap.values()]
     .filter((members) => members.length > 1)
     .map((members) => ({
-      key: normalizeEmail(members[0].email) || normalizePhone(members[0].contact) || normalizeName(members[0].name),
-      reason: 'email_phone_or_name',
+      key: normalizeEmail(members[0].email)
+        || normalizePhone(members[0].contact || members[0].phone)
+        || normalizeName(members[0].name)
+        || String(members[0]._id),
+      reason: 'email_or_phone',
       members,
-    }));
+    }))
+    .sort((a, b) => b.members.length - a.members.length);
 
-  const limit = options.limit || 50;
   return {
     groups: groups.slice(0, limit),
     totalGroups: groups.length,

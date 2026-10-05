@@ -22,10 +22,11 @@ const {
   backfillAppliedAtForOrg,
 } = require('../../utils/candidateActivityDate');
 const { withStageEntryDateRange } = require('../../utils/candidateStatusHistory');
+const { isCareersSource, collectUnmergedDuplicateIds } = require('../../utils/jobPipelineStats');
 
 /** Columns needed by ATS grid / client filters — exclude resumeText, embeddings, histories. */
 const CANDIDATE_LIST_SELECT = [
-  'srNo', 'date', 'name', 'email', 'contact', 'phone', 'position', 'location', 'state',
+  'srNo', 'candidateCode', 'date', 'name', 'email', 'contact', 'phone', 'position', 'location', 'state',
   'companyName', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'skills', 'product',
   'pan', 'status', 'client', 'spoc', 'source', 'feedback', 'remark', 'callBackDate', 'fls',
   'resume', 'tags', 'customFields', 'createdBy', 'sharedWith', 'organizationId',
@@ -60,11 +61,18 @@ function buildSearchClause(search, searchScope) {
   if (scope === 'location') {
     return { $or: [{ location: rx }, { state: rx }] };
   }
+  if (scope === 'candidateid' || scope === 'candidatecode' || scope === 'id') {
+    return { candidateCode: { $regex: `^\\s*${escapeRegex(q)}\\s*$`, $options: 'i' } };
+  }
+  if (scope === 'applicationid' || scope === 'applicationcode') {
+    return null;
+  }
   return {
     $or: [
       { name: rx }, { email: rx }, { position: rx }, { companyName: rx },
       { contact: rx }, { location: rx }, { state: rx }, { spoc: rx },
       { skills: rx }, { product: rx }, { client: rx }, { source: rx },
+      { candidateCode: rx }, { srNo: rx },
     ],
   };
 }
@@ -120,7 +128,10 @@ async function listCandidates(req, res) {
         const activityTo = (req.query.customTo || req.query.to || '').trim();
         const sortField = (req.query.sortField || 'date').trim();
         const sortOrder = (req.query.sortOrder || 'desc').trim();
-        const freelanceOnly = ['1', 'true', 'yes'].includes(String(req.query.freelanceOnly || '').toLowerCase());
+        const jobIdRaw = (req.query.jobId || '').trim();
+        const jobAppSource = String(req.query.appSource || req.query.jobAppSource || '').trim().toLowerCase();
+        const candidateCodeFilter = (req.query.candidateCode || '').trim();
+        const applicationCodeFilter = (req.query.applicationCode || '').trim();
         const idsOnly = ['1', 'true', 'yes'].includes(String(req.query.idsOnly || '').toLowerCase());
         // Explicit candidate id list (e.g. freelancer mandate drill-down)
         const rawIdsParam = String(req.query.ids || '').trim();
@@ -245,15 +256,83 @@ async function listCandidates(req, res) {
                 return res.status(status).json({ success: false, message: filterErr.message });
             }
             logger.error('⚠️ Error building filter:', filterErr.message);
-            filter = {};
+            return res.status(500).json({ success: false, message: 'Could not apply data scope' });
         }
 
         // Push text/status/search filters into Mongo so list stays O(page), not O(desk).
         const andParts = [filter];
+        const searchScopeKey = String(searchScope || 'all').trim().toLowerCase();
         const searchClause = buildSearchClause(search, searchScope);
         if (searchClause) andParts.push(searchClause);
+        if (candidateCodeFilter) {
+            andParts.push({ candidateCode: { $regex: `^\\s*${escapeRegex(candidateCodeFilter)}\\s*$`, $options: 'i' } });
+        }
+
+        const Application = require('../../models/Application');
+        const { applicationListFilter } = require('../../utils/dataScope');
+        const appCodeNeedles = [];
+        if (applicationCodeFilter) appCodeNeedles.push(applicationCodeFilter);
+        if (search && (searchScopeKey === 'applicationid' || searchScopeKey === 'applicationcode' || searchScopeKey === 'all')) {
+            appCodeNeedles.push(search);
+        }
+        if (appCodeNeedles.length && req.user.organizationId) {
+            const appOr = appCodeNeedles.map((n) => ({
+                applicationCode: { $regex: `^\\s*${escapeRegex(n)}\\s*$`, $options: 'i' },
+            }));
+            const appScope = await applicationListFilter(req.user.organizationId, req.user);
+            const appIds = await Application.find({ $and: [appScope, { $or: appOr }] }).distinct('candidateId');
+            if (searchScopeKey === 'applicationid' || searchScopeKey === 'applicationcode' || applicationCodeFilter) {
+                andParts.push({ _id: { $in: appIds } });
+            } else if (search && appIds.length) {
+                const last = andParts[andParts.length - 1];
+                if (last && last.$or) {
+                    last.$or = [...last.$or, { _id: { $in: appIds } }];
+                } else {
+                    andParts.push({ _id: { $in: appIds } });
+                }
+            }
+        }
         const statusClause = buildStatusClause(status);
-        if (statusClause) andParts.push(statusClause);
+        const listKind = String(req.query.list || '').trim();
+        const cohortMonth = String(req.query.cohort || '').trim();
+        let drillIds = null;
+        if (listKind === 'moved' && status) {
+          const { candidateIdsForMove } = require('../../services/pipelineMetricsService');
+          const activityFilter = activityPeriod && activityPeriod !== 'all'
+            ? buildDateFilter(activityPeriod, activityFrom, activityTo)
+            : null;
+          drillIds = await candidateIdsForMove({
+            userFilter: filter,
+            stage: status,
+            dateFilter: activityFilter,
+          });
+        } else if (listKind === 'added' && status) {
+          if (statusClause) andParts.push(statusClause);
+          if (activityPeriod && activityPeriod !== 'all') {
+            const activityFilter = buildDateFilter(activityPeriod, activityFrom, activityTo);
+            if (activityFilter) andParts[0] = withActivityDateRange(andParts[0], activityFilter);
+          }
+        } else if (listKind === 'cohort' && status && cohortMonth) {
+          const { candidateIdsForCohortStage } = require('../../services/pipelineMetricsService');
+          drillIds = await candidateIdsForCohortStage({
+            userFilter: filter,
+            stage: status,
+            cohortMonth,
+          });
+        }
+        if (drillIds) {
+          andParts.push({ _id: { $in: drillIds } });
+        } else if (!(listKind === 'added' && status)) {
+          if (statusClause) andParts.push(statusClause);
+          if (activityPeriod && activityPeriod !== 'all') {
+            const activityFilter = buildDateFilter(activityPeriod, activityFrom, activityTo);
+            if (activityFilter) {
+              andParts[0] = status
+                ? withStageEntryDateRange(andParts[0], activityFilter)
+                : withActivityDateRange(andParts[0], activityFilter);
+            }
+          }
+        }
         if (position) andParts.push({ position: ciRegex(position) });
         if (location) {
             andParts.push({ $or: [{ location: ciRegex(location) }, { state: ciRegex(location) }] });
@@ -264,18 +343,58 @@ async function listCandidates(req, res) {
         if (spoc) andParts.push({ spoc: ciRegex(spoc) });
         if (client) andParts.push({ client: ciRegex(client) });
         if (dateNeedle) andParts.push({ date: ciRegex(dateNeedle) });
-        // Analytics drill-down:
-        // - period only (intake card) → appliedAt / createdAt
-        // - period + status (stage card) → when they entered that stage
-        if (activityPeriod && activityPeriod !== 'all') {
-          const activityFilter = buildDateFilter(activityPeriod, activityFrom, activityTo);
-          if (activityFilter) {
-            andParts[0] = status
-              ? withStageEntryDateRange(andParts[0], activityFilter)
-              : withActivityDateRange(andParts[0], activityFilter);
-          }
+        let jobFilterId = null;
+        let jobDoc = null;
+        if (jobIdRaw && jobIdRaw !== 'all' && req.user.organizationId) {
+            const Application = require('../../models/Application');
+            const Job = require('../../models/Job');
+            const orgId = req.user.organizationId;
+            if (mongoose.Types.ObjectId.isValid(jobIdRaw) && String(jobIdRaw).length === 24) {
+                jobDoc = await Job.findOne({ _id: jobIdRaw, organizationId: orgId }).select('_id jobCode').lean();
+            }
+            if (!jobDoc) {
+                jobDoc = await Job.findOne({
+                    organizationId: orgId,
+                    jobCode: String(jobIdRaw).toUpperCase(),
+                }).select('_id jobCode').lean();
+            }
+            if (!jobDoc) {
+                andParts.push({ _id: { $in: [] } });
+            } else {
+                jobFilterId = jobDoc._id;
+                const jobApps = await Application.find({
+                    organizationId: orgId,
+                    jobId: jobDoc._id,
+                }).select('candidateId source').lean();
+                let applicantIds = jobApps.map((a) => a.candidateId);
+                if (jobAppSource === 'careers' || jobAppSource === 'applied') {
+                    applicantIds = jobApps.filter((a) => isCareersSource(a.source)).map((a) => a.candidateId);
+                } else if (jobAppSource === 'added' || jobAppSource === 'tagged') {
+                    applicantIds = jobApps.filter((a) => !isCareersSource(a.source)).map((a) => a.candidateId);
+                } else if (jobAppSource === 'duplicates' || jobAppSource === 'duplicate') {
+                    const people = await Candidate.find({
+                        organizationId: orgId,
+                        _id: { $in: applicantIds },
+                    }).select('email contact phone personId').lean();
+                    const emails = [...new Set(people.map((c) => String(c.email || '').trim().toLowerCase()).filter(Boolean))];
+                    const personIds = [...new Set(people.map((c) => c.personId).filter(Boolean))];
+                    const or = [];
+                    if (emails.length) {
+                        or.push({ email: { $in: emails } });
+                        or.push({ email: { $in: emails.map((e) => e.toUpperCase()) } });
+                    }
+                    if (personIds.length) or.push({ personId: { $in: personIds } });
+                    let siblings = people;
+                    if (or.length) {
+                        siblings = await Candidate.find({ organizationId: orgId, $or: or })
+                            .select('_id email contact phone personId').lean();
+                    }
+                    const dupIds = collectUnmergedDuplicateIds(people, siblings);
+                    applicantIds = applicantIds.filter((id) => dupIds.has(String(id)));
+                }
+                andParts.push({ _id: { $in: applicantIds } });
+            }
         }
-        if (freelanceOnly) andParts.push({ source: ciRegex('freelance') });
         if (requestedObjectIds.length) {
           andParts.push({ _id: { $in: requestedObjectIds } });
         }
@@ -289,15 +408,15 @@ async function listCandidates(req, res) {
         const sortingByEntryDate = !String(sortField || 'date').trim()
           || ['date', 'stagesince', 'statusenteredat', 'stage_since'].includes(String(sortField).toLowerCase());
         // Freelancer desks are small and private — skip org-wide appliedAt backfill.
-        if (sortingByEntryDate && req.user?.organizationId && !isFreelancer(req.user)) {
-          try {
-            await backfillAppliedAtForOrg(req.user.organizationId, Candidate);
-          } catch (bfErr) {
+        if (sortingByEntryDate && req.user?.organizationId && !isFreelancer(req.user) && !idsOnly) {
+          backfillAppliedAtForOrg(req.user.organizationId, Candidate).catch((bfErr) => {
             logger.warn('⚠️ appliedAt backfill before list sort failed:', bfErr.message);
-          }
+          });
           try {
             const { backfillStatusEnteredAtForOrg } = require('../../utils/candidateStatusHistory');
-            await backfillStatusEnteredAtForOrg(req.user.organizationId, Candidate);
+            backfillStatusEnteredAtForOrg(req.user.organizationId, Candidate).catch((bfErr) => {
+              logger.warn('⚠️ statusEnteredAt backfill before list sort failed:', bfErr.message);
+            });
           } catch (bfErr) {
             logger.warn('⚠️ statusEnteredAt backfill before list sort failed:', bfErr.message);
           }
@@ -305,7 +424,6 @@ async function listCandidates(req, res) {
         const safeLimit = shouldPaginate ? Math.min(Math.max(limit, 1), 200) : 0;
         const effectiveSkip = shouldPaginate ? (page - 1) * safeLimit : 0;
         const RANGE_SCAN_CAP = 50000;
-        const IDS_CAP = 50000;
 
         const parseNumber = (value) => {
             if (!value) return null;
@@ -353,24 +471,29 @@ async function listCandidates(req, res) {
                         .limit(RANGE_SCAN_CAP)
                         .lean();
                     const matched = scanned.filter(matchesNumericRanges);
-                    const ids = matched.map((r) => String(r._id)).slice(0, IDS_CAP);
+                    const ids = matched.map((r) => String(r._id));
                     return {
                         idsOnly: true,
                         ids,
                         totalCount: matched.length,
-                        capped: matched.length > ids.length,
+                        capped: scanned.length >= RANGE_SCAN_CAP,
                     };
                 }
+                const idLimit = Math.min(3000, Math.max(1, parseInt(req.query.idLimit, 10) || 3000));
+                const idSkip = Math.max(0, parseInt(req.query.idSkip, 10) || 0);
                 const [total, rows] = await Promise.all([
-                    Candidate.countDocuments(queryFilter),
-                    Candidate.find(queryFilter).select('_id').sort(sortSpec).limit(IDS_CAP).lean(),
+                    Candidate.countDocuments(queryFilter).maxTimeMS(8000).catch(() => null),
+                    Candidate.find(queryFilter).select('_id').sort(sortSpec).skip(idSkip).limit(idLimit + 1).maxTimeMS(20000).lean(),
                 ]);
-                const ids = rows.map((r) => String(r._id));
+                const hasMore = rows.length > idLimit;
+                const pageRows = hasMore ? rows.slice(0, idLimit) : rows;
+                const ids = pageRows.map((r) => String(r._id));
                 return {
                     idsOnly: true,
                     ids,
-                    totalCount: total,
-                    capped: total > ids.length,
+                    totalCount: total == null ? idSkip + ids.length + (hasMore ? 1 : 0) : total,
+                    capped: false,
+                    hasMore,
                 };
             }
 
@@ -382,7 +505,7 @@ async function listCandidates(req, res) {
                 return { candidates: pageRows, totalCount: count };
             }
 
-            const countPromise = Candidate.countDocuments(queryFilter);
+            const countPromise = Candidate.countDocuments(queryFilter).maxTimeMS(8000).catch(() => null);
             let listPromise;
             if (shouldPaginate) {
                 listPromise = candidateListQuery(queryFilter, sortSpec).skip(effectiveSkip).limit(safeLimit);
@@ -390,7 +513,10 @@ async function listCandidates(req, res) {
                 listPromise = candidateListQuery(queryFilter, sortSpec).limit(RANGE_SCAN_CAP);
             }
             const [count, rows] = await Promise.all([countPromise, listPromise]);
-            return { candidates: rows, totalCount: count };
+            const resolvedCount = count == null
+                ? effectiveSkip + rows.length + (shouldPaginate && rows.length >= safeLimit ? 1 : 0)
+                : count;
+            return { candidates: rows, totalCount: resolvedCount };
         };
 
         try {
@@ -403,6 +529,7 @@ async function listCandidates(req, res) {
                         totalCount: result.totalCount,
                         selectedCount: result.ids.length,
                         capped: Boolean(result.capped),
+                        hasMore: Boolean(result.hasMore),
                     },
                 });
             }
@@ -432,6 +559,7 @@ async function listCandidates(req, res) {
                                 totalCount: result.totalCount,
                                 selectedCount: result.ids.length,
                                 capped: Boolean(result.capped),
+                                hasMore: Boolean(result.hasMore),
                             },
                         });
                     }
@@ -519,6 +647,90 @@ async function listCandidates(req, res) {
             logger.warn('⚠️ createdBy role lookup failed:', creatorErr.message);
         }
 
+        if (candidates.length && req.user.organizationId) {
+            try {
+                const Application = require('../../models/Application');
+                const { applicationListFilter } = require('../../utils/dataScope');
+                const { ensureApplicationCode, ensureCandidateCode } = require('../../services/candidateCodeService');
+                const appScope = await applicationListFilter(req.user.organizationId, req.user);
+                const appQuery = {
+                    $and: [
+                        appScope,
+                        { candidateId: { $in: candidates.map((c) => c._id) } },
+                    ],
+                };
+                if (jobFilterId) appQuery.$and.push({ jobId: jobFilterId });
+                const apps = await Application.find(appQuery)
+                    .select('candidateId jobId appliedAt createdAt source stage applicationCode organizationId')
+                    .sort({ appliedAt: -1, createdAt: -1 })
+                    .lean();
+
+                const missing = apps.filter((a) => !String(a.applicationCode || '').trim()).slice(0, 50);
+                for (const a of missing) {
+                    try {
+                        a.applicationCode = await ensureApplicationCode(a);
+                    } catch (codeErr) {
+                        logger.warn('⚠️ applicationCode backfill failed:', codeErr.message);
+                    }
+                }
+
+                const byCand = new Map();
+                for (const a of apps) {
+                    const key = String(a.candidateId);
+                    const list = byCand.get(key) || [];
+                    list.push(a);
+                    byCand.set(key, list);
+                }
+                const uniqueJobIds = [...new Set(apps.map((a) => a.jobId).filter(Boolean))];
+                const jobCodeById = new Map();
+                if (jobFilterId && jobDoc?.jobCode) {
+                    jobCodeById.set(String(jobFilterId), jobDoc.jobCode);
+                }
+                const missingJobIds = uniqueJobIds.filter((id) => !jobCodeById.has(String(id)));
+                if (missingJobIds.length) {
+                    const Job = require('../../models/Job');
+                    const jobRows = await Job.find({
+                        _id: { $in: missingJobIds },
+                        organizationId: req.user.organizationId,
+                    }).select('jobCode').lean();
+                    for (const j of jobRows) {
+                        jobCodeById.set(String(j._id), j.jobCode || '');
+                    }
+                }
+                for (const c of candidates) {
+                    const list = byCand.get(String(c._id));
+                    if (!list || !list.length) continue;
+                    const app = list[0];
+                    c._jobAppliedAt = app.appliedAt || app.createdAt || null;
+                    c._jobApplicationSource = app.source || '';
+                    c._jobApplicationStage = app.stage || '';
+                    c._jobApplicationCode = app.applicationCode || '';
+                    c._applicationCount = list.length;
+                    c._jobCode = jobCodeById.get(String(app.jobId)) || '';
+                    c._jobMongoId = app.jobId || null;
+                    if (!String(c.candidateCode || '').trim()) {
+                        try {
+                            c.candidateCode = await ensureCandidateCode(c);
+                        } catch (codeErr) {
+                            logger.warn('⚠️ candidateCode backfill failed:', codeErr.message);
+                        }
+                    }
+                }
+                const sortingByDate = !String(sortField || 'date').trim()
+                  || ['date', 'appliedat'].includes(String(sortField).toLowerCase());
+                if (jobFilterId && sortingByDate) {
+                    const dir = String(sortOrder).toLowerCase() === 'asc' ? 1 : -1;
+                    candidates.sort((a, b) => {
+                        const ta = new Date(a._jobAppliedAt || 0).getTime();
+                        const tb = new Date(b._jobAppliedAt || 0).getTime();
+                        return (ta - tb) * dir;
+                    });
+                }
+            } catch (appErr) {
+                logger.warn('⚠️ application overlay failed:', appErr.message);
+            }
+        }
+
         const pageSize = shouldPaginate ? safeLimit : totalCount;
         const totalPages = shouldPaginate && pageSize > 0 ? Math.max(1, Math.ceil(totalCount / pageSize)) : 1;
 
@@ -527,6 +739,15 @@ async function listCandidates(req, res) {
             data: candidates.map((c) => {
                 const row = typeof c.toObject === 'function' ? c.toObject() : { ...c };
                 applyBlockLettersToObject(row);
+                if (c._jobAppliedAt || c._jobApplicationCode || c._applicationCount || c._jobCode) {
+                    row.jobAppliedAt = c._jobAppliedAt;
+                    row.jobApplicationSource = c._jobApplicationSource || '';
+                    row.jobApplicationStage = c._jobApplicationStage || '';
+                    row.jobApplicationCode = c._jobApplicationCode || '';
+                    row.applicationCount = c._applicationCount || 0;
+                    if (c._jobCode) row.jobCode = c._jobCode;
+                    if (c._jobMongoId) row.taggedJobId = c._jobMongoId;
+                }
                 return row;
             }),
             pagination: {

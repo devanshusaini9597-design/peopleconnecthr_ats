@@ -2,6 +2,7 @@ import React from 'react';
 import { Star, Phone, Mail, Eye, Search } from 'lucide-react';
 import EmptyState from '../ui/EmptyState';
 import { stageVisual, classNames, formatDate, jobTitle } from './constants';
+import { guardTableCopy } from '../../utils/tableCopyGuard';
 
 export default function ApplicationsTable({
   filteredApplications,
@@ -18,13 +19,14 @@ export default function ApplicationsTable({
     <div className="p-3 sm:p-4 lg:p-5 min-w-0">
       <div
         ref={tableScrollRef}
-        className="table-shell-ats cand-table-scroll overflow-x-auto"
+        className="table-shell-ats cand-table-scroll overflow-x-auto select-none"
+        onCopy={guardTableCopy}
         onMouseDown={onTableDragScrollStart}
         onMouseMove={onTableDragScrollMove}
         onMouseUp={onTableDragScrollEnd}
         onMouseLeave={onTableDragScrollEnd}
       >
-        <table className="cand-table-drag w-full text-left text-sm min-w-[860px] select-text">
+        <table className="cand-table-drag w-full text-left text-sm min-w-[860px] select-none">
           <thead className="bg-stone-50/80 border-b border-stone-200 text-stone-500 text-[11px] uppercase tracking-wider">
             <tr>
               <th className="px-4 sm:px-5 py-3.5 font-bold whitespace-nowrap">Candidate</th>

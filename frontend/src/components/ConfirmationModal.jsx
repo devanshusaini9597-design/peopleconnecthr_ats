@@ -129,7 +129,7 @@ const ConfirmationModal = ({
         {/* Stats */}
         {hasStats && (
           <div className="px-6 pt-5">
-            <div className={`grid gap-3 ${stats.length >= 3 ? 'grid-cols-3' : stats.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            <div className={`grid gap-3 ${stats.length >= 4 ? 'grid-cols-2 sm:grid-cols-4' : stats.length >= 3 ? 'grid-cols-3' : stats.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
               {stats.map((s) => {
                 const t = toneStyles[s.tone] || toneStyles.default;
                 return (

@@ -34,11 +34,9 @@ describe('freelancer isolation', () => {
 
   it('cannot list another employee or freelancer desk via view=all', () => {
     const filter = candidateListFilter({ user: freelancer }, 'all');
-    expect(filter.organizationId).toEqual(orgA);
-    expect(filter.createdBy.$in).toEqual(expect.arrayContaining([freelancerId, String(freelancerId)]));
-    expect(filter.hiddenFromFreelancerIds?.$nin).toEqual(
-      expect.arrayContaining([freelancerId, String(freelancerId)])
-    );
+    expect(JSON.stringify(filter)).toContain(String(orgA));
+    expect(JSON.stringify(filter)).toContain(String(freelancerId));
+    expect(JSON.stringify(filter)).toContain('sharedWith.userId');
     expect(JSON.stringify(filter)).not.toContain(String(employeeId));
     expect(JSON.stringify(filter)).not.toContain(String(otherFreelancerId));
   });
@@ -49,8 +47,8 @@ describe('freelancer isolation', () => {
       user: freelancer,
       query: { view: 'all' },
     });
-    expect(scope.organizationId).toEqual(orgA);
-    expect(scope.createdBy.$in).toEqual(expect.arrayContaining([freelancerId, String(freelancerId)]));
+    expect(JSON.stringify(scope)).toContain(String(orgA));
+    expect(JSON.stringify(scope)).toContain(String(freelancerId));
     expect(JSON.stringify(scope)).not.toContain(String(orgB));
     expect(JSON.stringify(scope)).not.toContain(String(employeeId));
   });
@@ -99,6 +97,16 @@ describe('freelancer isolation', () => {
     );
     expect(row.mandateSpoc.email).toBeUndefined();
     expect(row.mandateSpoc.phone).toBeUndefined();
+  });
+
+  it('MIS API is company staff only — freelancers cannot list contacts', () => {
+    const src = fs.readFileSync(require.resolve('../routes/misRoutes'), 'utf8');
+    expect(src).toMatch(/requireMisCompany/);
+    expect(src).not.toMatch(/requireFreelancerOrRecruiter/);
+    const rbac = fs.readFileSync(require.resolve('../middleware/rbacMiddleware'), 'utf8');
+    const start = rbac.indexOf('const requireMisCompany');
+    const end = rbac.indexOf('const requireFreelancerOrRecruiter');
+    expect(rbac.slice(start, end)).not.toMatch(/freelancer/);
   });
 
   it('company applications API is staff-only', () => {

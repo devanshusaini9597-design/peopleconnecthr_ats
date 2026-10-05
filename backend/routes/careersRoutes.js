@@ -11,11 +11,16 @@ const { multerFileFilter } = require('../utils/uploadAllowlist');
 
 function handle(res, error) {
   const status = error.statusCode || 500;
-  return res.status(status).json({
+  const payload = {
     success: false,
     message: error.message,
-    ...(error.code ? { code: error.code } : {}),
-  });
+  };
+  if (error.code) payload.code = error.code;
+  if (error.candidateCode) payload.candidateCode = error.candidateCode;
+  if (error.applicationCode) payload.applicationCode = error.applicationCode;
+  if (error.existingProfile) payload.existingProfile = true;
+  if (error.retryAfterSec) payload.retryAfterSec = error.retryAfterSec;
+  return res.status(status).json(payload);
 }
 
 const applyUpload = multer({
@@ -126,49 +131,6 @@ router.get('/:orgSlug/jobs/:jobId/application-status', async (req, res) => {
     res.json({ success: true, ...data });
   } catch (error) {
     handle(res, error);
-  }
-});
-
-/**
- * POST /:orgSlug/jobs/:jobId/apply/otp/send
- * Send email OTP for public apply verification.
- */
-router.post('/:orgSlug/jobs/:jobId/apply/otp/send', async (req, res) => {
-  try {
-    const data = await svc.sendApplyOtp(
-      req.params.orgSlug,
-      req.params.jobId,
-      req.body || {},
-      clientRateKey(req),
-    );
-    res.json({ success: true, ...data });
-  } catch (error) {
-    handle(res, error);
-  }
-});
-
-/**
- * POST /:orgSlug/jobs/:jobId/apply/otp/verify
- * Verify email OTP; returns emailVerifiedToken required on submit.
- */
-router.post('/:orgSlug/jobs/:jobId/apply/otp/verify', async (req, res) => {
-  try {
-    const data = await svc.verifyApplyOtp(
-      req.params.orgSlug,
-      req.params.jobId,
-      req.body || {},
-      clientRateKey(req),
-    );
-    res.json({ success: true, ...data });
-  } catch (error) {
-    const status = error.statusCode || 500;
-    return res.status(status).json({
-      success: false,
-      message: error.message,
-      ...(error.code ? { code: error.code } : {}),
-      ...(error.applyOtpToken ? { applyOtpToken: error.applyOtpToken } : {}),
-      ...(error.attemptsRemaining != null ? { attemptsRemaining: error.attemptsRemaining } : {}),
-    });
   }
 });
 

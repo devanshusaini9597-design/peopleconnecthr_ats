@@ -66,7 +66,9 @@ const jobSchema = new mongoose.Schema({
   spocName: { type: String, default: '', trim: true },
   spocContact: { type: String, default: '', trim: true },
   spocEmail: { type: String, default: '', trim: true },
-  internalNotes: { type: String, default: '', trim: true },
+  reportingTo: { type: String, default: '', trim: true },
+  languages: { type: String, default: '', trim: true },
+  kpis: { type: String, default: '' },
 
   // ── Pipeline configuration ─────────────────────────────────────────
   pipelineStages: { 

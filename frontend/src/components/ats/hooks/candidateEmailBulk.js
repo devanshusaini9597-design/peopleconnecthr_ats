@@ -21,8 +21,12 @@ export function useCandidateEmailBulk(deps) {
     setEmailBCC,
     setShowQuickPreview,
     setShowEmailModal,
+    setCampaignJobId,
+    setCampaignJobMeta,
     emailTemplates,
     setEmailTemplates,
+    setEmailTemplatesLoading,
+    setEmailSendSkipped,
     selectedEmails,
     setSelectedEmails,
     setBulkEmailStep,
@@ -30,6 +34,9 @@ export function useCandidateEmailBulk(deps) {
     customMessage,
     setCampaignStatus,
     setEmailStatuses,
+    resolveSelectedPeople,
+    getBulkAudience,
+    setBulkAudience,
   } = deps;
 
   const handleBulkEmail = async () => {
@@ -38,7 +45,7 @@ export function useCandidateEmailBulk(deps) {
       return;
     }
 
-    const selectedCandidates = candidates.filter(c => selectedIds.includes(c._id));
+    const selectedCandidates = candidates.filter(c => selectedIds.map(String).includes(String(c._id)));
     const validCandidates = selectedCandidates.filter(c => c.email && c.email.includes('@'));
 
     if (validCandidates.length === 0) {
@@ -136,75 +143,146 @@ export function useCandidateEmailBulk(deps) {
     }
   };
 
-  const startBulkEmailFlow = async () => {
-    if (selectedIds.length === 0) {
-      toast.warning('Please select at least one candidate!');
-      return;
-    }
-
-    const selected = candidates.filter(c => selectedIds.includes(c._id));
-    const validCandidates = selected.filter(c => c.email);
-
-    if (validCandidates.length === 0) {
-      toast.warning('No valid email addresses found in selected candidates!');
-      return;
-    }
-
-    // Same channel/sender refresh as single-candidate send — otherwise Campaign
-    // stays "Unavailable" until the user has opened a one-off email first.
-    try {
-      const statusRes = await authenticatedFetch(`${BASE_API_URL}/api/email/sender-status`);
-      const statusData = await statusRes.json();
-      if (statusData.success) {
-        setEmailSenderInfo?.({
-          fromEmail: statusData.fromEmail || statusData.agentFrom || '',
-          replyTo: statusData.replyTo || '',
-          displayName: statusData.displayName || '',
-          verifiedDomain: statusData.verifiedDomain || '',
-          sendAsUser: Boolean(statusData.sendAsUser),
-          agentFrom: statusData.agentFrom || '',
-          hint: statusData.hint || '',
-        });
-      }
-    } catch (_) {
-      setEmailSenderInfo?.(null);
-    }
-
-    try {
-      const chRes = await authenticatedFetch(`${BASE_API_URL}/api/email/channels`);
-      const chData = await chRes.json();
-      if (chData.success && chData.channels) {
-        setChannelsAvailable?.({
-          transactional: chData.channels.transactional?.available ?? true,
-          marketing: chData.channels.marketing?.available ?? false,
-        });
-      }
-    } catch (_) {
-      /* keep previous / defaults */
-    }
-
-    setBulkEmailRecipients(validCandidates);
-    setEmailRecipient(validCandidates[0]);
-    setEmailChannel?.('transactional');
+  const openComposer = (recipients, sample, opts = {}) => {
+    setBulkEmailRecipients(recipients);
+    setEmailRecipient(sample || recipients[0]);
+    setEmailChannel?.(deps.emailChannelDefault || 'transactional');
     setEmailMode('template');
     setEmailType('interview');
     setCustomMessage('');
     setEmailCC([]);
     setEmailBCC([]);
     setShowQuickPreview(false);
+    if (!emailTemplates?.length) setEmailTemplatesLoading?.(true);
     setShowEmailModal(true);
+    // Optional jobTag keeps requisition merge fields (job title, code, apply link)
+    // when opening from Suggested talent. It does not add people to the job.
+    const jobTag = String(opts.jobTag || '').trim();
+    setCampaignJobId?.(jobTag);
+    setCampaignJobMeta?.(null);
+  };
 
-    if (emailTemplates.length === 0) {
+  const refreshSender = async () => {
+    const tasks = [
+      authenticatedFetch(`${BASE_API_URL}/api/email/sender-status`)
+        .then((res) => res.json())
+        .then((statusData) => {
+          if (statusData.success) {
+            setEmailSenderInfo?.({
+              fromEmail: statusData.fromEmail || statusData.agentFrom || '',
+              replyTo: statusData.replyTo || '',
+              displayName: statusData.displayName || '',
+              verifiedDomain: statusData.verifiedDomain || '',
+              sendAsUser: Boolean(statusData.sendAsUser),
+              agentFrom: statusData.agentFrom || '',
+              hint: statusData.hint || '',
+            });
+          }
+        })
+        .catch(() => {
+          setEmailSenderInfo?.(null);
+        }),
+      authenticatedFetch(`${BASE_API_URL}/api/email/channels`)
+        .then((res) => res.json())
+        .then((chData) => {
+          if (chData.success && chData.channels) {
+            setChannelsAvailable?.({
+              transactional: chData.channels.transactional?.available ?? true,
+              marketing: chData.channels.marketing?.available ?? false,
+            });
+          }
+        })
+        .catch(() => { /* keep previous / defaults */ }),
+    ];
+
+    if (!emailTemplates?.length) {
+      setEmailTemplatesLoading?.(true);
+      tasks.push(
+        authenticatedFetch(`${BASE_API_URL}/api/email-templates`)
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success && Array.isArray(data.templates) && data.templates.length > 0) {
+              setEmailTemplates(data.templates);
+            }
+          })
+          .catch((err) => {
+            console.error('Failed to load templates:', err);
+          })
+          .finally(() => {
+            setEmailTemplatesLoading?.(false);
+          })
+      );
+    }
+
+    await Promise.all(tasks);
+  };
+
+  const startBulkEmailFlow = async (opts = {}) => {
+    if (selectedIds.length === 0) {
+      toast.warning('Please select at least one candidate!');
+      return;
+    }
+
+    const audience = typeof getBulkAudience === 'function' ? getBulkAudience() : null;
+    if (audience?.active) {
+      const sample = (candidates || []).find((c) => String(c.email || '').includes('@'))
+        || (candidates || [])[0]
+        || { _id: 'audience-preview', name: 'Candidate', email: 'name@example.com' };
+      setBulkAudience?.(audience);
+      const count = Number(audience.count) || 0;
+      setEmailSendSkipped?.(0);
+      toast.success(
+        count > 0
+          ? `Ready to email all ${count.toLocaleString()} matching people. Send delivers to the full list.`
+          : 'Ready to email everyone matching this search.'
+      );
+      openComposer([sample], sample, opts);
+      if (audience.channel) setEmailChannel?.(audience.channel);
+      await refreshSender();
+      return;
+    }
+    setBulkAudience?.(null);
+
+    let selected = (candidates || []).filter((c) => selectedIds.map(String).includes(String(c._id)));
+    if (typeof resolveSelectedPeople === 'function') {
       try {
-        const res = await authenticatedFetch(`${BASE_API_URL}/api/email-templates`);
-        const data = await res.json();
-        if (data.success && data.templates.length > 0) {
-          setEmailTemplates(data.templates);
+        toast.info('Loading all selected people (this can take a minute for large lists)…');
+        const extra = await resolveSelectedPeople();
+        if (Array.isArray(extra) && extra.length) {
+          selected = extra;
+        } else if (selectedIds.length > selected.length) {
+          toast.error('Could not load all selected people. Try Select all again.');
+          return;
         }
       } catch (err) {
-        console.error('Failed to load templates:', err);
+        toast.error(err?.message || 'Could not load all selected people.');
+        return;
       }
+    } else if (selectedIds.length > selected.length) {
+      toast.error('Only the current page is loaded. Use Select all matching, then try again.');
+      return;
     }
+
+    const validCandidates = selected.filter((c) => String(c.email || '').includes('@'));
+
+    if (validCandidates.length === 0) {
+      toast.warning('No valid email addresses found in selected candidates!');
+      return;
+    }
+
+    const skipped = selected.length - validCandidates.length;
+    setEmailSendSkipped?.(Math.max(0, skipped));
+
+    if (skipped > 0) {
+      toast.info(
+        `${validCandidates.length.toLocaleString()} of ${selected.length.toLocaleString()} have a valid email — sending to those.`
+      );
+    } else {
+      toast.success(`Ready to email ${validCandidates.length.toLocaleString()} people.`);
+    }
+
+    openComposer(validCandidates, validCandidates[0], opts);
+    await refreshSender();
   };
 
   const toggleEmailSelection = (email) => {
@@ -218,7 +296,7 @@ export function useCandidateEmailBulk(deps) {
   };
 
   const selectAllEmails = () => {
-    const selected = candidates.filter(c => selectedIds.includes(c._id));
+    const selected = candidates.filter(c => selectedIds.map(String).includes(String(c._id)));
     const validCandidates = selected.filter(c => c.email);
 
     if (selectedEmails.size === validCandidates.length) {

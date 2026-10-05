@@ -213,6 +213,14 @@ async function importPending(req, res) {
         });
 
         const WRITE_CHUNK = 500;
+        const statusSelect = '_id status organizationId createdBy spoc source email';
+        const importEmails = [...new Set(pendingRecords.map((p) => String(p.email || '').trim().toLowerCase()).filter(Boolean))];
+        const statusFilter = req.user.organizationId
+            ? { organizationId: req.user.organizationId, email: { $in: importEmails } }
+            : { createdBy: userId, email: { $in: importEmails } };
+        const beforeStatus = importEmails.length
+            ? await Candidate.find(statusFilter).select(statusSelect).lean()
+            : [];
         for (let i = 0; i < bulkOps.length; i += WRITE_CHUNK) {
             const slice = bulkOps.slice(i, i + WRITE_CHUNK);
             try {
@@ -227,6 +235,14 @@ async function importPending(req, res) {
                     throw bulkErr;
                 }
             }
+        }
+
+        if (importEmails.length) {
+            const { recordCandidateStatusDiff } = require('../../services/stageHistoryService');
+            const afterStatus = await Candidate.find(statusFilter).select(statusSelect).lean();
+            await recordCandidateStatusDiff(beforeStatus, afterStatus, {
+                changedBy: req.user?.name || req.user?.email || 'Import',
+            });
         }
 
         await promoteNamesSafe(

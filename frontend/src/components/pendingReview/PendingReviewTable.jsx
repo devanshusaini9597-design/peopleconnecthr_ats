@@ -7,6 +7,7 @@ import EmptyState from '../ui/EmptyState';
 import CategoryBadge from './CategoryBadge';
 import { PAGE_SIZE } from './pendingReviewConstants';
 import { getOriginal, isImportReady } from './pendingReviewHelpers';
+import { guardTableCopy } from '../../utils/tableCopyGuard';
 
 export default function PendingReviewTable({
   isLoading,
@@ -52,12 +53,13 @@ export default function PendingReviewTable({
           <div
             className="cand-table-scroll overflow-x-auto select-none"
             ref={tableScrollRef}
+            onCopy={guardTableCopy}
             onMouseDown={onTableDragScrollStart}
             onMouseMove={onTableDragScrollMove}
             onMouseUp={onTableDragScrollEnd}
             onMouseLeave={onTableDragScrollEnd}
           >
-            <table className="cand-table-drag w-full text-left border-collapse min-w-[1280px] select-text border border-stone-200">
+            <table className="cand-table-drag w-full text-left border-collapse min-w-[1280px] select-none border border-stone-200">
               <thead>
                 <tr className="bg-stone-100">
                   <th className="px-3.5 py-3.5 w-[52px] text-center border border-stone-200 bg-stone-100">

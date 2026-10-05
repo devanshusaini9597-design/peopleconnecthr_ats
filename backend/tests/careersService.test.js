@@ -8,6 +8,9 @@ describe('careersService contracts', () => {
     expect(typeof svc.resolveByDomain).toBe('function');
     expect(typeof svc.getCareersPage).toBe('function');
     expect(typeof svc.getPublicJob).toBe('function');
+    expect(typeof svc.checkAlreadyApplied).toBe('function');
     expect(typeof svc.submitApplication).toBe('function');
+    expect(svc.sendApplyOtp).toBeUndefined();
+    expect(svc.verifyApplyOtp).toBeUndefined();
   });
 });

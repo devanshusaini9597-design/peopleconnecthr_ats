@@ -8,10 +8,13 @@ export default function CandidatesBulkToolbar(props) {
     selectedIds, setSelectedIds, bulkStatusOpen, setBulkStatusOpen,
     startBulkEmailFlow, handleBulkWhatsApp, handleBulkStatusUpdate,
     openBulkEdit, handleShareClick, handleBulkDelete, isFreelancer,
+    displayedCount,
     filteredCount = 0, isAllFilteredSelected = false, onSelectAllFiltered,
     selectionScopeLabel = '',
+    selectingAll = false,
   } = props;
   if (!selectedIds?.length) return null;
+  const countShown = Number(displayedCount) > 0 ? Number(displayedCount) : selectedIds.length;
   const canExpand = !isAllFilteredSelected && filteredCount > selectedIds.length && typeof onSelectAllFiltered === 'function';
   return (
         <div
@@ -22,14 +25,14 @@ export default function CandidatesBulkToolbar(props) {
             <div className="px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div className="flex items-center gap-3.5 min-w-0">
                 <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-brand-500 to-teal-700 text-white flex items-center justify-center text-sm font-bold tabular-nums shadow-lg shadow-brand-500/25 ring-1 ring-white/20 flex-shrink-0">
-                  {selectedIds.length}
+                  {countShown.toLocaleString()}
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-700">
                     Bulk actions
                   </p>
                   <p className="text-sm font-semibold text-stone-900 mt-0.5 truncate">
-                    {selectedIds.length === 1 ? '1 candidate selected' : `${selectedIds.length} candidates selected`}
+                    {countShown === 1 ? '1 candidate selected' : `${countShown.toLocaleString()} candidates selected`}
                     {selectionScopeLabel ? (
                       <span className="text-stone-500 font-medium"> · {selectionScopeLabel}</span>
                     ) : null}
@@ -154,6 +157,13 @@ export default function CandidatesBulkToolbar(props) {
                 </button>
               </div>
             </div>
+            {selectingAll ? (
+              <div className="px-4 sm:px-5 py-2.5 border-t border-brand-100/80 bg-brand-50/50">
+                <p className="text-xs sm:text-sm text-stone-600 font-medium">
+                  Confirming all matching results in the background…
+                </p>
+              </div>
+            ) : null}
             {canExpand && (
               <div className="px-4 sm:px-5 py-2.5 border-t border-brand-100/80 bg-brand-50/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <p className="text-xs sm:text-sm text-stone-600">

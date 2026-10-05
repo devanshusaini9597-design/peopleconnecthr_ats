@@ -1,303 +1,345 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Search, Loader2, Users, Briefcase, GitPullRequest, X, ArrowRight,
-  Filter, Sparkles, Building2,
+  Search, Loader2, Users, Briefcase, X, ArrowRight,
+  Megaphone, Filter, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import EmptyState from '../ui/EmptyState';
-import { EXAMPLE_QUERIES, ENTITY_FILTERS, initials, statusBadgeClass } from './globalSearchConstants';
+import { StatCard } from '../dashboard/DashboardWidgets';
+import PremiumSelect from '../ui/PremiumSelect';
+import ColumnsPicker from '../ui/ColumnsPicker';
+import { ENTITY_FILTERS, statusBadgeClass } from './globalSearchConstants';
+import { CANDIDATE_SEARCH_SCOPES } from '../ats/atsConstants';
 
-export function StatCard({ icon: Icon, label, value, gradient, loading, onClick }) {
-  const Comp = onClick ? 'button' : 'div';
-  return (
-    <Comp
-      type={onClick ? 'button' : undefined}
-      onClick={onClick}
-      className={`relative card-ats-bordered p-5 min-h-[108px] flex flex-col justify-between overflow-hidden text-left w-full group transition-all duration-300 ease-out ${
-        onClick
-          ? 'hover:-translate-y-1 hover:shadow-lg hover:shadow-stone-200/60 hover:border-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400'
-          : ''
-      }`}
-    >
-      <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${gradient} transition-all duration-300 group-hover:h-1.5`} />
-      <div className="relative flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <p className="text-stone-500 text-sm font-medium truncate">{label}</p>
-          <p className="text-2xl sm:text-3xl font-bold text-stone-900 mt-1 tabular-nums tracking-tight">
-            {loading ? '—' : value}
-          </p>
-        </div>
-        <div className={`p-3 rounded-xl flex-shrink-0 bg-gradient-to-br ${gradient} shadow-md transition-transform duration-300 ease-out group-hover:scale-110 group-hover:rotate-3`}>
-          <Icon size={20} className="text-white" />
-        </div>
-      </div>
-    </Comp>
+const iconBtn =
+  'inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border font-semibold transition-colors';
+
+export function GlobalSearchKpis({ counts, loading, onCardClick, scope = 'desk', showMis = true }) {
+  const people = (Number(counts.candidates) || 0) + (showMis ? (Number(counts.mis) || 0) : 0);
+  const orgWide = scope === 'organization';
+  const fromSearch = scope === 'search';
+  const peopleCaption = fromSearch
+    ? (showMis ? 'Matching candidates and MIS contacts' : 'Matching candidates')
+    : showMis
+      ? (orgWide ? 'Candidates and MIS contacts across the organisation' : 'Your candidates and organisation MIS contacts')
+      : (orgWide ? 'Candidates across the organisation' : 'Candidates on your account');
+  const candCaption = fromSearch
+    ? 'Matching candidates in this search'
+    : (orgWide ? 'All organisation candidates' : 'Candidates on your account');
+  const misCaption = fromSearch
+    ? 'Matching MIS contacts in this search'
+    : (orgWide ? 'Organisation directory' : 'Organisation directory and contacts you added');
+  const card = (key, props) => (
+    <StatCard
+      {...props}
+      loading={loading}
+      onClick={() => onCardClick?.(key)}
+    />
   );
-}
-
-export function GlobalSearchKpis({ hasQuery, totalMatches, counts, loading, setEntity }) {
   return (
-    <div data-tour="search-kpis" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <StatCard
-        icon={Sparkles}
-        label="Total matches"
-        value={hasQuery ? totalMatches : '—'}
-        gradient="from-brand-500 to-teal-400"
-        loading={loading && hasQuery}
-        onClick={() => setEntity('all')}
-      />
-      <StatCard
-        icon={Users}
-        label="Candidates"
-        value={hasQuery ? counts.candidates : '—'}
-        gradient="from-emerald-500 to-lime-400"
-        loading={loading && hasQuery}
-        onClick={() => setEntity('candidates')}
-      />
-      <StatCard
-        icon={Briefcase}
-        label="Jobs"
-        value={hasQuery ? counts.jobs : '—'}
-        gradient="from-sky-500 to-cyan-400"
-        loading={loading && hasQuery}
-        onClick={() => setEntity('jobs')}
-      />
-      <StatCard
-        icon={GitPullRequest}
-        label="Applications"
-        value={hasQuery ? counts.applications : '—'}
-        gradient="from-violet-500 to-fuchsia-400"
-        loading={loading && hasQuery}
-        onClick={() => setEntity('applications')}
-      />
-    </div>
-  );
-}
-
-export function GlobalSearchToolbar({
-  inputRef, q, setQ, clearSearch, hasQuery, loading, visibleMatches, entity, setEntity, counts, totalMatches,
-}) {
-  return (
-    <div data-tour="search-toolbar" className="toolbar-ats flex flex-col gap-3">
-      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-        <div className="relative flex-1 min-w-0 max-w-full sm:max-w-xl">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
-          <input
-            ref={inputRef}
-            id="global-search-q"
-            type="search"
-            autoFocus
-            className="input-ats !pl-10 !pr-9 w-full"
-            placeholder="Search candidates, jobs, applications…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            autoComplete="off"
-          />
-          {q && (
-            <button
-              type="button"
-              onClick={clearSearch}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100"
-              aria-label="Clear search"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-        <p className="text-[11px] text-stone-400 font-medium sm:text-right flex-shrink-0">
-          {hasQuery
-            ? loading
-              ? 'Searching…'
-              : `${visibleMatches} result${visibleMatches === 1 ? '' : 's'} for “${q.trim()}”`
-            : 'Type at least 2 characters'}
-        </p>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500 px-1">
-          <Filter size={14} /> Filter
-        </div>
-        {ENTITY_FILTERS.map((f) => {
-          const active = entity === f.key;
-          const count = f.key === 'all' ? totalMatches : counts[f.key];
-          return (
-            <button
-              key={f.key}
-              type="button"
-              onClick={() => setEntity(f.key)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                active
-                  ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-500/20'
-                  : 'bg-white text-stone-600 border-stone-200 hover:border-brand-300 hover:bg-brand-50/50'
-              }`}
-            >
-              {f.label}
-              {hasQuery && (
-                <span className="ml-1 opacity-70 tabular-nums">{count ?? 0}</span>
-              )}
-            </button>
-          );
-        })}
+    <div data-tour="search-kpis" className="min-w-0 w-full">
+      <div className={`grid gap-4 sm:gap-5 min-w-0 w-full grid-cols-1 sm:grid-cols-2 ${showMis ? 'xl:grid-cols-4' : 'xl:grid-cols-3'}`}>
+        {card('all', { icon: Users, label: 'Total talent', value: people, caption: peopleCaption, gradient: 'from-brand-500 to-teal-400' })}
+        {card('candidates', { icon: Users, label: 'Candidates', value: counts.candidates || 0, caption: candCaption, gradient: 'from-teal-600 to-emerald-400' })}
+        {showMis ? card('mis', { icon: Megaphone, label: 'MIS contacts', value: counts.mis || 0, caption: misCaption, gradient: 'from-amber-500 to-orange-400' }) : null}
+        {card('jobs', { icon: Briefcase, label: 'Jobs', value: counts.jobs || 0, caption: 'Open and closed requisitions', gradient: 'from-sky-500 to-cyan-400' })}
       </div>
     </div>
   );
 }
 
-export function GlobalSearchResults({
-  loading, hasQuery, visibleMatches, entity, totalMatches, q, clearSearch, setEntity, setQ, inputRef, columns, data,
+function tabCount(f, counts, countsLoading = false) {
+  const key = f.key === 'all' ? 'people' : f.key;
+  const sideExact = Boolean(counts?.exactBy?.[key] || counts?.exactBy?.[f.key] || counts?.exact);
+  if (!sideExact) return countsLoading ? { pending: true } : null;
+  const reported = f.key === 'all' ? counts.people : counts[f.key];
+  const n = Number(reported) || 0;
+  return { n, pending: false };
+}
+
+function buildTableRows(entity, data) {
+  if (entity === 'all') {
+    return [
+      ...(data.candidates || []).map((r) => ({ ...r, _kind: 'candidates' })),
+      ...(data.mis || []).map((r) => ({ ...r, _kind: 'mis' })),
+    ];
+  }
+  return (data[entity] || []).map((r) => ({ ...r, _kind: entity }));
+}
+
+function rowName(entity, r) {
+  if (entity === 'jobs') return r.title || r.role || 'Untitled';
+  if (entity === 'applications' || entity === 'interviews') return r.candidateId?.name || '—';
+  return r.name || '—';
+}
+
+function rowDetail(entity, r) {
+  if (entity === 'jobs') return [r.jobCode, r.location, r.clientName].filter(Boolean).join(' · ');
+  if (entity === 'applications') return [r.jobId?.jobCode || r.jobId?.title, r.stage].filter(Boolean).join(' · ');
+  if (entity === 'interviews') return [r.jobId?.jobCode || r.jobId?.title, r.status].filter(Boolean).join(' · ');
+  return [r.email, r.position, r.location, r.skills].filter(Boolean).join(' · ');
+}
+
+function rowHref(entity, r, relatedJob) {
+  if (entity === 'jobs') return '/jobs';
+  if (entity === 'applications') return r.jobId?.jobCode ? `/applications?jobId=${encodeURIComponent(r.jobId.jobCode)}` : '/applications';
+  if (entity === 'interviews') return '/interviews';
+  if (entity === 'mis') return '/mis';
+  if (entity === 'jobFit') return `/ats?highlight=${r._id}${relatedJob?.jobCode ? `&jobId=${encodeURIComponent(relatedJob.jobCode)}` : ''}`;
+  return `/ats?highlight=${r._id}`;
+}
+
+function kindLabel(kind) {
+  if (kind === 'mis') return 'MIS';
+  if (kind === 'jobFit') return 'Job fit';
+  if (kind === 'candidates') return 'Candidate';
+  if (kind === 'jobs') return 'Job';
+  if (kind === 'applications') return 'Application';
+  if (kind === 'interviews') return 'Interview';
+  if (kind === 'related') return 'AI related';
+  return kind;
+}
+
+export function GlobalSearchWorkbench({
+  workbenchRef,
+  inputRef, q, setQ, onSearch, clearSearch, hasRun, loading,
+  searchScope, setSearchScope,
+  showAdvancedSearch, setShowAdvancedSearch, activeAdvFilterCount = 0,
+  columnOptions, visibleColumnIds, onVisibleColumnsChange, onSelectAllColumns, onClearAllColumns, onResetColumns,
+  entity, setEntity, counts,
+  countsLoading = false,
+  rowCounts = {},
+  entityTabs = ENTITY_FILTERS,
+  filterPanel,
+  relatedJob,
+  children,
 }) {
+  const scopeLabel = CANDIDATE_SEARCH_SCOPES.find((s) => s.value === searchScope)?.label || 'Anywhere';
+  const placeholder =
+    searchScope === 'candidateId'
+      ? 'Enter Candidate ID'
+      : searchScope === 'applicationId'
+        ? 'Enter Application ID'
+        : searchScope && searchScope !== 'all'
+          ? `Search by ${scopeLabel}`
+          : 'Search by name, email, position, skill, or location';
+
   return (
-    <div data-tour="search-results" className="min-w-0">
-      {loading && hasQuery && (
-        <div className="flex items-center justify-center py-16 text-stone-400">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" /> Searching workspace…
-        </div>
-      )}
-
-      {!loading && !hasQuery && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-          <div className="lg:col-span-2 card-ats-bordered p-5 sm:p-6 relative overflow-hidden min-w-0">
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 opacity-80" />
-            <EmptyState
-              icon={Search}
-              tone="brand"
-              message="Start typing to search"
-              subMessage="Enter at least 2 characters to search across candidates, jobs, and applications."
-            />
-          </div>
-          <div className="card-ats-bordered p-5 sm:p-6 relative overflow-hidden space-y-3 h-fit min-w-0">
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-            <div className="flex items-center gap-2 pt-1">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-100 to-teal-100 border border-brand-200/70 flex items-center justify-center flex-shrink-0">
-                <Building2 className="w-4 h-4 text-brand-600" />
-              </div>
-              <div className="min-w-0">
-                <h3 className="font-bold text-stone-900 text-sm tracking-tight">Try an example</h3>
-                <p className="text-[11px] text-stone-500">Quick searches to get started</p>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {EXAMPLE_QUERIES.map((ex) => (
-                <button
-                  key={ex.q}
-                  type="button"
-                  onClick={() => {
-                    setQ(ex.q);
-                    inputRef.current?.focus();
-                  }}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl border border-stone-200 bg-white text-left transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-md hover:border-stone-300 group min-w-0"
-                >
-                  <div className="w-9 h-9 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
-                    <Search className="w-4 h-4" />
-                  </div>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-bold text-stone-900 tracking-tight truncate">{ex.q}</span>
-                    <span className="block text-[11px] text-stone-400 truncate">{ex.hint}</span>
-                  </span>
-                  <ArrowRight className="w-4 h-4 text-stone-300 group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
-                </button>
-              ))}
-            </div>
-            <Link to="/candidate-search" className="btn-secondary w-full !text-xs">
-              <Filter className="w-3.5 h-3.5" />
-              Open advanced candidate search
-            </Link>
-          </div>
-        </div>
-      )}
-
-      {!loading && hasQuery && visibleMatches === 0 && (
-        <div className="card-ats-bordered p-5 sm:p-6 relative overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500" />
-          <EmptyState
-            icon={Search}
-            tone="amber"
-            message="No matches found"
-            subMessage={
-              entity !== 'all' && totalMatches > 0
-                ? `No ${entity} matched “${q.trim()}”, but ${totalMatches} other result${totalMatches === 1 ? '' : 's'} exist. Switch to All to see them.`
-                : `Nothing matched “${q.trim()}”. Try a different keyword or switch entity type.`
-            }
-            action={
-              entity !== 'all' && totalMatches > 0 ? (
-                <button type="button" className="btn-secondary" onClick={() => setEntity('all')}>
-                  <Search className="w-4 h-4" /> Show all results
-                </button>
-              ) : (
-                <button type="button" className="btn-secondary" onClick={clearSearch}>
-                  <X className="w-4 h-4" /> Clear search
-                </button>
-              )
-            }
-          />
-        </div>
-      )}
-
-      {!loading && hasQuery && visibleMatches > 0 && (
-        <div
-          className={`grid grid-cols-1 gap-4 sm:gap-5 ${
-            columns.length === 1 ? 'md:grid-cols-1 max-w-3xl' : 'md:grid-cols-2 xl:grid-cols-3'
-          }`}
+    <div ref={workbenchRef} data-tour="search-workbench" className="card-ats-bordered overflow-hidden min-w-0">
+      <div className="p-4 sm:p-5 border-b border-stone-100 space-y-4">
+        <form
+          className="flex flex-wrap sm:flex-nowrap items-stretch gap-1.5 min-w-0"
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSearch?.();
+          }}
         >
-          {columns.map((col) => {
-            const rows = data[col.key] || [];
+          <div className="relative flex-1 min-w-[12rem] flex h-11 overflow-hidden rounded-xl border border-stone-200 bg-white focus-within:border-brand-600 transition-colors">
+            <div className="w-11 flex-shrink-0 flex items-center justify-center text-stone-400 border-r border-stone-200/90">
+              <PremiumSelect
+                variant="list"
+                compact
+                bare
+                iconOnly
+                icon={Search}
+                value={searchScope || 'all'}
+                onChange={(v) => setSearchScope?.(v || 'all')}
+                options={CANDIDATE_SEARCH_SCOPES}
+                placeholder="Anywhere"
+                menuMinWidth={200}
+              />
+            </div>
+            <div className="relative flex-1 min-w-0">
+              <input
+                ref={inputRef}
+                id="global-search-q"
+                type="text"
+                className="search-bare-input w-full h-full min-w-0 pl-2.5 pr-9 bg-transparent border-0 outline-none ring-0 shadow-none text-sm font-medium text-stone-900 placeholder:text-stone-400 placeholder:truncate"
+                placeholder={placeholder}
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                autoComplete="off"
+              />
+              {q ? (
+                <button type="button" onClick={clearSearch} className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 z-[1]" aria-label="Clear search">
+                  <X size={14} />
+                </button>
+              ) : null}
+            </div>
+          </div>
+          <button type="submit" className="btn-primary h-11 px-5 flex-shrink-0 !shadow-none" disabled={loading}>
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            Search
+          </button>
+          <button
+            type="button"
+            title="Filters"
+            aria-label="Filters"
+            onClick={() => setShowAdvancedSearch?.((v) => !v)}
+            className={`relative ${iconBtn} ${
+              showAdvancedSearch || activeAdvFilterCount > 0
+                ? 'border-brand-500 bg-brand-50 text-brand-800'
+                : 'border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50 text-stone-600'
+            }`}
+          >
+            <Filter size={16} strokeWidth={1.75} />
+            {activeAdvFilterCount > 0 ? (
+              <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[1.1rem] h-4 px-1 rounded-full bg-stone-900 text-white text-[9px] font-bold tabular-nums">
+                {activeAdvFilterCount}
+              </span>
+            ) : null}
+          </button>
+          {Array.isArray(columnOptions) && columnOptions.length > 0 ? (
+            <ColumnsPicker
+              columns={columnOptions}
+              visibleIds={visibleColumnIds}
+              onChange={onVisibleColumnsChange}
+              onSelectAll={onSelectAllColumns}
+              onClearAll={onClearAllColumns}
+              onReset={onResetColumns}
+              buttonClassName={`${iconBtn} border-stone-200 bg-white text-stone-600 hover:border-stone-300 hover:bg-stone-50`}
+              iconOnly
+            />
+          ) : null}
+        </form>
+        {filterPanel}
+      </div>
+
+      <div className="px-4 sm:px-5 pt-3 border-b border-stone-100">
+        <div className="flex items-end gap-1 min-w-0 flex-wrap">
+          {(entityTabs.length ? entityTabs : ENTITY_FILTERS).map((f) => {
+            const active = entity === f.key;
+            const count = tabCount(f, counts, countsLoading);
+            const disabled = Boolean(f.disabled);
             return (
-              <div
-                key={col.key}
-                className="card-ats p-5 sm:p-6 relative overflow-hidden group flex flex-col min-w-0"
+              <button
+                key={f.key}
+                type="button"
+                disabled={disabled}
+                title={undefined}
+                onClick={() => setEntity(f.key)}
+                className={`px-3.5 py-2.5 text-xs font-bold border-b-2 -mb-px whitespace-nowrap ${
+                  disabled
+                    ? 'border-transparent text-stone-400 cursor-default'
+                    : active
+                      ? 'border-brand-600 text-brand-800'
+                      : 'border-transparent text-stone-500 hover:text-stone-800'
+                }`}
               >
-                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 opacity-80 group-hover:opacity-100 transition-opacity" />
-
-                <div className="flex items-start justify-between gap-3 mb-4">
-                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-100 to-teal-100 border border-brand-200/70 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
-                    <col.icon className="w-5 h-5 text-brand-600" />
-                  </div>
-                  <span className="badge-neutral tabular-nums flex-shrink-0">{rows.length}</span>
-                </div>
-
-                <h3 className="text-lg font-bold text-stone-900 tracking-tight mb-3">{col.title}</h3>
-
-                <div className="space-y-2 flex-1 max-h-[min(50vh,28rem)] overflow-y-auto -mx-1 px-1">
-                  {rows.length === 0 ? (
-                    <EmptyState icon={col.icon} tone="amber" compact message="No matches" />
-                  ) : (
-                    rows.map((r) => {
-                      const title = col.label(r);
-                      const badge = statusBadgeClass(col.meta?.(r));
-                      const meta = col.meta?.(r);
-                      return (
-                        <Link
-                          key={r._id}
-                          to={col.path(r)}
-                          className="w-full flex items-center gap-3 p-3 rounded-xl border border-stone-200 bg-white text-left transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-md hover:border-stone-300 min-w-0 group/row"
-                        >
-                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-500 to-teal-700 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 shadow-md shadow-brand-500/20">
-                            {initials(title)}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-sm font-bold text-stone-900 tracking-tight truncate">
-                                {title}
-                              </span>
-                              {badge && meta && (
-                                <span className={`${badge} text-[10px] capitalize flex-shrink-0 max-w-[5.5rem] truncate`}>
-                                  {String(meta).replace(/_/g, ' ')}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[11px] text-stone-400 truncate mt-0.5">{col.sub(r)}</div>
-                          </div>
-                          <ArrowRight className="w-4 h-4 text-stone-300 group-hover/row:text-brand-500 group-hover/row:translate-x-0.5 transition-all flex-shrink-0" />
-                        </Link>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
+                {f.label}
+                {hasRun ? (
+                  <span className="ml-1.5 tabular-nums font-semibold opacity-70">
+                    {count == null || count.pending
+                      ? '…'
+                      : Number(count.n).toLocaleString()}
+                  </span>
+                ) : null}
+              </button>
             );
           })}
         </div>
-      )}
+      </div>
+
+      <div data-tour="search-results" className="min-w-0 overflow-hidden">
+        {children}
+      </div>
     </div>
+  );
+}
+
+export function GlobalSearchSimpleResults({
+  loading, hasRun, entity, data, relatedJob, page, pageSize, totalForEntity, onPageChange, appliedQuery, clearSearch,
+}) {
+  const tableRows = buildTableRows(entity, data);
+  const from = totalForEntity ? (page - 1) * pageSize + 1 : 0;
+  const to = Math.min(page * pageSize, totalForEntity || 0);
+  const lastPage = Math.max(1, Math.ceil((totalForEntity || 0) / pageSize));
+
+  if (loading && hasRun && tableRows.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-16 text-stone-400">
+        <Loader2 className="w-5 h-5 animate-spin mr-2" /> Searching…
+      </div>
+    );
+  }
+  if (!loading && !hasRun) {
+    return (
+      <div className="p-6">
+        <EmptyState
+          icon={Search}
+          tone="brand"
+          message="No search run yet"
+          subMessage="Enter keywords or open Filters, then select Search."
+        />
+      </div>
+    );
+  }
+  if (!loading && hasRun && tableRows.length === 0) {
+    return (
+      <div className="p-6">
+        <EmptyState
+          icon={Search}
+          tone="amber"
+          message="No matching records"
+          subMessage={`No results for “${appliedQuery || 'the current filters'}”. Adjust the criteria and search again.`}
+          action={<button type="button" className="btn-secondary" onClick={clearSearch}>Clear search</button>}
+        />
+      </div>
+    );
+  }
+  return (
+    <>
+      <div className={`overflow-x-auto ${loading ? 'opacity-60' : ''}`}>
+        <table className="min-w-full text-left">
+          <thead className="bg-stone-50 border-b border-stone-200">
+            <tr>
+              <th className="px-3 py-2.5 text-[10px] font-bold uppercase tracking-wide text-stone-400">Source</th>
+              <th className="px-3 py-2.5 text-[10px] font-bold uppercase tracking-wide text-stone-400">Name</th>
+              <th className="px-3 py-2.5 text-[10px] font-bold uppercase tracking-wide text-stone-400">Details</th>
+              <th className="px-3 py-2.5 text-[10px] font-bold uppercase tracking-wide text-stone-400">Status</th>
+              <th className="w-10" />
+            </tr>
+          </thead>
+          <tbody>
+            {tableRows.map((r) => {
+              const kind = r._kind || entity;
+              const name = rowName(kind, r);
+              const badge = statusBadgeClass(r.status || r.stage || r.meta);
+              return (
+                <tr key={`${kind}-${r._id}`} className="border-t border-stone-100 hover:bg-stone-50/80">
+                  <td className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-stone-500 whitespace-nowrap">{kindLabel(kind)}</td>
+                  <td className="px-3 py-2.5 text-sm font-semibold text-stone-900 break-words max-w-[16rem]">{name}</td>
+                  <td className="px-3 py-2.5 text-[12px] text-stone-500 break-words max-w-[28rem]">{rowDetail(kind, r)}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    {badge ? <span className={`${badge} text-[10px] capitalize`}>{String(r.status || r.stage || '').replace(/_/g, ' ')}</span> : <span className="text-stone-300">—</span>}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <Link to={rowHref(kind, r, relatedJob)} className="text-stone-400 hover:text-brand-600" aria-label={`Open ${name}`}>
+                      <ArrowRight className="w-4 h-4" />
+                    </Link>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-stone-100 bg-stone-50/80">
+        <p className="text-[11px] font-medium text-stone-500 tabular-nums">
+          {totalForEntity
+            ? `Showing ${from.toLocaleString()}–${to.toLocaleString()} of ${totalForEntity.toLocaleString()} · ${pageSize} per page`
+            : `${tableRows.length} rows`}
+        </p>
+        <div className="flex items-center gap-1">
+          <button type="button" className="btn-secondary !px-2 !py-1" disabled={page <= 1} onClick={() => onPageChange?.(page - 1)} aria-label="Previous page">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <span className="text-[11px] font-semibold text-stone-600 tabular-nums px-2">{page} / {lastPage}</span>
+          <button type="button" className="btn-secondary !px-2 !py-1" disabled={page >= lastPage} onClick={() => onPageChange?.(page + 1)} aria-label="Next page">
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </>
   );
 }

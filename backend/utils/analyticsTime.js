@@ -151,11 +151,9 @@ function buildDateFilter(dateRange = 'all', customFrom, customTo, now = new Date
 
 /** Previous period of equal length — for trend % on dashboard cards. */
 function previousPeriodFilter(dateRange = 'all', customFrom, customTo, now = new Date(), timeZone = DEFAULT_TZ) {
+  if (!dateRange || dateRange === 'all') return null;
   const current = buildDateFilter(dateRange, customFrom, customTo, now, timeZone);
-  if (!current) {
-    const { startOfMonth, startOfLastMonth } = monthRanges(now, timeZone);
-    return { $gte: startOfLastMonth, $lt: startOfMonth };
-  }
+  if (!current) return null;
 
   if (dateRange === 'custom' && customFrom && customTo) {
     const startMs = current.$gte.getTime();
@@ -215,29 +213,106 @@ function getDateRangeLabel(dateRange = 'all', customFrom, customTo) {
   return DATE_RANGE_LABELS[dateRange] || DATE_RANGE_LABELS.all;
 }
 
-/** Chart bucket config for dashboard submissions trend. */
-function chartBucketConfig(dateRange = 'month', customFrom, customTo, now = new Date(), timeZone = DEFAULT_TZ) {
-  let days = 7;
-  if (dateRange === 'week' || dateRange === 'today' || dateRange === 'yesterday') days = 7;
-  else if (dateRange === 'month') days = 30;
-  else if (dateRange === 'quarter') days = 90;
-  else if (dateRange === 'year') days = 365;
-  else if (dateRange === 'custom' && customFrom && customTo) {
-    const filter = buildDateFilter('custom', customFrom, customTo, now, timeZone);
-    days = Math.min(365, Math.max(7, Math.ceil((filter.$lte - filter.$gte) / (24 * 60 * 60 * 1000)) + 1));
-  } else if (dateRange === 'all') days = 30;
+function nextYmd(key) {
+  const [y, m, d] = String(key).split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + 1));
+  const month = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(dt.getUTCDate()).padStart(2, '0');
+  return `${dt.getUTCFullYear()}-${month}-${day}`;
+}
 
-  days = Math.min(days, 365);
-  const { start, days: dayKeys } = lastNDaysRange(days, now, timeZone);
+/** Inclusive calendar days from start up to, but not including, endExclusive. */
+function dayKeysBetween(start, endExclusive, timeZone = DEFAULT_TZ) {
+  if (!(start instanceof Date) || !(endExclusive instanceof Date) || endExclusive <= start) return [];
+  const last = zonedYmd(new Date(endExclusive.getTime() - 1), timeZone);
+  const keys = [];
+  let key = zonedYmd(start, timeZone);
+  let guard = 0;
+  while (key <= last && guard < 800) {
+    const [yy, mm, dd] = key.split('-').map(Number);
+    const noon = zonedTimeToUtc(yy, mm, dd, 12, 0, 0, timeZone);
+    keys.push({
+      key,
+      day: noon.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone }),
+    });
+    const next = nextYmd(key);
+    if (next <= key) break;
+    key = next;
+    guard += 1;
+  }
+  return keys;
+}
+
+function withDayLabels(dayKeys, timeZone) {
+  if (dayKeys.length > 7) return dayKeys;
+  return dayKeys.map((row) => {
+    const [yy, mm, dd] = row.key.split('-').map(Number);
+    const noon = zonedTimeToUtc(yy, mm, dd, 12, 0, 0, timeZone);
+    return {
+      ...row,
+      day: noon.toLocaleDateString('en-US', { weekday: 'short', timeZone }),
+    };
+  });
+}
+
+function weekBuckets(dayKeys) {
+  const weeks = [];
+  for (let i = 0; i < dayKeys.length; i += 7) {
+    const slice = dayKeys.slice(i, i + 7);
+    weeks.push({
+      key: slice[0].key,
+      day: slice[0].day,
+      startKey: slice[0].key,
+      endKey: slice[slice.length - 1].key,
+    });
+  }
+  return weeks;
+}
+
+/** Chart buckets for the submissions trend. Days stay inside the selected period. */
+function chartBucketConfig(dateRange = 'month', customFrom, customTo, now = new Date(), timeZone = DEFAULT_TZ) {
   const dateFilter = buildDateFilter(dateRange, customFrom, customTo, now, timeZone);
-  const chartStart = dateFilter?.$gte && dateFilter.$gte > start ? dateFilter.$gte : start;
+  const ymd = zonedYmd(now, timeZone);
+  const [y, m, d] = ymd.split('-').map(Number);
+  const tomorrow = new Date(zonedTimeToUtc(y, m, d, 0, 0, 0, timeZone).getTime() + 24 * 60 * 60 * 1000);
+
+  let start;
+  let endExclusive;
+  let chartLabel;
+
+  if (!dateFilter) {
+    const range = lastNDaysRange(30, now, timeZone);
+    start = range.start;
+    endExclusive = range.endExclusive;
+    chartLabel = 'Last 30 days';
+  } else {
+    start = dateFilter.$gte
+      ? new Date(dateFilter.$gte)
+      : new Date(new Date(dateFilter.$gt).getTime() + 1);
+    if (dateFilter.$lt) endExclusive = new Date(dateFilter.$lt);
+    else if (dateFilter.$lte) endExclusive = new Date(new Date(dateFilter.$lte).getTime() + 1);
+    else endExclusive = tomorrow;
+    if (endExclusive > tomorrow) endExclusive = tomorrow;
+    chartLabel = getDateRangeLabel(dateRange, customFrom, customTo);
+  }
+
+  const allDays = dayKeysBetween(start, endExclusive, timeZone);
+  const rollup = allDays.length > 120 ? 'week' : 'day';
+  let dayKeys = rollup === 'week' ? weekBuckets(allDays) : withDayLabels(allDays, timeZone);
+  if (!dayKeys.length) {
+    const range = lastNDaysRange(7, now, timeZone);
+    start = range.start;
+    dayKeys = withDayLabels(range.days, timeZone);
+    chartLabel = chartLabel || 'Last 7 days';
+  }
 
   return {
-    days: dayKeys.length,
+    days: allDays.length || dayKeys.length,
     dayKeys,
-    chartStart,
-    chartLabel: getDateRangeLabel(dateRange, customFrom, customTo),
-    granularity: days <= 31 ? 'daily' : days <= 120 ? 'weekly' : 'monthly',
+    rollup,
+    chartStart: start,
+    chartLabel,
+    granularity: rollup === 'week' ? 'weekly' : 'daily',
   };
 }
 

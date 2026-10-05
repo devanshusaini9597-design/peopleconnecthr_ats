@@ -28,6 +28,8 @@ const applicationSchema = new mongoose.Schema({
   lastActivityAt: { type: Date, default: Date.now },
   notes: { type: String, default: '' },
   coverLetter: { type: String, default: '' },
+  /** Public confirmation number for this job application (not the person). */
+  applicationCode: { type: String, trim: true, uppercase: true },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
 
   // ── Enterprise integrations (BYOK, see backend/adapters/) ────────────
@@ -52,6 +54,10 @@ const applicationSchema = new mongoose.Schema({
 
 // Indexes
 applicationSchema.index({ organizationId: 1, jobId: 1, candidateId: 1 }, { unique: true });
+applicationSchema.index(
+  { organizationId: 1, applicationCode: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { applicationCode: { $exists: true, $type: 'string' } } },
+);
 applicationSchema.index({ organizationId: 1, stage: 1 });
 applicationSchema.index({ organizationId: 1, assignedTo: 1, stage: 1 });
 applicationSchema.index({ organizationId: 1, isRejected: 1 });

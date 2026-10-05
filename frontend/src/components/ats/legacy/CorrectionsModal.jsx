@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, RefreshCw } from 'lucide-react';
+import { guardTableCopy } from '../../../utils/tableCopyGuard';
 
 /** Deprecated field-corrections modal — preserved from ATS.jsx */
 export default function CorrectionsModal(props) {
@@ -22,8 +23,8 @@ export default function CorrectionsModal(props) {
               <p className="text-sm text-stone-600 mb-4">🎯 These records had misaligned fields (e.g., email in wrong column) that were automatically corrected:</p>
               
               {/* Corrections Table */}
-              <div className="overflow-x-auto border-2 border-green-200 rounded-lg">
-                <table className="w-full text-sm">
+              <div className="overflow-x-auto border-2 border-green-200 rounded-lg select-none" onCopy={guardTableCopy}>
+                <table className="w-full text-sm select-none">
                   <thead className="bg-green-50 border-b-2 border-green-200 sticky top-12">
                     <tr>
                       <th className="px-4 py-3 text-left font-bold text-green-700 whitespace-nowrap">Row</th>

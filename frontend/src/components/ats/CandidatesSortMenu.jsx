@@ -17,7 +17,7 @@ export default function CandidatesSortMenu({
 
   return (
     <div
-      className="inline-flex h-11 items-stretch rounded-lg border border-stone-200 bg-white p-0.5 flex-shrink-0"
+      className="inline-flex h-10 sm:h-11 items-stretch rounded-xl border border-stone-200/80 bg-white p-0.5 flex-shrink-0 shadow-sm shadow-stone-900/5"
       role="group"
       aria-label="Sort by date"
     >

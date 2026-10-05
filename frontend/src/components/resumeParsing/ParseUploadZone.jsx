@@ -75,7 +75,7 @@ export function ParseUploadZone({
             </div>
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-1">Extracted fields</p>
-              <p className="text-stone-600 leading-relaxed">Name, email, phone, position, company, experience, location, education, skills</p>
+              <p className="text-stone-600 leading-relaxed">Name, email, phone, position, company, experience, location, education, skills. SPOC is taken from your account, not the resume.</p>
             </div>
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-1">Best input</p>

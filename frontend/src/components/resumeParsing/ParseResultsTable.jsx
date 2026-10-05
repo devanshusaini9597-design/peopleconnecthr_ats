@@ -7,6 +7,7 @@ import PremiumSelect from '../ui/PremiumSelect';
 import {
   STATUS_FILTER_OPTIONS, PAGE_SIZE, statusOf, StatusBadge,
 } from './resumeParsingConstants';
+import { guardTableCopy } from '../../utils/tableCopyGuard';
 
 export function ParseResultsTable({
   toast,
@@ -117,12 +118,13 @@ export function ParseResultsTable({
       <div
         ref={tableScrollRef}
         className="cand-table-scroll overflow-x-auto select-none rounded-xl border border-stone-200 bg-white"
+        onCopy={guardTableCopy}
         onMouseDown={onTableDragScrollStart}
         onMouseMove={onTableDragScrollMove}
         onMouseUp={onTableDragScrollEnd}
         onMouseLeave={onTableDragScrollEnd}
       >
-        <table className="cand-table-drag w-full text-left border-collapse min-w-[1180px] select-text border border-stone-200">
+        <table className="cand-table-drag w-full text-left border-collapse min-w-[1280px] select-none border border-stone-200">
           <thead>
             <tr className="bg-stone-100">
               <th className="px-3.5 py-3.5 w-[52px] text-center border border-stone-200 bg-stone-100">
@@ -139,7 +141,7 @@ export function ParseResultsTable({
                     : <Square size={18} className="text-stone-400" />}
                 </div>
               </th>
-              {['Status', 'Resume', 'Name', 'Email', 'Phone', 'Position', 'Actions'].map((label) => (
+              {['Status', 'Resume', 'Name', 'Email', 'Phone', 'Position', 'SPOC', 'Actions'].map((label) => (
                 <th
                   key={label}
                   className={`px-3.5 py-3.5 text-[10px] font-bold text-stone-600 uppercase tracking-wider whitespace-nowrap border border-stone-200 bg-stone-100 ${
@@ -154,7 +156,7 @@ export function ParseResultsTable({
           <tbody>
             {pagedResults.length === 0 ? (
               <tr>
-                <td colSpan={8} className="border border-stone-200 px-4 py-10 text-center text-sm text-stone-500">
+                <td colSpan={9} className="border border-stone-200 px-4 py-10 text-center text-sm text-stone-500">
                   No rows match this status filter.
                 </td>
               </tr>
@@ -217,6 +219,9 @@ export function ParseResultsTable({
                   </td>
                   <td className="px-3.5 py-3 text-sm text-stone-700 font-medium border border-stone-200 align-top break-words min-w-[160px]">
                     {result.data?.position || '—'}
+                  </td>
+                  <td className="px-3.5 py-3 text-sm text-stone-700 font-medium border border-stone-200 align-top whitespace-nowrap uppercase">
+                    {result.data?.spoc || '—'}
                   </td>
                   <td className="px-3.5 py-3 text-sm border border-stone-200 align-top whitespace-nowrap">
                     <div className="flex items-center justify-end gap-1">

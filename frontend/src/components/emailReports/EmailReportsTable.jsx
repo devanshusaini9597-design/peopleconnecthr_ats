@@ -12,6 +12,7 @@ import {
 } from './emailReportsConstants';
 import useHorizontalDragScroll from '../../hooks/useHorizontalDragScroll';
 import ColumnsPicker from '../ui/ColumnsPicker';
+import { guardTableCopy } from '../../utils/tableCopyGuard';
 
 const STATUS_STYLES = {
   accepted: 'bg-sky-50 text-sky-800 ring-sky-200/80',
@@ -42,24 +43,35 @@ function Badge({ children, tone = 'sent' }) {
   );
 }
 
-function fmtDate(v) {
-  if (!v) return '—';
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('en-IN', {
+function WhenCell({ value }) {
+  if (!value) return <span className="text-stone-400">—</span>;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return <span className="text-stone-400">—</span>;
+  const time = d.toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).replace(/\s*(AM|PM)\s*/i, (m) => ` ${m.trim().toLowerCase()}`);
+  const date = d.toLocaleDateString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     day: '2-digit',
     month: 'short',
     year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
   });
+  return (
+    <div className="whitespace-nowrap leading-tight">
+      <div className="font-semibold tabular-nums text-stone-900">{time}</div>
+      <div className="mt-0.5 text-[11px] text-stone-500">{date}</div>
+    </div>
+  );
 }
 
 function cellValue(row, colId) {
   const t = row.totals || {};
   switch (colId) {
     case 'sentAt':
-      return <span className="whitespace-nowrap text-stone-600">{fmtDate(row.sentAt)}</span>;
+      return <WhenCell value={row.sentAt} />;
     case 'subject':
       return (
         <div className="min-w-[200px] max-w-xs">
@@ -184,7 +196,7 @@ export default function EmailReportsTable({
             ) : null}
           </h3>
           <p className="text-xs text-stone-500">
-            Drag horizontally to scroll · absolute counts only
+            Newest first. Times are shown in India Standard Time. Use the arrow to open a send.
           </p>
         </div>
 
@@ -204,22 +216,23 @@ export default function EmailReportsTable({
         ref={tableScrollRef}
         {...dragHandlers}
         className="cand-table-scroll min-w-0 cursor-grab overflow-x-auto select-none scrollbar-hide active:cursor-grabbing"
+        onCopy={guardTableCopy}
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         <table
-          className="cand-table-drag w-max min-w-full border-collapse border border-stone-200 text-left text-sm select-text"
+          className="cand-table-drag w-max min-w-full border-collapse border border-stone-300 text-left text-sm select-none"
           role="table"
           aria-label="Email reports history"
         >
           <thead>
-            <tr className="bg-stone-100">
+            <tr>
               {orderedColumns.map((col) => {
                 const Icon = col.icon;
                 return (
                   <th
                     key={col.id}
                     scope="col"
-                    className="whitespace-nowrap border border-stone-200 bg-stone-100 px-3.5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-stone-600"
+                    className="sticky top-0 z-10 whitespace-nowrap border border-stone-300 bg-stone-100 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-600"
                   >
                     <span className="inline-flex items-center gap-1.5">
                       <Icon size={12} className="text-brand-600" strokeWidth={2.25} />
@@ -230,31 +243,31 @@ export default function EmailReportsTable({
               })}
               <th
                 scope="col"
-                className="whitespace-nowrap border border-stone-200 bg-stone-100 px-3.5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-stone-600"
+                className="sticky top-0 z-10 whitespace-nowrap border border-stone-300 bg-stone-100 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-600"
               >
-                Action
+                <span className="sr-only">Open</span>
               </th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={colSpan} className="border border-stone-200 px-4 py-12 text-center text-stone-500">
+                <td colSpan={colSpan} className="border border-stone-300 px-4 py-16 text-center text-stone-500">
                   <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-brand-600" />
-                  Loading {activeMeta.short.toLowerCase()} reports…
+                  Loading {activeMeta.short.toLowerCase()} history…
                 </td>
               </tr>
             )}
             {!loading && items.length === 0 && !error && (
               <tr>
-                <td colSpan={colSpan} className="border border-stone-200 px-4 py-12 text-center text-stone-500">
+                <td colSpan={colSpan} className="border border-stone-300 px-4 py-16 text-center text-stone-500">
                   {metricLabel
-                    ? `No sends with ${metricLabel.toLowerCase()} activity for this filter.`
+                    ? `No sends match the ${metricLabel.toLowerCase()} filter.`
                     : activeTab === 'marketing'
-                      ? 'No marketing campaigns logged yet. Send a campaign, then Refresh from Zoho.'
+                      ? 'No marketing campaigns are on record. Send a campaign, then refresh delivery from the provider.'
                       : activeTab === 'transactional'
-                        ? 'No transactional sends yet. Email a candidate to see ZeptoMail tracking here.'
-                        : 'No tracked sends yet. Send mail from the ATS, then refresh.'}
+                        ? 'No transactional mail is on record. Candidate and system mail will appear here after it is sent.'
+                        : 'No tracked mail is on record yet. Send from the ATS, then refresh this page.'}
                 </td>
               </tr>
             )}
@@ -262,22 +275,33 @@ export default function EmailReportsTable({
               items.map((row, index) => (
                 <tr
                   key={row._id}
-                  className={`transition-colors hover:bg-brand-50/40 ${
-                    index % 2 === 0 ? 'bg-white' : 'bg-stone-50/50'
-                  }`}
+                  onClick={() => openDetail(row._id)}
+                  className="group cursor-pointer bg-white transition-colors hover:bg-brand-50/40"
                 >
                   {orderedColumns.map((col) => (
-                    <td key={col.id} className="border border-stone-200 px-3.5 py-3 align-middle">
-                      {cellValue(row, col.id)}
+                    <td key={col.id} className="border border-stone-300 px-4 py-3.5 align-middle">
+                      {col.id === 'sentAt' && index === 0 && pagination.page === 1 ? (
+                        <div>
+                          {cellValue(row, col.id)}
+                          <span className="mt-1 inline-flex rounded-full bg-brand-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-700">
+                            Latest
+                          </span>
+                        </div>
+                      ) : cellValue(row, col.id)}
                     </td>
                   ))}
-                  <td className="border border-stone-200 px-3.5 py-3 text-right">
+                  <td className="border border-stone-300 px-3 py-3.5 text-center">
                     <button
                       type="button"
-                      onClick={() => openDetail(row._id)}
-                      className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-900"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onOpenDetail(row._id);
+                      }}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-stone-300 bg-white text-stone-700 shadow-sm hover:border-brand-500 hover:bg-brand-50 hover:text-brand-800"
+                      aria-label="Open send details"
+                      title="Open send details"
                     >
-                      Details <ChevronRight className="h-4 w-4" />
+                      <ChevronRight className="h-4 w-4" strokeWidth={2.5} />
                     </button>
                   </td>
                 </tr>

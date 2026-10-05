@@ -1,15 +1,31 @@
-import React, { useMemo, useState } from 'react';
-import { X, Mail, Megaphone, FileText, Zap } from 'lucide-react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { X, Mail, Megaphone, FileText, Zap, Briefcase } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { resolveOrgLogoSrc } from '../../utils/orgLogo';
 import EmailCcBccFields from './candidateEmail/EmailCcBccFields';
 import EmailTemplateMode from './candidateEmail/EmailTemplateMode';
 import EmailQuickSendMode from './candidateEmail/EmailQuickSendMode';
+import PremiumSelect from '../ui/PremiumSelect';
+import { authenticatedFetch } from '../../utils/fetchUtils';
+import BASE_API_URL from '../../config';
 
 function orgInitials(name) {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return 'ORG';
   return parts.slice(0, 2).map((p) => p[0]).join('').toUpperCase();
+}
+
+/** Soften ALL-CAPS names for readable recipient lines without changing stored data. */
+function displayPersonName(name) {
+  const raw = String(name || '').trim();
+  if (!raw) return '';
+  const letters = raw.replace(/[^A-Za-z]/g, '');
+  if (letters && letters === letters.toUpperCase()) {
+    return raw
+      .toLowerCase()
+      .replace(/\b([a-z])/g, (m) => m.toUpperCase());
+  }
+  return raw;
 }
 
 function OrgBrandMark({ name, logo }) {
@@ -18,24 +34,24 @@ function OrgBrandMark({ name, logo }) {
   const showImg = Boolean(src) && !broken;
 
   return (
-    <div className="flex items-center gap-3 min-w-0">
+    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
       {showImg ? (
         <img
           src={src}
           alt=""
           onError={() => setBroken(true)}
-          className="h-11 w-11 rounded-xl object-contain bg-white border border-white/70 shadow-sm flex-shrink-0"
+          className="h-9 w-9 sm:h-10 sm:w-10 rounded-lg object-contain bg-white border border-stone-200/80 shadow-sm flex-shrink-0"
         />
       ) : (
-        <span className="h-11 w-11 rounded-xl bg-white/90 text-brand-800 border border-white/70 shadow-sm flex items-center justify-center text-xs font-bold tracking-wide flex-shrink-0">
+        <span className="h-9 w-9 sm:h-10 sm:w-10 rounded-lg bg-stone-900 text-white border border-stone-800 shadow-sm flex items-center justify-center text-[11px] font-semibold tracking-wide flex-shrink-0">
           {orgInitials(name)}
         </span>
       )}
       <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-700/80">
-          Sending as
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-500">
+          Sender organization
         </p>
-        <h2 className="text-[17px] sm:text-lg font-bold text-stone-900 tracking-tight leading-snug truncate">
+        <h2 className="text-[15px] sm:text-[17px] font-semibold text-stone-900 tracking-tight leading-snug truncate">
           {name || 'Organization'}
         </h2>
       </div>
@@ -46,11 +62,11 @@ function OrgBrandMark({ name, logo }) {
 export default function CandidateEmailModal(props) {
   const {
     emailRecipient, setShowEmailModal, bulkEmailRecipients,
-    setBulkEmailRecipients, setSelectedIds,
+    setBulkEmailRecipients, bulkAudience, setBulkAudience, setSelectedIds,
     emailChannel, setEmailChannel, channelsAvailable, emailSenderInfo, emailMode, setEmailMode,
     emailCC, setEmailCC, emailBCC, setEmailBCC, teamMembers, ccInput, setCcInput,
     bccInput, setBccInput, showCCPicker, setShowCCPicker, showBCCPicker, setShowBCCPicker,
-    emailTemplates, selectedTemplate, selectEmailTemplate, setSelectedTemplate,
+    emailTemplates, emailTemplatesLoading, selectedTemplate, selectEmailTemplate, setSelectedTemplate,
     templateVars, setTemplateVars,
     emailType, setEmailType, quickName, setQuickName, quickPosition, setQuickPosition,
     quickDepartment, setQuickDepartment, quickJoiningDate, setQuickJoiningDate,
@@ -61,10 +77,78 @@ export default function CandidateEmailModal(props) {
     sendTemplateEmail, sendSingleEmail,
     campaignOnly = false,
     recipientNoun = 'candidates',
+    jobs = [],
+    campaignJobId = '',
+    setCampaignJobId,
+    campaignJobMeta,
+    setCampaignJobMeta,
   } = props;
 
   const { organization } = useAuth();
-  const isBulk = (bulkEmailRecipients?.length || 0) > 0;
+  const audienceCount = Number(bulkAudience?.count) || 0;
+  const usingAudience = Boolean(bulkAudience?.active);
+  const isBulk = usingAudience || (bulkEmailRecipients?.length || 0) > 0;
+  const sendLabel = usingAudience
+    ? (audienceCount > 0 ? audienceCount.toLocaleString() : 'all matching')
+    : String(bulkEmailRecipients?.length || 0);
+  const showJobTag = Array.isArray(jobs) && jobs.length > 0;
+
+  // Step 1: channel → Step 2: template vs draft → Step 3: compose
+  const [composePhase, setComposePhase] = useState(() =>
+    campaignOnly ? 'method' : 'channel'
+  );
+
+  useEffect(() => {
+    if (!(props.showEmailModal && emailRecipient)) return;
+    if (campaignOnly) {
+      setEmailChannel('marketing');
+      setEmailMode('template');
+      setComposePhase('method');
+    } else {
+      setComposePhase('channel');
+    }
+  }, [props.showEmailModal, emailRecipient?.email, campaignOnly]);
+
+  useEffect(() => {
+    const key = String(campaignJobId || '').trim();
+    if (!key) {
+      setCampaignJobMeta?.(null);
+      return undefined;
+    }
+    let cancelled = false;
+    authenticatedFetch(`${BASE_API_URL}/api/applications/bulk-tag-job`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobId: key, preview: true }),
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled || !json?.success) return;
+        const meta = json.data || {};
+        setCampaignJobMeta?.(meta);
+        setTemplateVars?.((prev) => ({
+          ...prev,
+          jobTitle: meta.jobTitle || '',
+          jobCode: meta.jobCode || '',
+          applyLink: String(meta.applyUrl || '').replace(/[?&]+$/g, ''),
+          jobLocation: meta.jobLocation || '',
+          jobDepartment: meta.jobDepartment || '',
+          jobClient: meta.jobClient || '',
+          jobEmployer: meta.jobClient || prev?.jobEmployer || '',
+          jobExperience: meta.jobExperience || '',
+          jobSummary: meta.jobSummary || '',
+          ctc: meta.jobCtc || prev?.ctc || '',
+          position: meta.jobTitle || prev?.position || '',
+          location: meta.jobLocation || prev?.location || '',
+          experience: meta.jobExperience || prev?.experience || '',
+          company: prev?.company || '',
+        }));
+        if (meta.jobTitle) setQuickPosition?.(meta.jobTitle);
+        if (meta.jobDepartment) setQuickDepartment?.(meta.jobDepartment);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [campaignJobId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const orgMeta = useMemo(() => {
     let fromStorage = {};
@@ -87,10 +171,14 @@ export default function CandidateEmailModal(props) {
   const closeModal = () => {
     setShowEmailModal(false);
     setBulkEmailRecipients?.([]);
+    setBulkAudience?.(null);
     setSelectedIds?.([]);
+    setCampaignJobId?.('');
+    setCampaignJobMeta?.(null);
   };
 
   const canSend =
+    composePhase === 'write' &&
     !isSendingEmail &&
     !(emailMode === 'template' && !selectedTemplate) &&
     !(emailMode === 'template' && selectedTemplate && !(props.templateDraftSubject || '').trim()) &&
@@ -98,272 +186,429 @@ export default function CandidateEmailModal(props) {
     !(emailMode === 'quick' && !(quickSubject || '').trim()) &&
     !(emailMode === 'quick' && !customMessage.trim());
 
-  const toLine = isBulk
-    ? bulkEmailRecipients.map((c) => c.name || c.email).join(', ')
-    : `${emailRecipient.name} <${emailRecipient.email}>`;
+  const recipientCount = usingAudience
+    ? audienceCount
+    : (isBulk ? (bulkEmailRecipients?.length || 0) : 1);
+
+  const toLine = usingAudience
+    ? (audienceCount > 0 ? `All ${audienceCount.toLocaleString()} matching contacts` : 'Everyone matching this search')
+    : (isBulk
+      ? bulkEmailRecipients.map((c) => displayPersonName(c.name) || c.email).join(', ')
+      : `${displayPersonName(emailRecipient.name) || emailRecipient.name} <${emailRecipient.email}>`);
 
   const channelActive =
-    'border-brand-500 bg-brand-50/60 shadow-[0_0_0_1px_rgba(15,118,110,0.12)]';
-  const channelIdle = 'border-stone-200/90 bg-white hover:border-stone-300 hover:bg-stone-50/60';
+    'border-brand-500 bg-gradient-to-br from-brand-50/80 via-white to-teal-50/40 ring-1 ring-brand-500/25 shadow-md shadow-brand-900/10';
+  const channelIdle =
+    'border-stone-200/90 bg-white hover:border-brand-300 hover:bg-stone-50/60 hover:shadow-sm shadow-sm shadow-stone-900/5';
 
   return (
-    <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-[2px] flex items-center justify-center z-50 p-3 sm:p-4 animate-fade-in">
-      <div className="bg-white rounded-2xl border border-stone-200/70 w-full max-w-3xl max-h-[90vh] shadow-[0_24px_64px_-16px_rgba(28,25,23,0.35)] flex flex-col overflow-hidden">
-        {/* Brand header */}
-        <div className="relative flex-shrink-0 overflow-hidden border-b border-brand-100/80">
-          <div
-            className="absolute inset-0 bg-gradient-to-br from-brand-50 via-white to-stone-50"
-            aria-hidden
-          />
-          <div
-            className="absolute -top-16 -right-10 h-40 w-40 rounded-full bg-brand-200/25 blur-2xl"
-            aria-hidden
-          />
-          <div className="relative px-5 sm:px-6 pt-5 pb-4">
-            <div className="flex items-start justify-between gap-3">
+    <div className="fixed inset-0 z-[260] bg-stone-950/50 backdrop-blur-[3px] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
+      <div
+        className="bg-white w-full sm:max-w-3xl h-[100dvh] sm:h-auto sm:max-h-[min(90vh,52rem)] rounded-t-2xl sm:rounded-2xl border-0 sm:border border-stone-200/80 shadow-[0_-12px_40px_-16px_rgba(28,25,23,0.35)] sm:shadow-[0_28px_80px_-24px_rgba(28,25,23,0.42)] flex flex-col overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="relative flex-shrink-0 border-b border-stone-200/80">
+          <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-brand-700 via-teal-500 to-brand-600" aria-hidden />
+          <div className="px-4 sm:px-6 pt-[max(1rem,env(safe-area-inset-top))] sm:pt-5 pb-3 sm:pb-4 bg-gradient-to-b from-stone-50/90 to-white">
+            <div className="flex items-start justify-between gap-2 min-w-0">
               <OrgBrandMark name={orgMeta.name} logo={orgMeta.logo} />
               <button
                 type="button"
                 onClick={closeModal}
-                className="p-2 -mr-1 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-white/80 border border-transparent hover:border-stone-200/80 transition"
+                className="p-2 -mr-1 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 border border-transparent hover:border-stone-200 transition shadow-sm shrink-0"
                 aria-label="Close"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div className="mt-4 sm:pl-14">
-              <h3 className="text-base font-semibold text-stone-900 tracking-tight">
+            <div className="mt-3 sm:mt-4 sm:pl-[3.25rem] min-w-0">
+              <h3 className="text-[15px] sm:text-base font-semibold text-stone-900 tracking-tight">
                 {isBulk
-                  ? `${campaignOnly ? 'Campaign' : 'Email'} ${bulkEmailRecipients.length} ${recipientNoun}`
-                  : (campaignOnly ? 'Send campaign' : 'Send email')}
+                  ? `Compose ${campaignOnly ? 'campaign' : 'message'} · ${sendLabel} ${recipientNoun}`
+                  : (campaignOnly ? 'Compose campaign message' : 'Compose message')}
               </h3>
-              <p className="text-sm text-stone-600 mt-1 truncate" title={toLine}>
-                <span className="text-stone-400 font-medium">To</span>{' '}
-                <span className="font-medium text-stone-800">{toLine}</span>
+              <p className="text-sm text-stone-600 mt-1.5 truncate" title={toLine}>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-400 mr-1.5">To</span>
+                <span className="font-medium text-stone-800">
+                  {isBulk
+                    ? `${recipientCount.toLocaleString()} recipient${recipientCount === 1 ? '' : 's'}`
+                    : toLine}
+                </span>
               </p>
+              {isBulk && recipientCount > 0 && recipientCount <= 6 ? (
+                <p className="text-[11px] text-stone-400 mt-0.5 line-clamp-2 sm:line-clamp-1" title={toLine}>
+                  {toLine}
+                </p>
+              ) : null}
+              {usingAudience ? (
+                <p className="text-xs text-stone-500 mt-1.5 leading-relaxed">
+                  Sends to everyone matching the current filters. Contacts without an email address are skipped.
+                </p>
+              ) : null}
               {emailSenderInfo?.fromEmail && (
                 <p className="text-xs text-stone-500 mt-1 truncate">
-                  <span className="text-stone-400 font-medium">From</span>{' '}
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-400 mr-1.5">From</span>
                   {emailSenderInfo.displayName || 'Recruiter'} · {emailSenderInfo.fromEmail}
-                  {emailSenderInfo.replyTo && !emailSenderInfo.sendAsUser
-                    ? ` · Replies to ${emailSenderInfo.replyTo}`
-                    : ''}
                 </p>
               )}
             </div>
           </div>
         </div>
 
-        <div className="overflow-y-auto flex-1 min-h-0 px-5 sm:px-6 py-5 space-y-6 bg-gradient-to-b from-white to-stone-50/40">
-          <section className="space-y-3">
-            <div>
-              <h3 className="text-sm font-semibold text-stone-900">Email type</h3>
-              <p className="text-xs text-stone-500 mt-0.5">
-                Choose how this message should be delivered.
-              </p>
-            </div>
-            <div className={`grid gap-3 ${campaignOnly ? 'grid-cols-1' : 'grid-cols-2'}`}>
-              {!campaignOnly ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setEmailChannel('transactional');
-                  setSelectedTemplate?.(null);
-                }}
-                className={`rounded-2xl border px-4 py-3.5 text-left transition ${
-                  emailChannel === 'transactional' ? channelActive : channelIdle
-                }`}
-              >
-                <div className="flex items-center gap-2 text-stone-900">
-                  <span
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${
-                      emailChannel === 'transactional'
-                        ? 'bg-brand-100 text-brand-700'
-                        : 'bg-stone-100 text-stone-400'
-                    }`}
-                  >
-                    <Mail size={15} />
-                  </span>
-                  <span className="text-sm font-semibold">Direct</span>
-                </div>
-                <p className="text-xs text-stone-500 mt-2 leading-relaxed">
-                  Interviews, offers, and documents
+        <div className="overflow-y-auto overscroll-contain flex-1 min-h-0 px-4 sm:px-6 py-4 sm:py-5 space-y-5 sm:space-y-6 bg-white">
+          {composePhase === 'channel' && !campaignOnly ? (
+            <section className="space-y-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-400">
+                  Step 1 of 2
                 </p>
-              </button>
+                <h3 className="text-sm font-semibold text-stone-900 mt-1">Delivery channel</h3>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  Select how this message will be sent.
+                </p>
+              </div>
+              <div className="grid gap-2.5 sm:gap-3 grid-cols-1 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmailChannel('transactional');
+                    setSelectedTemplate?.(null);
+                    setComposePhase('method');
+                  }}
+                  className={`rounded-2xl border px-3.5 sm:px-4 py-3.5 sm:py-4 text-left transition-all duration-200 ${
+                    emailChannel === 'transactional' ? channelActive : channelIdle
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 text-stone-900">
+                    <span
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-xl shrink-0 shadow-sm ${
+                        emailChannel === 'transactional'
+                          ? 'bg-gradient-to-br from-brand-600 to-teal-700 text-white shadow-brand-500/30'
+                          : 'bg-stone-100 text-stone-500'
+                      }`}
+                    >
+                      <Mail size={15} />
+                    </span>
+                    <span className="text-sm font-semibold tracking-tight">Transactional</span>
+                  </div>
+                  <p className="text-xs text-stone-500 mt-2.5 leading-relaxed">
+                    Interviews, offers, documents, and direct follow-ups
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!channelsAvailable.marketing) return;
+                    setEmailChannel('marketing');
+                    setSelectedTemplate?.(null);
+                    setEmailMode('template');
+                    setComposePhase('method');
+                  }}
+                  disabled={!channelsAvailable.marketing}
+                  className={`rounded-2xl border px-3.5 sm:px-4 py-3.5 sm:py-4 text-left transition-all duration-200 ${
+                    emailChannel === 'marketing' ? channelActive : channelIdle
+                  } ${!channelsAvailable.marketing ? 'opacity-45 cursor-not-allowed' : ''}`}
+                >
+                  <div className="flex items-center gap-2.5 text-stone-900">
+                    <span
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-xl shrink-0 shadow-sm ${
+                        emailChannel === 'marketing'
+                          ? 'bg-gradient-to-br from-brand-600 to-teal-700 text-white shadow-brand-500/30'
+                          : 'bg-stone-100 text-stone-500'
+                      }`}
+                    >
+                      <Megaphone size={15} />
+                    </span>
+                    <span className="text-sm font-semibold tracking-tight">Campaign</span>
+                  </div>
+                  <p className="text-xs text-stone-500 mt-2.5 leading-relaxed">
+                    Outreach, nurture sequences, and talent-pool campaigns
+                  </p>
+                  {!channelsAvailable.marketing && (
+                    <p className="text-[11px] font-medium text-stone-400 mt-2">Channel unavailable</p>
+                  )}
+                </button>
+              </div>
+            </section>
+          ) : null}
+
+          {composePhase === 'method' ? (
+            <section className="space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-400">
+                    {campaignOnly ? 'Choose content' : 'Step 2 of 2'}
+                  </p>
+                  <h3 className="text-sm font-semibold text-stone-900 mt-1">How do you want to write it?</h3>
+                  <p className="text-xs text-stone-500 mt-0.5">
+                    Pick a saved template or write a custom draft.
+                  </p>
+                </div>
+                {!campaignOnly ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedTemplate?.(null);
+                      setComposePhase('channel');
+                    }}
+                    className="text-xs font-medium text-stone-500 hover:text-stone-800 shrink-0 pt-1"
+                  >
+                    ← Channel
+                  </button>
+                ) : null}
+              </div>
+              <div className="grid gap-2.5 sm:gap-3 grid-cols-1 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmailMode('template');
+                    setSelectedTemplate?.(null);
+                    setComposePhase('write');
+                  }}
+                  className={`rounded-2xl border px-3.5 sm:px-4 py-3.5 sm:py-4 text-left transition-all duration-200 ${
+                    emailMode === 'template' ? channelActive : channelIdle
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 text-stone-900">
+                    <span
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-xl shrink-0 shadow-sm ${
+                        emailMode === 'template'
+                          ? 'bg-gradient-to-br from-brand-600 to-teal-700 text-white shadow-brand-500/30'
+                          : 'bg-stone-100 text-stone-500'
+                      }`}
+                    >
+                      <FileText size={15} />
+                    </span>
+                    <span className="text-sm font-semibold tracking-tight">Template library</span>
+                  </div>
+                  <p className="text-xs text-stone-500 mt-2.5 leading-relaxed">
+                    Start from an approved template, then refine subject and body
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmailMode('quick');
+                    setSelectedTemplate?.(null);
+                    setComposePhase('write');
+                  }}
+                  className={`rounded-2xl border px-3.5 sm:px-4 py-3.5 sm:py-4 text-left transition-all duration-200 ${
+                    emailMode === 'quick' ? channelActive : channelIdle
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 text-stone-900">
+                    <span
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-xl shrink-0 shadow-sm ${
+                        emailMode === 'quick'
+                          ? 'bg-gradient-to-br from-brand-600 to-teal-700 text-white shadow-brand-500/30'
+                          : 'bg-stone-100 text-stone-500'
+                      }`}
+                    >
+                      <Zap size={15} />
+                    </span>
+                    <span className="text-sm font-semibold tracking-tight">Custom draft</span>
+                  </div>
+                  <p className="text-xs text-stone-500 mt-2.5 leading-relaxed">
+                    Write a one-off message without using a template
+                  </p>
+                </button>
+              </div>
+            </section>
+          ) : null}
+
+          {composePhase === 'write' ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2.5">
+                <p className="text-xs text-stone-600">
+                  <span className="font-semibold text-stone-800">
+                    {emailChannel === 'marketing' ? 'Campaign' : 'Transactional'}
+                  </span>
+                  <span className="text-stone-400 mx-1.5">·</span>
+                  {emailMode === 'template' ? 'Template library' : 'Custom draft'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTemplate?.(null);
+                    setComposePhase('method');
+                  }}
+                  className="text-xs font-medium text-brand-700 hover:text-brand-800"
+                >
+                  ← Change
+                </button>
+              </div>
+
+              {showJobTag ? (
+                <section className="space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-stone-900 inline-flex items-center gap-2">
+                      <Briefcase size={14} className="text-brand-700" />
+                      Job merge fields
+                    </h3>
+                    <p className="text-xs text-stone-500 mt-0.5 leading-relaxed">
+                      Populates role, Job ID, compensation, location, and apply link in this message.
+                    </p>
+                  </div>
+                  <PremiumSelect
+                    variant="list"
+                    value={campaignJobId || ''}
+                    onChange={(v) => setCampaignJobId?.(v || '')}
+                    options={[
+                      { value: '', label: 'Do not include job details' },
+                      ...jobs.map((job) => {
+                        const code = String(job.jobCode || '').trim();
+                        const title = String(job.title || job.role || 'Untitled').trim();
+                        return {
+                          value: code || String(job._id),
+                          label: code || 'Job ID pending',
+                          description: title,
+                          searchText: `${code} ${title} ${job.location || ''}`,
+                        };
+                      }),
+                    ]}
+                    placeholder="Select Job ID / JNS"
+                    searchable
+                    searchPlaceholder="Search Job ID or title…"
+                    allowClear={Boolean(campaignJobId)}
+                  />
+                  {campaignJobMeta?.jobTitle || campaignJobMeta?.applyUrl ? (
+                    <div className="rounded-lg border border-stone-200 bg-stone-50/70 px-3 py-2.5 text-[11px] text-stone-600 leading-snug space-y-0.5">
+                      {campaignJobMeta.jobTitle ? (
+                        <p className="font-medium text-stone-800">
+                          {campaignJobMeta.jobTitle}
+                          {campaignJobMeta.jobCode ? ` · ${campaignJobMeta.jobCode}` : ''}
+                        </p>
+                      ) : null}
+                      {campaignJobMeta.jobLocation ? <p>{campaignJobMeta.jobLocation}</p> : null}
+                      {campaignJobMeta.jobCtc ? <p>CTC: {campaignJobMeta.jobCtc}</p> : null}
+                      {campaignJobMeta.applyUrl ? (
+                        <p className="break-all">Apply link: {campaignJobMeta.applyUrl}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </section>
               ) : null}
 
-              <button
-                type="button"
-                onClick={() => {
-                  if (!channelsAvailable.marketing) return;
-                  setEmailChannel('marketing');
-                  setSelectedTemplate?.(null);
-                  setEmailMode('template');
-                }}
-                disabled={!channelsAvailable.marketing}
-                className={`rounded-2xl border px-4 py-3.5 text-left transition ${
-                  emailChannel === 'marketing' ? channelActive : channelIdle
-                } ${!channelsAvailable.marketing ? 'opacity-45 cursor-not-allowed' : ''}`}
-              >
-                <div className="flex items-center gap-2 text-stone-900">
-                  <span
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${
-                      emailChannel === 'marketing'
-                        ? 'bg-brand-100 text-brand-700'
-                        : 'bg-stone-100 text-stone-400'
-                    }`}
-                  >
-                    <Megaphone size={15} />
-                  </span>
-                  <span className="text-sm font-semibold">Campaign</span>
-                </div>
-                <p className="text-xs text-stone-500 mt-2 leading-relaxed">
-                  {campaignOnly
-                    ? 'Zoho Campaigns · marketing templates · consent-checked list'
-                    : 'Outreach and nurture sequences'}
-                </p>
-                {!channelsAvailable.marketing && (
-                  <p className="text-[11px] font-medium text-stone-400 mt-2">Unavailable</p>
-                )}
-              </button>
-            </div>
-          </section>
+              <section className="space-y-4">
+                <EmailCcBccFields
+                  emailCC={emailCC}
+                  setEmailCC={setEmailCC}
+                  emailBCC={emailBCC}
+                  setEmailBCC={setEmailBCC}
+                  teamMembers={teamMembers}
+                  ccInput={ccInput}
+                  setCcInput={setCcInput}
+                  bccInput={bccInput}
+                  setBccInput={setBccInput}
+                  showCCPicker={showCCPicker}
+                  setShowCCPicker={setShowCCPicker}
+                  showBCCPicker={showBCCPicker}
+                  setShowBCCPicker={setShowBCCPicker}
+                />
+              </section>
 
-          <section className="space-y-4">
-            {!campaignOnly ? (
-            <div className="inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-stone-100/80 border border-stone-200/70">
-              <button
-                type="button"
-                onClick={() => {
-                  setEmailMode('template');
-                  setSelectedTemplate?.(null);
-                }}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-lg transition ${
-                  emailMode === 'template'
-                    ? 'bg-white text-stone-900 shadow-sm border border-stone-200/80'
-                    : 'text-stone-600 hover:text-stone-800 border border-transparent'
-                }`}
-              >
-                <FileText size={14} /> Template
-              </button>
-              <button
-                type="button"
-                onClick={() => setEmailMode('quick')}
-                disabled={emailChannel === 'marketing'}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-lg transition ${
-                  emailMode === 'quick'
-                    ? 'bg-white text-stone-900 shadow-sm border border-stone-200/80'
-                    : 'text-stone-600 hover:text-stone-800 border border-transparent'
-                } ${emailChannel === 'marketing' ? 'opacity-40 cursor-not-allowed' : ''}`}
-              >
-                <Zap size={14} /> Quick send
-              </button>
-            </div>
-            ) : null}
+              {emailMode === 'template' && (
+                <EmailTemplateMode
+                  emailTemplates={emailTemplates}
+                  templatesLoading={emailTemplatesLoading}
+                  selectedTemplate={selectedTemplate}
+                  selectEmailTemplate={selectEmailTemplate}
+                  setSelectedTemplate={setSelectedTemplate}
+                  templateVars={templateVars}
+                  setTemplateVars={setTemplateVars}
+                  orgName={orgMeta.name}
+                  emailChannel={emailChannel}
+                  templateDraftSubject={props.templateDraftSubject}
+                  setTemplateDraftSubject={props.setTemplateDraftSubject}
+                  templateDraftBody={props.templateDraftBody}
+                  setTemplateDraftBody={props.setTemplateDraftBody}
+                  templateDraftDirty={props.templateDraftDirty}
+                  setTemplateDraftDirty={props.setTemplateDraftDirty}
+                  isBulk={isBulk}
+                />
+              )}
 
-            <EmailCcBccFields
-              emailCC={emailCC}
-              setEmailCC={setEmailCC}
-              emailBCC={emailBCC}
-              setEmailBCC={setEmailBCC}
-              teamMembers={teamMembers}
-              ccInput={ccInput}
-              setCcInput={setCcInput}
-              bccInput={bccInput}
-              setBccInput={setBccInput}
-              showCCPicker={showCCPicker}
-              setShowCCPicker={setShowCCPicker}
-              showBCCPicker={showBCCPicker}
-              setShowBCCPicker={setShowBCCPicker}
-            />
-          </section>
-
-          {emailMode === 'template' && (
-            <EmailTemplateMode
-              emailTemplates={emailTemplates}
-              selectedTemplate={selectedTemplate}
-              selectEmailTemplate={selectEmailTemplate}
-              setSelectedTemplate={setSelectedTemplate}
-              templateVars={templateVars}
-              setTemplateVars={setTemplateVars}
-              orgName={orgMeta.name}
-              emailChannel={emailChannel}
-              templateDraftSubject={props.templateDraftSubject}
-              setTemplateDraftSubject={props.setTemplateDraftSubject}
-              templateDraftBody={props.templateDraftBody}
-              setTemplateDraftBody={props.setTemplateDraftBody}
-              templateDraftDirty={props.templateDraftDirty}
-              setTemplateDraftDirty={props.setTemplateDraftDirty}
-            />
-          )}
-
-          {emailMode === 'quick' && (
-            <EmailQuickSendMode
-              emailType={emailType}
-              setEmailType={setEmailType}
-              emailRecipient={emailRecipient}
-              quickName={quickName}
-              setQuickName={setQuickName}
-              quickPosition={quickPosition}
-              setQuickPosition={setQuickPosition}
-              quickDepartment={quickDepartment}
-              setQuickDepartment={setQuickDepartment}
-              quickJoiningDate={quickJoiningDate}
-              setQuickJoiningDate={setQuickJoiningDate}
-              customMessage={customMessage}
-              setCustomMessage={setCustomMessage}
-              quickSubject={quickSubject}
-              setQuickSubject={setQuickSubject}
-              showQuickPreview={showQuickPreview}
-              setShowQuickPreview={setShowQuickPreview}
-              quickPreviewHtml={quickPreviewHtml}
-              setQuickPreviewHtml={setQuickPreviewHtml}
-              quickPreviewSubject={quickPreviewSubject}
-              setQuickPreviewSubject={setQuickPreviewSubject}
-              loadingPreview={loadingPreview}
-              setLoadingPreview={setLoadingPreview}
-              toast={props.toast}
-            />
-          )}
+              {emailMode === 'quick' && (
+                <EmailQuickSendMode
+                  emailType={emailType}
+                  setEmailType={setEmailType}
+                  emailRecipient={emailRecipient}
+                  quickName={quickName}
+                  setQuickName={setQuickName}
+                  quickPosition={quickPosition}
+                  setQuickPosition={setQuickPosition}
+                  quickDepartment={quickDepartment}
+                  setQuickDepartment={setQuickDepartment}
+                  quickJoiningDate={quickJoiningDate}
+                  setQuickJoiningDate={setQuickJoiningDate}
+                  customMessage={customMessage}
+                  setCustomMessage={setCustomMessage}
+                  quickSubject={quickSubject}
+                  setQuickSubject={setQuickSubject}
+                  showQuickPreview={showQuickPreview}
+                  setShowQuickPreview={setShowQuickPreview}
+                  quickPreviewHtml={quickPreviewHtml}
+                  setQuickPreviewHtml={setQuickPreviewHtml}
+                  quickPreviewSubject={quickPreviewSubject}
+                  setQuickPreviewSubject={setQuickPreviewSubject}
+                  loadingPreview={loadingPreview}
+                  setLoadingPreview={setLoadingPreview}
+                  toast={props.toast}
+                  isBulk={isBulk}
+                />
+              )}
+            </>
+          ) : null}
         </div>
 
-        <div className="px-5 sm:px-6 py-4 border-t border-stone-200/80 flex flex-col-reverse sm:flex-row sm:items-center gap-3 flex-shrink-0 bg-white/95 backdrop-blur-sm">
-          <p className="text-xs text-stone-500 sm:mr-auto inline-flex items-center gap-1.5">
+        <div className="px-4 sm:px-6 py-3 sm:py-3.5 border-t border-stone-200/80 flex flex-col gap-2.5 sm:flex-row sm:items-center flex-shrink-0 bg-gradient-to-t from-stone-100/80 to-stone-50/90 pb-[max(0.85rem,env(safe-area-inset-bottom))]">
+          <p className="text-xs text-stone-500 sm:mr-auto inline-flex items-center gap-1.5 order-2 sm:order-1 justify-center sm:justify-start">
             <span
               className={`h-1.5 w-1.5 rounded-full ${
-                emailChannel === 'marketing' ? 'bg-brand-500' : 'bg-stone-400'
+                emailChannel === 'marketing' ? 'bg-brand-600' : 'bg-stone-400'
               }`}
             />
-            {emailChannel === 'marketing' ? 'Campaign delivery' : 'Direct delivery'}
+            {composePhase === 'channel'
+              ? 'Select a delivery channel to continue'
+              : composePhase === 'method'
+                ? 'Choose a template or write a custom draft'
+                : emailChannel === 'marketing'
+                  ? 'Campaign channel'
+                  : 'Transactional channel'}
           </p>
-          <div className="flex gap-2">
+          <div className="flex gap-2.5 w-full sm:w-auto order-1 sm:order-2">
             <button
               type="button"
               onClick={closeModal}
-              className="btn-secondary flex-1 sm:flex-none justify-center"
+              className="btn-secondary flex-1 sm:flex-none justify-center min-h-[2.75rem] shadow-sm shadow-stone-900/5"
               disabled={isSendingEmail}
             >
               Cancel
             </button>
-            <button
-              type="button"
-              onClick={emailMode === 'template' ? sendTemplateEmail : sendSingleEmail}
-              disabled={!canSend}
-              className="btn-primary flex-1 sm:flex-none justify-center min-w-[8.5rem] disabled:opacity-50"
-            >
-              {isSendingEmail ? (
-                <>
-                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
-                  Sending…
-                </>
-              ) : (
-                <>
-                  <Mail size={15} />
-                  {isBulk ? `Send to ${bulkEmailRecipients.length}` : 'Send'}
-                </>
-              )}
-            </button>
+            {composePhase === 'write' ? (
+              <button
+                type="button"
+                onClick={emailMode === 'template' ? sendTemplateEmail : sendSingleEmail}
+                disabled={!canSend}
+                className="btn-primary flex-1 sm:flex-none justify-center min-h-[2.75rem] min-w-0 sm:min-w-[9rem] disabled:opacity-50 shadow-lg shadow-brand-500/25"
+              >
+                {isSendingEmail ? (
+                  <>
+                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                    Sending…
+                  </>
+                ) : (
+                  <>
+                    <Mail size={15} />
+                    {isBulk ? `Send to ${sendLabel}` : 'Send message'}
+                  </>
+                )}
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

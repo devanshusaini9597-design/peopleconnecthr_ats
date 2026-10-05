@@ -42,7 +42,7 @@ async function main() {
       results.push({ org: org.name, skipped: true, reason: 'no owner' });
       continue;
     }
-    const seeded = await ensureDefaultCatalog(ownerId, org._id);
+    const seeded = await ensureDefaultCatalog(ownerId, org._id, { syncBodies: true });
     const count = await EmailTemplate.countDocuments({ organizationId: org._id });
     results.push({
       org: org.name,

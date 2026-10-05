@@ -37,35 +37,35 @@ export const FREELANCER_DASH_TOUR_STEPS = [
   },
 ];
 
-export const DASH_TOUR_KEY = 'skillnix_tour_dashboard_v1';
+export const DASH_TOUR_KEY = 'skillnix_tour_dashboard_v2';
 
 export const DASH_TOUR_STEPS = [
   {
-    title: 'Your hiring overview',
-    body: 'This dashboard summarizes pipeline health — KPIs, recent candidates, and shortcuts to everyday recruiting work.',
+    title: 'Dashboard',
+    body: 'Current pipeline, movement for the selected period, and a monthly cohort. Each section answers a different question.',
   },
   {
     target: '[data-tour="dash-kpis"]',
-    title: 'Key metrics',
-    body: 'All candidates is your full inventory. New this month is everyone added this month (any stage). Stage cards count who entered that stage this month (e.g. Turn Up in September), not when they were first added.',
+    title: 'The three views',
+    body: 'Current pipeline is who is in each stage today. Movement is who entered a stage in the selected period. Monthly cohort uses the record date on the candidate, then shows their stage today.',
     placement: 'bottom',
   },
   {
     target: '[data-tour="dash-recent"]',
     title: 'Recent candidates',
-    body: 'Latest people added to your ATS. Open one to search or continue screening.',
+    body: 'The latest candidates on your desk. Open a name to continue screening.',
     placement: 'bottom',
   },
   {
     target: '[data-tour="dash-actions"]',
-    title: 'Quick actions',
-    body: 'Jump straight to add candidate, pipeline board, resume parsing, templates, or analytics.',
+    title: 'Shortcuts',
+    body: 'Add a candidate, open the pipeline board, parse a resume, or go to analytics.',
     placement: 'left',
   },
   {
     target: '[data-tour="dash-pipeline"]',
-    title: 'Hiring pipeline',
-    body: 'See how many candidates sit in each stage. Click a stage to open the matching board or list.',
+    title: 'Stage distribution',
+    body: 'The same current-stage counts as the cards above. The total equals all active candidates.',
     placement: 'top',
   },
 ];

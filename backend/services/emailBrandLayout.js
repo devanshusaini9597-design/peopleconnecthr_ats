@@ -6,6 +6,7 @@
  * Logo asset MUST be a real PNG with alpha (not WebP renamed to .png).
  */
 const Organization = require('../models/Organization');
+const { looksLikeJdDump } = require('../utils/employerVeil');
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -343,13 +344,18 @@ async function loadOrgEmailBrand(organizationId) {
         ? `https://${orgDomain}`
         : (knownPlatform?.websiteUrl || fallback.websiteUrl);
 
+    // Always prefer org-domain noreply for From/Reply-To identity (never the platform mailbox fallback).
+    const orgFromEmail = orgDomain
+      ? `noreply@${orgDomain}`
+      : (knownPlatform?.fromEmail || fallback.fromEmail || '');
+
     return {
       name,
       logoUrl,
       iconUrl: logoUrl,
       brandColor,
       wordmark,
-      fromEmail: fallback.fromEmail,
+      fromEmail: orgFromEmail,
       websiteUrl,
       supportEmail: knownPlatform?.supportEmail || fallback.supportEmail || '',
       companyAddress: knownPlatform?.companyAddress || '',
@@ -611,16 +617,16 @@ function wrapBrandedEmailHtml({
   if (useWordmark && wordmarkSrc) {
     brandHeader = `
       <tr>
-        <td bgcolor="#111827" style="background-color:#111827;padding:20px 40px;">
+        <td class="em-pad" bgcolor="#111827" style="background-color:#111827;padding:22px 40px;">
           <a href="${escapeHtml(websiteHref || '#')}" style="text-decoration:none;border:0;">
-            <img src="${escapeHtml(wordmarkSrc)}" alt="${brand}" width="168" style="display:block;width:168px;max-width:168px;height:auto;border:0;outline:none;text-decoration:none;" />
+            <img class="em-logo" src="${escapeHtml(wordmarkSrc)}" alt="${brand}" width="168" style="display:block;width:168px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none;" />
           </a>
         </td>
       </tr>`;
   } else if (logo) {
     brandHeader = `
       <tr>
-        <td style="padding:20px 40px;border-bottom:1px solid ${line};background-color:#ffffff;">
+        <td class="em-pad" style="padding:20px 40px;border-bottom:1px solid ${line};background-color:#ffffff;">
           <table role="presentation" cellpadding="0" cellspacing="0" border="0">
             <tr>
               <td valign="middle" style="padding:0;">
@@ -636,7 +642,7 @@ function wrapBrandedEmailHtml({
   } else {
     brandHeader = `
       <tr>
-        <td style="padding:20px 40px;border-bottom:1px solid ${line};background-color:#ffffff;">
+        <td class="em-pad" style="padding:20px 40px;border-bottom:1px solid ${line};background-color:#ffffff;">
           <p style="margin:0;font-family:${font};font-size:15px;font-weight:600;color:${ink};letter-spacing:-0.01em;">${brand}</p>
         </td>
       </tr>`;
@@ -675,13 +681,13 @@ function wrapBrandedEmailHtml({
 
   const titleBlock = safeTitle
     ? `<tr>
-        <td style="padding:32px 40px 0 40px;">
+        <td class="em-pad" style="padding:32px 40px 0 40px;">
           ${
             safeEyebrow
               ? `<p style="margin:0 0 8px 0;font-family:${font};font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${muted};">${safeEyebrow}</p>`
               : ''
           }
-          <h1 style="margin:0;font-family:${font};font-size:22px;font-weight:600;line-height:1.35;color:${ink};letter-spacing:-0.02em;">${safeTitle}</h1>
+          <h1 class="em-title" style="margin:0;font-family:${font};font-size:22px;font-weight:600;line-height:1.35;color:${ink};letter-spacing:-0.02em;">${safeTitle}</h1>
         </td>
       </tr>`
     : '';
@@ -690,12 +696,50 @@ function wrapBrandedEmailHtml({
     ? `<p style="margin:14px 0 0 0;font-family:${font};font-size:12px;line-height:1.55;color:${faint};">${escapeHtml(address)}</p>`
     : '';
 
+  const responsiveCss = `
+  html, body { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+  * { -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%; }
+  table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; border-collapse: collapse; }
+  img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; max-width: 100%; height: auto; }
+  a { text-decoration: none; }
+  .em-shell { width: 100% !important; max-width: 600px !important; }
+  .em-card { width: 100% !important; }
+  @media only screen and (max-width: 620px) {
+    .em-outer { padding: 16px 10px 20px 10px !important; }
+    .em-shell { width: 100% !important; max-width: 100% !important; }
+    .em-pad { padding-left: 20px !important; padding-right: 20px !important; }
+    .em-body-pad { padding: 20px 20px 28px 20px !important; }
+    .em-footer { padding: 24px 16px 8px 16px !important; }
+    .em-title { font-size: 20px !important; line-height: 1.35 !important; }
+    .em-role-title { font-size: 18px !important; }
+    .em-logo { width: 140px !important; max-width: 140px !important; }
+    .em-btn, .em-btn table { width: 100% !important; max-width: 100% !important; }
+    .em-btn-link { display: block !important; width: 100% !important; box-sizing: border-box !important; text-align: center !important; }
+    .em-detail-label {
+      display: block !important;
+      width: 100% !important;
+      padding: 0 0 4px 0 !important;
+      font-size: 10px !important;
+    }
+    .em-detail-value {
+      display: block !important;
+      width: 100% !important;
+    }
+    .em-detail-row { padding-top: 14px !important; padding-bottom: 14px !important; }
+  }
+  @media only screen and (max-width: 380px) {
+    .em-pad { padding-left: 16px !important; padding-right: 16px !important; }
+    .em-body-pad { padding: 18px 16px 24px 16px !important; }
+    .em-title { font-size: 18px !important; }
+  }`;
+
   return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="x-apple-disable-message-reformatting" />
   <meta name="color-scheme" content="light only" />
   <meta name="supported-color-schemes" content="light only" />
   <meta name="format-detection" content="telephone=no,address=no,email=no,date=no" />
@@ -705,28 +749,37 @@ function wrapBrandedEmailHtml({
     <xml>
       <o:OfficeDocumentSettings>
         <o:PixelsPerInch>96</o:PixelsPerInch>
+        <o:AllowPNG/>
       </o:OfficeDocumentSettings>
     </xml>
   </noscript>
+  <style type="text/css">
+    table, td { font-family: Segoe UI, Helvetica, Arial, sans-serif !important; }
+  </style>
   <![endif]-->
+  <style type="text/css">${responsiveCss}
+  </style>
 </head>
-<body style="margin:0;padding:0;background-color:${canvas};-webkit-font-smoothing:antialiased;">
+<body style="margin:0;padding:0;background-color:${canvas};-webkit-font-smoothing:antialiased;overflow:visible;max-height:none;width:100%;">
   <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${safeTitle || brand}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;</div>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${canvas};">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${canvas};width:100%;max-width:100%;overflow:visible;">
     <tr>
-      <td align="center" style="padding:32px 16px 24px 16px;">
-        <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%;">
+      <td class="em-outer" align="center" style="padding:32px 16px 24px 16px;overflow:visible;">
+        <!--[if mso]>
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td>
+        <![endif]-->
+        <table role="presentation" class="em-shell" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;overflow:visible;">
 
           <tr>
-            <td style="background-color:#ffffff;border:1px solid ${line};border-radius:8px;overflow:hidden;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <td style="background-color:#ffffff;border:1px solid ${line};border-radius:10px;overflow:visible;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="overflow:visible;">
                 <tr>
-                  <td height="4" style="height:4px;line-height:4px;font-size:0;background-color:${accent};">&nbsp;</td>
+                  <td height="4" style="height:4px;line-height:4px;font-size:0;background-color:${accent};border-radius:10px 10px 0 0;">&nbsp;</td>
                 </tr>
                 ${brandHeader}
                 ${titleBlock}
                 <tr>
-                  <td style="padding:${safeTitle ? '20px' : '32px'} 40px 36px 40px;font-family:${font};font-size:15px;line-height:1.7;color:#374151;">
+                  <td class="em-body-pad" style="padding:${safeTitle ? '20px' : '32px'} 40px 36px 40px;font-family:${font};font-size:15px;line-height:1.7;color:#374151;overflow:visible;word-break:break-word;">
                     ${bodyHtml}
                     ${subscribeCtaHtml || ''}
                     ${signOff}
@@ -737,7 +790,7 @@ function wrapBrandedEmailHtml({
           </tr>
 
           <tr>
-            <td align="center" style="padding:32px 24px 12px 24px;text-align:center;">
+            <td class="em-footer" align="center" style="padding:32px 24px 12px 24px;text-align:center;">
               ${footerLogo}
               <p style="margin:0 auto;max-width:460px;font-family:${font};font-size:13px;line-height:1.7;color:${muted};">${reason}</p>
               ${socialLinksHtml(socialLinks)}
@@ -752,6 +805,9 @@ function wrapBrandedEmailHtml({
             </td>
           </tr>
         </table>
+        <!--[if mso]>
+        </td></tr></table>
+        <![endif]-->
       </td>
     </tr>
   </table>
@@ -769,11 +825,11 @@ function brandButtonHtml({ href, label, brandColor = '#0f766e', fullWidth = fals
     : '#0f766e';
   const font =
     "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-  const inner = `<td align="center" bgcolor="${accent}" style="background-color:${accent};border-radius:6px;mso-padding-alt:14px 28px;">
-        <a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:14px 28px;font-family:${font};font-size:15px;font-weight:600;letter-spacing:0.01em;color:#ffffff !important;text-decoration:none;">${escapeHtml(label)}</a>
+  const inner = `<td align="center" bgcolor="${accent}" style="background-color:${accent};border-radius:8px;mso-padding-alt:14px 28px;">
+        <a class="em-btn-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="display:${fullWidth ? 'block' : 'inline-block'};padding:15px 28px;font-family:${font};font-size:15px;font-weight:600;letter-spacing:0.01em;color:#ffffff !important;text-decoration:none;text-align:center;line-height:1.3;">${escapeHtml(label)}</a>
       </td>`;
   if (fullWidth) {
-    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 4px 0;">
+    return `<table role="presentation" class="em-btn" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 4px 0;">
     <tr>
       <td align="center" style="padding:0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -783,7 +839,7 @@ function brandButtonHtml({ href, label, brandColor = '#0f766e', fullWidth = fals
     </tr>
   </table>`;
   }
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px auto;">
+  return `<table role="presentation" class="em-btn" cellpadding="0" cellspacing="0" border="0" style="margin:8px auto;">
     <tr>${inner}</tr>
   </table>`;
 }
@@ -792,7 +848,7 @@ function brandButtonHtml({ href, label, brandColor = '#0f766e', fullWidth = fals
  * Subscribe invite — same prose layout as transactional Direct mail (no soft cards).
  */
 function subscribeInviteHtml({
-  candidateName = 'there',
+  candidateName = 'Candidate',
   company = 'our talent team',
   brandColor = '#0f766e',
 } = {}) {
@@ -801,11 +857,14 @@ function subscribeInviteHtml({
     : '#0f766e';
   const font =
     "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-  const name = escapeHtml(String(candidateName || 'there').trim() || 'there');
+  const rawName = String(candidateName || '').trim();
+  const name = escapeHtml(
+    !rawName || /^there$/i.test(rawName) ? 'Candidate' : rawName
+  );
   const brand = escapeHtml(String(company || 'our talent team').trim() || 'our talent team');
 
   return `
-<p style="margin:0 0 16px 0;font-family:${font};font-size:15px;line-height:1.6;color:#0f172a;font-weight:600;">Dear ${name},</p>
+<p style="margin:0 0 16px 0;font-family:${font};font-size:16px;line-height:1.6;color:#0f172a;font-weight:600;">Dear ${name},</p>
 <p style="margin:0 0 12px 0;font-family:${font};font-size:15px;line-height:1.7;color:#334155;">
   Thank you for your interest in <strong style="color:#0f172a;">${brand}</strong>. We would like to keep you informed about roles and hiring drives that match your profile.
 </p>
@@ -824,15 +883,19 @@ function subscribeInviteHtml({
 }
 
 /**
- * Open-role marketing body — same layout language as transactional update emails.
+ * Open-role marketing body — one professional card (position + details), clear CTA.
  */
 function roleSpotlightHtml({
-  candidateName = 'there',
+  candidateName = 'Candidate',
   company = 'our talent team',
+  employer = '',
   position = 'a new role',
+  jobCode = '',
   ctc = '',
   experience = '',
   location = '',
+  summary = '',
+  applyUrl = '',
   brandColor = '#0f766e',
 } = {}) {
   const accent = /^#[0-9a-fA-F]{3,8}$/.test(String(brandColor || '').trim())
@@ -840,30 +903,96 @@ function roleSpotlightHtml({
     : '#0f766e';
   const font =
     "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-  const name = escapeHtml(String(candidateName || 'there').trim() || 'there');
-  const brand = escapeHtml(String(company || 'our talent team').trim() || 'our talent team');
-  const role = escapeHtml(String(position || 'a new role').trim() || 'a new role');
-  const detailPanel = infoPanelHtml(
-    [
-      ctc ? { label: 'Compensation', value: ctc } : null,
-      experience ? { label: 'Experience', value: experience } : null,
-      location ? { label: 'Location', value: location } : null,
-    ].filter(Boolean),
-    accent
+  const rawName = String(candidateName || '').trim();
+  const name = escapeHtml(
+    !rawName || /^(there|candidates?)$/i.test(rawName) ? 'Candidate' : rawName
   );
+  void company;
+  const roleRaw = String(position || '').trim();
+  const role = escapeHtml(roleRaw || 'this opportunity');
+  const code = escapeHtml(String(jobCode || '').trim());
+  const employerLabel = escapeHtml(String(employer || '').trim());
+  const loc = escapeHtml(String(location || '').trim());
+  const exp = escapeHtml(String(experience || '').trim());
+  const pay = escapeHtml(String(ctc || '').trim());
+  const rawBrief = String(summary || '').trim();
+  const brief = looksLikeJdDump(rawBrief) ? '' : escapeHtml(rawBrief);
+  const href = String(applyUrl || '').trim().replace(/[?&]+$/g, '');
+  const applyOk = /^https?:\/\//i.test(href);
+
+  const detailRows = [
+    code ? { label: 'Job ID', value: code } : null,
+    employerLabel ? { label: 'Employer', value: employerLabel } : null,
+    pay ? { label: 'Compensation', value: pay } : null,
+    exp ? { label: 'Experience', value: exp } : null,
+    loc ? { label: 'Location', value: loc } : null,
+  ].filter(Boolean);
+
+  const detailRowsHtml = detailRows
+    .map((r, idx) => {
+      const border = idx < detailRows.length - 1 ? 'border-bottom:1px solid #eef2f6;' : '';
+      return `<tr>
+        <td class="em-detail-row" style="padding:12px 0;${border}">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td class="em-detail-label" width="34%" valign="top" style="width:34%;padding:0 12px 0 0;font-family:${font};font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;line-height:1.45;">${escapeHtml(r.label)}</td>
+              <td class="em-detail-value" valign="top" style="padding:0;font-family:${font};font-size:14px;font-weight:600;color:#0f172a;line-height:1.45;word-break:break-word;">${escapeHtml(r.value)}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>`;
+    })
+    .join('');
+
+  const opportunityCard = `
+<table role="presentation" class="em-card" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:18px 0 20px 0;border:1px solid #e5e7eb;border-radius:10px;border-collapse:separate !important;overflow:hidden;">
+  <tr>
+    <td style="border-left:4px solid ${accent};background-color:#ffffff;padding:0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td style="padding:20px 20px 18px 18px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="padding:0 0 16px 0;${detailRows.length ? 'border-bottom:1px solid #eef2f6;' : ''}">
+                  <p style="margin:0 0 6px 0;font-family:${font};font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:${accent};">Position</p>
+                  <p class="em-role-title" style="margin:0;font-family:${font};font-size:20px;font-weight:700;line-height:1.3;letter-spacing:-0.02em;color:#0f172a;">${role}</p>
+                </td>
+              </tr>
+              ${detailRowsHtml ? `<tr><td style="padding:4px 0 0 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${detailRowsHtml}</table></td></tr>` : ''}
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>`;
+
+  const applyBlock = applyOk
+    ? `<div style="margin:18px 0 8px 0;text-align:center;">${brandButtonHtml({
+        href,
+        label: 'View role & apply',
+        brandColor: accent,
+        fullWidth: true,
+      })}
+      <p style="margin:8px 0 0 0;text-align:center;font-family:${font};font-size:12px;line-height:1.55;color:#94a3b8;">Prefer to reply by email? Respond to this message and we will follow up.</p>
+    </div>`
+    : '';
 
   return `
-<p style="margin:0 0 16px 0;font-family:${font};font-size:15px;line-height:1.6;color:#0f172a;font-weight:600;">Dear ${name},</p>
+<p style="margin:0 0 16px 0;font-family:${font};font-size:16px;line-height:1.6;color:#0f172a;font-weight:600;">Dear ${name},</p>
 <p style="margin:0 0 12px 0;font-family:${font};font-size:15px;line-height:1.7;color:#334155;">
-  We reviewed profiles in our talent network and believe you may be a strong match for the
-  <strong style="color:#0f172a;">${role}</strong> position with <strong style="color:#0f172a;">${brand}</strong>.
+  I am writing to share a role that may align with your experience. Key details are below for your review.
 </p>
-${detailPanel}
+${opportunityCard}
+${brief ? `<p style="margin:0 0 14px 0;font-family:${font};font-size:15px;line-height:1.7;color:#334155;">${brief}</p>` : ''}
+${applyBlock}
 <p style="margin:0 0 12px 0;font-family:${font};font-size:15px;line-height:1.7;color:#334155;">
-  If you are open to exploring this opportunity, reply to this email or share an updated resume.
+  ${applyOk
+    ? 'If this opportunity is of interest, please apply using the button above, or reply to this email with an updated resume.'
+    : 'If this opportunity is of interest, please reply to this email with an updated resume and we will take the next step.'}
 </p>
 <p style="margin:0;font-family:${font};font-size:15px;line-height:1.7;color:#334155;">
-  If the timing is not right, you can still subscribe for future roles that match your experience.
+  If the timing is not right, you are welcome to stay subscribed for future roles that match your profile.
 </p>`;
 }
 
@@ -871,17 +1000,20 @@ ${detailPanel}
  * Soft re-engagement body — transactional prose, no marketing callout cards.
  */
 function reengageInviteHtml({
-  candidateName = 'there',
+  candidateName = 'Candidate',
   company = 'our talent team',
   brandColor = '#0f766e',
 } = {}) {
   const font =
     "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-  const name = escapeHtml(String(candidateName || 'there').trim() || 'there');
+  const rawName = String(candidateName || '').trim();
+  const name = escapeHtml(
+    !rawName || /^there$/i.test(rawName) ? 'Candidate' : rawName
+  );
   const brand = escapeHtml(String(company || 'our talent team').trim() || 'our talent team');
   void brandColor;
   return `
-<p style="margin:0 0 16px 0;font-family:${font};font-size:15px;line-height:1.6;color:#0f172a;font-weight:600;">Dear ${name},</p>
+<p style="margin:0 0 16px 0;font-family:${font};font-size:16px;line-height:1.6;color:#0f172a;font-weight:600;">Dear ${name},</p>
 <p style="margin:0 0 12px 0;font-family:${font};font-size:15px;line-height:1.7;color:#334155;">
   It has been a while since we connected. <strong style="color:#0f172a;">${brand}</strong> continues to work on roles that may match your background.
 </p>
@@ -902,20 +1034,29 @@ function infoPanelHtml(rows = [], brandColor = '#0d9488') {
     : '#0d9488';
   const font =
     "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-  const body = (rows || [])
-    .filter((r) => r && (r.label || r.value))
-    .map(
-      (r) => `<tr>
-        <td style="padding:8px 0;font-family:${font};font-size:13px;color:#64748b;width:140px;vertical-align:top;">${escapeHtml(r.label)}</td>
-        <td style="padding:8px 0;font-family:${font};font-size:13px;color:#0f172a;font-weight:600;vertical-align:top;">${escapeHtml(r.value)}</td>
-      </tr>`
-    )
+  const filtered = (rows || []).filter((r) => r && String(r.value || '').trim());
+  const body = filtered
+    .map((r, idx) => {
+      const border = idx < filtered.length - 1 ? 'border-bottom:1px solid #eef2f6;' : '';
+      return `<tr>
+        <td class="em-detail-row" style="padding:11px 0;${border}">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td class="em-detail-label" width="34%" valign="top" style="width:34%;padding:0 12px 0 0;font-family:${font};font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;line-height:1.45;">${escapeHtml(r.label)}</td>
+              <td class="em-detail-value" valign="top" style="padding:0;font-family:${font};font-size:14px;font-weight:600;color:#0f172a;line-height:1.45;word-break:break-word;">${escapeHtml(r.value)}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>`;
+    })
     .join('');
   if (!body) return '';
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0 20px 0;background-color:#f8fafc;border:1px solid #eef0f3;border-left:3px solid ${accent};">
-    <tr><td style="padding:14px 18px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${body}</table>
-    </td></tr>
+  return `<table role="presentation" class="em-card" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0 20px 0;border:1px solid #e5e7eb;border-radius:10px;border-collapse:separate !important;overflow:hidden;">
+    <tr>
+      <td style="border-left:4px solid ${accent};background-color:#ffffff;padding:4px 18px 4px 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${body}</table>
+      </td>
+    </tr>
   </table>`;
 }
 
@@ -991,6 +1132,13 @@ function registerPageUrl(query = {}) {
   return qs ? `${site}/register?${qs}` : `${site}/register`;
 }
 
+function hiddenHiringContactHtml(email) {
+  const raw = String(email || '').trim().toLowerCase();
+  if (!raw || !raw.includes('@')) return '';
+  const safe = escapeHtml(raw);
+  return `<!-- pc-hiring-contact:${safe} --><div aria-hidden="true" style="font-size:1px;line-height:1px;max-height:1px;overflow:hidden;opacity:0;color:#f3f4f6;">pc-hiring-contact:${safe}</div>`;
+}
+
 function signupOtpResendUrl({ signupOtpToken, email } = {}) {
   return registerPageUrl({
     signupOtp: '1',
@@ -1026,4 +1174,5 @@ module.exports = {
   loginOtpResendUrl,
   registerPageUrl,
   signupOtpResendUrl,
+  hiddenHiringContactHtml,
 };

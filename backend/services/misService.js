@@ -5,11 +5,17 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const ExcelJS = require('exceljs');
 const MisContact = require('../models/MisContact');
-const { misListFilter } = require('../utils/dataScope');
+const {
+  misListFilter,
+  misWriteFilter,
+  isMisCompanyRole,
+  userIdParts,
+  organizationIdMatch,
+} = require('../utils/dataScope');
 const { normalizeText } = require('../utils/textNormalize');
 const { publicSiteBase } = require('./emailBrandLayout');
+const { JWT_SECRET } = require('../middleware/authMiddleware');
 const logger = require('../utils/logger');
 
 function httpError(message, statusCode = 400, extra = {}) {
@@ -17,6 +23,83 @@ function httpError(message, statusCode = 400, extra = {}) {
   err.statusCode = statusCode;
   Object.assign(err, extra);
   return err;
+}
+
+function assertMisCompany(user) {
+  if (!user || !isMisCompanyRole(user) || user.role === 'freelancer') {
+    throw httpError('MIS is available to company employees only', 403, { code: 'MIS_COMPANY_ONLY' });
+  }
+}
+
+function assertMisOwner(user) {
+  if (!user || user.role !== 'owner') {
+    throw httpError('This MIS action is available to the company owner only', 403, { code: 'MIS_OWNER_ONLY' });
+  }
+}
+
+/** Owner uploads stay org-shared; employee adds stay personal (visible to self + owner). */
+function deskScopeForUser(user) {
+  return user?.role === 'owner' ? 'org' : 'personal';
+}
+
+const misExportJobs = new Map();
+const MIS_EXPORT_TTL_MS = 60 * 60 * 1000;
+
+function scheduleExportCleanup(jobId) {
+  setTimeout(() => {
+    const job = misExportJobs.get(jobId);
+    if (!job) return;
+    if (job.filePath) {
+      try { fs.unlinkSync(job.filePath); } catch { /* ignore */ }
+    }
+    misExportJobs.delete(jobId);
+  }, MIS_EXPORT_TTL_MS).unref?.();
+}
+
+function backendPublicBase() {
+  const fromEnv = String(process.env.BACKEND_URL || process.env.API_URL || '')
+    .replace(/\/$/, '');
+  if (fromEnv) return fromEnv;
+  if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+    return `https://${String(process.env.RAILWAY_PUBLIC_DOMAIN).replace(/^https?:\/\//, '')}`;
+  }
+  // Absolute Railway URL so browser downloads skip the Vercel proxy body limit.
+  return 'https://peopleconnecthrats-production.up.railway.app';
+}
+
+function signExportDownloadToken(job) {
+  const exp = Date.now() + 15 * 60 * 1000;
+  const payload = `${job.jobId}:${job.userId}:${job.organizationId}:${exp}`;
+  const sig = crypto
+    .createHmac('sha256', JWT_SECRET)
+    .update(payload)
+    .digest('hex')
+    .slice(0, 40);
+  return Buffer.from(JSON.stringify({
+    jobId: job.jobId,
+    userId: job.userId,
+    organizationId: job.organizationId,
+    exp,
+    sig,
+  })).toString('base64url');
+}
+
+function verifyExportDownloadToken(token) {
+  try {
+    const raw = JSON.parse(Buffer.from(String(token || ''), 'base64url').toString('utf8'));
+    if (!raw?.jobId || !raw?.sig || !raw?.exp) return null;
+    if (Date.now() > Number(raw.exp)) return null;
+    const payload = `${raw.jobId}:${raw.userId}:${raw.organizationId}:${raw.exp}`;
+    const expected = crypto
+      .createHmac('sha256', JWT_SECRET)
+      .update(payload)
+      .digest('hex')
+      .slice(0, 40);
+    if (expected !== raw.sig) return null;
+    return raw;
+  } catch {
+    return null;
+  }
 }
 
 function trimStr(v) {
@@ -34,82 +117,56 @@ function phoneDigits(raw) {
 const TEXT_FIELDS = [
   'name', 'position', 'location', 'state', 'companyName', 'experience',
   'ctc', 'expectedCtc', 'noticePeriod', 'skills', 'product', 'client', 'fls', 'source', 'remark',
+  'status',
 ];
 
-function autoDetectHeaderMapping(headerRow) {
-  const candidates = {};
-  const set = (field, col, priority) => {
-    if (!candidates[field] || candidates[field].priority < priority) {
-      candidates[field] = { col, priority };
-    }
-  };
-  headerRow.eachCell((cell, colNumber) => {
-    const header = String(cell.value || '').toLowerCase().trim();
-    const norm = header.replace(/[^a-z0-9]/g, '');
-    const has = (s) => header.includes(s) || norm.includes(s.replace(/[^a-z0-9]/g, ''));
-
-    if (norm === 'name' || norm === 'candidatename' || norm === 'fullname') set('name', colNumber, 10);
-    else if ((has('name') || has('candidate')) && !has('company')) set('name', colNumber, 5);
-
-    if (norm === 'email' || norm === 'emailid') set('email', colNumber, 10);
-    else if (has('email') || has('mail')) set('email', colNumber, 5);
-
-    if (norm === 'contact' || norm === 'phone' || norm === 'mobile') set('contact', colNumber, 10);
-    else if (has('contact') || has('phone') || has('mobile')) set('contact', colNumber, 5);
-
-    if (norm === 'position' || norm === 'designation' || norm === 'role') set('position', colNumber, 10);
-    else if (has('position') || has('role') || has('designation')) set('position', colNumber, 5);
-
-    if (norm === 'company' || norm === 'companyname') set('companyName', colNumber, 10);
-    else if (has('company') || has('employer')) set('companyName', colNumber, 5);
-
-    if (norm === 'experience' || norm === 'exp') set('experience', colNumber, 10);
-    else if (has('experience') || has('exp')) set('experience', colNumber, 5);
-
-    if (norm === 'ctc' || norm === 'currentctc') set('ctc', colNumber, 10);
-    else if (has('ctc') && !has('expected')) set('ctc', colNumber, 5);
-
-    if (norm === 'expectedctc' || norm === 'ectc') set('expectedCtc', colNumber, 10);
-    else if (has('expected') && has('ctc')) set('expectedCtc', colNumber, 5);
-
-    if (norm === 'notice' || norm === 'noticeperiod') set('noticePeriod', colNumber, 10);
-    else if (has('notice')) set('noticePeriod', colNumber, 5);
-
-    if (norm === 'location' || norm === 'city') set('location', colNumber, 10);
-    else if (has('location') || has('city')) set('location', colNumber, 5);
-
-    if (norm === 'skills' || norm === 'skill') set('skills', colNumber, 10);
-    else if (has('skill')) set('skills', colNumber, 5);
-
-    if (norm === 'product') set('product', colNumber, 10);
-    else if (has('product')) set('product', colNumber, 5);
-
-    if (norm === 'client') set('client', colNumber, 10);
-    else if (has('client')) set('client', colNumber, 5);
-
-    if (norm === 'fls') set('fls', colNumber, 10);
-    else if (has('fls')) set('fls', colNumber, 5);
-
-    if (norm === 'source') set('source', colNumber, 10);
-    else if (has('source')) set('source', colNumber, 5);
-
-    if (norm === 'remark' || norm === 'remarks' || norm === 'notes') set('remark', colNumber, 10);
-    else if (has('remark') || has('note')) set('remark', colNumber, 5);
-  });
-
-  const map = {};
-  Object.entries(candidates).forEach(([k, v]) => { map[k] = v.col; });
-  return map;
+function normalizeMisStatus(raw) {
+  const s = String(raw ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+  return s || '';
 }
 
-function cellStr(row, col) {
-  if (!col) return '';
-  const cell = row.getCell(col);
-  const v = cell?.value;
-  if (v == null) return '';
-  if (typeof v === 'object' && v.text) return String(v.text).trim();
-  if (typeof v === 'object' && v.result != null) return String(v.result).trim();
-  return String(v).trim();
+function userCreatedByIds(user) {
+  const { userIdStr, userIdObj } = userIdParts(user);
+  if (!userIdStr) return [];
+  return userIdObj ? [userIdObj, userIdStr] : [userIdStr];
+}
+
+/**
+ * Narrow list to My contacts / Company directory / All (within misListFilter visibility).
+ * desk=mine → rows the user created; desk=company → org-shared (deskScope !== personal).
+ * desk=all is owner/admin only — other employees are coerced to mine.
+ */
+function canUseMisAllDesk(user) {
+  return user?.role === 'owner' || user?.role === 'admin';
+}
+
+function resolveMisDeskView(user, desk) {
+  const view = String(desk || '').toLowerCase().trim();
+  if (view === 'mine' || view === 'company') return view;
+  if (view === 'all' && canUseMisAllDesk(user)) return 'all';
+  // Missing / invalid: owner defaults to all; employees (incl. admin) to mine
+  if (!view && user?.role === 'owner') return 'all';
+  return 'mine';
+}
+
+function applyMisDeskView(filter, user, desk) {
+  const view = resolveMisDeskView(user, desk);
+  const next = { ...(filter || {}) };
+  if (Array.isArray(filter?.$and)) next.$and = [...filter.$and];
+  if (view === 'all') return next;
+  const andParts = Array.isArray(next.$and) ? [...next.$and] : [];
+  if (view === 'mine') {
+    const me = userCreatedByIds(user);
+    if (!me.length) {
+      next._id = { $in: [] };
+      return next;
+    }
+    andParts.push({ createdBy: { $in: me } });
+  } else if (view === 'company') {
+    andParts.push({ deskScope: { $ne: 'personal' } });
+  }
+  if (andParts.length) next.$and = andParts;
+  return next;
 }
 
 function unsubscribeUrlFor(contact) {
@@ -123,101 +180,775 @@ function unsubscribeUrlFor(contact) {
   return `${root}/api/mis/unsubscribe?id=${contact._id}&token=${token}`;
 }
 
-const IDS_ONLY_CAP = 50000;
+const IDS_ONLY_CAP = 1_000_000; // 10 lakh — select-all / bulk ops
+const EXPORT_CAP = 1_000_000; // 10 lakh — Excel export
 
-async function listContacts(user, query = {}) {
-  if (!user || user.role !== 'owner') {
-    throw httpError('MIS is available to the company owner only', 403, { code: 'MIS_OWNER_ONLY' });
-  }
+/** Prefer tracker Date; fall back to import timestamp for older rows. */
+function misDisplayDate(row) {
+  if (row?.recordDate) return new Date(row.recordDate);
+  if (row?.createdAt) return new Date(row.createdAt);
+  return null;
+}
+
+function misListSort() {
+  // recordDate first (tracker), then createdAt (import time) for legacy rows
+  return { recordDate: -1, createdAt: -1 };
+}
+
+function buildMisQueryFilter(user, query = {}) {
   const organizationId = user.organizationId;
-  if (!organizationId) throw httpError('Organization required', 403);
-  const page = Math.max(1, Number(query.page) || 1);
-  const limit = Math.min(200, Math.max(1, Number(query.limit) || 50));
-  const idsOnly = query.idsOnly === '1' || query.idsOnly === 'true' || query.idsOnly === true;
-  const q = trimStr(query.q);
   const filter = misListFilter(organizationId, user);
+  const escapeRx = (s) => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const andParts = [];
+
+  const q = trimStr(query.q);
   if (q) {
-    const rx = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
-    filter.$or = [
-      { name: rx }, { email: rx }, { phone: rx }, { contact: rx },
-      { position: rx }, { companyName: rx }, { location: rx }, { client: rx },
-    ];
+    const rx = { $regex: escapeRx(q), $options: 'i' };
+    andParts.push({
+      $or: [
+        { name: rx }, { email: rx }, { phone: rx }, { contact: rx },
+        { position: rx }, { companyName: rx }, { location: rx }, { client: rx },
+        { skills: rx }, { product: rx }, { source: rx }, { remark: rx },
+      ],
+    });
   }
   if (query.consent === 'yes') filter.marketingConsent = true;
   if (query.consent === 'no') filter.marketingConsent = false;
   if (query.unsubscribed === '1') filter.unsubscribedAt = { $ne: null };
   if (query.unsubscribed === '0') filter.unsubscribedAt = null;
-  if (trimStr(query.location)) {
-    filter.location = { $regex: trimStr(query.location).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
-  }
-  if (trimStr(query.source)) {
-    filter.source = { $regex: trimStr(query.source).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+
+  const statusFilter = normalizeMisStatus(query.status);
+  if (statusFilter && statusFilter !== 'ALL') {
+    filter.status = statusFilter;
   }
 
+  if (trimStr(query.location)) {
+    const rx = { $regex: escapeRx(trimStr(query.location)), $options: 'i' };
+    andParts.push({ $or: [{ location: rx }, { state: rx }] });
+  }
+  if (trimStr(query.source)) {
+    filter.source = { $regex: escapeRx(trimStr(query.source)), $options: 'i' };
+  }
+  if (trimStr(query.position)) {
+    filter.position = { $regex: escapeRx(trimStr(query.position)), $options: 'i' };
+  }
+  if (trimStr(query.companyName) || trimStr(query.company)) {
+    filter.companyName = {
+      $regex: escapeRx(trimStr(query.companyName || query.company)),
+      $options: 'i',
+    };
+  }
+  if (trimStr(query.client)) {
+    filter.client = { $regex: escapeRx(trimStr(query.client)), $options: 'i' };
+  }
+  if (trimStr(query.product)) {
+    filter.product = { $regex: escapeRx(trimStr(query.product)), $options: 'i' };
+  }
+  if (trimStr(query.skills)) {
+    filter.skills = { $regex: escapeRx(trimStr(query.skills)), $options: 'i' };
+  }
+
+  // CTC / expected CTC band text (same idea as Candidates when band labels are selected)
+  const ctcMinStr = trimStr(query.ctcMin);
+  const ctcMaxStr = trimStr(query.ctcMax);
+  const expectedCtcMinStr = trimStr(query.expectedCtcMin);
+  const expectedCtcMaxStr = trimStr(query.expectedCtcMax);
+  const ctcMinNum = parseFloat(ctcMinStr);
+  const ctcMaxNum = parseFloat(ctcMaxStr);
+  const expectedCtcMinNum = parseFloat(expectedCtcMinStr);
+  const expectedCtcMaxNum = parseFloat(expectedCtcMaxStr);
+  if (ctcMinStr && Number.isNaN(ctcMinNum)) {
+    filter.ctc = { $regex: escapeRx(ctcMinStr), $options: 'i' };
+  } else if (ctcMaxStr && Number.isNaN(ctcMaxNum)) {
+    filter.ctc = { $regex: escapeRx(ctcMaxStr), $options: 'i' };
+  }
+  if (expectedCtcMinStr && Number.isNaN(expectedCtcMinNum)) {
+    filter.expectedCtc = { $regex: escapeRx(expectedCtcMinStr), $options: 'i' };
+  } else if (expectedCtcMaxStr && Number.isNaN(expectedCtcMaxNum)) {
+    filter.expectedCtc = { $regex: escapeRx(expectedCtcMaxStr), $options: 'i' };
+  }
+
+  // Experience exact-ish match when a single year is chosen (band UI)
+  const expMin = trimStr(query.expMin);
+  const expMax = trimStr(query.expMax);
+  if (expMin && expMin === expMax) {
+    filter.experience = { $regex: escapeRx(expMin), $options: 'i' };
+  } else if (expMin && !expMax) {
+    filter.experience = { $regex: escapeRx(expMin), $options: 'i' };
+  } else if (expMax && !expMin) {
+    filter.experience = { $regex: escapeRx(expMax), $options: 'i' };
+  }
+
+  // Date period:
+  // - My desk → createdAt (when this employee added the contact) so cards match the table
+  // - Company / All → tracker recordDate with createdAt fallback
+  try {
+    const { buildDateFilter } = require('../utils/analyticsTime');
+    const period = trimStr(query.dateRange || query.period || query.datePeriod);
+    const dateFilter = buildDateFilter(period || 'all', query.from || query.dateFrom, query.to || query.dateTo);
+    if (dateFilter) {
+      const desk = resolveMisDeskView(user, query.desk || query.deskScope || query.view);
+      if (desk === 'mine') {
+        andParts.push({ createdAt: dateFilter });
+      } else {
+        andParts.push({
+          $or: [
+            { recordDate: dateFilter },
+            {
+              $and: [
+                { $or: [{ recordDate: null }, { recordDate: { $exists: false } }] },
+                { createdAt: dateFilter },
+              ],
+            },
+          ],
+        });
+      }
+    }
+  } catch (err) {
+    logger.warn({ err: err.message }, 'MIS date filter skipped');
+  }
+
+  if (andParts.length) {
+    filter.$and = [...(Array.isArray(filter.$and) ? filter.$and : []), ...andParts];
+  }
+
+  // Moved-to-Candidates filter stays inside role visibility (misListFilter),
+  // and skips desk-tab narrowing so the card count matches the list.
+  const movedFlag = String(query.moved || query.movedToCandidates || '').toLowerCase().trim();
+  if (movedFlag === '1' || movedFlag === 'yes' || movedFlag === 'moved') {
+    filter.$and = [
+      ...(Array.isArray(filter.$and) ? filter.$and : []),
+      { movedToCandidateAt: { $exists: true, $ne: null } },
+    ];
+    return filter;
+  }
+  if (movedFlag === '0' || movedFlag === 'no' || movedFlag === 'active') {
+    filter.$and = [
+      ...(Array.isArray(filter.$and) ? filter.$and : []),
+      { $or: [{ movedToCandidateAt: null }, { movedToCandidateAt: { $exists: false } }] },
+    ];
+  }
+
+  return applyMisDeskView(filter, user, query.desk || query.deskScope || query.view);
+}
+
+/** Prefer indexed counts over a single $or count when the list has no extra filters. */
+async function countMisDesk(user, organizationId, desk = 'all') {
+  const orgMatch = organizationIdMatch(organizationId) || { organizationId };
+  // Stats use raw desk keys (all/company/mine). Access control for list tab "all"
+  // is handled in resolveMisDeskView / applyMisDeskView — not here.
+  const view = String(desk || 'all').toLowerCase().trim() || 'all';
+  const me = userCreatedByIds(user);
+  const countMs = (q) => MisContact.countDocuments(q).maxTimeMS(20000).catch(() => null);
+
+  if (user.role === 'owner') {
+    if (view === 'mine') {
+      if (!me.length) return 0;
+      return countMs({ ...orgMatch, createdBy: { $in: me } });
+    }
+    if (view === 'company') {
+      return countMs({ ...orgMatch, deskScope: { $ne: 'personal' } });
+    }
+    return countMs(orgMatch);
+  }
+
+  // Employees: never include other people's personal desks.
+  if (view === 'mine') {
+    if (!me.length) return 0;
+    return countMs({ ...orgMatch, createdBy: { $in: me } });
+  }
+  if (view === 'company') {
+    return countMs({ ...orgMatch, deskScope: { $ne: 'personal' } });
+  }
+  // all = company shared + own personal (disjoint — no double-count)
+  const [company, personalMine] = await Promise.all([
+    countMs({ ...orgMatch, deskScope: { $ne: 'personal' } }),
+    me.length
+      ? countMs({ ...orgMatch, deskScope: 'personal', createdBy: { $in: me } })
+      : Promise.resolve(0),
+  ]);
+  if (company == null && personalMine == null) return null;
+  return (Number(company) || 0) + (Number(personalMine) || 0);
+}
+
+function misQueryHasExtraFilters(query = {}) {
+  if (trimStr(query.q)) return true;
+  if (query.consent === 'yes' || query.consent === 'no') return true;
+  if (query.unsubscribed === '1' || query.unsubscribed === '0') return true;
+  if (trimStr(query.status) && String(query.status).toUpperCase() !== 'ALL') return true;
+  const movedFlag = String(query.moved || query.movedToCandidates || '').toLowerCase().trim();
+  if (movedFlag === '1' || movedFlag === 'yes' || movedFlag === 'moved' || movedFlag === '0' || movedFlag === 'no' || movedFlag === 'active') {
+    return true;
+  }
+  const keys = [
+    'location', 'source', 'position', 'companyName', 'company', 'client', 'product', 'skills',
+    'ctcMin', 'ctcMax', 'expectedCtcMin', 'expectedCtcMax', 'expMin', 'expMax',
+    'dateRange', 'period', 'datePeriod', 'from', 'dateFrom', 'to', 'dateTo',
+  ];
+  return keys.some((k) => trimStr(query[k]));
+}
+
+async function listContacts(user, query = {}) {
+  assertMisCompany(user);
+  const organizationId = user.organizationId;
+  if (!organizationId) throw httpError('Organization required', 403);
+  const page = Math.max(1, Number(query.page) || 1);
+  const limit = Math.min(200, Math.max(1, Number(query.limit) || 50));
+  const idsOnly = query.idsOnly === '1' || query.idsOnly === 'true' || query.idsOnly === true;
+  const filter = buildMisQueryFilter(user, query);
+  const desk = resolveMisDeskView(user, query.desk || query.deskScope || query.view);
+  const resolveTotal = async () => {
+    if (!misQueryHasExtraFilters(query)) {
+      const fast = await countMisDesk(user, organizationId, desk);
+      if (fast != null) return fast;
+    }
+    return MisContact.countDocuments(filter).maxTimeMS(20000).catch(() => null);
+  };
+
   if (idsOnly) {
-    const total = await MisContact.countDocuments(filter);
+    const idLimit = Math.min(3000, Math.max(1, parseInt(query.idLimit, 10) || 3000));
+    const idSkip = Math.max(0, parseInt(query.idSkip, 10) || 0);
+    const total = await resolveTotal();
     const idDocs = await MisContact.find(filter)
-      .sort({ createdAt: -1 })
-      .select('_id phone contact email name marketingConsent unsubscribedAt')
-      .limit(IDS_ONLY_CAP)
+      .sort(misListSort())
+      .select('_id phone contact email name position location state companyName client product skills experience ctc expectedCtc noticePeriod fls source status marketingConsent unsubscribedAt recordDate createdAt movedToCandidateAt movedToCandidateId')
+      .skip(idSkip)
+      .limit(idLimit + 1)
+      .maxTimeMS(20000)
       .lean();
-    const ids = idDocs.map((d) => String(d._id));
+    const hasMore = idDocs.length > idLimit;
+    const pageDocs = hasMore ? idDocs.slice(0, idLimit) : idDocs;
+    const ids = pageDocs.map((d) => String(d._id));
     return {
       ids,
-      contacts: idDocs.map((d) => ({
+      contacts: pageDocs.map((d) => ({
         _id: String(d._id),
         phone: d.phone || '',
         contact: d.contact || d.phone || '',
         email: d.email || '',
         name: d.name || '',
-        marketingConsent: Boolean(d.marketingConsent),
+        position: d.position || '',
+        location: d.location || '',
+        state: d.state || '',
+        companyName: d.companyName || '',
+        client: d.client || '',
+        product: d.product || '',
+        skills: d.skills || '',
+        experience: d.experience || '',
+        ctc: d.ctc || '',
+        expectedCtc: d.expectedCtc || '',
+        noticePeriod: d.noticePeriod || '',
+        fls: d.fls || '',
+        source: d.source || '',
+        status: d.status || 'NEW',
+        marketingConsent: d.marketingConsent !== false,
         unsubscribedAt: d.unsubscribedAt || null,
+        recordDate: d.recordDate || null,
+        createdAt: d.createdAt || null,
+        movedToCandidateAt: d.movedToCandidateAt || null,
+        movedToCandidateId: d.movedToCandidateId ? String(d.movedToCandidateId) : null,
       })),
-      total,
-      capped: total > ids.length,
+      total: total == null ? idSkip + ids.length + (hasMore ? 1 : 0) : total,
+      capped: false,
+      hasMore,
       pagination: {
         page: 1,
         limit: ids.length,
-        total,
+        total: total == null ? idSkip + ids.length + (hasMore ? 1 : 0) : total,
         pages: 1,
-        hasMore: total > ids.length,
+        hasMore,
       },
-      scope: 'owner',
+      scope: user.role === 'owner' ? 'owner' : 'employee',
+      desk: resolveMisDeskView(user, query.desk || query.view),
     };
   }
 
   const [rows, total] = await Promise.all([
     MisContact.find(filter)
-      .sort({ createdAt: -1 })
+      .sort(misListSort())
       .skip((page - 1) * limit)
       .limit(limit)
       .populate('createdBy', 'name email')
       .lean(),
-    MisContact.countDocuments(filter),
+    resolveTotal(),
   ]);
+  const rowCount = (rows || []).length;
+  const floor = (page - 1) * limit + rowCount + (rowCount === limit ? 1 : 0);
+  const counted = Number(total);
+  const resolvedTotal = Number.isFinite(counted)
+    ? (counted === 0 && rowCount > 0 ? floor : counted)
+    : floor;
 
   return {
     rows,
     pagination: {
       page,
       limit,
-      total,
-      pages: Math.max(1, Math.ceil(total / limit)),
-      hasMore: page * limit < total,
+      total: resolvedTotal,
+      pages: Math.max(1, Math.ceil(resolvedTotal / limit)),
+      hasMore: page * limit < resolvedTotal,
     },
-    scope: user.role === 'owner' ? 'owner' : 'none',
+    scope: user.role === 'owner' ? 'owner' : 'employee',
+    desk: resolveMisDeskView(user, query.desk || query.view),
+  };
+}
+
+/**
+ * Secure report/stats identity — never take organizationId / userId from the query string.
+ */
+function assertMisActor(user) {
+  assertMisCompany(user);
+  if (!user.organizationId) throw httpError('Organization required', 403);
+  if (user.role !== 'owner' && !userCreatedByIds(user).length) {
+    throw httpError('User identity required for MIS access', 403, { code: 'MIS_USER_REQUIRED' });
+  }
+}
+
+/**
+ * Report data scope by role (must match list security):
+ * - owner → full organisation (all desks)
+ * - admin → same as MIS list (shared directory + own personal; never others’ personal)
+ * - other employees → only contacts they added
+ */
+function resolveMisReportScope(user) {
+  const organizationId = user.organizationId;
+  const orgMatch = organizationIdMatch(organizationId) || { organizationId };
+  const me = userCreatedByIds(user);
+  const role = user.role;
+
+  if (role === 'owner') {
+    return {
+      scope: 'organisation',
+      dateMode: 'tracker',
+      base: orgMatch,
+      me,
+    };
+  }
+
+  if (role === 'admin') {
+    return {
+      scope: 'visible',
+      dateMode: 'tracker',
+      base: misListFilter(organizationId, user),
+      me,
+    };
+  }
+
+  // recruiter / sales / hr_* — personal performance only
+  return {
+    scope: 'self',
+    dateMode: 'createdAt',
+    base: me.length
+      ? { ...orgMatch, createdBy: { $in: me } }
+      : { _id: { $in: [] } },
+    me,
+  };
+}
+
+function applyMisPeriodFilter(base, dateFilter, dateMode) {
+  if (!dateFilter) return base;
+  const next = { ...base };
+  const andParts = Array.isArray(base.$and) ? [...base.$and] : [];
+  if (dateMode === 'createdAt') {
+    andParts.push({ createdAt: dateFilter });
+  } else {
+    andParts.push({
+      $or: [
+        { recordDate: dateFilter },
+        {
+          $and: [
+            { $or: [{ recordDate: null }, { recordDate: { $exists: false } }] },
+            { createdAt: dateFilter },
+          ],
+        },
+      ],
+    });
+  }
+  if (andParts.length) next.$and = andParts;
+  return next;
+}
+
+function andMisFilter(base, clause) {
+  if (!clause || typeof clause !== 'object') return base;
+  const next = { ...base };
+  const andParts = Array.isArray(base.$and) ? [...base.$and] : [];
+  andParts.push(clause);
+  next.$and = andParts;
+  return next;
+}
+
+/**
+ * One-time reset: clear auto-inferred "In Candidates" marks that were never
+ * intentional UI moves (email-match / restore heuristics).
+ * Future moves via /move-to-candidates still set movedBy + markers correctly.
+ */
+async function resetFalseMisMoveMarks(user, { force = false } = {}) {
+  assertMisCompany(user);
+  const organizationId = user.organizationId;
+  if (!organizationId) throw httpError('Organization required', 403);
+
+  const Organization = require('../models/Organization');
+  const Candidate = require('../models/Candidate');
+  const orgMatch = organizationIdMatch(organizationId) || { organizationId };
+
+  if (!force) {
+    const org = await Organization.findById(organizationId).select('settings.misFalseMoveResetV1').lean();
+    if (org?.settings?.misFalseMoveResetV1) {
+      return { skipped: true, clearedMis: 0, clearedCandidates: 0 };
+    }
+  }
+
+  // Clear every prior move marker so the 5k+ false "In Candidates" rows become normal MIS again.
+  const misRes = await MisContact.updateMany(
+    {
+      ...orgMatch,
+      $or: [
+        { movedToCandidateAt: { $exists: true, $ne: null } },
+        { movedToCandidateId: { $exists: true, $ne: null } },
+        { movedBy: { $exists: true, $ne: null } },
+      ],
+    },
+    { $unset: { movedToCandidateAt: 1, movedToCandidateId: 1, movedBy: 1 } }
+  );
+
+  const candRes = await Candidate.updateMany(
+    {
+      ...orgMatch,
+      $or: [
+        { fromMis: true },
+        { misContactId: { $exists: true, $ne: null } },
+      ],
+    },
+    { $set: { fromMis: false, misContactId: null } }
+  );
+
+  await Organization.updateOne(
+    { _id: organizationId },
+    { $set: { 'settings.misFalseMoveResetV1': new Date() } }
+  );
+
+  const clearedMis = misRes.modifiedCount || 0;
+  const clearedCandidates = candRes.modifiedCount || 0;
+  if (clearedMis || clearedCandidates) {
+    logger.info(
+      { organizationId: String(organizationId), clearedMis, clearedCandidates },
+      'Cleared false MIS In Candidates marks'
+    );
+  }
+
+  return {
+    skipped: false,
+    clearedMis,
+    clearedCandidates,
+  };
+}
+
+/** @deprecated name kept for route compatibility — now only clears false marks once. */
+async function reconcileMisMoveHistory(user, options = {}) {
+  return resetFalseMisMoveMarks(user, options);
+}
+
+/**
+ * Scoped MIS dashboard KPIs — identical desk math as the list tabs (countMisDesk).
+ * Cards: total / company / mine / newThisMonth / movedToCandidates.
+ */
+async function getMisStats(user) {
+  assertMisActor(user);
+  const organizationId = user.organizationId;
+  const me = userCreatedByIds(user);
+  const orgMatch = organizationIdMatch(organizationId) || { organizationId };
+
+  let reset = null;
+  try {
+    reset = await resetFalseMisMoveMarks(user);
+  } catch (err) {
+    logger.warn({ err: err.message }, 'MIS false-move reset skipped');
+  }
+
+  let monthRange = null;
+  try {
+    const { buildDateFilter } = require('../utils/analyticsTime');
+    monthRange = buildDateFilter('month');
+  } catch (err) {
+    logger.warn({ err: err.message }, 'MIS month filter skipped');
+  }
+
+  const countMs = (q) => MisContact.countDocuments(q).maxTimeMS(20000).catch(() => 0);
+  const newThisMonthQ = (monthRange && me.length)
+    ? { ...orgMatch, createdBy: { $in: me }, createdAt: monthRange }
+    : { _id: { $in: [] } };
+
+  const movedScopeFilter = misListFilter(organizationId, user, {
+    movedToCandidateAt: { $exists: true, $ne: null },
+  });
+  const activeScopeFilter = misListFilter(organizationId, user, {
+    $or: [{ movedToCandidateAt: null }, { movedToCandidateAt: { $exists: false } }],
+  });
+
+  const [total, company, mine, newThisMonth, movedToCandidates, activeInMis] = await Promise.all([
+    countMisDesk(user, organizationId, 'all').then((n) => (n == null ? 0 : n)),
+    countMisDesk(user, organizationId, 'company').then((n) => (n == null ? 0 : n)),
+    countMisDesk(user, organizationId, 'mine').then((n) => (n == null ? 0 : n)),
+    countMs(newThisMonthQ),
+    countMs(movedScopeFilter),
+    countMs(activeScopeFilter),
+  ]);
+
+  return {
+    total: Number(total) || 0,
+    mine: Number(mine) || 0,
+    company: Number(company) || 0,
+    newThisMonth: Number(newThisMonth) || 0,
+    movedToCandidates: Number(movedToCandidates) || 0,
+    activeInMis: Number(activeInMis) || 0,
+    scope: user.role === 'owner' ? 'owner' : 'employee',
+    createdBySelf: me.length > 0,
+    reset: reset && !reset.skipped ? {
+      clearedMis: reset.clearedMis || 0,
+      clearedCandidates: reset.clearedCandidates || 0,
+    } : null,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * MIS reports for a period — totals, desks, status mix, duplicacy.
+ * Scoped securely by role via resolveMisReportScope (never query-string identity).
+ */
+async function getMisReports(user, query = {}) {
+  assertMisActor(user);
+
+  // Ignore any attempt to spoof another org / user via query
+  const safeQuery = { ...(query || {}) };
+  delete safeQuery.organizationId;
+  delete safeQuery.orgId;
+  delete safeQuery.userId;
+  delete safeQuery.employeeId;
+  delete safeQuery.createdBy;
+
+  const { scope, dateMode, base, me } = resolveMisReportScope(user);
+
+  const period = trimStr(safeQuery.dateRange || safeQuery.period || safeQuery.datePeriod) || 'month';
+  const from = safeQuery.from || safeQuery.dateFrom || safeQuery.customFrom;
+  const to = safeQuery.to || safeQuery.dateTo || safeQuery.customTo;
+
+  let dateFilter = null;
+  let periodLabel = period;
+  try {
+    const { buildDateFilter, getDateRangeLabel } = require('../utils/analyticsTime');
+    dateFilter = buildDateFilter(period === 'all' ? 'all' : period, from, to);
+    periodLabel = typeof getDateRangeLabel === 'function'
+      ? getDateRangeLabel(period, from, to)
+      : (period === 'custom' && from && to ? `${from} → ${to}` : period);
+  } catch (err) {
+    logger.warn({ err: err.message }, 'MIS reports date filter skipped');
+  }
+
+  const periodMatch = applyMisPeriodFilter(base, dateFilter, dateMode);
+  const companyPeriod = andMisFilter(periodMatch, { deskScope: { $ne: 'personal' } });
+  const personalPeriod = andMisFilter(periodMatch, { deskScope: 'personal' });
+
+  const countMs = (q, ms = 20000) => MisContact.countDocuments(q).maxTimeMS(ms).catch(() => 0);
+  const dateExpr = dateMode === 'createdAt'
+    ? '$createdAt'
+    : { $ifNull: ['$recordDate', '$createdAt'] };
+
+  const [totalInPeriod, companyInPeriod, personalInPeriod, statusAgg, sourceAgg, trendAgg, phoneDupes, emailOverlap, phoneOverlap, allTimeTotal] = await Promise.all([
+    countMs(periodMatch),
+    countMs(companyPeriod),
+    countMs(personalPeriod),
+    MisContact.aggregate([
+      { $match: periodMatch },
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $or: [{ $eq: ['$status', null] }, { $eq: ['$status', ''] }] },
+              'NEW',
+              { $toUpper: '$status' },
+            ],
+          },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { count: -1 } },
+      { $limit: 30 },
+    ]).option({ maxTimeMS: 20000 }).catch(() => []),
+    MisContact.aggregate([
+      { $match: periodMatch },
+      {
+        $group: {
+          _id: {
+            $let: {
+              vars: { s: { $trim: { input: { $ifNull: ['$source', ''] } } } },
+              in: {
+                $cond: [
+                  { $or: [{ $eq: ['$$s', null] }, { $eq: ['$$s', ''] }] },
+                  'Unspecified',
+                  '$$s',
+                ],
+              },
+            },
+          },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { count: -1 } },
+      { $limit: 12 },
+    ]).option({ maxTimeMS: 20000 }).catch(() => []),
+    MisContact.aggregate([
+      { $match: periodMatch },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: '%Y-%m-%d',
+              date: dateExpr,
+            },
+          },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+      { $limit: 120 },
+    ]).option({ maxTimeMS: 20000 }).catch(() => []),
+    MisContact.aggregate([
+      { $match: base },
+      {
+        $project: {
+          phoneKey: {
+            $let: {
+              vars: {
+                raw: { $ifNull: ['$phone', { $ifNull: ['$contact', ''] }] },
+              },
+              in: {
+                $replaceAll: {
+                  input: { $replaceAll: { input: '$$raw', find: ' ', replacement: '' } },
+                  find: '-',
+                  replacement: '',
+                },
+              },
+            },
+          },
+        },
+      },
+      { $match: { phoneKey: { $nin: [null, ''] } } },
+      { $group: { _id: '$phoneKey', count: { $sum: 1 }, ids: { $push: '$_id' } } },
+      { $match: { count: { $gt: 1 } } },
+      {
+        $group: {
+          _id: null,
+          duplicateGroups: { $sum: 1 },
+          duplicateRows: { $sum: '$count' },
+        },
+      },
+    ]).option({ maxTimeMS: 20000 }).catch(() => []),
+    (async () => {
+      try {
+        const Candidate = require('../models/Candidate');
+        const emails = await MisContact.distinct('email', { ...base, email: { $nin: [null, ''] } });
+        if (!emails.length) return 0;
+        const orgMatch = organizationIdMatch(user.organizationId) || { organizationId: user.organizationId };
+        return Candidate.countDocuments({
+          ...orgMatch,
+          email: { $in: emails },
+        }).maxTimeMS(15000).catch(() => 0);
+      } catch {
+        return 0;
+      }
+    })(),
+    (async () => {
+      try {
+        const Candidate = require('../models/Candidate');
+        const orgMatch = organizationIdMatch(user.organizationId) || { organizationId: user.organizationId };
+        const phones = await MisContact.aggregate([
+          { $match: base },
+          {
+            $project: {
+              phoneKey: {
+                $trim: {
+                  input: { $ifNull: ['$phone', { $ifNull: ['$contact', ''] }] },
+                },
+              },
+            },
+          },
+          { $match: { phoneKey: { $nin: [null, ''] } } },
+          { $group: { _id: '$phoneKey' } },
+          { $limit: 20000 },
+        ]).option({ maxTimeMS: 15000 });
+        const keys = (phones || []).map((p) => p._id).filter(Boolean);
+        if (!keys.length) return 0;
+        return Candidate.countDocuments({
+          ...orgMatch,
+          $or: [
+            { phone: { $in: keys } },
+            { contact: { $in: keys } },
+          ],
+        }).maxTimeMS(15000).catch(() => 0);
+      } catch {
+        return 0;
+      }
+    })(),
+    countMs(base, 20000),
+  ]);
+
+  const phoneDup = phoneDupes?.[0] || {};
+  const companyN = Number(companyInPeriod) || 0;
+  const personalN = Number(personalInPeriod) || 0;
+  const inPeriod = Number(totalInPeriod) || 0;
+
+  return {
+    period,
+    periodLabel,
+    scope,
+    generatedAt: new Date().toISOString(),
+    totals: {
+      allTime: Number(allTimeTotal) || 0,
+      inPeriod,
+      companyInPeriod: companyN,
+      personalInPeriod: personalN,
+    },
+    byStatus: (statusAgg || []).map((row) => ({
+      status: String(row._id || 'NEW'),
+      count: Number(row.count) || 0,
+    })),
+    bySource: (sourceAgg || []).map((row) => ({
+      source: String(row._id || 'Unspecified'),
+      count: Number(row.count) || 0,
+    })),
+    trend: (trendAgg || [])
+      .filter((row) => row && row._id)
+      .map((row) => ({
+        date: String(row._id),
+        count: Number(row.count) || 0,
+      })),
+    deskMix: [
+      { label: scope === 'organisation' ? 'Organisation' : 'Shared desk', key: 'company', count: companyN },
+      { label: 'Personal records', key: 'personal', count: personalN },
+    ].filter((row) => row.count > 0),
+    duplicacy: {
+      phoneDuplicateGroups: Number(phoneDup.duplicateGroups) || 0,
+      phoneDuplicateRows: Number(phoneDup.duplicateRows) || 0,
+      emailOverlapWithCandidates: Number(emailOverlap) || 0,
+      phoneOverlapWithCandidates: Number(phoneOverlap) || 0,
+    },
+    // Help UI explain scope without leaking other desks
+    meta: {
+      role: user.role,
+      selfOnly: scope === 'self',
+      includesOthersPersonal: scope === 'organisation',
+      actorId: me.length ? String(me[0]) : null,
+    },
   };
 }
 
 const BULK_UPDATE_FIELDS = [
   'source', 'client', 'position', 'companyName', 'location', 'product', 'fls', 'remark',
-  'state', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'skills',
+  'state', 'experience', 'ctc', 'expectedCtc', 'noticePeriod', 'skills', 'status',
 ];
 
 async function bulkUpdate(user, ids = [], updates = {}) {
-  if (!user || user.role !== 'owner') {
-    throw httpError('MIS is available to the company owner only', 403, { code: 'MIS_OWNER_ONLY' });
-  }
+  assertMisCompany(user);
   const idList = (ids || []).map(String).filter(Boolean);
   if (!idList.length) throw httpError('No contacts selected');
   if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
@@ -228,6 +959,12 @@ async function bulkUpdate(user, ids = [], updates = {}) {
   for (const key of BULK_UPDATE_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(updates, key)) continue;
     if (updates[key] == null) continue;
+    if (key === 'status') {
+      const status = normalizeMisStatus(updates[key]);
+      if (!status) continue;
+      $set.status = status;
+      continue;
+    }
     const val = normalizeText(trimStr(updates[key]));
     if (!val) continue;
     $set[key] = val;
@@ -244,16 +981,26 @@ async function bulkUpdate(user, ids = [], updates = {}) {
     throw httpError('No valid fields to update. Choose at least one field.');
   }
 
-  const filter = misListFilter(user.organizationId, user, { _id: { $in: idList } });
+  const filter = misWriteFilter(user.organizationId, user, { _id: { $in: idList } });
   const result = await MisContact.updateMany(filter, { $set });
+  const matched = result.matchedCount ?? result.n ?? 0;
+  const modified = result.modifiedCount ?? result.nModified ?? 0;
+  if (!matched) {
+    throw httpError(
+      'No editable contacts in this selection. Employees can only edit records they created.',
+      403,
+      { code: 'MIS_WRITE_FORBIDDEN' }
+    );
+  }
   return {
-    matched: result.matchedCount ?? result.n ?? 0,
-    modified: result.modifiedCount ?? result.nModified ?? 0,
+    matched,
+    modified,
     marketingConsent: consentUpdate,
   };
 }
 
 async function getContact(user, id) {
+  assertMisCompany(user);
   const filter = misListFilter(user.organizationId, user, { _id: id });
   const row = await MisContact.findOne(filter).populate('createdBy', 'name email');
   if (!row) throw httpError('Contact not found', 404);
@@ -261,10 +1008,15 @@ async function getContact(user, id) {
 }
 
 async function createContact(user, body = {}) {
+  assertMisCompany(user);
   const organizationId = user.organizationId;
   const email = normalizeEmail(body.email);
   const name = trimStr(body.name);
   if (!name) throw httpError('Name is required');
+  if (name.length < 2) throw httpError('Name must be at least 2 characters');
+  if (!/^[a-zA-Z\s.''-]+$/.test(name)) {
+    throw httpError('Name can only contain letters, spaces, and hyphens');
+  }
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
     throw httpError('Valid email is required');
   }
@@ -272,22 +1024,50 @@ async function createContact(user, body = {}) {
   if (!phone || phone.length < 7 || phone.length > 15) {
     throw httpError('Valid phone number is required (7–15 digits)');
   }
+  const ctc = trimStr(body.ctc);
+  if (!ctc) throw httpError('Current CTC is required');
+
   const existing = await MisContact.findOne({ organizationId, email });
   if (existing) throw httpError('This email already exists in MIS', 409, { code: 'DUPLICATE_EMAIL' });
+
+  const phoneClash = await MisContact.findOne({
+    organizationId,
+    $or: [{ phone }, { contact: phone }],
+  }).select('_id email').lean();
+  if (phoneClash) {
+    throw httpError('This phone number already exists in MIS', 409, { code: 'DUPLICATE_PHONE' });
+  }
+
+  const LocationService = require('./locationService');
+  const location = normalizeText(trimStr(body.location));
+  let state = trimStr(body.state);
+  if (location && !state) {
+    state = LocationService.detectState(location) || '';
+  }
 
   const doc = new MisContact({
     organizationId,
     createdBy: user.id || user._id,
+    deskScope: deskScopeForUser(user),
     name: normalizeText(name),
     email,
     contact: phone,
     phone,
+    ctc: normalizeText(ctc),
+    location,
+    state: normalizeText(state),
+    status: normalizeMisStatus(body.status) || 'NEW',
     marketingConsent: body.marketingConsent !== false,
     source: trimStr(body.source) || 'MIS Manual',
   });
   for (const key of TEXT_FIELDS) {
-    if (key === 'name' || key === 'source') continue;
+    if (key === 'name' || key === 'source' || key === 'ctc' || key === 'location' || key === 'state' || key === 'status') continue;
     if (body[key] != null) doc[key] = normalizeText(trimStr(body[key]));
+  }
+  if (body.recordDate) {
+    const { parseRecordDate } = require('../utils/candidateActivityDate');
+    const parsed = parseRecordDate(body.recordDate);
+    if (parsed) doc.recordDate = parsed;
   }
   doc.ensureUnsubscribeSecret();
   await doc.save();
@@ -295,7 +1075,8 @@ async function createContact(user, body = {}) {
 }
 
 async function updateContact(user, id, body = {}) {
-  const filter = misListFilter(user.organizationId, user, { _id: id });
+  assertMisCompany(user);
+  const filter = misWriteFilter(user.organizationId, user, { _id: id });
   const doc = await MisContact.findOne(filter);
   if (!doc) throw httpError('Contact not found', 404);
 
@@ -316,7 +1097,13 @@ async function updateContact(user, id, body = {}) {
   }
   for (const key of TEXT_FIELDS) {
     if (key === 'name') continue;
-    if (body[key] != null) doc[key] = normalizeText(trimStr(body[key]));
+    if (body[key] != null) {
+      if (key === 'status') {
+        doc.status = normalizeMisStatus(body[key]) || doc.status || 'NEW';
+      } else {
+        doc[key] = normalizeText(trimStr(body[key]));
+      }
+    }
   }
   if (typeof body.marketingConsent === 'boolean') {
     doc.marketingConsent = body.marketingConsent;
@@ -331,16 +1118,18 @@ async function updateContact(user, id, body = {}) {
 }
 
 async function deleteContact(user, id) {
-  const filter = misListFilter(user.organizationId, user, { _id: id });
+  assertMisCompany(user);
+  const filter = misWriteFilter(user.organizationId, user, { _id: id });
   const doc = await MisContact.findOneAndDelete(filter);
   if (!doc) throw httpError('Contact not found', 404);
   return { deleted: true };
 }
 
 async function bulkDelete(user, ids = []) {
+  assertMisCompany(user);
   const idList = (ids || []).map(String).filter(Boolean);
   if (!idList.length) throw httpError('No contacts selected');
-  const filter = misListFilter(user.organizationId, user, { _id: { $in: idList } });
+  const filter = misWriteFilter(user.organizationId, user, { _id: { $in: idList } });
   const result = await MisContact.deleteMany(filter);
   return { deleted: result.deletedCount || 0 };
 }
@@ -356,6 +1145,7 @@ function getBulkUploadJob(user, jobId) {
 }
 
 async function sendMarketingToMis(user, body = {}) {
+  assertMisCompany(user);
   const ids = (body.ids || []).map(String).filter(Boolean);
   if (!ids.length) throw httpError('Select at least one contact');
   if (!trimStr(body.subject) || !trimStr(body.htmlBody)) {
@@ -398,17 +1188,17 @@ async function sendMarketingToMis(user, body = {}) {
 }
 
 /**
- * Move MIS contacts into Candidates (create Candidate, then remove from MIS).
- * Skips emails/phones already in Candidates and rows missing required phone.
+ * Copy MIS contacts into Candidates (keeps MIS row; marks as moved).
+ * New candidates are owned by the acting employee (createdBy + SPOC).
+ * Skips already-moved rows, existing candidate email/phone conflicts, and invalid rows.
  */
 async function moveToCandidates(user, ids = [], options = {}) {
-  if (!user || user.role !== 'owner') {
-    throw httpError('MIS is available to the company owner only', 403, { code: 'MIS_OWNER_ONLY' });
-  }
-  const idList = (ids || []).map(String).filter(Boolean);
+  assertMisCompany(user);
+  const idList = [...new Set((ids || []).map(String).filter(Boolean))];
   if (!idList.length) throw httpError('Select at least one MIS contact');
 
-  const removeFromMis = options.removeFromMis !== false;
+  // Keep MIS history by default. Explicit removeFromMis=true is still allowed for cleanup.
+  const removeFromMis = options.removeFromMis === true;
   const Candidate = require('../models/Candidate');
   const LocationService = require('./locationService');
   const { findOrgPhoneConflict, findOrgEmailConflict } = require('./dedupeService');
@@ -418,17 +1208,28 @@ async function moveToCandidates(user, ids = [], options = {}) {
   const rows = await MisContact.find(filter).lean();
   if (!rows.length) throw httpError('No MIS contacts found', 404);
 
+  const actorId = user.id || user._id;
   let moved = 0;
   let skippedDuplicate = 0;
+  let skippedAlreadyMoved = 0;
   let skippedInvalid = 0;
   const errors = [];
   const movedIds = [];
+  const movedCandidateIds = [];
 
   for (const row of rows) {
     const email = normalizeEmail(row.email);
     const contact = phoneDigits(row.phone || row.contact);
     const name = trimStr(row.name);
     const ctc = trimStr(row.ctc) || 'TO BE UPDATED';
+
+    if (row.movedToCandidateAt || row.movedToCandidateId) {
+      skippedAlreadyMoved += 1;
+      if (errors.length < 40) {
+        errors.push({ id: row._id, email, message: 'Already moved to Candidates' });
+      }
+      continue;
+    }
 
     if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
       skippedInvalid += 1;
@@ -449,6 +1250,17 @@ async function moveToCandidates(user, ids = [], options = {}) {
           if (errors.length < 40) {
             errors.push({ id: row._id, email, message: `Already a candidate (${emailHit.name || 'existing'})` });
           }
+          // Mark MIS row so the directory reflects the existing candidate link.
+          await MisContact.updateOne(
+            { _id: row._id, organizationId: user.organizationId, movedToCandidateAt: null },
+            {
+              $set: {
+                movedToCandidateAt: new Date(),
+                movedToCandidateId: emailHit._id || null,
+                movedBy: actorId,
+              },
+            }
+          );
           continue;
         }
         const phoneHit = await findOrgPhoneConflict(user.organizationId, contact);
@@ -461,10 +1273,21 @@ async function moveToCandidates(user, ids = [], options = {}) {
               message: `Phone already on candidate ${phoneHit.name || ''}`.trim(),
             });
           }
+          await MisContact.updateOne(
+            { _id: row._id, organizationId: user.organizationId, movedToCandidateAt: null },
+            {
+              $set: {
+                movedToCandidateAt: new Date(),
+                movedToCandidateId: phoneHit._id || null,
+                movedBy: actorId,
+              },
+            }
+          );
           continue;
         }
       }
 
+      const trackerDate = row.recordDate || row.createdAt || null;
       const payload = {
         name: normalizeText(name),
         email,
@@ -486,7 +1309,14 @@ async function moveToCandidates(user, ids = [], options = {}) {
         remark: trimStr(row.remark),
         status: 'APPLIED',
         organizationId: user.organizationId,
-        createdBy: user.id || user._id,
+        createdBy: actorId,
+        fromMis: true,
+        misContactId: row._id,
+        // Keep original MIS tracker/import date so Candidates sort does not jump to "just now"
+        appliedAt: trackerDate ? new Date(trackerDate) : undefined,
+        date: trackerDate
+          ? new Date(trackerDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+          : undefined,
       };
       if (payload.location && !payload.state) {
         payload.state = LocationService.detectState(payload.location) || '';
@@ -498,8 +1328,21 @@ async function moveToCandidates(user, ids = [], options = {}) {
 
       const doc = new Candidate(payload);
       await doc.save();
+
+      await MisContact.updateOne(
+        { _id: row._id, organizationId: user.organizationId },
+        {
+          $set: {
+            movedToCandidateAt: new Date(),
+            movedToCandidateId: doc._id,
+            movedBy: actorId,
+          },
+        }
+      );
+
       moved += 1;
       movedIds.push(String(row._id));
+      movedCandidateIds.push(String(doc._id));
     } catch (err) {
       skippedInvalid += 1;
       if (errors.length < 40) {
@@ -516,14 +1359,233 @@ async function moveToCandidates(user, ids = [], options = {}) {
     deleted = del.deletedCount || 0;
   }
 
+  const notFound = Math.max(0, idList.length - rows.length);
+  const parts = [
+    `Moved ${moved} to Candidates`,
+    skippedAlreadyMoved ? `${skippedAlreadyMoved} already moved` : null,
+    skippedDuplicate ? `${skippedDuplicate} already in Candidates` : null,
+    skippedInvalid ? `${skippedInvalid} skipped` : null,
+    notFound ? `${notFound} not found` : null,
+  ].filter(Boolean);
+
   return {
     moved,
     deleted,
+    keptInMis: removeFromMis ? 0 : moved,
     skippedDuplicate,
+    skippedAlreadyMoved,
     skippedInvalid,
+    notFound,
+    selected: idList.length,
     total: rows.length,
+    candidateIds: movedCandidateIds,
     errors: errors.slice(0, 30),
-    message: `Moved ${moved} to Candidates · ${skippedDuplicate} already there · ${skippedInvalid} skipped`,
+    message: parts.join(' · '),
+  };
+}
+
+function exportJobSnapshot(job) {
+  const snap = {
+    jobId: job.jobId,
+    status: job.status,
+    filename: job.filename || null,
+    count: job.count || 0,
+    total: job.total || 0,
+    capped: Boolean(job.capped),
+    error: job.error || null,
+    async: true,
+  };
+  if (job.status === 'done' && job.filePath && fs.existsSync(job.filePath)) {
+    const token = signExportDownloadToken(job);
+    const base = backendPublicBase();
+    snap.downloadToken = token;
+    snap.downloadUrl = `${base}/api/mis/export/download?token=${encodeURIComponent(token)}`;
+  }
+  return snap;
+}
+
+async function runMisExportJob(jobId) {
+  const job = misExportJobs.get(jobId);
+  if (!job) return;
+  const ExcelJS = require('exceljs');
+  try {
+    job.status = 'processing';
+    const total = await MisContact.countDocuments(job.filter);
+    job.total = total;
+
+    const outDir = path.join(process.cwd(), 'uploads', 'mis-exports');
+    fs.mkdirSync(outDir, { recursive: true });
+    const stamp = new Date().toLocaleDateString('en-IN').replace(/\//g, '-');
+    const filename = `MIS_${stamp}_${jobId.slice(-8)}.xlsx`;
+    const filePath = path.join(outDir, filename);
+
+    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+      filename: filePath,
+      useStyles: true,
+      useSharedStrings: false,
+    });
+    workbook.creator = 'PeopleConnect MIS';
+    const sheet = workbook.addWorksheet('MIS Contacts');
+    sheet.columns = [
+      { header: 'Name', key: 'name', width: 24 },
+      { header: 'Email', key: 'email', width: 28 },
+      { header: 'Phone', key: 'phone', width: 16 },
+      { header: 'Position', key: 'position', width: 20 },
+      { header: 'Company', key: 'companyName', width: 22 },
+      { header: 'Location', key: 'location', width: 16 },
+      { header: 'Experience', key: 'experience', width: 12 },
+      { header: 'CTC', key: 'ctc', width: 12 },
+      { header: 'Expected CTC', key: 'expectedCtc', width: 14 },
+      { header: 'Notice Period', key: 'noticePeriod', width: 14 },
+      { header: 'FLS', key: 'fls', width: 10 },
+      { header: 'Client', key: 'client', width: 16 },
+      { header: 'Product / Skill', key: 'product', width: 16 },
+      { header: 'Skills', key: 'skills', width: 20 },
+      { header: 'Source', key: 'source', width: 14 },
+      { header: 'Remark', key: 'remark', width: 20 },
+      { header: 'Marketing Consent', key: 'consent', width: 16 },
+      { header: 'Unsubscribed At', key: 'unsubscribedAt', width: 18 },
+      { header: 'Uploaded By', key: 'uploadedBy', width: 18 },
+      { header: 'Date', key: 'recordDate', width: 14 },
+      { header: 'Imported At', key: 'createdAt', width: 14 },
+    ];
+    try {
+      sheet.getRow(1).font = { bold: true };
+    } catch { /* stream writer may ignore style */ }
+
+    const cursor = MisContact.find(job.filter)
+      .sort(misListSort())
+      .limit(EXPORT_CAP)
+      .populate('createdBy', 'name email')
+      .cursor();
+
+    let count = 0;
+    for await (const row of cursor) {
+      const display = misDisplayDate(row);
+      sheet.addRow({
+        name: row.name || '',
+        email: row.email || '',
+        phone: row.phone || row.contact || '',
+        position: row.position || '',
+        companyName: row.companyName || '',
+        location: row.location || '',
+        experience: row.experience || '',
+        ctc: row.ctc || '',
+        expectedCtc: row.expectedCtc || '',
+        noticePeriod: row.noticePeriod || '',
+        fls: row.fls || '',
+        client: row.client || '',
+        product: row.product || '',
+        skills: row.skills || '',
+        source: row.source || '',
+        remark: row.remark || '',
+        consent: row.marketingConsent ? 'Yes' : 'No',
+        unsubscribedAt: row.unsubscribedAt
+          ? new Date(row.unsubscribedAt).toISOString().slice(0, 10)
+          : '',
+        uploadedBy: row.createdBy?.name || row.createdBy?.email || '',
+        recordDate: display ? display.toISOString().slice(0, 10) : '',
+        createdAt: row.createdAt
+          ? new Date(row.createdAt).toISOString().slice(0, 10)
+          : '',
+      }).commit();
+      count += 1;
+    }
+
+    await workbook.commit();
+    job.filePath = filePath;
+    job.filename = filename;
+    job.count = count;
+    job.capped = total > count;
+    job.status = 'done';
+  } catch (err) {
+    job.status = 'error';
+    job.error = err.message || 'Export failed';
+    logger.error({ err: err.message, jobId }, 'MIS export job failed');
+    if (job.filePath) {
+      try { fs.unlinkSync(job.filePath); } catch { /* ignore */ }
+      job.filePath = null;
+    }
+  }
+}
+
+/**
+ * Owner-only async Excel export.
+ * Returns a jobId immediately so Vercel/proxy does not time out on large workbooks.
+ */
+async function startExportContacts(user, body = {}) {
+  assertMisOwner(user);
+  if (!user.organizationId) throw httpError('Organization required', 403);
+
+  const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
+  let filter;
+  if (ids.length) {
+    filter = misListFilter(user.organizationId, user, { _id: { $in: ids } });
+  } else {
+    filter = buildMisQueryFilter(user, body.filters || body.query || {});
+  }
+
+  const jobId = `exp_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
+  const job = {
+    jobId,
+    organizationId: String(user.organizationId),
+    userId: String(user.id || user._id),
+    filter,
+    status: 'queued',
+    filePath: null,
+    filename: null,
+    count: 0,
+    total: 0,
+    capped: false,
+    error: null,
+    startedAt: Date.now(),
+  };
+  misExportJobs.set(jobId, job);
+  scheduleExportCleanup(jobId);
+
+  setImmediate(() => {
+    runMisExportJob(jobId).catch((err) => {
+      const j = misExportJobs.get(jobId);
+      if (j) {
+        j.status = 'error';
+        j.error = err.message || 'Export failed';
+      }
+    });
+  });
+
+  return exportJobSnapshot(job);
+}
+
+function getExportJob(user, jobId) {
+  assertMisOwner(user);
+  const job = misExportJobs.get(String(jobId || ''));
+  if (!job) throw httpError('Export job not found or expired', 404, { code: 'JOB_NOT_FOUND' });
+  if (String(job.organizationId) !== String(user.organizationId)
+    || String(job.userId) !== String(user.id || user._id)) {
+    throw httpError('Export job not found or expired', 404, { code: 'JOB_NOT_FOUND' });
+  }
+  return exportJobSnapshot(job);
+}
+
+function resolveExportDownload(token) {
+  const raw = verifyExportDownloadToken(token);
+  if (!raw) throw httpError('Invalid or expired download link', 403);
+  const job = misExportJobs.get(String(raw.jobId));
+  if (!job || job.status !== 'done' || !job.filePath) {
+    throw httpError('Export file not ready or expired', 404);
+  }
+  if (String(job.userId) !== String(raw.userId)
+    || String(job.organizationId) !== String(raw.organizationId)) {
+    throw httpError('Invalid or expired download link', 403);
+  }
+  if (!fs.existsSync(job.filePath)) {
+    throw httpError('Export file missing', 404);
+  }
+  return {
+    filePath: job.filePath,
+    filename: job.filename || 'MIS_export.xlsx',
+    count: job.count || 0,
+    capped: Boolean(job.capped),
   };
 }
 
@@ -548,6 +1610,8 @@ async function unsubscribePublic({ id, token }) {
 
 module.exports = {
   listContacts,
+  getMisStats,
+  getMisReports,
   getContact,
   createContact,
   updateContact,
@@ -557,7 +1621,15 @@ module.exports = {
   bulkUpload,
   getBulkUploadJob,
   moveToCandidates,
+  reconcileMisMoveHistory,
+  resetFalseMisMoveMarks,
   sendMarketingToMis,
+  startExportContacts,
+  getExportJob,
+  resolveExportDownload,
   unsubscribePublic,
   unsubscribeUrlFor,
+  deskScopeForUser,
+  resolveMisDeskView,
+  canUseMisAllDesk,
 };

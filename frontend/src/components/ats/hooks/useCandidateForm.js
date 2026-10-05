@@ -11,11 +11,43 @@ import { clientRequiresPan, normalizePan, validatePan } from '../../../utils/pan
 import {
   resumeIdentityConflicts,
   mergeResumeIntoForm,
+  applyParsedResumeHandoff,
 } from '../../../utils/resumeFormMerge';
 import { canEditCandidateSpoc, resolveEmployeeSpocLabel } from '../../../utils/spocIdentity';
 import { applyDeskDefaultsToForm, resolveFormDeskDefaults } from '../../../utils/deskDefaults';
 
-export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, currentPage, setCurrentPage, API_URL } = {}) {
+function jobSelectValue(raw, jobs = []) {
+  const v = String(raw || '').trim();
+  if (!v || v === 'all') return '';
+  const hit = (jobs || []).find((j) => {
+    const code = String(j.jobCode || '').trim();
+    if (code && code.toUpperCase() === v.toUpperCase()) return true;
+    return String(j._id) === v;
+  });
+  return String(hit?.jobCode || v);
+}
+
+function pickJobIdForEdit(fresh = {}, listRow = {}, deskJobId = '', jobs = []) {
+  const desk = jobSelectValue(deskJobId, jobs);
+  const apps = Array.isArray(fresh.applications) ? fresh.applications : [];
+  const matchesDesk = (app) => {
+    if (!desk) return false;
+    const code = String(app?.jobCode || '').toUpperCase();
+    const id = String(app?.jobId || '');
+    return code === desk.toUpperCase() || id === desk || id === String(deskJobId);
+  };
+
+  if (desk) {
+    const hit = apps.find(matchesDesk);
+    if (hit) return jobSelectValue(hit.jobCode || hit.jobId, jobs);
+  }
+
+  const fromFresh = jobSelectValue(fresh.jobId || apps[0]?.jobCode || apps[0]?.jobId, jobs);
+  if (fromFresh) return fromFresh;
+  return jobSelectValue(listRow.jobCode || listRow.jobId || listRow.taggedJobId, jobs);
+}
+
+export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, currentPage, setCurrentPage, API_URL, jobIdFilter = '', jobs = [] } = {}) {
   const { user, updateUser } = useAuth();
   const isFreelancer = user?.role === 'freelancer';
   const canEditSpoc = canEditCandidateSpoc(user?.role);
@@ -32,6 +64,7 @@ export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, cur
     isOpen: false,
     result: null,
   });
+  const [duplicateHit, setDuplicateHit] = useState(null);
   const fieldRefs = {
     name: useRef(null), email: useRef(null), contact: useRef(null), ctc: useRef(null),
     position: useRef(null), companyName: useRef(null), location: useRef(null), spoc: useRef(null),
@@ -86,9 +119,24 @@ export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, cur
     setJdForScore('');
     setCountryCode('+91');
     setCountryIso('IN');
-    setFormData(blankForm());
+    let next = blankForm();
+    try {
+      const raw = localStorage.getItem('parsedResumeData');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        localStorage.removeItem('parsedResumeData');
+        next = applyParsedResumeHandoff(next, parsed, {
+          formatName: (s) => String(s).trim().replace(/\s{2,}/g, ' ').toUpperCase(),
+        });
+      }
+    } catch {
+      /* ignore bad handoff */
+    }
+    const fromDesk = String(jobIdFilter || '').trim();
+    if (fromDesk && fromDesk !== 'all') next.jobId = fromDesk;
+    setFormData(next);
     setShowModal(true);
-  }, [blankForm]);
+  }, [blankForm, jobIdFilter]);
 
   const fetchMasterData = async ({ silent = false } = {}) => {
     const requestId = ++masterFetchRef.current;
@@ -242,9 +290,11 @@ export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, cur
         setEditId(freshCandidate._id);
         setAiScoreResult(null);
         setJdForScore('');
-        setFormData({ 
-          ...freshCandidate, 
+        const { applications: _apps, taggedJobId: _tagged, ...rest } = freshCandidate;
+        setFormData({
+          ...rest,
           resume: null,
+          jobId: pickJobIdForEdit(freshCandidate, candidate, jobIdFilter, jobs),
           customFields: freshCandidate.customFields && typeof freshCandidate.customFields === 'object'
             ? { ...freshCandidate.customFields }
             : {},
@@ -264,6 +314,13 @@ export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, cur
       console.error('Error fetching candidate:', error);
       toast.error('Error loading candidate details.');
     }
+  };
+
+  const openExistingFromDuplicate = async () => {
+    const id = duplicateHit?.existingId;
+    setDuplicateHit(null);
+    if (!id) return;
+    await handleEdit({ _id: id });
   };
 
   const handleAiScore = async () => {
@@ -513,6 +570,8 @@ const handleAddCandidate = async (e) => {
       } else if (key === 'customFields') {
         const bag = trimmed.customFields && typeof trimmed.customFields === 'object' ? trimmed.customFields : {};
         data.append('customFields', JSON.stringify(bag));
+      } else if (key === 'jobId') {
+        if (trimmed[key]) data.append('jobId', trimmed[key]);
       } else if (typeof trimmed[key] === 'object' && trimmed[key] !== null) {
         return;
       } else if (key === 'legalHold') {
@@ -570,6 +629,14 @@ const handleAddCandidate = async (e) => {
           ? (errJson.message || 'The candidate is duplicate kindly check with the hiring manager')
           : (errJson.message || 'This candidate already exists in the organization.');
         toast.error(dupMsg);
+        setDuplicateHit({
+          code: errJson.code || '',
+          message: dupMsg,
+          existingId: errJson.existingId || '',
+          existingName: errJson.existingName || '',
+          existingEmail: errJson.existingEmail || '',
+          existingPhone: errJson.existingPhone || '',
+        });
         if (errJson.code === 'DUPLICATE_EMAIL' || /email/i.test(String(errJson?.message || ''))) {
           setFormErrors((prev) => ({ ...prev, email: errJson.message || 'Candidate already exists (email)' }));
           setFormSection('basic');
@@ -764,6 +831,7 @@ const handleAddCandidate = async (e) => {
     countryCodes, aiScoreLoading, aiScoreResult, jdForScore, setJdForScore, statusOptions,
     isAutoParsing, recentStepChangeRef, showPanRequiredModal, setShowPanRequiredModal, onClientChange,
     resumeConflictModal, setResumeConflictModal, applyResumeMerge,
+    duplicateHit, setDuplicateHit, openExistingFromDuplicate,
     fetchMasterData, validateCandidateStep, goCandidateStep, handleEdit, handleAiScore,
     handleInputChange, handleAddCandidate, resolveCountryFromDial, setFormField,
     formPositionOptions, formExperienceOptions, formCtcOptions, formExpectedCtcOptions,

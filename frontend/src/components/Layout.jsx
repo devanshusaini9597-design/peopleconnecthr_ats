@@ -5,6 +5,7 @@ import Header from './Header';
 import RouteLoadingBar from './RouteLoadingBar';
 import AnnouncementBanner from './AnnouncementBanner';
 import SetPasswordModal from './auth/SetPasswordModal';
+import DemoRoleBar from './DemoRoleBar';
 import usePresenceHeartbeat from '../hooks/usePresenceHeartbeat';
 import { PresenceProvider } from '../context/PresenceContext';
 
@@ -44,6 +45,7 @@ const Layout = ({ children }) => {
           sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-[280px]'
         }`}
       >
+        <DemoRoleBar />
         <Header setSidebarOpen={setSidebarOpen} sidebarOpen={sidebarOpen} />
         <AnnouncementBanner />
 

@@ -9,7 +9,7 @@ export const INBOX_TOUR_STEPS = [
   {
     target: '[data-tour="inbox-threads"]',
     title: 'Conversations',
-    body: 'Filter by channel, search by name or subject, and open a thread to read the full history.',
+    body: 'Inbox, Unread, Starred, Snoozed, and Archived. Use templates, attachments, assign, and snooze from the thread.',
     placement: 'right',
   },
   {
@@ -47,7 +47,73 @@ export const EMPTY_COMPOSE = {
   channel: 'email',
   phone: '',
   countryIso: 'IN',
+  mode: '',
+  templateId: '',
+  templateVars: {},
+  templateDirty: false,
+  matchedCandidate: null,
+  draftId: '',
 };
+
+export const SNOOZE_OPTIONS = [
+  { id: '1h', label: '1 hour' },
+  { id: 'tonight', label: 'This evening' },
+  { id: 'tomorrow', label: 'Tomorrow morning' },
+  { id: 'week', label: 'Next week' },
+];
+
+export function snoozeUntil(id) {
+  const now = new Date();
+  if (id === '1h') return new Date(now.getTime() + 60 * 60 * 1000);
+  if (id === 'tonight') {
+    const d = new Date(now);
+    d.setHours(18, 0, 0, 0);
+    if (d <= now) d.setDate(d.getDate() + 1);
+    return d;
+  }
+  if (id === 'tomorrow') {
+    const d = new Date(now);
+    d.setDate(d.getDate() + 1);
+    d.setHours(9, 0, 0, 0);
+    return d;
+  }
+  if (id === 'week') {
+    const d = new Date(now);
+    const add = ((8 - d.getDay()) % 7) || 7;
+    d.setDate(d.getDate() + add);
+    d.setHours(9, 0, 0, 0);
+    return d;
+  }
+  return new Date(now.getTime() + 60 * 60 * 1000);
+}
+
+export function fillInboxTemplate(text, vars = {}) {
+  return String(text || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => {
+    const v = vars[key];
+    if (v == null || v === '') return `{{${key}}}`;
+    return String(v);
+  });
+}
+
+export function usedTemplateKeys(text = '') {
+  const keys = new Set();
+  String(text || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => {
+    keys.add(key);
+    return '';
+  });
+  return [...keys];
+}
+
+export function composeIsDirty(compose, files = []) {
+  if (files.length) return true;
+  return Boolean(
+    String(compose?.toAddress || '').trim()
+    || String(compose?.subject || '').trim()
+    || String(compose?.body || '').trim()
+    || String(compose?.phone || '').trim()
+    || compose?.templateId
+  );
+}
 
 export const formatWhen = (iso) => {
   if (!iso) return '';

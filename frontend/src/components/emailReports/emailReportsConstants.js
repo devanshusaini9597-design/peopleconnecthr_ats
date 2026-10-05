@@ -57,21 +57,21 @@ export const CHANNEL_TABS = [
     label: 'Marketing campaigns',
     short: 'Campaigns',
     provider: 'Zoho Campaigns',
-    blurb: 'Bulk / nurture — funnel from campaign send through opens, clicks, unsubscribes, and bounces.',
+    blurb: 'Campaign mail, from send through opens, clicks, unsubscribes, and bounces.',
   },
   {
     id: 'transactional',
     label: 'Transactional',
     short: 'Transactional',
     provider: 'ZeptoMail',
-    blurb: 'Candidate mail, OTP, invites — delivery and engagement from ZeptoMail.',
+    blurb: 'Candidate mail, one-time codes, and invitations, with delivery and engagement.',
   },
   {
     id: 'all',
     label: 'All mail',
     short: 'All',
     provider: 'All providers',
-    blurb: 'Combined ledger across marketing and transactional channels.',
+    blurb: 'Marketing and transactional mail in one history.',
   },
 ];
 

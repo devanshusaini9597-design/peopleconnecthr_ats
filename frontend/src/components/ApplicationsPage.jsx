@@ -111,7 +111,15 @@ function ApplicationsPageInner() {
       <PageHeader
         icon={PageIcon}
         title={pageTitle}
-        subtitle={selectedJob ? jobTitle(selectedJob) : (stats.total ? `${stats.total} in pipeline` : pageSubtitle)}
+        subtitle={
+          selectedJob
+            ? [
+                selectedJob.jobCode,
+                jobTitle(selectedJob),
+                `${Number(stats.total || selectedJob.applicationCount || 0)} applicants`,
+              ].filter(Boolean).join(' · ')
+            : (stats.total ? `${stats.total} in pipeline` : pageSubtitle)
+        }
         gradientTitle
       >
         <button type="button" onClick={openAddModal} className="btn-primary flex-1 sm:flex-none">
@@ -134,7 +142,17 @@ function ApplicationsPageInner() {
         </span>
       </div>
 
-      {!isApplicationsRoute && viewMode === 'kanban' && !loading && applications.length > 0 && (
+      {selectedJob && !loading && (
+        <ApplicationsStageSummary
+          stages={boardStages}
+          getAppsByStage={getAppsByStage}
+          stageFilter={stageFilter}
+          setStageFilter={setStageFilter}
+          total={filteredApplications.length || stats.total || applications.length}
+        />
+      )}
+
+      {!selectedJob && !isApplicationsRoute && viewMode === 'kanban' && !loading && applications.length > 0 && (
         <ApplicationsStageSummary
           stages={boardStages}
           getAppsByStage={getAppsByStage}

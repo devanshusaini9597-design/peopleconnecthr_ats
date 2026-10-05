@@ -42,6 +42,11 @@ const requireCandidateExport = requireRole(...CANDIDATE_EXPORT_ROLES);
 const requireRecruiterOrAbove = requireRole(
   'owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales'
 );
+/** MIS marketing contacts — company staff only, never freelancers. */
+const requireMisCompany = requireRole(
+  'owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales'
+);
+const requireMailboxAdmin = requireRole(...['owner', 'admin', 'hr_manager']);
 const requireFreelancerOrRecruiter = requireRole(
   'owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales', 'freelancer'
 );
@@ -148,6 +153,8 @@ module.exports = {
   CANDIDATE_EXPORT_ROLES,
   requireCandidateExport,
   requireRecruiterOrAbove,
+  requireMisCompany,
+  requireMailboxAdmin,
   requireFreelancerOrRecruiter,
   requireInterviewerOrAbove,
   checkPlanLimit

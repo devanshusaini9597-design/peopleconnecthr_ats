@@ -12,8 +12,10 @@ import {
   XCircle,
   Loader2,
   X,
+  Eye,
 } from 'lucide-react';
 import PageHeader from './ui/PageHeader';
+import EmailHtmlFrame from './ui/EmailHtmlFrame';
 import ProductTour from './ui/ProductTour';
 import TourHelpFab from './ui/TourHelpFab';
 import usePageTour from '../hooks/usePageTour';
@@ -77,13 +79,19 @@ function fmtDate(v) {
   if (!v) return '—';
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('en-IN', {
+  const time = d.toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).replace(/\s*(AM|PM)\s*/i, (m) => ` ${m.trim().toLowerCase()}`);
+  const date = d.toLocaleDateString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     day: '2-digit',
     month: 'short',
     year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
   });
+  return `${time} · ${date} IST`;
 }
 
 async function readJson(res) {
@@ -147,12 +155,19 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
       r.status !== 'hard_bounced' &&
       r.status !== 'soft_bounced'
   );
+  const previewHtml = String(item.htmlBody || item.textBody || '').trim();
+  const previewTo =
+    recipients.length === 1
+      ? recipients[0].email
+      : recipients.length > 1
+        ? `${recipients[0]?.email || ''} +${recipients.length - 1} more`
+        : '';
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-stone-900/40 backdrop-blur-[1px] animate-page-enter">
       <button type="button" className="flex-1 cursor-default" aria-label="Close" onClick={onClose} />
-      <aside className="modal-panel-ats flex h-full w-full max-w-xl flex-col border-l border-stone-200 bg-white shadow-2xl">
-        <div className="relative border-b border-stone-100 px-5 py-4">
+      <aside className="modal-panel-ats flex h-full w-full max-w-4xl flex-col border-l border-stone-200 bg-[#f6f5f3] shadow-[0_24px_80px_-24px_rgba(28,25,23,0.45)]">
+        <div className="relative border-b border-stone-200/80 bg-white px-6 py-5">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
           <div className="flex items-start justify-between gap-3 pt-1">
             <div className="min-w-0">
@@ -162,7 +177,7 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
               <h2 className="mt-1 truncate text-lg font-bold tracking-tight text-stone-900">
                 {item.subject || item.campaignName || 'Untitled send'}
               </h2>
-              <p className="mt-1 text-sm text-stone-500">{fmtDate(item.sentAt)}</p>
+              <p className="mt-1 text-sm font-medium text-stone-600">{fmtDate(item.sentAt)}</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <button
@@ -172,7 +187,7 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
                 className="btn-secondary inline-flex items-center gap-1.5 px-3 py-2 text-sm"
               >
                 {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                Sync
+                Refresh delivery
               </button>
               <button
                 type="button"
@@ -186,22 +201,72 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
           </div>
         </div>
 
-        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+          {/* Mail preview — ZeptoMail / Zoho Campaigns style */}
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <Eye className="h-4 w-4 text-stone-500" />
+              <h3 className="text-sm font-semibold tracking-tight text-stone-900">Sent message</h3>
+            </div>
+            <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-[0_8px_30px_-18px_rgba(28,25,23,0.45)]">
+              <div className="space-y-1.5 border-b border-stone-100 bg-stone-50/90 px-4 py-3 text-xs">
+                <div className="flex gap-2">
+                  <span className="w-14 shrink-0 font-semibold uppercase tracking-wide text-stone-400">
+                    Subject
+                  </span>
+                  <span className="min-w-0 break-words font-medium text-stone-800">
+                    {item.subject || '—'}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="w-14 shrink-0 font-semibold uppercase tracking-wide text-stone-400">
+                    From
+                  </span>
+                  <span className="min-w-0 break-all text-stone-700">{item.fromEmail || '—'}</span>
+                </div>
+                {previewTo ? (
+                  <div className="flex gap-2">
+                    <span className="w-14 shrink-0 font-semibold uppercase tracking-wide text-stone-400">
+                      To
+                    </span>
+                    <span className="min-w-0 break-all text-stone-700">{previewTo}</span>
+                  </div>
+                ) : null}
+              </div>
+              {previewHtml ? (
+                <EmailHtmlFrame
+                  html={previewHtml}
+                  title="Email preview"
+                  className="w-full border-0 bg-white"
+                  style={{ height: 'min(68vh, 720px)', minHeight: '420px' }}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-2 bg-white px-6 py-16 text-center">
+                  <Mail className="h-8 w-8 text-stone-300" />
+                  <p className="text-sm font-medium text-stone-700">Message preview is not available</p>
+                  <p className="max-w-md text-xs leading-relaxed text-stone-500">
+                    The provider has not returned the sent layout for this record. Choose Refresh delivery, wait for it to finish, then open this send again.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
             {[
               ['Sent', totals.sent],
               ['Delivered', totals.delivered],
               ['Opened', totals.opened],
               ['Clicked', totals.clicked],
-              ['Unsubscribed', totals.unsubscribed],
               ['Bounced', totals.bounced],
+              ['Unsubscribed', totals.unsubscribed],
               ['Replied', totals.replied],
               ['Failed', totals.failed],
               ['Spam', totals.spam],
             ].map(([label, val]) => (
-              <div key={label} className="rounded-2xl border border-stone-200/80 bg-stone-50/80 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">{label}</p>
-                <p className="text-lg font-bold tabular-nums text-stone-900">{val ?? 0}</p>
+              <div key={label} className="rounded-xl border border-stone-200/80 bg-white px-3 py-2.5 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-400">{label}</p>
+                <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight text-stone-900">{val ?? 0}</p>
               </div>
             ))}
           </div>
@@ -210,7 +275,7 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
             <Badge tone={item.status}>{item.status}</Badge>
           </div>
 
-          <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+          <dl className="grid grid-cols-1 gap-3 rounded-2xl border border-stone-200/80 bg-white p-4 text-sm shadow-sm sm:grid-cols-2">
             <div>
               <dt className="text-xs font-semibold uppercase text-stone-500">From</dt>
               <dd className="mt-0.5 break-all font-medium text-stone-800">{item.fromEmail || '—'}</dd>
@@ -256,7 +321,7 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
           {unsubscribedContacts.length > 0 && (
             <div>
               <h3 className="mb-2 text-sm font-bold tracking-tight text-rose-800">
-                Unsubscribed contacts ({unsubscribedContacts.length})
+                Unsubscribed ({unsubscribedContacts.length})
               </h3>
               <div className="overflow-hidden rounded-2xl border border-rose-200/80">
                 <ul className="divide-y divide-rose-100 bg-white">
@@ -277,10 +342,10 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
           {subscribedContacts.length > 0 && item.channel === 'marketing' && (
             <div>
               <h3 className="mb-2 text-sm font-bold tracking-tight text-stone-900">
-                Still subscribed / active ({subscribedContacts.length})
+                Still subscribed ({subscribedContacts.length})
               </h3>
               <p className="mb-2 text-xs text-stone-500">
-                Contacts on this send who have not opted out or bounced.
+                Recipients on this send who have not unsubscribed or bounced.
               </p>
               <div className="max-h-40 overflow-y-auto rounded-2xl border border-stone-200/80">
                 <ul className="divide-y divide-stone-100 bg-white">
@@ -302,40 +367,40 @@ function DetailPanel({ item, onClose, onSync, syncing }) {
             <h3 className="mb-2 text-sm font-bold tracking-tight text-stone-900">
               All recipients ({recipients.length})
             </h3>
-            <div className="overflow-hidden rounded-2xl border border-stone-200/80">
-              <table className="min-w-full divide-y divide-stone-100 text-sm">
-                <thead className="bg-stone-50 text-left text-xs font-semibold uppercase tracking-wide text-stone-500">
+            <div className="overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-sm">
+              <table className="min-w-full border-collapse border border-stone-300 text-sm">
+                <thead className="bg-stone-100 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-600">
                   <tr>
-                    <th className="px-3 py-2.5">Email</th>
-                    <th className="px-3 py-2.5">Status</th>
-                    <th className="px-3 py-2.5">Opens</th>
-                    <th className="px-3 py-2.5">Clicks</th>
-                    <th className="px-3 py-2.5">Timeline</th>
+                    <th className="border border-stone-300 px-3 py-2.5">Email</th>
+                    <th className="border border-stone-300 px-3 py-2.5">Status</th>
+                    <th className="border border-stone-300 px-3 py-2.5">Opens</th>
+                    <th className="border border-stone-300 px-3 py-2.5">Clicks</th>
+                    <th className="border border-stone-300 px-3 py-2.5">Timeline</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-stone-100 bg-white">
+                <tbody className="bg-white">
                   {recipients.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-3 py-8 text-center text-stone-500">
-                        No per-recipient rows yet. Click Sync to pull provider details.
+                      <td colSpan={5} className="border border-stone-300 px-3 py-8 text-center text-stone-500">
+                        Recipient activity is not available yet. Refresh delivery to load it from the provider.
                       </td>
                     </tr>
                   )}
                   {recipients.map((r) => (
                     <tr key={r.email} className="align-top">
-                      <td className="px-3 py-2.5">
+                      <td className="border border-stone-300 px-3 py-2.5">
                         <div className="break-all font-medium text-stone-800">{r.email}</div>
                         {r.name ? <div className="text-xs text-stone-500">{r.name}</div> : null}
                         {r.bounceReason ? (
                           <div className="mt-1 text-xs text-rose-600">{r.bounceReason}</div>
                         ) : null}
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="border border-stone-300 px-3 py-2.5">
                         <Badge tone={r.status}>{r.status}</Badge>
                       </td>
-                      <td className="px-3 py-2.5 tabular-nums">{r.openCount || 0}</td>
-                      <td className="px-3 py-2.5 tabular-nums">{r.clickCount || 0}</td>
-                      <td className="px-3 py-2.5 text-xs text-stone-600">
+                      <td className="border border-stone-300 px-3 py-2.5 tabular-nums">{r.openCount || 0}</td>
+                      <td className="border border-stone-300 px-3 py-2.5 tabular-nums">{r.clickCount || 0}</td>
+                      <td className="border border-stone-300 px-3 py-2.5 text-xs text-stone-600">
                         <div>Sent: {fmtDate(r.sentAt)}</div>
                         {r.deliveredAt && <div>Delivered: {fmtDate(r.deliveredAt)}</div>}
                         {r.openedAt && <div>Opened: {fmtDate(r.openedAt)}</div>}
@@ -445,7 +510,9 @@ const EmailReportsPage = () => {
           data.displayMessage || data.message || `Failed to load reports (HTTP ${res.status})`
         );
       }
-      setItems(data.items || []);
+      const rows = Array.isArray(data.items) ? [...data.items] : [];
+      rows.sort((a, b) => new Date(b.sentAt || b.createdAt || 0) - new Date(a.sentAt || a.createdAt || 0));
+      setItems(rows);
       setSummary({ ...emptySummary(), ...(data.summary || {}) });
       setChannelSummaries({
         marketing: { ...emptySummary(), ...(data.channelSummaries?.marketing || {}) },
@@ -506,7 +573,7 @@ const EmailReportsPage = () => {
         throw new Error(data.message || data.displayMessage || 'Sync failed');
       }
       setSelected(data.item);
-      toast.success('Report synced from provider');
+      toast.success('Delivery details updated');
       load();
     } catch (err) {
       toast.error(err.message || 'Sync failed');
@@ -557,7 +624,7 @@ const EmailReportsPage = () => {
         <PageHeader
           icon={Inbox}
           title="Email Reports"
-          subtitle="Separate views for Zoho Campaigns (marketing) and ZeptoMail (transactional) — opens, clicks, bounces, and replies."
+          subtitle="Delivery, opens, clicks, bounces, and replies for marketing campaigns and transactional mail."
         >
           <button
             type="button"
@@ -567,7 +634,7 @@ const EmailReportsPage = () => {
             className="btn-secondary"
           >
             <RefreshCw size={16} className={syncingAll ? 'animate-spin' : ''} />
-            Refresh from Zoho
+            Refresh delivery
           </button>
         </PageHeader>
 
@@ -643,10 +710,10 @@ const EmailReportsPage = () => {
             </div>
             <div className="min-w-0">
               <h2 className="text-sm font-bold tracking-tight text-stone-900">
-                {activeMeta.label} · engagement funnel
+                {activeMeta.label} engagement
               </h2>
               <p className="text-xs text-stone-500">
-                Campaigns = jobs · Recipients = people · Click a card to filter the table
+                Select a metric to filter the send history. Each campaign can include many recipients.
               </p>
             </div>
           </div>
@@ -695,7 +762,7 @@ const EmailReportsPage = () => {
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-sm font-bold text-stone-800">
               <Filter className="h-4 w-4 text-brand-600" />
-              Filters · {activeMeta.short}
+              Filters
             </div>
             {filtersActive ? (
               <button

@@ -7,6 +7,7 @@ const express = require('express');
 const logger = require('../utils/logger');
 const router = express.Router();
 const { requireFeature } = require('../middleware/featureMiddleware');
+const { rankForJob, replyToTalentChat } = require('../services/talentMatchService');
 const {
   scoreResume,
   generateJobDescription,
@@ -53,6 +54,24 @@ function mount(path, feature, fn, label, wrap = (data) => ({ success: true, data
     }
   });
 }
+
+router.post('/talent-chat', requireFeature('ai.matchScore'), async (req, res) => {
+  try {
+    const data = await replyToTalentChat(req.user, req.body || {});
+    res.json({ success: true, data });
+  } catch (error) {
+    handleAiError(res, error, 'Talent chat error');
+  }
+});
+
+router.post('/job-matches', requireFeature('ai.matchScore'), async (req, res) => {
+  try {
+    const data = await rankForJob(req.user, req.body || {});
+    res.json({ success: true, data });
+  } catch (error) {
+    handleAiError(res, error, 'Job match error');
+  }
+});
 
 mount('/score', 'integrations.aiScoring', scoreResume, 'AI score error', (r) => ({
   success: true,

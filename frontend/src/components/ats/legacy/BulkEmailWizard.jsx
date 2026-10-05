@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, Mail, Check, RefreshCw, AlertCircle } from 'lucide-react';
 import { EMAIL_TYPE_OPTIONS } from '../atsConstants';
+import { guardTableCopy } from '../../../utils/tableCopyGuard';
 
 /** Deprecated bulk email wizard (~5078-5494) — gated with false in original */
 export default function BulkEmailWizard(props) {
@@ -107,8 +108,8 @@ export default function BulkEmailWizard(props) {
                       Step 2: Select Recipients
                     </h3>
                     <div className="border border-stone-200 rounded-xl overflow-hidden">
-                      <div className="max-h-80 overflow-y-auto">
-                        <table className="w-full">
+                      <div className="max-h-80 overflow-y-auto select-none" onCopy={guardTableCopy}>
+                        <table className="w-full select-none">
                           <thead className="bg-stone-50 border-b border-stone-200 sticky top-0 z-10">
                             <tr>
                               <th className="px-4 py-3 text-center w-12">

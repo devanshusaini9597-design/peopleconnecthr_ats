@@ -12,7 +12,7 @@ try {
 /** Separators that mean "Label: value" — never a bare hyphen inside words (client-facing). */
 const LABEL_SEP = String.raw`(?:\s*(?::|–|—)\s*|\s+-\s+)`;
 
-const NEXT_FIELD_STOP = String.raw`(?=\s+(?:Job\s*Title|Designation|Typical\s*Grade|Grade|Legal\s*Entity|Client\s*Name|Company\s*Name|Function|Department|Business\s*Unit|Division|CTC|Salary|Compensation|Reporting\s*Manager|Direct\s*Reports|Indirect\s*Reports|Travel\s*required|Level\s*of\s*travel|Experience|Education|Location|Locations|Industry|Sector|Skills?|Job\s*Summary|Key\s*Responsib|Purpose\s*of\s*the\s*role|JOB\s*DIMENSIONS|EDUCATION)|$)`;
+const NEXT_FIELD_STOP = String.raw`(?=\s+(?:Job\s*Title|Designation|Typical\s*Grade|Grade|Legal\s*Entity|Client\s*Name|Company\s*Name|Function|Department|Business\s*Unit|Division|CTC|Salary|Compensation|Reporting\s*To|Reporting\s*Manager|Direct\s*Reports|Indirect\s*Reports|Travel\s*required|Level\s*of\s*travel|Level|Experience|Education|Location|Locations|Industry|Sector|Skills?|Languages?|Job\s*Summary|Key\s*Responsib|Purpose\s*of\s*the\s*role|JOB\s*DIMENSIONS|EDUCATION|Number\s*of\s*years|Type\s*of\s*companies|Computer\s*/?\s*technical|Prepared\s*by|Ref\.?\s*No)|$)`;
 
 function escapeHtml(value) {
   return String(value || '')
@@ -36,14 +36,15 @@ function toHtml(block) {
 
 const HEADING_MAP = [
   ['summary', /^(job\s*summary|summary|about the role|overview|position summary|about (the )?company|purpose of the role|role description)$/i],
-  ['responsibilities', /^(key\s*)?responsibilit(y|ies)|duties|what you.?ll do|role (and )?responsibilit|team building$/i],
-  ['requirements', /^(candidate\s*)?(requirements?|qualifications)|education and experience|desired experience|must have|what you.?ll need|key results? area|kra$/i],
+  ['responsibilities', /^(key\s*)?responsibilit(y|ies)|duties|what you.?ll do|role (and )?responsibilit|team building|indicative tasks?$/i],
+  ['kpis', /^(key results?\s*area|kra|key performance indicator|kpis?)$/i],
+  ['requirements', /^(candidate\s*)?(requirements?|qualifications)|education and experience|desired experience|must have|what you.?ll need$/i],
   ['preferred', /^(preferred|nice to have|good to have|candidate profile|preferred candidate)/i],
-  ['skills', /^(skills?|skill set|competenc(y|ies))$/i],
+  ['skills', /^(skills?|skill set|computer\s*\/?\s*technical skills?)$/i],
   ['locations', /^(locations?|job location|work location)$/i],
 ];
 
-const SECTION_SPLIT_RE = /\b(job\s*dimensions|purpose of the role|role description|key responsibilities|responsibilities|duties|education and experience|desired experience(?:\s*&\s*qualification)?|candidate requirements?|qualifications|key results?\s*area|kra|preferred candidate(?:\s*profile)?|skills?|job summary|about the role)\s*(?::|–|—)?\s*/gi;
+const SECTION_SPLIT_RE = /\b(job\s*dimensions|purpose of the role|role description|key responsibilities|indicative tasks?|education and experience|desired experience(?:\s*&\s*qualification)?|candidate requirements?|qualifications|key results?\s*area|kra|preferred candidate(?:\s*profile)?|job summary|about the role)\s*(?::|–|—)?\s*/gi;
 
 function isBlankish(value) {
   const v = String(value || '').trim();
@@ -56,7 +57,7 @@ function cleanScalar(value, { maxLen = 80 } = {}) {
   if (!v || isBlankish(v)) return '';
   // Cut at a following Label: if still jammed.
   const cut = v.search(
-    /\s+(?:Job\s*Title|Designation|Typical\s*Grade|Grade|Function|Department|CTC|Salary|Reporting\s*Manager|Direct\s*Reports|Experience|Education|Location|Locations)\s*(?::|–|—)/i,
+    /\s+(?:Job\s*Title|Designation|Typical\s*Grade|Grade|Function|Department|Business\s*Unit|Division|CTC|Salary|Reporting\s*To|Reporting\s*Manager|Direct\s*Reports|Travel\s*required|Level\s*of\s*travel|Experience|Education|Location|Locations|Languages?)\s*(?::|–|—)/i,
   );
   if (cut > 0) v = v.slice(0, cut).trim();
   if (isBlankish(v)) return '';
@@ -100,17 +101,28 @@ function normalizeJdText(raw) {
   let text = String(raw || '').replace(/\r/g, '').trim();
   if (!text) return '';
 
+  text = text
+    .replace(/\bReporting\s+To\s+(?=[A-Z])/gi, '\nReporting To: ')
+    .replace(/\bDirect\s+Reports\s+(\d+)\b/gi, '\nDirect Reports: $1')
+    .replace(/\bNumber of years of experience\s*\(range\)\s*(?::|–|—)?\s*/gi, '\nExperience: ')
+    .replace(/\bComputer\s*\/?\s*technical skills(?:\s*\(if any\))?\s*(?::|–|—)\s*/gi, '\nSkills: ');
+
   text = text.replace(SECTION_SPLIT_RE, '\n$1:\n');
 
-  // Break only on Label: / Label – (colon or dash with spaces), never bare hyphen.
+  const colonSep = String.raw`(?:\s*(?::|–|—)\s*)`;
+  const colonOnly = new Set(['Skills', 'Languages', 'Level', 'Grade', 'Experience', 'Education']);
   const breakLabels = [
     'Job Title', 'Designation', 'Typical Grade', 'Grade', 'Legal Entity', 'Client Name',
     'Company Name', 'Function', 'Department', 'Business Unit', 'Division', 'CTC', 'Salary',
-    'Compensation', 'Reporting Manager', 'Direct Reports', 'Indirect Reports',
-    'Experience', 'Education', 'Location', 'Locations', 'Industry', 'Sector', 'Skills',
+    'Compensation', 'Reporting To', 'Reporting Manager', 'Direct Reports', 'Indirect Reports',
+    'Travel required', 'Level of travel', 'Level', 'Experience', 'Education', 'Location', 'Locations',
+    'Industry', 'Sector', 'Skills', 'Languages', 'Prepared by', 'Ref. No',
+    'Number of years of experience', 'Type of companies/sector worked for',
+    'Purpose of the role',
   ];
   for (const label of breakLabels) {
-    const re = new RegExp(`\\b(${label.replace(/\s+/g, '\\s+')})${LABEL_SEP}`, 'gi');
+    const sep = colonOnly.has(label) ? colonSep : LABEL_SEP;
+    const re = new RegExp(`\\b(${label.replace(/\s+/g, '\\s+').replace(/\//g, '\\/')})${sep}`, 'gi');
     text = text.replace(re, '\n$1: ');
   }
 
@@ -126,50 +138,83 @@ function normalizeJdText(raw) {
 }
 
 function parseMetaLine(line, fields) {
-  const m = String(line || '').match(/^([A-Za-z][A-Za-z0-9 &/]+?)\s*(?::|–|—)\s*(.+)$/)
-    || String(line || '').match(/^([A-Za-z][A-Za-z0-9 &/]+?)\s+-\s+(.+)$/);
+  const m = String(line || '').match(/^([A-Za-z][A-Za-z0-9 &/().]+?)\s*(?::|–|—)\s*(.+)$/)
+    || String(line || '').match(/^([A-Za-z][A-Za-z0-9 &/().]+?)\s+-\s+(.+)$/);
   if (!m) return false;
   const label = m[1].trim().toLowerCase();
   let value = m[2].trim();
   if (!value) return false;
 
   const nextLabel = value.search(
-    /\s+\b(?:job\s*title|designation|typical\s*grade|grade|legal\s*entity|client\s*name|company\s*name|function|industry|department|ctc|salary|experience|education|location|skills?|reporting\s*manager|direct\s*reports|travel required|business unit|division|prepared by|ref\.?\s*no)\s*(?::|–|—)/i,
+    /\s+\b(?:Job\s*Title|Designation|Typical\s*Grade|Grade|Legal\s*Entity|Client\s*Name|Company\s*Name|Function|Industry|Department|Business\s*Unit|Division|CTC|Salary|Experience|Education|Location|Skills|Languages|Reporting\s*To|Reporting\s*Manager|Direct\s*Reports|Travel\s*required|Level\s*of\s*travel|Prepared\s*by|Ref\.?\s*No\.?|Purpose\s*of\s*the\s*role|Job\s*Dimensions?)\s*(?::|–|—)/i,
   );
   if (nextLabel > 0) value = value.slice(0, nextLabel).trim();
+  value = value.replace(/\s*Ref\.?\s*No\.?:?\s*$/i, '').replace(/\s*\bJob\s*Dimensions?\b\.?\s*$/i, '').trim();
   if (!value || isBlankish(value)) {
-    // Consume known empty meta so it does not pollute summary.
-    if (/^(job title|role|position|designation|typical grade|grade|client|client name|legal entity|company|function|industry|department|ctc|salary|compensation|experience|locations?|reporting manager|direct reports)$/.test(label)) {
+    if (/^(job title|role|position|designation|typical grade|grade|client|client name|legal entity|company|function|industry|department|ctc|salary|compensation|experience|locations?|reporting to|reporting manager|direct reports|travel required|level of travel|level|business unit|division|prepared by|ref\.?\s*no)$/.test(label)) {
       return true;
     }
     return false;
   }
 
-  if (/^(job title|role|position|designation|role title|position title)$/.test(label) && !fields.role) {
-    fields.role = cleanScalar(value, { maxLen: 100 });
-  } else if (/^(client name|legal entity|company name|organisation|organization)$/.test(label) && !fields.clientName) {
-    fields.clientName = looksLikeClientName(value);
-  } else if (/^(function|industry|sector)$/.test(label) && !fields.industry) {
-    fields.industry = cleanScalar(value, { maxLen: 60 });
-  } else if (/^department$/.test(label) && !fields.department) {
-    fields.department = cleanScalar(value, { maxLen: 80 });
-  } else if (/^(typical grade|grade)$/.test(label) && !fields.grade) {
-    fields.grade = cleanScalar(value, { maxLen: 60 });
-  } else if (/^(ctc|salary|compensation|pay range)$/.test(label) && !fields.ctc) {
-    fields.ctc = looksLikeCtc(value);
-  } else if (/^experience$/.test(label) && !fields.experience) {
-    const years = value.match(/(\d+\s*[-–to]+\s*\d+\s*years?|\d+\+?\s*years?)/i);
-    fields.experience = years
-      ? years[1].replace(/\s+/g, ' ').trim()
-      : cleanScalar(value.split(/[.]/)[0], { maxLen: 40 });
+  if (/^(job title|role|position|designation|role title|position title)$/.test(label)) {
+    if (!fields.role) fields.role = cleanScalar(value, { maxLen: 100 });
+  } else if (/^(client name|legal entity|company name|organisation|organization)$/.test(label)) {
+    if (!fields.clientName) fields.clientName = looksLikeClientName(value);
+  } else if (/^(function|industry|sector)$/.test(label)) {
+    if (!fields.industry) fields.industry = cleanScalar(value, { maxLen: 60 });
+  } else if (/^type of companies/.test(label)) {
+    if (!fields.industry) {
+      const sector = value.match(/\b(banking|insurance|bfsi|nbfc|it(?:es)?|fmcg|pharma|healthcare|retail)\b/i);
+      fields.industry = sector ? sector[1] : cleanScalar(value.split(/[–,]/)[0], { maxLen: 40 });
+    }
+  } else if (/^department$/.test(label)) {
+    if (!fields.department) fields.department = cleanScalar(value, { maxLen: 80 });
+  } else if (/^business unit$/.test(label)) {
+    if (!fields.businessUnit) fields.businessUnit = cleanScalar(value, { maxLen: 80 });
+  } else if (/^division$/.test(label)) {
+    if (!fields.division) fields.division = cleanScalar(value, { maxLen: 80 });
+  } else if (/^(typical grade|grade)$/.test(label)) {
+    if (!fields.grade) fields.grade = cleanScalar(value, { maxLen: 60 });
+  } else if (/^(ctc|salary|compensation|pay range)$/.test(label)) {
+    if (!fields.ctc) fields.ctc = looksLikeCtc(value);
+  } else if (/experience/.test(label)) {
+    if (!fields.experience) {
+      const years = value.match(/(\d+\s*[-–to]+\s*\d+\s*years?|\d+\+?\s*years?)/i);
+      fields.experience = years
+        ? years[1].replace(/\s+/g, ' ').trim()
+        : cleanScalar(value.split(/[.]/)[0], { maxLen: 40 });
+    }
   } else if (/^locations?$|^job location$|^work location$/.test(label)) {
     const parts = value.split(/[,;/|]+/).map((v) => v.trim()).filter((v) => v && !isBlankish(v));
     if (parts.length) {
       fields.locations = [...new Set([...(fields.locations || []), ...parts])];
     }
-  } else if (/^skills?$|^skill set$/.test(label) && !fields.skills.length) {
-    fields.skills = value.split(/[,;/]+/).map((v) => v.trim()).filter((v) => v && !isBlankish(v));
-  } else if (/prepared by|ref\.?\s*no|travel required|level of travel|^level$|business unit|division|reporting manager|direct reports|indirect reports|geographic spread|^education$/.test(label)) {
+  } else if (/^skills$|^skill set$|^computer/.test(label)) {
+    const extra = value
+      .replace(/^good in\s+/i, '')
+      .replace(/^\(if any\)\s*:?\s*/i, '')
+      .split(/[,;/]+/)
+      .map((v) => v.trim().replace(/^\(if any\)\s*:?\s*/i, ''))
+      .filter((v) => v && !isBlankish(v) && v.length < 40 && !/including |if any/i.test(v));
+    if (extra.length) {
+      fields.skills = [...new Set([...(fields.skills || []), ...extra])];
+    }
+  } else if (/^languages$/.test(label)) {
+    if (!fields.languages) fields.languages = value.replace(/\s+/g, ' ').trim().slice(0, 240);
+  } else if (/^(reporting to|reporting manager)$/.test(label)) {
+    if (!fields.reportingTo) fields.reportingTo = cleanScalar(value, { maxLen: 80 });
+  } else if (/^direct reports$/.test(label)) {
+    if (!fields.directReports) fields.directReports = cleanScalar(value, { maxLen: 20 });
+  } else if (/^travel required$/.test(label)) {
+    if (!fields.travelRequired) fields.travelRequired = cleanScalar(value, { maxLen: 20 });
+  } else if (/^level of travel$/.test(label)) {
+    if (!fields.travelLevel) fields.travelLevel = cleanScalar(value, { maxLen: 40 });
+  } else if (/^level$/.test(label)) {
+    if (!fields.jobLevel) fields.jobLevel = cleanScalar(value.replace(/\bjob dimensions?\b/i, ''), { maxLen: 40 });
+  } else if (/^prepared by$/.test(label)) {
+    if (!fields.preparedBy) fields.preparedBy = cleanScalar(value, { maxLen: 80 });
+  } else if (/prepared by|ref\.?\s*no|geographic spread|^education$/.test(label)) {
     return true;
   } else {
     return false;
@@ -241,14 +286,48 @@ function extractInlineFields(text, fields) {
   }
 
   if (!fields.experience) {
-    const years = text.match(/(\d+\s*[-–]\s*\d+)\s*years?\s+of\s+experience/i)
+    const years = text.match(/experience(?:\s*\(range\))?\s*(?::|–|—)?\s*(\d+\s*[-–to]+\s*\d+\s*years?|\d+\+?\s*years?)/i)
+      || text.match(/(\d+\s*[-–]\s*\d+)\s*years?\s+of\s+experience/i)
       || text.match(/\bExperience\s*(?::|–|—)\s*(\d+\+?\s*years?)/i)
+      || text.match(/\b(\d+\s*[-–]\s*\d+)\s*years\b/i)
       || text.match(/(\d+)\s*years?\s+of\s+experience/i);
     if (years) {
       fields.experience = years[1].includes('year')
         ? years[1].replace(/\s+/g, ' ').trim()
         : `${String(years[1]).replace(/\s+/g, '')} years`;
     }
+  }
+
+  if (!fields.industry) {
+    if (/\b(small finance bank|private sector banks|psu banks|cooperative banks|rural banks|nbfc|bfsi)\b/i.test(text)) {
+      fields.industry = 'BFSI';
+    } else if (/\bbanking\b/i.test(text)) {
+      fields.industry = 'BANKING';
+    }
+  }
+
+  if (!fields.employmentType && /\b(legal entity|grade|designation)\b/i.test(text) && !/\b(contract|intern|freelance|part[- ]time)\b/i.test(text)) {
+    fields.employmentType = 'full_time';
+  }
+
+  const chained = [];
+  const chainRe = /((?:[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3}\s+-\s+){2,}[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})/g;
+  let chainMatch;
+  while ((chainMatch = chainRe.exec(text)) !== null) {
+    chainMatch[1].split(/\s+-\s+/).forEach((part) => {
+      const s = part.trim();
+      if (s.length >= 3 && s.length <= 40 && s.split(/\s+/).length <= 4 && !/perspective|responsible/i.test(s)) {
+        chained.push(s);
+      }
+    });
+  }
+  const mentioned = [];
+  for (const hint of ['KYC', 'AML', 'MS Office', 'Banking Software']) {
+    if (new RegExp(`\\b${hint.replace(/\s+/g, '\\s+')}\\b`, 'i').test(text)) mentioned.push(hint);
+  }
+  const extraSkills = [...chained, ...mentioned].filter((v) => v && !isBlankish(v));
+  if (extraSkills.length) {
+    fields.skills = [...new Set([...(fields.skills || []), ...extraSkills])];
   }
 
   const cities = extractCitiesFromText(text);
@@ -260,6 +339,20 @@ function extractInlineFields(text, fields) {
   fields.locations = (fields.locations || []).filter((v) => v && !isBlankish(v));
 }
 
+function composeInternalNotes(fields) {
+  const lines = [];
+  if (fields.preparedBy) lines.push(`Prepared by: ${fields.preparedBy}`);
+  if (fields.businessUnit) lines.push(`Business unit: ${fields.businessUnit}`);
+  if (fields.division) lines.push(`Division: ${fields.division}`);
+  if (fields.reportingTo) lines.push(`Reports to: ${fields.reportingTo}`);
+  if (fields.directReports) lines.push(`Direct reports: ${fields.directReports}`);
+  if (fields.jobLevel) lines.push(`Level: ${fields.jobLevel}`);
+  const travel = [fields.travelRequired, fields.travelLevel].filter(Boolean).join(' · ');
+  if (travel) lines.push(`Travel: ${travel}`);
+  if (fields.languages) lines.push(`Languages: ${fields.languages}`);
+  return lines.join('\n');
+}
+
 function parseJdText(raw) {
   const original = String(raw || '');
   const text = normalizeJdText(original);
@@ -268,19 +361,31 @@ function parseJdText(raw) {
     clientName: '',
     industry: '',
     department: '',
+    businessUnit: '',
+    division: '',
     grade: '',
     ctc: '',
     experience: '',
+    employmentType: '',
     locations: [],
     skills: [],
     summary: '',
     responsibilities: '',
     requirements: '',
     preferred: '',
+    kpis: '',
+    languages: '',
+    reportingTo: '',
+    directReports: '',
+    travelRequired: '',
+    travelLevel: '',
+    jobLevel: '',
+    preparedBy: '',
+    internalNotes: '',
   };
   if (!text) return fields;
 
-  extractInlineFields(original, fields);
+  extractInlineFields(text, fields);
 
   const buckets = {
     summary: [],
@@ -289,6 +394,7 @@ function parseJdText(raw) {
     preferred: [],
     skills: [],
     locations: [],
+    kpis: [],
   };
   let current = 'summary';
   const lines = text.split('\n');
@@ -297,13 +403,20 @@ function parseJdText(raw) {
   for (const rawLine of lines) {
     const line = rawLine.trim();
     if (!line) continue;
+    if (/^(job dimensions?|competenc(?:y|ies)|indicative tasks?)$/i.test(line.replace(/:$/, ''))) continue;
     const heading = classifyHeading(line.replace(/:$/, ''));
     if (heading) {
       current = heading;
       continue;
     }
     if (parseMetaLine(line, fields)) continue;
-    if (!consumedTitle && !fields.role && line.length <= 80 && !/[:@]/.test(line)) {
+    if (
+      !consumedTitle
+      && !fields.role
+      && line.length <= 80
+      && !/[:@]/.test(line)
+      && !/^(prepared by|role description|job dimension|indicative tasks|competenc)/i.test(line)
+    ) {
       fields.role = cleanScalar(line.replace(/^job title\s*(?::|–|—)\s*/i, ''), { maxLen: 100 });
       consumedTitle = true;
       continue;
@@ -319,18 +432,33 @@ function parseJdText(raw) {
       .map((v) => v.trim())
       .filter((v) => v && !isBlankish(v));
   }
-  if (!fields.skills.length && buckets.skills.length) {
-    fields.skills = buckets.skills.join(' ').split(/[,;/]+/).map((v) => v.trim()).filter(Boolean);
+  if (buckets.skills.length) {
+    const fromBucket = buckets.skills.join(' ')
+      .replace(/^good in\s+/i, '')
+      .replace(/\(if any\)/gi, '')
+      .split(/[,;/]+/)
+      .map((v) => v.trim())
+      .filter((v) => v && !isBlankish(v) && v.length < 40 && !/including /i.test(v));
+    fields.skills = [...new Set([...(fields.skills || []), ...fromBucket])];
   }
 
   fields.summary = toHtml(buckets.summary.join('\n'));
   fields.responsibilities = toHtml(buckets.responsibilities.join('\n'));
   fields.requirements = toHtml(buckets.requirements.join('\n'));
   fields.preferred = toHtml(buckets.preferred.join('\n'));
+  fields.kpis = toHtml(buckets.kpis.join('\n'));
 
   if (!fields.summary && !fields.responsibilities && !fields.requirements) {
     fields.summary = toHtml(text);
   }
+
+  if (fields.languages && !fields.preferred) {
+    fields.preferred = toHtml(`Languages: ${fields.languages}`);
+  } else if (fields.languages && fields.preferred && !/language/i.test(fields.preferred)) {
+    fields.preferred += `<p>${escapeHtml(`Languages: ${fields.languages}`)}</p>`;
+  }
+
+  fields.internalNotes = composeInternalNotes(fields);
 
   // Final sanitizers
   fields.clientName = looksLikeClientName(fields.clientName);
@@ -342,6 +470,9 @@ function parseJdText(raw) {
   fields.locations = (fields.locations || [])
     .map((v) => String(v).trim())
     .filter((v) => v && !isBlankish(v));
+  fields.skills = (fields.skills || [])
+    .map((v) => String(v).replace(/\s+/g, ' ').trim())
+    .filter((v) => v && v.length < 60 && !isBlankish(v));
 
   return fields;
 }
@@ -373,4 +504,4 @@ async function parseUploadedJd({ buffer, mimetype, filename }) {
   return { ...fields, text };
 }
 
-module.exports = { parseJdText, parseUploadedJd, extractJdFileText, normalizeJdText };
+module.exports = { parseJdText, parseUploadedJd, extractJdFileText, normalizeJdText, composeInternalNotes };

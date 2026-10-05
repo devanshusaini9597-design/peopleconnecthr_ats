@@ -1,6 +1,7 @@
 import React from 'react';
 import { Eye } from 'lucide-react';
 import Modal from '../../ui/Modal';
+import EmailHtmlFrame from '../../ui/EmailHtmlFrame';
 
 /**
  * Full-screen-style email preview dialog (opens above the compose modal).
@@ -42,12 +43,10 @@ export default function EmailPreviewModal({
         </div>
 
         <div className="rounded-xl border border-stone-200 overflow-hidden bg-white shadow-sm">
-          <iframe
-            srcDoc={html || '<p style="padding:24px;color:#78716c;font-family:sans-serif;">No preview</p>'}
+          <EmailHtmlFrame
+            html={html || '<p style="padding:24px;color:#78716c;font-family:sans-serif;">No preview</p>'}
             title="Email preview"
-            className="w-full border-0 bg-white"
             style={{ height: 'min(60vh, 520px)', minHeight: '320px' }}
-            sandbox=""
           />
           {(brand || to) && (
             <div className="px-4 py-2.5 border-t border-stone-100 flex justify-between gap-3 text-[11px] text-stone-400 bg-stone-50">

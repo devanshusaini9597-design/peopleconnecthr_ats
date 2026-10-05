@@ -21,6 +21,7 @@ const hrisAdapter = require('./hrisAdapter');
 const siemAdapter = require('./siemAdapter');
 const dataWarehouseAdapter = require('./dataWarehouseAdapter');
 const whatsappAdapter = require('./whatsappAdapter');
+const { platformAiConfig } = require('./platformAi');
 
 const CATEGORY_FEATURE = {
   email: 'integrations.byoEmail',
@@ -66,6 +67,10 @@ const getAdapter = async (organizationId, category) => {
     });
 
     if (!config) {
+      if (category === 'ai') {
+        const platform = platformAiConfig();
+        if (platform) return aiAdapter.createAiAdapter(platform);
+      }
       if (category === 'whatsapp') {
         const {
           getCompanyCloudCredentials,

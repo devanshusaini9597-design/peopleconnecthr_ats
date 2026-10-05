@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { authenticatedFetch } from '../utils/fetchUtils';
 import { useAuth } from '../context/AuthContext';
 
-const POLL_MS = 20_000;
+const POLL_MS = 45_000;
 
 export function markSupportSeen() {
   authenticatedFetch('/api/support/mark-seen', { method: 'POST' })

@@ -43,6 +43,8 @@
     "sections": {
       "main": "Main",
       "recruitment": "Recruitment",
+      "mis": "For MIS",
+      "freelancer": "Freelancer & Sub Vendor",
       "communication": "Communication",
       "interviews": "Interviews",
       "organization": "Organization",
@@ -63,6 +65,8 @@
       "freelanceReview": "Freelance Review",
       "applications": "Applications",
       "candidates": "Candidates",
+      "mis": "MIS",
+      "misReports": "MIS Reports",
       "pipelineBoard": "Pipeline Board",
       "resumeParsing": "Resume Parsing",
       "talentPools": "Talent Pools",
@@ -91,12 +95,20 @@
       "whiteLabel": "White-Label Kit",
       "chromeExtension": "Chrome Extension",
       "careersChatbot": "Careers Chatbot",
+      "careersPage": "Careers page",
+      "partnerPage": "Partnership page",
+      "freelancerApplications": "Partner applications",
+      "supportDesk": "Freelancer Support",
+      "myTeam": "My Team",
       "referrals": "Referrals",
       "approvals": "Approvals",
       "emailTemplates": "Email Templates",
+      "emailReports": "Email Reports",
       "emailSettings": "Email Settings",
+      "notificationSettings": "Notification preferences",
       "pushNotifications": "Push Notifications",
       "profile": "Profile",
+      "trialRequests": "Trial requests",
       "billing": "Billing"
     },
     "header": {
@@ -181,7 +193,7 @@
     "fromDatabase": "From database",
     "sharedWithMe": "Shared with me",
     "tip": "Tip",
-    "bulkTip": "Select rows for bulk email, WhatsApp, status updates, or share.",
+    "bulkTip": "Select candidates to email, message, update status, share, or delete. Prefer Import → Excel with review for spreadsheet uploads.",
     "exportCandidates": "Export Candidates",
     "bulkDelete": "Bulk Delete",
     "stage": "Stage",
@@ -206,7 +218,7 @@
       "subtitleEmployee": "{{name}} · recruitment overview for {{period}}.",
       "analytics": "Analytics",
       "addCandidate": "Add Candidate",
-      "tourTitle": "Take a tour of the dashboard",
+      "tourTitle": "Dashboard tour",
       "loadError": "Could not load dashboard data"
     },
     "interviews": {
@@ -305,7 +317,12 @@
     },
     "globalSearch": {
       "title": "Global Search",
-      "subtitle": "Search candidates, jobs, and notes across your workspace."
+      "subtitle": "Search candidates and MIS contacts. Refine by position, location, and compensation.",
+      "tourTitle": "Global Search overview"
+    },
+    "mis": {
+      "title": "MIS",
+      "tourTitle": "Take a tour of MIS"
     },
     "collaboration": {
       "title": "Team Collaboration",

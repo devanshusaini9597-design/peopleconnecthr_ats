@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Briefcase } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { planHasFeature } from '../../config/planFeatures';
@@ -23,6 +23,7 @@ import { useApplicationsDrag } from './useApplicationsDrag';
 export default function useApplications() {
   const { t } = useTranslation();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isApplicationsRoute = location.pathname.startsWith('/applications');
   const pageTitle = isApplicationsRoute
     ? t('pages.applications.title')
@@ -39,7 +40,35 @@ export default function useApplications() {
 
   const [enterpriseActionLoading, setEnterpriseActionLoading] = useState(false);
   const [jobs, setJobs] = useState([]);
-  const [selectedJobId, setSelectedJobId] = useState('all');
+  const jobParamFromUrl = String(searchParams.get('jobId') || '').trim() || 'all';
+  const [selectedJobId, setSelectedJobIdState] = useState(jobParamFromUrl);
+
+  const resolveJobFilter = useCallback((raw) => {
+    const key = String(raw || '').trim();
+    if (!key || key === 'all') return 'all';
+    const upper = key.toUpperCase();
+    const hit = jobs.find((j) =>
+      String(j._id) === key || String(j.jobCode || '').toUpperCase() === upper
+    );
+    return hit ? String(hit._id) : key;
+  }, [jobs]);
+
+  const setSelectedJobId = useCallback((next) => {
+    const resolved = resolveJobFilter(next);
+    setSelectedJobIdState(resolved);
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      if (!resolved || resolved === 'all') params.delete('jobId');
+      else params.set('jobId', resolved);
+      return params;
+    }, { replace: true });
+  }, [resolveJobFilter, setSearchParams]);
+
+  useEffect(() => {
+    const fromUrl = String(searchParams.get('jobId') || '').trim() || 'all';
+    const resolved = resolveJobFilter(fromUrl);
+    setSelectedJobIdState((prev) => (prev === resolved ? prev : resolved));
+  }, [searchParams, resolveJobFilter]);
   const [applications, setApplications] = useState([]);
   const [stats, setStats] = useState({ total: 0, byStage: {}, avgTime: 'N/A' });
   const [loading, setLoading] = useState(true);
@@ -224,13 +253,17 @@ export default function useApplications() {
   const jobOptions = useMemo(
     () => [
       { value: 'all', label: 'All open jobs', description: 'Full hiring pipeline', icon: Briefcase },
-      ...jobs.map((job) => ({
-        value: job._id,
-        label: jobTitle(job),
-        description: job.location || job.experience || 'Open role',
-        icon: Briefcase,
-        searchText: `${jobTitle(job)} ${job.location || ''} ${job.experience || ''}`,
-      })),
+      ...jobs.map((job) => {
+        const count = Number(job.applicationCount) || 0;
+        const code = String(job.jobCode || '').trim();
+        return {
+          value: job._id,
+          label: jobTitle(job),
+          description: [code, `${count} applicant${count === 1 ? '' : 's'}`, job.location].filter(Boolean).join(' · '),
+          icon: Briefcase,
+          searchText: `${jobTitle(job)} ${code} ${job.location || ''} ${job.experience || ''}`,
+        };
+      }),
     ],
     [jobs]
   );

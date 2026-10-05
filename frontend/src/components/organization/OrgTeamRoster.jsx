@@ -11,6 +11,7 @@ import { useAuth } from '../../context/AuthContext';
 import useTableDragScroll from '../../hooks/useTableDragScroll';
 import { MEMBER_ROLE_OPTIONS, ROLE_LABELS } from './constants';
 import MemberDeskDefaultsModal from './MemberDeskDefaultsModal';
+import { guardTableCopy } from '../../utils/tableCopyGuard';
 
 function formatPersonName(name, fallback = '') {
   const raw = String(name || '').trim();
@@ -152,13 +153,14 @@ export default function OrgTeamRoster({
         <div
           ref={tableScrollRef}
           className="cand-table-scroll overflow-x-auto select-none"
+          onCopy={guardTableCopy}
           onMouseDown={onTableDragScrollStart}
           onMouseMove={onTableDragScrollMove}
           onMouseUp={onTableDragScrollEnd}
           onMouseLeave={onTableDragScrollEnd}
         >
           <table
-            className="cand-table-drag w-full text-left text-sm border-collapse select-text border border-stone-200"
+            className="cand-table-drag w-full text-left text-sm border-collapse select-none border border-stone-200"
             style={{ minWidth: tableMinWidth }}
           >
             <thead>

@@ -49,6 +49,16 @@ async function loadOrgEmployeeNames(organizationId) {
   return rows.map((r) => r.name).filter(Boolean);
 }
 
+/** SPOC label for the account that uploaded/created the record. */
+async function stampUploaderSpoc(user, { allowOverride = false, override = '' } = {}) {
+  const names = await loadOrgEmployeeNames(user?.organizationId);
+  const fromAccount = resolveEmployeeSpocLabel(user, names);
+  if (allowOverride && canEditCandidateSpoc(user) && String(override || '').trim()) {
+    return normalizeText(String(override).trim());
+  }
+  return fromAccount;
+}
+
 /** Force locked SPOC for recruiters/sales on create/import. Managers may keep body.spoc. */
 async function enforceSpocOnWrite(req, { isCreate = false } = {}) {
   if (canEditCandidateSpoc(req.user)) {
@@ -75,6 +85,7 @@ module.exports = {
   firstNameOf,
   resolveEmployeeSpocLabel,
   loadOrgEmployeeNames,
+  stampUploaderSpoc,
   enforceSpocOnWrite,
   stripSpocUnlessEditor,
 };

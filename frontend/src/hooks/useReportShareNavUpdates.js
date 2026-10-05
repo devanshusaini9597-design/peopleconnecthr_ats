@@ -4,7 +4,7 @@ import { authenticatedFetch } from '../utils/fetchUtils';
 import { useAuth } from '../context/AuthContext';
 
 /** Analytics sidebar badge — unread shared reports. Cleared when user opens Analytics. */
-const POLL_MS = 10_000;
+const POLL_MS = 20_000;
 
 export function markReportSharesSeen() {
   authenticatedFetch('/api/notifications/report-shares/mark-seen', { method: 'POST' })

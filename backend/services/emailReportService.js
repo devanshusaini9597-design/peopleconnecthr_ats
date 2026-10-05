@@ -5,6 +5,51 @@ const axios = require('axios');
 const mongoose = require('mongoose');
 const EmailSendLog = require('../models/EmailSendLog');
 const logger = require('../utils/logger');
+const { zonedTimeToUtc } = require('../utils/analyticsTime');
+
+const IST_TZ = 'Asia/Kolkata';
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const SENT_AT_TOLERANCE_MS = 4 * 60 * 1000;
+
+/**
+ * Zoho sometimes stamps an IST wall-clock as if it were UTC.
+ * That shows up ~5.5h ahead of the real send (createdAt). Snap back to createdAt.
+ * Historical imports have sentAt well before createdAt, so they are left alone.
+ */
+function alignSentAt(sentAt, createdAt) {
+  const sent = sentAt ? new Date(sentAt) : null;
+  const created = createdAt ? new Date(createdAt) : null;
+  if (!sent || Number.isNaN(sent.getTime())) {
+    return created && !Number.isNaN(created.getTime()) ? created : null;
+  }
+  if (!created || Number.isNaN(created.getTime())) return sent;
+  const delta = sent.getTime() - created.getTime();
+  if (delta > 0 && Math.abs(delta - IST_OFFSET_MS) <= SENT_AT_TOLERANCE_MS) return created;
+  return sent;
+}
+
+function findHtmlString(value, depth = 0) {
+  if (depth > 6 || value == null) return '';
+  if (typeof value === 'string') {
+    const s = value.trim();
+    if (s.length > 80 && /<(html|table|div|body|p|td)\b/i.test(s)) return s;
+    return '';
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const hit = findHtmlString(item, depth + 1);
+      if (hit) return hit;
+    }
+    return '';
+  }
+  if (typeof value === 'object') {
+    for (const v of Object.values(value)) {
+      const hit = findHtmlString(v, depth + 1);
+      if (hit) return hit;
+    }
+  }
+  return '';
+}
 
 const num = (v) => {
   const n = Number(v);
@@ -15,6 +60,115 @@ const pct = (part, whole) => {
   if (!whole) return 0;
   return Math.round((part / whole) * 1000) / 10;
 };
+
+/**
+ * Zoho Campaigns often returns wall-clock IST without a timezone.
+ * On Railway (UTC), `new Date(str)` wrongly treats that as UTC → times look ~5.5h off in IST UI.
+ * Epoch millis / ISO-with-offset are kept as-is.
+ */
+function parseProviderDate(raw, { assumeIst = true } = {}) {
+  if (raw == null || raw === '') return null;
+  if (raw instanceof Date) {
+    return Number.isNaN(raw.getTime()) ? null : raw;
+  }
+  if (typeof raw === 'number' || (/^\d+$/.test(String(raw).trim()) && String(raw).trim().length >= 10)) {
+    const ms = Number(raw);
+    const d = new Date(ms < 1e12 ? ms * 1000 : ms);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const s = String(raw).trim();
+  if (!s) return null;
+
+  // Already has explicit offset / Z
+  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s) || s.includes('T') && /[zZ]|[+-]\d{2}/.test(s)) {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  if (!assumeIst) {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  // Parse common Zoho / en-IN wall-clock forms as Asia/Kolkata
+  const cleaned = s
+    .replace(/,/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // DD/MM/YYYY hh:mm[:ss] [AM|PM]
+  let m = cleaned.match(
+    /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM|am|pm)?)?$/
+  );
+  if (m) {
+    const day = Number(m[1]);
+    const month = Number(m[2]);
+    const year = Number(m[3]);
+    let hour = Number(m[4] || 0);
+    const minute = Number(m[5] || 0);
+    const second = Number(m[6] || 0);
+    const ampm = (m[7] || '').toUpperCase();
+    if (ampm === 'PM' && hour < 12) hour += 12;
+    if (ampm === 'AM' && hour === 12) hour = 0;
+    return zonedTimeToUtc(year, month, day, hour, minute, second, IST_TZ);
+  }
+
+  // "24 Sep 2026 05:30 PM" / "Sep 24, 2026 5:30:00 PM"
+  m = cleaned.match(
+    /^(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM|am|pm)?)?$/
+  );
+  if (!m) {
+    m = cleaned.match(
+      /^([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM|am|pm)?)?$/
+    );
+    if (m) {
+      // swap to day, monthName, year
+      m = [m[0], m[2], m[1], m[3], m[4], m[5], m[6], m[7]];
+    }
+  }
+  if (m) {
+    const months = {
+      jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+      apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+      aug: 8, august: 8, sep: 9, sept: 9, september: 9,
+      oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
+    };
+    const day = Number(m[1]);
+    const month = months[String(m[2]).toLowerCase()];
+    const year = Number(m[3]);
+    if (!month || !day || !year) {
+      const fallback = new Date(s);
+      return Number.isNaN(fallback.getTime()) ? null : fallback;
+    }
+    let hour = Number(m[4] || 0);
+    const minute = Number(m[5] || 0);
+    const second = Number(m[6] || 0);
+    const ampm = (m[7] || '').toUpperCase();
+    if (ampm === 'PM' && hour < 12) hour += 12;
+    if (ampm === 'AM' && hour === 12) hour = 0;
+    return zonedTimeToUtc(year, month, day, hour, minute, second, IST_TZ);
+  }
+
+  // YYYY-MM-DD HH:mm:ss (no zone) → IST
+  m = cleaned.match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?$/
+  );
+  if (m) {
+    return zonedTimeToUtc(
+      Number(m[1]),
+      Number(m[2]),
+      Number(m[3]),
+      Number(m[4]),
+      Number(m[5]),
+      Number(m[6] || 0),
+      IST_TZ
+    );
+  }
+
+  const fallback = new Date(s);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
+}
 
 function normalizeEmail(email) {
   return String(email || '')
@@ -108,6 +262,18 @@ function recomputeTotals(doc) {
   return doc;
 }
 
+/** Cap Mongo bodies; full HTML lives on S3 mail-archive when configured. */
+const MAX_HTML_BODY = 48_000;
+const MAX_TEXT_BODY = 8_000;
+/** Allow larger remote preview fetches before clipping into Mongo. */
+const MAX_PREVIEW_FETCH = 450_000;
+
+function clipBody(value, max) {
+  const s = value == null ? '' : String(value);
+  if (!s) return '';
+  return s.length > max ? `${s.slice(0, max)}\n<!-- truncated -->` : s;
+}
+
 /**
  * Persist a send (never throws to callers — logging only).
  */
@@ -127,6 +293,9 @@ async function recordEmailSend(payload = {}) {
 
     if (!recipients.length && !payload.campaignKey) return null;
 
+    const fullHtml = payload.htmlBody || payload.html || '';
+    const fullText = payload.textBody || payload.text || '';
+
     const doc = new EmailSendLog({
       organizationId: payload.organizationId || null,
       sentByUserId: payload.userId || null,
@@ -134,6 +303,8 @@ async function recordEmailSend(payload = {}) {
       provider: payload.provider || 'unknown',
       emailType: payload.emailType || '',
       subject: payload.subject || '',
+      htmlBody: clipBody(fullHtml, MAX_HTML_BODY),
+      textBody: clipBody(fullText, MAX_TEXT_BODY),
       fromEmail: payload.fromEmail || '',
       replyToEmail: payload.replyToEmail || '',
       campaignName: payload.campaignName || '',
@@ -150,6 +321,37 @@ async function recordEmailSend(payload = {}) {
     });
     recomputeTotals(doc);
     await doc.save();
+
+    try {
+      const { storeOutbound } = require('./emailArchiveService');
+      const archived = await storeOutbound({
+        organizationId: doc.organizationId,
+        sendLogId: doc._id,
+        subject: doc.subject,
+        html: fullHtml,
+        text: fullText,
+        from: doc.fromEmail,
+        replyTo: doc.replyToEmail,
+        recipients: doc.recipients,
+        provider: doc.provider,
+        channel: doc.channel,
+        messageId: doc.messageId,
+        emailType: doc.emailType,
+        campaignKey: doc.campaignKey,
+        sentAt: doc.sentAt,
+      });
+      if (archived?.archiveKey) {
+        doc.archiveKey = archived.archiveKey;
+        doc.archiveMetaKey = archived.archiveMetaKey || '';
+        await EmailSendLog.updateOne(
+          { _id: doc._id },
+          { $set: { archiveKey: doc.archiveKey, archiveMetaKey: doc.archiveMetaKey } }
+        );
+      }
+    } catch (archErr) {
+      logger.warn({ err: archErr.message }, '[emailReports] mail-archive soft-fail');
+    }
+
     return doc;
   } catch (err) {
     logger.warn({ err: err.message }, '[emailReports] recordEmailSend failed');
@@ -203,8 +405,8 @@ function applyCampaignReportMetrics(doc, reportBlock = {}, details = {}) {
   if (details.email_from) doc.fromEmail = details.email_from;
   if (details.reply_to) doc.replyToEmail = details.reply_to;
   if (details.sent_time) {
-    const parsed = new Date(details.sent_time);
-    if (!Number.isNaN(parsed.getTime())) doc.sentAt = parsed;
+    const parsed = parseProviderDate(details.sent_time);
+    if (parsed) doc.sentAt = alignSentAt(parsed, doc.createdAt) || parsed;
   }
 
   doc.providerRaw = {
@@ -310,11 +512,15 @@ async function syncCampaignRecipients(doc, campaignKey, settings) {
       for (const row of rows) {
         const email = row.contactemailaddress || row.contact_email || row.email;
         const sentMs = num(row.sent_time);
+        const sentAt =
+          sentMs > 0
+            ? new Date(sentMs < 1e12 ? sentMs * 1000 : sentMs)
+            : parseProviderDate(row.sentdate || row.sent_date || row.sent_time) || undefined;
         upsertRecipient(map, email, {
           ...patchBase,
           name: [row.firstname, row.lastname].filter(Boolean).join(' ') || row.first_name || '',
           providerContactId: String(row.contactid || row.contact_id || ''),
-          sentAt: sentMs ? new Date(sentMs) : row.sentdate ? new Date(row.sentdate) : undefined,
+          sentAt,
           openedAt: patchBase.status === 'opened' || patchBase.status === 'clicked' ? new Date() : undefined,
           clickedAt: patchBase.status === 'clicked' ? new Date() : undefined,
           bouncedAt:
@@ -475,13 +681,24 @@ function zeptoAuthAndBase() {
 
 function formatZeptoDate(d) {
   const date = d instanceof Date ? d : new Date(d);
-  // DD/MM/YYYY, hh:mm AM/PM
-  const pad = (n) => String(n).padStart(2, '0');
-  let h = date.getHours();
-  const m = pad(date.getMinutes());
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  h = h % 12 || 12;
-  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}, ${pad(h)}:${m} ${ampm}`;
+  // ZeptoMail accounts in India expect DD/MM/YYYY in IST wall-clock
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: IST_TZ,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).formatToParts(date);
+  const get = (type) => parts.find((p) => p.type === type)?.value || '';
+  const day = get('day');
+  const month = get('month');
+  const year = get('year');
+  const hour = get('hour');
+  const minute = get('minute');
+  const dayPeriod = (get('dayPeriod') || 'AM').toUpperCase();
+  return `${day}/${month}/${year}, ${hour}:${minute} ${dayPeriod}`;
 }
 
 async function fetchZeptoLogs(params = {}) {
@@ -761,12 +978,8 @@ async function syncRecentCampaigns(organizationId, { limit = 50 } = {}) {
       const sentRaw = row.sent_time || row.sent_date || row.created_time || row.created_date;
       let sentAt = new Date();
       if (sentRaw) {
-        const parsed = new Date(sentRaw);
-        if (!Number.isNaN(parsed.getTime())) sentAt = parsed;
-        else if (/^\d+$/.test(String(sentRaw))) {
-          const ms = Number(sentRaw);
-          sentAt = new Date(ms < 1e12 ? ms * 1000 : ms);
-        }
+        const parsed = parseProviderDate(sentRaw);
+        if (parsed) sentAt = parsed;
       }
       doc = await recordEmailSend({
         organizationId,
@@ -892,13 +1105,32 @@ async function listEmailReports(organizationId, query = {}) {
 
   const [items, total] = await Promise.all([
     EmailSendLog.find(filter)
-      .sort({ sentAt: -1 })
+      .select('-htmlBody -textBody')
+      .sort({ sentAt: -1, createdAt: -1, _id: -1 })
       .skip(skip)
       .limit(lim)
       .populate('sentByUserId', 'name email')
       .lean(),
     EmailSendLog.countDocuments(filter),
   ]);
+  const sentAtFixes = [];
+  for (const item of items) {
+    const before = item.sentAt ? new Date(item.sentAt).getTime() : 0;
+    presentSendTimes(item);
+    const after = item.sentAt ? new Date(item.sentAt).getTime() : 0;
+    if (before && after && before !== after) {
+      sentAtFixes.push({
+        updateOne: {
+          filter: { _id: item._id },
+          update: { $set: { sentAt: item.sentAt } },
+        },
+      });
+    }
+  }
+  if (sentAtFixes.length) {
+    EmailSendLog.bulkWrite(sentAtFixes, { ordered: false }).catch(() => {});
+  }
+  items.sort((a, b) => new Date(b.sentAt || b.createdAt || 0) - new Date(a.sentAt || a.createdAt || 0));
 
   let summary = {
     sends: 0,
@@ -1014,6 +1246,176 @@ async function listEmailReports(organizationId, query = {}) {
   };
 }
 
+function collectPreviewUrls(value, acc = [], depth = 0) {
+  if (depth > 6 || value == null) return acc;
+  if (typeof value === 'string') {
+    const s = value.trim();
+    if (/^https?:\/\//i.test(s) && /preview|EmailDisplay|SharedCampaign|CampaignsPreview/i.test(s)) acc.push(s);
+    return acc;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectPreviewUrls(item, acc, depth + 1));
+    return acc;
+  }
+  if (typeof value === 'object') {
+    for (const [key, item] of Object.entries(value)) {
+      if (/preview/i.test(key) && typeof item === 'string' && /^https?:\/\//i.test(item)) acc.push(item.trim());
+      else collectPreviewUrls(item, acc, depth + 1);
+    }
+  }
+  return acc;
+}
+
+function extractEmailHtml(page) {
+  const s = String(page || '');
+  if (s.length < 80) return '';
+  if (/accounts\.zoho|id="login"|name="password"/i.test(s) && !/<(table|td)\b/i.test(s)) return '';
+  const marked = s.match(/<(?:div|td)[^>]+id=["'][^"']*(?:zcampaign|tmplContainer|contentOuter|campaignContent)[^"']*["'][^>]*>([\s\S]{80,})/i);
+  if (marked) return marked[0];
+  if (/<(html|table|td|body)\b/i.test(s)) return s;
+  return '';
+}
+
+async function downloadPreviewHtml(url) {
+  try {
+    const res = await axios.get(url, {
+      timeout: 15000,
+      responseType: 'text',
+      maxContentLength: MAX_PREVIEW_FETCH,
+      maxRedirects: 5,
+      headers: {
+        Accept: 'text/html,application/xhtml+xml',
+        'User-Agent': 'Mozilla/5.0 (compatible; PeopleConnectHR/1.0)',
+      },
+      validateStatus: (status) => status >= 200 && status < 300,
+    });
+    return extractEmailHtml(res.data);
+  } catch (err) {
+    logger.warn({ err: err.message, url: String(url).slice(0, 120) }, '[emailReports] preview url fetch failed');
+    return '';
+  }
+}
+
+async function fetchZohoCampaignHtml(doc) {
+  let settings = null;
+  try {
+    settings = await require('./marketingListService').resolveCampaignsSettings(doc.organizationId);
+  } catch (_) {}
+  const { campaignsRequest } = require('./campaignService');
+  const key = String(doc.campaignKey || '').trim();
+  const urls = [...new Set(collectPreviewUrls(doc.providerRaw))];
+
+  if (key) {
+    const lists = [
+      ['recentcampaigns', { resfmt: 'JSON', sortorder: 'desc', fromindex: '1', range: '50' }],
+      ['recentsentcampaigns', { resfmt: 'JSON', sortorder: 'desc', fromindex: '1', range: '50' }],
+      ['getcampaigndetails', { resfmt: 'JSON', campaignkey: key, campaigntype: 'normal' }],
+    ];
+    for (const [path, params] of lists) {
+      try {
+        const res = await campaignsRequest('GET', path, params, settings);
+        const inline = findHtmlString(res);
+        if (inline) return inline;
+        const rows = []
+          .concat(res?.recent_campaigns || [])
+          .concat(res?.['recent-campaigns'] || [])
+          .concat(res?.campaigns || []);
+        for (const row of rows) {
+          const rowKey = String(row.campaign_key || row.campaignKey || row.campaignkey || '').trim();
+          if (rowKey && rowKey !== key) continue;
+          collectPreviewUrls(row, urls);
+        }
+        collectPreviewUrls(res, urls);
+      } catch (err) {
+        logger.warn({ err: err.message, path, campaignKey: key }, '[emailReports] campaign html lookup failed');
+      }
+    }
+  }
+
+  for (const url of [...new Set(urls)]) {
+    const html = await downloadPreviewHtml(url);
+    if (html) return html;
+  }
+  return '';
+}
+
+async function hydratePreview(doc) {
+  try {
+    if (doc.archiveKey) {
+      const { getArchivedHtml } = require('./emailArchiveService');
+      const fromS3 = await getArchivedHtml(doc.archiveKey);
+      if (fromS3 && /</.test(fromS3)) {
+        doc.htmlBody = fromS3;
+        return doc;
+      }
+    }
+  } catch (_) { /* fall through */ }
+
+  if (String(doc.htmlBody || '').trim().length > 40 && /</.test(doc.htmlBody)) return doc;
+  const rawHtml = findHtmlString(doc.providerRaw);
+  let html = rawHtml;
+  if (!html) {
+    const url = String(doc.providerRaw?.contentUrl || '').trim();
+    if (/^https?:\/\//i.test(url)) {
+      try {
+        const res = await axios.get(url, {
+          timeout: 8000,
+          responseType: 'text',
+          maxContentLength: 450_000,
+          validateStatus: (status) => status >= 200 && status < 300,
+        });
+        const body = String(res.data || '');
+        if (/<(html|table|div|body|p|td)\b/i.test(body)) html = body;
+      } catch (_) { /* expired content_url */ }
+    }
+  }
+  if (!html && doc.organizationId) {
+    const or = [];
+    if (doc.campaignKey) or.push({ campaignKey: doc.campaignKey });
+    if (doc.subject) or.push({ subject: doc.subject });
+    if (doc.campaignName) or.push({ campaignName: doc.campaignName });
+    if (or.length) {
+      const sibling = await EmailSendLog.findOne({
+        organizationId: doc.organizationId,
+        _id: { $ne: doc._id },
+        $or: [
+          { archiveKey: { $exists: true, $nin: [null, ''] } },
+          { htmlBody: { $regex: '<', $options: 'i' } },
+        ],
+        $and: [{ $or: or }],
+      }).select('htmlBody archiveKey').sort({ createdAt: -1 }).lean();
+      if (sibling?.archiveKey) {
+        try {
+          const { getArchivedHtml } = require('./emailArchiveService');
+          const fromS3 = await getArchivedHtml(sibling.archiveKey);
+          if (fromS3) html = fromS3;
+        } catch (_) { /* ignore */ }
+      }
+      if (!html && sibling?.htmlBody) html = sibling.htmlBody;
+    }
+  }
+  if (!html && doc.campaignKey) {
+    html = await fetchZohoCampaignHtml(doc);
+  }
+  if (html) {
+    doc.htmlBody = html;
+    try {
+      await EmailSendLog.updateOne(
+        { _id: doc._id },
+        { $set: { htmlBody: clipBody(html, MAX_HTML_BODY) } }
+      );
+    } catch (_) { /* preview still returned */ }
+  }
+  return doc;
+}
+
+function presentSendTimes(item) {
+  if (!item) return item;
+  const aligned = alignSentAt(item.sentAt, item.createdAt);
+  if (aligned) item.sentAt = aligned;
+  return item;
+}
+
 async function getEmailReportDetail(id, organizationId) {
   const doc = await EmailSendLog.findOne({ _id: id, organizationId })
     .populate('sentByUserId', 'name email')
@@ -1023,6 +1425,8 @@ async function getEmailReportDetail(id, organizationId) {
     err.statusCode = 404;
     throw err;
   }
+  presentSendTimes(doc);
+  await hydratePreview(doc);
   return doc;
 }
 

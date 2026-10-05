@@ -4,10 +4,13 @@ import { useCandidateEmailSend } from './candidateEmailSend';
 
 export function useCandidateEmail({
   toast, candidates, selectedIds, setSelectedIds, setConfirmModal, navigate,
+  resolveSelectedPeople,
+  getBulkAudience,
 } = {}) {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailRecipient, setEmailRecipient] = useState(null);
   const [bulkEmailRecipients, setBulkEmailRecipients] = useState([]);
+  const [bulkAudience, setBulkAudience] = useState(null);
   const [emailType, setEmailType] = useState('interview');
   const [customMessage, setCustomMessage] = useState('');
   const [quickSubject, setQuickSubject] = useState('');
@@ -27,6 +30,8 @@ export function useCandidateEmail({
   const [quickPreviewSubject, setQuickPreviewSubject] = useState('');
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [emailTemplates, setEmailTemplates] = useState([]);
+  const [emailTemplatesLoading, setEmailTemplatesLoading] = useState(false);
+  const [emailSendSkipped, setEmailSendSkipped] = useState(0);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [templateVars, setTemplateVars] = useState({});
   const [templateDraftSubject, setTemplateDraftSubject] = useState('');
@@ -44,6 +49,8 @@ export function useCandidateEmail({
   const [emailStatuses, setEmailStatuses] = useState({});
   const [emailCampaignResult, setEmailCampaignResult] = useState(null);
   const [showEmailCampaignResult, setShowEmailCampaignResult] = useState(false);
+  const [campaignJobId, setCampaignJobId] = useState('');
+  const [campaignJobMeta, setCampaignJobMeta] = useState(null);
 
   const {
     handleBulkEmail,
@@ -71,8 +78,12 @@ export function useCandidateEmail({
     setEmailBCC,
     setShowQuickPreview,
     setShowEmailModal,
+    setCampaignJobId,
+    setCampaignJobMeta,
     emailTemplates,
     setEmailTemplates,
+    setEmailTemplatesLoading,
+    setEmailSendSkipped,
     selectedEmails,
     setSelectedEmails,
     setBulkEmailStep,
@@ -80,6 +91,9 @@ export function useCandidateEmail({
     customMessage,
     setCampaignStatus,
     setEmailStatuses,
+    resolveSelectedPeople,
+    getBulkAudience,
+    setBulkAudience,
   });
 
   const {
@@ -117,6 +131,8 @@ export function useCandidateEmail({
     setEmailMode,
     setShowEmailModal,
     setEmailTemplates,
+    emailTemplates,
+    setEmailTemplatesLoading,
     emailRecipient,
     selectedTemplate,
     setIsSendingEmail,
@@ -138,18 +154,26 @@ export function useCandidateEmail({
     quickJoiningDate,
     setEmailCampaignResult,
     setShowEmailCampaignResult,
+    campaignJobId,
+    campaignJobMeta,
+    setCampaignJobId,
+    setCampaignJobMeta,
+    bulkAudience,
+    setBulkAudience,
+    emailSendSkipped,
+    setEmailSendSkipped,
   });
 
   return {
     showEmailModal, setShowEmailModal, emailRecipient, setEmailRecipient,
-    bulkEmailRecipients, setBulkEmailRecipients, emailType, setEmailType,
+    bulkEmailRecipients, setBulkEmailRecipients, bulkAudience, setBulkAudience, emailType, setEmailType,
     customMessage, setCustomMessage, quickSubject, setQuickSubject, isSendingEmail, emailCC, setEmailCC, emailBCC, setEmailBCC,
     ccInput, setCcInput, bccInput, setBccInput, showCCPicker, setShowCCPicker, showBCCPicker, setShowBCCPicker,
     quickName, setQuickName, quickPosition, setQuickPosition, quickDepartment, setQuickDepartment,
     quickJoiningDate, setQuickJoiningDate, showQuickPreview, setShowQuickPreview,
     quickPreviewHtml, setQuickPreviewHtml, quickPreviewSubject, setQuickPreviewSubject,
     loadingPreview, setLoadingPreview,
-    emailTemplates, selectedTemplate, setSelectedTemplate, templateVars, setTemplateVars,
+    emailTemplates, emailTemplatesLoading, selectedTemplate, setSelectedTemplate, templateVars, setTemplateVars,
     templateDraftSubject, setTemplateDraftSubject, templateDraftBody, setTemplateDraftBody,
     templateDraftDirty, setTemplateDraftDirty,
     emailMode, setEmailMode,
@@ -163,6 +187,7 @@ export function useCandidateEmail({
     handleBulkEmail, startBulkEmailFlow, toggleEmailSelection, selectAllEmails,
     handleConfirmSend, closeBulkEmailFlow, handleSendEmail, selectEmailTemplate,
     sendTemplateEmail, sendSingleEmail,
-    setEmailTemplates,
+    campaignJobId, setCampaignJobId, campaignJobMeta, setCampaignJobMeta,
+    setEmailTemplates, emailSendSkipped, setEmailSendSkipped,
   };
 }

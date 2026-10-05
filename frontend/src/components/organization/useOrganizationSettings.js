@@ -56,6 +56,9 @@ export default function useOrganizationSettings() {
       careersPageEnabled: false,
       careersPageTitle: 'Join Our Team',
       careersPageDescription: '',
+      freelancerPageEnabled: true,
+      freelancerPageTitle: '',
+      freelancerPageDescription: '',
       candidatePortalEnabled: false
     }
   });
@@ -223,6 +226,12 @@ export default function useOrganizationSettings() {
     }
   }, [activeTab]);
 
+  useEffect(() => {
+    if (activeTab !== 'team') return undefined;
+    const timer = window.setInterval(() => { fetchMembers(); }, 15000);
+    return () => window.clearInterval(timer);
+  }, [activeTab]);
+
   const normalizeOrgPayload = (raw) => {
     const payload = raw?.data && typeof raw.data === 'object' ? raw.data : raw;
     const settings = payload?.settings || {};
@@ -239,6 +248,7 @@ export default function useOrganizationSettings() {
     return {
       name: payload?.name || '',
       domain: payload?.domain || '',
+      slug: payload?.slug || '',
       logo: payload?.logo || '',
       timezone,
       currency,
@@ -250,6 +260,9 @@ export default function useOrganizationSettings() {
         careersPageEnabled: ats.careersPageEnabled ?? ats.enableCareersPage ?? false,
         careersPageTitle: ats.careersPageTitle || 'Join Our Team',
         careersPageDescription: ats.careersPageDescription || '',
+        freelancerPageEnabled: ats.freelancerPageEnabled !== false,
+        freelancerPageTitle: ats.freelancerPageTitle || '',
+        freelancerPageDescription: ats.freelancerPageDescription || '',
         candidatePortalEnabled: ats.candidatePortalEnabled ?? ats.enableCandidatePortal ?? false,
         brandColor: ats.brandColor,
         whiteLabel: ats.whiteLabel,
@@ -397,6 +410,9 @@ export default function useOrganizationSettings() {
           careersPageEnabled: !!org.atsSettings.careersPageEnabled,
           careersPageTitle: org.atsSettings.careersPageTitle,
           careersPageDescription: org.atsSettings.careersPageDescription,
+          freelancerPageEnabled: org.atsSettings.freelancerPageEnabled !== false,
+          freelancerPageTitle: org.atsSettings.freelancerPageTitle || '',
+          freelancerPageDescription: org.atsSettings.freelancerPageDescription || '',
           enableCandidatePortal: !!org.atsSettings.candidatePortalEnabled,
           candidatePortalEnabled: !!org.atsSettings.candidatePortalEnabled,
           brandColor: org.atsSettings.brandColor,
