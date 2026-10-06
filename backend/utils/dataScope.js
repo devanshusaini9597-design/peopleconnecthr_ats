@@ -468,9 +468,9 @@ function candidateListFilter(req, viewMode) {
     return freelancerDeskFilter(user, user.organizationId);
   }
 
-  if (viewMode === 'all') {
+  if (viewMode === 'all' || !viewMode) {
     if (canViewOrgAnalytics(user)) {
-      return user.organizationId ? { organizationId: user.organizationId } : own;
+      return organizationIdMatch(user.organizationId) || own;
     }
     return employeeDeskFilter(user, user.organizationId);
   }

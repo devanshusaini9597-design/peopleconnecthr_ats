@@ -322,7 +322,8 @@ export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, cur
         setFormErrors({});
         setShowModal(true);
       } else {
-        toast.error('Failed to load candidate details. Please try again.');
+        const errJson = await response.json().catch(() => ({}));
+        toast.error(errJson.message || errJson.displayMessage || 'Failed to load candidate details. Please try again.');
       }
     } catch (error) {
       console.error('Error fetching candidate:', error);

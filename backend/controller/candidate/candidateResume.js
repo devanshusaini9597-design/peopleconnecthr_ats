@@ -2,7 +2,8 @@ const path = require('path');
 const fs = require('fs');
 const Candidate = require('../../models/Candidate');
 const logger = require('../../utils/logger');
-const { orgOrOwnerScope, candidateResumeScope } = require('./candidateValidation');
+const { orgOrOwnerScope } = require('./candidateValidation');
+const { candidateListScope } = require('../../utils/dataScope');
 const { parseResume } = require('../../services/resumeParser');
 const { parseResumeViaQueueOrInline, queuesEnabled } = require('../../jobs/queue');
 const { stampUploaderSpoc } = require('../../utils/spocIdentity');
@@ -22,7 +23,9 @@ async function checkEmail(req, res) {
 async function getResume(req, res) {
     try {
         if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
-        const candidate = await Candidate.findOne({ _id: req.params.id, ...candidateResumeScope(req) }).select('resume').lean();
+        const viewMode = String(req.query?.view || 'all').trim();
+        const scope = await candidateListScope(req, viewMode);
+        const candidate = await Candidate.findOne({ _id: req.params.id, ...scope }).select('resume').lean();
         if (!candidate || !candidate.resume) {
             return res.status(404).json({ message: 'Resume not found' });
         }

@@ -6,7 +6,7 @@ const LocationService = require('../../services/locationService');
 const { normalizeText } = require('../../utils/textNormalize');
 const mongoose = require('mongoose');
 const logger = require('../../utils/logger');
-const { orgOrOwnerScope, candidateWriteScope, candidateListFilter, isFreelancer } = require('../../utils/dataScope');
+const { orgOrOwnerScope, candidateWriteScope, candidateListScope, isFreelancer } = require('../../utils/dataScope');
 const { enforceSpocOnWrite, stripSpocUnlessEditor } = require('../../utils/spocIdentity');
 const { normalizePan, validatePanForClient } = require('../../utils/panClientRules');
 const { promoteNamesSafe } = require('../../services/skillCatalogSync');
@@ -635,8 +635,15 @@ async function updateCandidate(req, res) {
 async function getCandidateById(req, res) {
     try {
         if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
-        const listView = req.query?.view || 'all';
-        const candidate = await Candidate.findOne({ _id: req.params.id, ...candidateListFilter(req, listView) }).lean();
+        const id = String(req.params.id || '').trim();
+        if (!mongoose.Types.ObjectId.isValid(id) || id.length !== 24) {
+            return res.status(404).json({ message: 'Candidate not found' });
+        }
+        const viewMode = String(req.query?.view || 'all').trim();
+        const scope = await candidateListScope(req, viewMode);
+        const candidate = await Candidate.findOne({ _id: id, ...scope })
+            .select('-embedding')
+            .lean();
         if (!candidate) {
             return res.status(404).json({ message: 'Candidate not found' });
         }
