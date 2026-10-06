@@ -55,6 +55,36 @@ router.get('/turnstile-config', (req, res) => {
   }
 });
 
+function sendJobsXml(res, xml) {
+  res.set({
+    'Content-Type': 'application/xml; charset=utf-8',
+    'Cache-Control': 'public, max-age=900',
+  }).send(xml);
+}
+
+function sendJobsXmlError(res, error) {
+  if (error.statusCode) {
+    return res.status(error.statusCode).send(error.message);
+  }
+  return res.status(500).send('Failed to generate job feed');
+}
+
+/**
+ * GET /jobs.xml  (alias GET /careerjet.xml)
+ * Platform-wide feed for ATS aggregators (Careerjet, etc.). Must be before /:orgSlug.
+ */
+async function handlePlatformJobsXml(_req, res) {
+  try {
+    const xml = await svc.getPlatformJobsXmlFeed();
+    sendJobsXml(res, xml);
+  } catch (error) {
+    sendJobsXmlError(res, error);
+  }
+}
+
+router.get('/jobs.xml', handlePlatformJobsXml);
+router.get('/careerjet.xml', handlePlatformJobsXml);
+
 /**
  * GET /:orgSlug/jobs.xml
  * Indeed/Google-for-Jobs-compatible XML feed — plain-text errors (not JSON).
@@ -62,12 +92,9 @@ router.get('/turnstile-config', (req, res) => {
 router.get('/:orgSlug/jobs.xml', async (req, res) => {
   try {
     const xml = await svc.getJobsXmlFeed(req.params.orgSlug);
-    res.set('Content-Type', 'application/xml').send(xml);
+    sendJobsXml(res, xml);
   } catch (error) {
-    if (error.statusCode) {
-      return res.status(error.statusCode).send(error.message);
-    }
-    res.status(500).send('Failed to generate job feed');
+    sendJobsXmlError(res, error);
   }
 });
 

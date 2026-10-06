@@ -9,6 +9,7 @@ const Candidate = require('../models/Candidate');
 const Application = require('../models/Application');
 const OrgListItem = require('../models/OrgListItem');
 const { planHasFeature } = require('../config/planFeatures');
+const { checkOrgPlanLimit } = require('../middleware/rbacMiddleware');
 const { normalizeText } = require('../utils/textNormalize');
 const { publicDomainLabel, scrubPublicJobHtml, publicEmployerLabel, isOwnCompanyHire } = require('../utils/publicJobPrivacy');
 const logger = require('../utils/logger');
@@ -93,6 +94,54 @@ async function loadCareersFieldOptions(organizationId) {
 
 const xmlEscape = (str = '') => String(str)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/** CDATA cannot contain `]]>`. */
+function cdataSafe(value) {
+  return String(value ?? '').replace(/]]>/g, '');
+}
+
+function publicJobDescription(job, orgName) {
+  const html = job?.description || '';
+  if (isOwnCompanyHire(job?.clientName, orgName)) return String(html);
+  return scrubPublicJobHtml(html, job?.clientName);
+}
+
+function buildJobXmlItem({ job, orgName, orgSlug, baseUrl, referencePrefix = '' }) {
+  const pathId = careersJobPathSegment(job);
+  const ref = `${referencePrefix}${job.jobCode || pathId}`;
+  const salary = job.salaryRange?.displayPublicly && job.salaryRange?.min
+    ? `<salary>${xmlEscape(String(job.salaryRange.min))}-${xmlEscape(String(job.salaryRange.max || job.salaryRange.min))} ${xmlEscape(job.salaryRange.currency || 'INR')}</salary>`
+    : '';
+  return `
+  <job>
+    <title><![CDATA[${cdataSafe(job.title)}]]></title>
+    <date>${(job.updatedAt || new Date()).toUTCString()}</date>
+    <referencenumber>${xmlEscape(ref)}</referencenumber>
+    <url><![CDATA[${cdataSafe(`${baseUrl}/careers/${orgSlug}/jobs/${pathId}`)}]]></url>
+    <company><![CDATA[${cdataSafe(orgName)}]]></company>
+    <city><![CDATA[${cdataSafe(job.location)}]]></city>
+    <description><![CDATA[${cdataSafe(publicJobDescription(job, orgName))}]]></description>
+    <jobtype>${xmlEscape(job.employmentType || 'full_time')}</jobtype>
+    ${salary}
+  </job>`;
+}
+
+function buildJobsXmlDocument({ publisher, publisherUrl = '', itemsXml = '' }) {
+  const pubUrl = publisherUrl
+    ? `\n  <publisherurl>${xmlEscape(publisherUrl)}</publisherurl>`
+    : '';
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<source>\n  <publisher>${xmlEscape(publisher)}</publisher>${pubUrl}${itemsXml}\n</source>`;
+}
+
+function liveFeedOrgFilter() {
+  return {
+    isActive: { $ne: false },
+    archivedAt: null,
+    isDemo: { $ne: true },
+    slug: { $exists: true, $nin: [null, ''] },
+    'atsSettings.careersPageEnabled': { $ne: false },
+  };
+}
 
 function assertCareersLive(org) {
   // Treat missing flag as enabled for backwards compatibility; only block when explicitly false.
@@ -197,12 +246,14 @@ function trimStr(v) {
   return String(v ?? '').trim();
 }
 
+const JOB_FEED_SELECT = 'title location employmentType description salaryRange updatedAt jobCode publicId clientName organizationId';
+
 /**
- * Indeed/Google-for-Jobs-compatible XML feed of published jobs.
+ * Indeed/Google-for-Jobs-compatible XML feed of published jobs for one tenant.
  * Gated by 'integrations.jobBoard' (Enterprise).
  */
 async function getJobsXmlFeed(orgSlug) {
-  const org = await Organization.findOne({ slug: orgSlug }).select('name plan atsSettings');
+  const org = await Organization.findOne({ slug: orgSlug }).select('name slug plan atsSettings');
   if (!org) throw httpError('Organization not found', 404);
   assertCareersLive(org);
   if (!planHasFeature(org.plan, 'integrations.jobBoard')) {
@@ -210,7 +261,44 @@ async function getJobsXmlFeed(orgSlug) {
   }
 
   const jobs = await Job.find({ ...publicOpenJobFilter(org._id), isPublished: true })
-    .select('title department location employmentType description skills salaryRange updatedAt jobCode publicId');
+    .select(JOB_FEED_SELECT);
+
+  for (const job of jobs) {
+    await ensurePublicId(job);
+  }
+
+  const baseUrl = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+  const items = jobs.map((job) => buildJobXmlItem({
+    job,
+    orgName: org.name,
+    orgSlug,
+    baseUrl,
+  })).join('');
+
+  return buildJobsXmlDocument({ publisher: org.name, itemsXml: items });
+}
+
+/**
+ * Platform-wide XML of every live tenant's published careers jobs.
+ * Publisher is the ATS; each <company> is that tenant (client workspace) name.
+ */
+async function getPlatformJobsXmlFeed() {
+  const orgs = await Organization.find(liveFeedOrgFilter()).select('_id name slug atsSettings').lean();
+  if (!orgs.length) {
+    const baseUrl = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+    return buildJobsXmlDocument({
+      publisher: process.env.PLATFORM_FEED_PUBLISHER || 'People Connect HR',
+      publisherUrl: baseUrl,
+      itemsXml: '',
+    });
+  }
+
+  const orgById = new Map(orgs.map((org) => [String(org._id), org]));
+  const jobs = await Job.find({
+    organizationId: { $in: orgs.map((org) => org._id) },
+    status: 'Open',
+    isPublished: { $ne: false },
+  }).select(JOB_FEED_SELECT).sort({ updatedAt: -1 });
 
   for (const job of jobs) {
     await ensurePublicId(job);
@@ -218,22 +306,22 @@ async function getJobsXmlFeed(orgSlug) {
 
   const baseUrl = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
   const items = jobs.map((job) => {
-    const pathId = careersJobPathSegment(job);
-    return `
-  <job>
-    <title><![CDATA[${job.title}]]></title>
-    <date>${(job.updatedAt || new Date()).toUTCString()}</date>
-    <referencenumber>${job.jobCode || pathId}</referencenumber>
-    <url><![CDATA[${baseUrl}/careers/${orgSlug}/jobs/${pathId}]]></url>
-    <company><![CDATA[${xmlEscape(org.name)}]]></company>
-    <city><![CDATA[${xmlEscape(job.location)}]]></city>
-    <description><![CDATA[${scrubPublicJobHtml(job.description || '', job.clientName)}]]></description>
-    <jobtype>${xmlEscape(job.employmentType || 'full_time')}</jobtype>
-    ${job.salaryRange?.displayPublicly && job.salaryRange?.min ? `<salary>${job.salaryRange.min}-${job.salaryRange.max || job.salaryRange.min} ${job.salaryRange.currency || 'INR'}</salary>` : ''}
-  </job>`;
+    const org = orgById.get(String(job.organizationId));
+    if (!org?.slug) return '';
+    return buildJobXmlItem({
+      job,
+      orgName: org.name,
+      orgSlug: org.slug,
+      baseUrl,
+      referencePrefix: `${org.slug}-`,
+    });
   }).join('');
 
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<source>\n  <publisher>${xmlEscape(org.name)}</publisher>${items}\n</source>`;
+  return buildJobsXmlDocument({
+    publisher: process.env.PLATFORM_FEED_PUBLISHER || 'People Connect HR',
+    publisherUrl: baseUrl,
+    itemsXml: items,
+  });
 }
 
 /**
@@ -801,6 +889,13 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null, rateKey
   let existingProfile = false;
 
   if (!candidate) {
+    // New public applicant counts against the employer's plan candidate quota.
+    const limitCheck = await checkOrgPlanLimit(org, 'candidates');
+    if (!limitCheck.ok) {
+      throw httpError('This employer is not accepting new applications at the moment. Please try again later.', 403, {
+        code: 'PLAN_LIMIT_EXCEEDED',
+      });
+    }
     candidate = new Candidate({
       organizationId: org._id,
       name: textFields.name,
@@ -934,6 +1029,9 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null, rateKey
 
 module.exports = {
   getJobsXmlFeed,
+  getPlatformJobsXmlFeed,
+  buildJobsXmlDocument,
+  cdataSafe,
   resolveByDomain,
   getCareersPage,
   getPublicJob,
