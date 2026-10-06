@@ -109,7 +109,7 @@ function matchJobBySelectValue(jobs, raw) {
   }) || null;
 }
 
-function JobIdField({ formData, setFormData, jobs, editId }) {
+function JobIdField({ formData, setFormData, jobs, editId, formErrors, fieldRefs }) {
   const raw = String(formData.jobId || '').trim();
   const matched = matchJobBySelectValue(jobs, raw);
   const selectValue = matched ? (matched.jobCode || String(matched._id)) : raw;
@@ -122,9 +122,9 @@ function JobIdField({ formData, setFormData, jobs, editId }) {
     : [];
 
   return (
-    <div className="min-w-0">
+    <div className="min-w-0" ref={fieldRefs?.jobId}>
       <label className="block text-[11px] font-semibold text-stone-600 mb-1.5">
-        Job ID
+        Job ID {!editId ? <span className="text-red-500">*</span> : null}
       </label>
       <PremiumSelect
         variant="list"
@@ -142,7 +142,6 @@ function JobIdField({ formData, setFormData, jobs, editId }) {
           }));
         }}
         options={[
-          { value: '', label: 'Not tagged to a job' },
           ...extraOption,
           ...(jobs || []).map((job) => {
             const code = String(job.jobCode || '').trim();
@@ -160,13 +159,17 @@ function JobIdField({ formData, setFormData, jobs, editId }) {
         searchable
         searchPlaceholder="Search Job ID or title…"
         emptyLabel="No open jobs"
-        allowClear={Boolean(selectValue)}
+        allowClear={Boolean(editId && selectValue)}
       />
-      <p className="text-[11px] text-stone-400 mt-1 leading-snug">
-        {editId
-          ? 'Optional. Tag to a job to issue Candidate ID and Application ID.'
-          : 'Optional. Tag a job to issue IDs. Leave blank if this is only a desk profile.'}
-      </p>
+      {formErrors?.jobId ? (
+        <p className="text-xs text-red-500 mt-1 font-medium break-words">{formErrors.jobId}</p>
+      ) : (
+        <p className="text-[11px] text-stone-400 mt-1 leading-snug">
+          {editId
+            ? 'Tagged job issues the Candidate ID and Application ID.'
+            : 'Required. Tag a job so this profile gets a Candidate ID and Application ID.'}
+        </p>
+      )}
     </div>
   );
 }
@@ -480,13 +483,18 @@ export default function CandidateFormModal(props) {
                     <div className="mb-4 pb-3 border-b border-stone-100">
                       <h3 className="text-sm font-bold text-stone-900">Profile</h3>
                       <p className="text-[12px] text-stone-500 mt-0.5">
-                        Identity, contact, Job ID (if this CV is for a requisition), and SPOC.
+                        Identity, contact, Job ID, and SPOC. Job ID is required for every new candidate.
                       </p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3.5 w-full min-w-0">
-                      {!isFreelancer ? (
-                        <JobIdField formData={formData} setFormData={setFormData} jobs={jobs} editId={editId} />
-                      ) : null}
+                      <JobIdField
+                        formData={formData}
+                        setFormData={setFormData}
+                        jobs={jobs}
+                        editId={editId}
+                        formErrors={formErrors}
+                        fieldRefs={fieldRefs}
+                      />
                       <SpocReferenceField
                         fieldRefs={fieldRefs}
                         formData={formData}

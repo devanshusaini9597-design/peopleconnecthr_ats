@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import BASE_API_URL from '../../../config';
 import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../../../utils/fetchUtils';
 import { importReviewedInChunks } from '../../../utils/bulkImportApi';
+import { humanizeUploadError } from '../../../utils/humanizeUploadError';
 
 export function useCandidateImport({ toast, fetchData, searchQuery, filterJob, onImportComplete } = {}) {
   const fileInputRef = useRef(null);
@@ -19,6 +20,7 @@ export function useCandidateImport({ toast, fetchData, searchQuery, filterJob, o
   const [editingRow, setEditingRow] = useState(null);
   const [reviewFilter, setReviewFilter] = useState('all');
   const [importConfirmation, setImportConfirmation] = useState(null);
+  const [importFailure, setImportFailure] = useState(null);
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
   const [duplicateRecords, setDuplicateRecords] = useState([]);
   const [showCorrectionsModal, setShowCorrectionsModal] = useState(false);
@@ -189,7 +191,10 @@ const handleAutoUpload = async (event) => {
         setIsUploading(false);
     } catch (error) {
         console.error("❌ Auto Upload Error:", error);
-        toast.error('Error: ' + error.message);
+        setImportFailure({
+          title: 'Upload could not be completed',
+          message: humanizeUploadError(error.message, 'The spreadsheet could not be read. Check the file and try again.'),
+        });
         setIsUploading(false);
     } finally {
         event.target.value = null;
@@ -280,7 +285,10 @@ const handleUploadWithMapping = async (mapping) => {
                       // Show simple success message
                       toast.success(`Upload complete! Imported: ${msg.totalProcessed} candidates. Duplicates removed: ${duplicateCount}`);
                     } else if (msg.type === 'error') {
-                        toast.error(msg.message);
+                        setImportFailure({
+                          title: 'Upload could not be completed',
+                          message: humanizeUploadError(msg.message, 'The spreadsheet could not be imported. Check the file and try again.'),
+                        });
                         setIsUploading(false);
                     }
                 } catch (e) {
@@ -296,7 +304,10 @@ const handleUploadWithMapping = async (mapping) => {
         }
     } catch (error) {
         console.error("Bulk Upload Error:", error);
-        toast.error('Error: ' + error.message);
+        setImportFailure({
+          title: 'Upload could not be completed',
+          message: humanizeUploadError(error.message, 'The spreadsheet could not be imported. Check the file and try again.'),
+        });
         setIsUploading(false);
     } finally {
         setShowColumnMapper(false);
@@ -406,7 +417,11 @@ const handleUploadWithMapping = async (mapping) => {
       
     } catch (error) {
       console.error('❌ [Import single record] Error:', error?.message, error);
-      toast.error('Import error: ' + (error?.message != null ? String(error.message) : 'Unknown error'));
+      const reason = humanizeUploadError(error?.message, 'This row could not be saved. Check the details and try again.');
+      setImportFailure({
+        title: 'Row could not be saved',
+        message: reason,
+      });
     }
   };
 
@@ -449,9 +464,12 @@ const handleUploadWithMapping = async (mapping) => {
         });
       }
     } catch (error) {
-      const msg = error?.message != null ? String(error.message) : 'Unknown error';
-      console.error('[Import reviewed] Error:', msg, error);
-      toast.error(`Import error: ${msg}`);
+      const reason = humanizeUploadError(error?.message, 'The import could not be completed. Check the spreadsheet and try again.');
+      console.error('[Import reviewed] Error:', reason, error);
+      setImportFailure({
+        title: 'Import could not be completed',
+        message: reason,
+      });
     }
   };
 
@@ -471,6 +489,7 @@ const handleUploadWithMapping = async (mapping) => {
     isHeaderLoading, isUploading, showColumnMapper, setShowColumnMapper, excelHeaders, columnMapping, pendingFile, setPendingFile,
     showReviewModal, setShowReviewModal, reviewData, setReviewData, editingRow, setEditingRow,
     reviewFilter, setReviewFilter, importConfirmation, setImportConfirmation,
+    importFailure, setImportFailure,
     showDuplicatesModal, setShowDuplicatesModal, duplicateRecords,
     showCorrectionsModal, setShowCorrectionsModal, correctionRecords,
     handleBulkUpload, handleAutoUpload, handleUploadWithMapping,

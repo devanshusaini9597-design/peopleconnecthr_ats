@@ -17,6 +17,13 @@ const crypto = require('crypto');
 const { normalizeText, applyBlockLettersToObject, BLOCK_LETTER_FIELDS } = require('../utils/textNormalize');
 const { resolveAppliedAt } = require('../utils/candidateActivityDate');
 
+/** Blank form/excel values must not be stored as ObjectIds. */
+function blankObjectId(value) {
+  if (value == null) return null;
+  if (typeof value === 'string' && !value.trim()) return null;
+  return value;
+}
+
 const CandidateSchema = new mongoose.Schema({
   // ── Multi-tenancy ──────────────────────────────────────────────────
   organizationId: { 
@@ -167,7 +174,13 @@ const CandidateSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
   /** True when this candidate was created from an MIS contact transfer. */
   fromMis: { type: Boolean, default: false, index: true },
-  misContactId: { type: mongoose.Schema.Types.ObjectId, ref: 'MisContact', default: null, index: true },
+  misContactId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'MisContact',
+    default: null,
+    index: true,
+    set: blankObjectId,
+  },
   sharedWith: [{
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     sharedAt: { type: Date, default: Date.now },
@@ -267,6 +280,9 @@ CandidateSchema.pre('findOneAndUpdate', function(next) {
   if (!update) return next();
 
   if (update.$set && typeof update.$set === 'object') {
+    if (typeof update.$set.misContactId === 'string' && !update.$set.misContactId.trim()) {
+      delete update.$set.misContactId;
+    }
     applyBlockLettersToObject(update.$set);
   } else {
     // Direct update object (no $set)

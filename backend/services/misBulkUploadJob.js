@@ -13,6 +13,7 @@ const { autoDetectHeaderMapping } = require('../utils/misHeaderMap');
 const { autoFixMisRow, looksLikeEmail } = require('../utils/misRowFix');
 const { parseRecordDate } = require('../utils/candidateActivityDate');
 const logger = require('../utils/logger');
+const { clientSafeError } = require('../utils/clientSafeError');
 
 function deskScopeForUser(user) {
   return user?.role === 'owner' ? 'org' : 'personal';
@@ -77,7 +78,7 @@ function jobSnapshot(job) {
     message = `Done · ${job.created || 0} added · ${job.duplicates || 0} duplicates · ${job.duplicatesInFile || 0} in-file repeats · ${job.skipped || 0} failed/invalid`
       + (backfilled ? ` · ${backfilled} tracker dates filled` : '');
   } else if (job.status === 'error') {
-    message = job.error || 'Import failed';
+    message = clientSafeError(job.error, 'The spreadsheet could not be imported. Check the file and try again.');
   } else if (job.status === 'parsing') {
     message = 'Reading spreadsheet…';
   } else {
@@ -99,8 +100,11 @@ function jobSnapshot(job) {
     skipped: job.skipped || 0,
     blank: job.blank || 0,
     updated: job.datesBackfilled || 0,
-    errors: (job.errors || []).slice(0, 40),
-    error: job.error || null,
+    errors: (job.errors || []).slice(0, 40).map((entry) => ({
+      ...entry,
+      message: clientSafeError(entry?.message, 'This row could not be imported.'),
+    })),
+    error: job.error ? clientSafeError(job.error, 'The spreadsheet could not be imported. Check the file and try again.') : null,
     message,
   };
 }
@@ -402,7 +406,11 @@ async function processMisUploadJob(jobId) {
               } else {
                 job.skipped += 1;
                 if (job.errors.length < 50) {
-                  job.errors.push({ row: item.row, sheet: item.sheet, message: rowErr.message || 'Row failed' });
+                  job.errors.push({
+                    row: item.row,
+                    sheet: item.sheet,
+                    message: clientSafeError(rowErr, 'This row could not be imported. Check the name and email, then try again.'),
+                  });
                 }
               }
             }
@@ -418,7 +426,7 @@ async function processMisUploadJob(jobId) {
     job.status = 'done';
   } catch (err) {
     job.status = 'error';
-    job.error = err.message || 'Import failed';
+    job.error = clientSafeError(err, 'The spreadsheet could not be imported. Check the file and try again.');
     logger.error({ err: err.message, jobId }, 'MIS upload job failed');
   }
 }

@@ -11,6 +11,22 @@ const { enforceSpocOnWrite, stripSpocUnlessEditor } = require('../../utils/spocI
 const { normalizePan, validatePanForClient } = require('../../utils/panClientRules');
 const { promoteNamesSafe } = require('../../services/skillCatalogSync');
 const { promoteNamesSafe: promotePositionsSafe } = require('../../services/positionCatalogSync');
+const { clientSafeError } = require('../../utils/clientSafeError');
+
+const CANDIDATE_WRITE_FIELDS = [
+    'name', 'email', 'contact', 'phone', 'position', 'companyName', 'location', 'state',
+    'ctc', 'expectedCtc', 'experience', 'noticePeriod', 'status', 'source', 'client', 'spoc',
+    'remark', 'fls', 'date', 'skills', 'product', 'pan', 'feedback', 'callBackDate', 'resume',
+    'customFields',
+];
+
+function pickCandidateWrite(body) {
+    const out = {};
+    for (const key of CANDIDATE_WRITE_FIELDS) {
+        if (body[key] !== undefined) out[key] = body[key];
+    }
+    return out;
+}
 
 async function createCandidate(req, res) {
     try {
@@ -23,6 +39,13 @@ async function createCandidate(req, res) {
         const digits = contact.replace(/\D/g, '');
         if (digits.length < 7 || digits.length > 15) return res.status(400).json({ success: false, message: 'Enter a valid phone number (7-15 digits)' });
         if (!ctc || !ctc.trim()) return res.status(400).json({ success: false, message: 'Current CTC is required' });
+        const tagJobRawEarly = String(req.body.jobId || '').trim();
+        if (!tagJobRawEarly || tagJobRawEarly === 'all') {
+            return res.status(400).json({
+                success: false,
+                message: 'Tag this candidate to a Job ID before saving.',
+            });
+        }
 
         if (isFreelancer(req.user) && !req.file && !(req.body.resume && String(req.body.resume).trim())) {
             return res.status(400).json({ success: false, message: 'CV / resume is required for freelance desk candidates' });
@@ -166,9 +189,50 @@ async function createCandidate(req, res) {
         delete req.body.jobId;
         delete req.body.applicationCode;
         delete req.body.candidateCode;
+        if (req.body.misContactId != null && !String(req.body.misContactId).trim()) {
+            delete req.body.misContactId;
+        }
 
         const newCandidate = new Candidate(req.body);
         await newCandidate.save();
+
+        let taggedJob = null;
+        try {
+            const { tagCandidateToJob } = require('../../services/applicationService');
+            const tagged = await tagCandidateToJob(req.user, newCandidate._id, tagJobRaw, {
+                source: newCandidate.source || 'Recruiter',
+            });
+            if (tagged?.tagged && tagged.job) {
+                taggedJob = tagged.job;
+            }
+        } catch (tagErr) {
+            logger.warn('[jobTag] create tag failed:', tagErr.message);
+        }
+        if (!taggedJob) {
+            try {
+                const { purgeApplicationsForCandidates } = require('../../services/applicationService');
+                await purgeApplicationsForCandidates(req.user.organizationId, [newCandidate._id]);
+            } catch { /* candidate is removed below */ }
+            await Candidate.deleteOne({ _id: newCandidate._id });
+            return res.status(400).json({
+                success: false,
+                message: 'That Job ID could not be found. Choose a job from the list and save again.',
+            });
+        }
+
+        try {
+            const eventBus = require('../../events/eventBus');
+            const eventTypes = require('../../events/eventTypes');
+            eventBus.emit(eventTypes.CANDIDATE_CREATED, {
+                organizationId: req.user.organizationId,
+                userId: req.user.id,
+                resourceType: 'candidate',
+                resourceId: newCandidate._id,
+                candidateId: newCandidate._id,
+                name: newCandidate.name,
+                source: newCandidate.source,
+            });
+        } catch { /* never block create */ }
 
         await promoteNamesSafe(req.user.organizationId, req.user.id, newCandidate.product);
         await promotePositionsSafe(req.user.organizationId, req.user.id, newCandidate.position);
@@ -190,19 +254,6 @@ async function createCandidate(req, res) {
             });
         } catch { /* never block create */ }
 
-        let taggedJob = null;
-        if (tagJobRaw && req.user.organizationId) {
-            try {
-                const { tagCandidateToJob } = require('../../services/applicationService');
-                const tagged = await tagCandidateToJob(req.user, newCandidate._id, tagJobRaw, {
-                    source: newCandidate.source || 'Recruiter',
-                });
-                if (tagged?.job) taggedJob = tagged.job;
-            } catch (tagErr) {
-                logger.warn('[jobTag] create tag skipped:', tagErr.message);
-            }
-        }
-
         res.status(201).json({
             success: true,
             message: taggedJob
@@ -221,7 +272,10 @@ async function createCandidate(req, res) {
                 message: 'Email already exists for another candidate in your organization. Open that profile or use a different email.',
             });
         }
-        res.status(500).json({ success: false, message: error.message || "Server Error" });
+        res.status(500).json({
+            success: false,
+            message: clientSafeError(error, 'The candidate could not be saved. Review the details and try again.'),
+        });
     }
 };
 
@@ -445,7 +499,13 @@ async function updateCandidate(req, res) {
         });
 
         // Desk-scoped writes for recruiters; org-wide for owner/admin/manager.
-        const { createdBy, organizationId, _id, __v, statusHistory, jobId: tagJobRaw, ...safeBody } = req.body;
+        // Only profile fields are written — internal ids (misContactId, etc.) must not
+        // be overwritten by blank form values.
+        const tagJobRaw = req.body.jobId;
+        const safeBody = pickCandidateWrite(req.body);
+        if (req.body.legalHold === true || req.body.legalHold === 'true' || req.body.legalHold === '1') {
+            safeBody.legalHold = true;
+        }
         // Data safety: never let clients replace/wipe statusHistory via $set.
         const scope = { _id: id, ...candidateWriteScope(req) };
 
@@ -564,7 +624,10 @@ async function updateCandidate(req, res) {
                 message: 'Email already exists for another candidate in your organization. Open that profile or use a different email.',
             });
         }
-        res.status(500).json({ success: false, message: error.message });
+        res.status(500).json({
+            success: false,
+            message: clientSafeError(error, 'This profile could not be updated. Review the details and try again.'),
+        });
     }
 };
 
@@ -572,7 +635,8 @@ async function updateCandidate(req, res) {
 async function getCandidateById(req, res) {
     try {
         if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
-        const candidate = await Candidate.findOne({ _id: req.params.id, ...candidateListFilter(req, req.query?.view) }).lean();
+        const listView = req.query?.view || 'all';
+        const candidate = await Candidate.findOne({ _id: req.params.id, ...candidateListFilter(req, listView) }).lean();
         if (!candidate) {
             return res.status(404).json({ message: 'Candidate not found' });
         }
@@ -670,6 +734,19 @@ async function deleteCandidate(req, res) {
         } catch (purgeErr) {
             logger.warn('[deleteCandidate] application purge skipped:', purgeErr.message);
         }
+
+        try {
+            const eventBus = require('../../events/eventBus');
+            const eventTypes = require('../../events/eventTypes');
+            eventBus.emit(eventTypes.CANDIDATE_DELETED, {
+                organizationId: req.user.organizationId,
+                userId: req.user.id,
+                resourceType: 'candidate',
+                resourceId: deletedCandidate._id,
+                candidateId: deletedCandidate._id,
+                name: deletedCandidate.name,
+            });
+        } catch { /* never block delete */ }
 
         res.status(200).json({ success: true, message: "Candidate deleted successfully" });
     } catch (err) {

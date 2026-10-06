@@ -25,7 +25,8 @@ import { fetchPicklist, PICKLIST_DROPDOWN_LIMIT } from '../utils/orgListFetch';
 import { DEFAULT_CTC_BANDS } from '../utils/ctcRanges';
 import { dedupeByName } from '../utils/dedupeMasterData';
 import { guardTableCopy } from '../utils/tableCopyGuard';
-import { canAccessMis, canSeeMisAllDesk, normalizeMisDesk, misPageSubtitle, misTipCaption, misDeskHint, canEditMisContact } from '../utils/misAccess';
+import { canAccessMis, canSeeMisAllDesk, canSeeMisMyRecords, canSeeMisDeskTabs, normalizeMisDesk, misPageSubtitle, misTipCaption, misDeskHint, canEditMisContact } from '../utils/misAccess';
+import { humanizeUploadError } from '../utils/humanizeUploadError';
 import { MIS_TOUR_KEY, MIS_TOUR_STEPS } from './mis/misConstants';
 import ProductTour from './ui/ProductTour';
 import TourHelpFab from './ui/TourHelpFab';
@@ -264,7 +265,10 @@ export default function MisPage() {
   const toast = useToast();
   const navigate = useNavigate();
   const isOwner = user?.role === 'owner';
+  const isAdmin = user?.role === 'admin';
   const canSeeAllDesk = canSeeMisAllDesk(user);
+  const canSeeMyRecords = canSeeMisMyRecords(user);
+  const showDeskTabs = canSeeMisDeskTabs(user);
   const [tourOpen, setTourOpen] = usePageTour(MIS_TOUR_KEY);
   const fileInputRef = useRef(null);
   const {
@@ -295,11 +299,11 @@ export default function MisPage() {
     setDraft(urlQ);
   }, [urlQ]);
 
-  // Keep URL desk in sync with role rules (employees never stay on All).
+  // Keep URL desk in sync with role rules (owner has no My records).
   useEffect(() => {
     if (!user) return;
     const normalized = normalizeMisDesk(deskFromUrl, user);
-    const urlDesk = deskFromUrl === 'mine' || deskFromUrl === 'company' || deskFromUrl === 'all'
+    const urlDesk = deskFromUrl === 'mine' || deskFromUrl === 'company' || deskFromUrl === 'all' || deskFromUrl === 'employees'
       ? deskFromUrl
       : '';
     // No desk param → write role default (owner: all, others: mine)
@@ -311,11 +315,18 @@ export default function MisPage() {
       }, { replace: true });
       return;
     }
-    // Non-admin/owner trying to use All → force My records
     if (urlDesk === 'all' && !canSeeMisAllDesk(user)) {
       setSearchParams((prev) => {
         const p = new URLSearchParams(prev);
         p.set('desk', 'mine');
+        return p;
+      }, { replace: true });
+      return;
+    }
+    if (urlDesk === 'mine' && !canSeeMisMyRecords(user)) {
+      setSearchParams((prev) => {
+        const p = new URLSearchParams(prev);
+        p.set('desk', 'all');
         return p;
       }, { replace: true });
       return;
@@ -331,7 +342,7 @@ export default function MisPage() {
 
   const setDeskView = useCallback((next) => {
     const value = normalizeMisDesk(next, user);
-    const labels = { all: 'All contacts', mine: 'My records', company: 'Organisation' };
+    const labels = { all: 'Total', mine: 'My records', company: 'Organisation', employees: 'Employee records' };
     const currentNorm = normalizeMisDesk(deskFromUrl, user);
     if (currentNorm === value) return;
     setDeskSwitchLabel(labels[value] || 'contacts');
@@ -362,9 +373,29 @@ export default function MisPage() {
     setDraft('');
     setQ('');
     setPage(1);
-    if (canSeeAllDesk) setDeskView('all');
-    toast.info('Showing contacts you moved to Candidates', 2800, { key: 'mis-moved-view' });
-  }, [canSeeAllDesk, setDeskView, toast]);
+    if (isOwner) setDeskView('all');
+    toast.info(
+      isOwner ? 'Showing contacts moved to Candidates' : 'Showing contacts you moved to Candidates',
+      2800,
+      { key: 'mis-moved-view' }
+    );
+  }, [toast, isOwner, setDeskView]);
+
+  const showMovedThisMonth = useCallback(() => {
+    announceLoadRef.current = false;
+    const next = { ...EMPTY_MIS_FILTERS, moved: '1', datePeriod: 'month' };
+    setDraftFilters(next);
+    setAppliedFilters(next);
+    setDraft('');
+    setQ('');
+    setPage(1);
+    if (isOwner) setDeskView('all');
+    toast.info(
+      isOwner ? 'Showing moves to Candidates this month' : 'Showing your moves to Candidates this month',
+      2800,
+      { key: 'mis-moved-month' }
+    );
+  }, [toast, isOwner, setDeskView]);
 
   const [loading, setLoading] = useState(true);
   const [listRefreshing, setListRefreshing] = useState(false);
@@ -501,10 +532,13 @@ export default function MisPage() {
     ];
   }, [masterMisStatuses]);
 
+  const loadSeqRef = useRef(0);
   const load = useCallback(async (pageOverride, opts = {}) => {
     const pageNum = pageOverride != null ? pageOverride : page;
     const silent = Boolean(opts.silent);
     const announce = Boolean(opts.announce);
+    const seq = ++loadSeqRef.current;
+    const requestedDesk = deskView;
     if (silent) setListRefreshing(true);
     else setLoading(true);
     try {
@@ -514,13 +548,23 @@ export default function MisPage() {
       });
       if (q) params.set('q', q);
       // Always send desk so backend role defaults stay accurate
-      if (deskView) params.set('desk', deskView);
+      if (requestedDesk) params.set('desk', requestedDesk);
       appendMisFilters(params, appliedFilters);
       const res = await authenticatedFetch(`/api/mis?${params}`);
       const data = await res.json().catch(() => ({}));
+      if (seq !== loadSeqRef.current) return; // stale response
       if (!res.ok) throw new Error(data.message || 'Failed to load MIS');
+      let nextRows = data.rows || [];
+      // Client guard: My records never shows another user's contacts
+      if (requestedDesk === 'mine' && user) {
+        const me = String(user.id || user._id || '');
+        nextRows = nextRows.filter((row) => {
+          const ownerId = String(row?.createdBy?._id || row?.createdBy || '');
+          return me && ownerId && ownerId === me;
+        });
+      }
       const nextPagination = data.pagination || { page: 1, limit: PAGE_SIZE, total: 0, pages: 1 };
-      setRows(data.rows || []);
+      setRows(nextRows);
       setPagination(nextPagination);
       setScope(data.scope || 'owner');
       setLastSyncedAt(new Date());
@@ -531,7 +575,13 @@ export default function MisPage() {
       }
       if (announce) {
         const n = Number(nextPagination.total) || 0;
-        const deskLabel = deskView === 'mine' ? 'My records' : deskView === 'company' ? 'Organisation' : 'All contacts';
+        const deskLabel = requestedDesk === 'mine'
+          ? 'My records'
+          : requestedDesk === 'company'
+            ? 'Organisation'
+            : requestedDesk === 'employees'
+              ? 'Employee records'
+              : 'Total';
         toast.info(
           n === 0
             ? `${deskLabel} · no contacts found`
@@ -541,14 +591,17 @@ export default function MisPage() {
         );
       }
     } catch (err) {
+      if (seq !== loadSeqRef.current) return;
       if (!silent) toast.error(err.message || 'Failed to load contacts');
       if (!silent) setRows([]);
     } finally {
-      if (silent) setListRefreshing(false);
-      else setLoading(false);
-      setDeskSwitchLabel('');
+      if (seq === loadSeqRef.current) {
+        if (silent) setListRefreshing(false);
+        else setLoading(false);
+        setDeskSwitchLabel('');
+      }
     }
-  }, [page, q, appliedFilters, deskView, toast]);
+  }, [page, q, appliedFilters, deskView, toast, user]);
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true);
@@ -563,8 +616,10 @@ export default function MisPage() {
         total: Number(data.total) || 0,
         mine: Number(data.mine) || 0,
         company: Number(data.company) || 0,
+        employeeRecords: Number(data.employeeRecords) || 0,
         newThisMonth: Number(data.newThisMonth) || 0,
         movedToCandidates: Number(data.movedToCandidates) || 0,
+        movedThisMonth: Number(data.movedThisMonth) || 0,
         activeInMis: Number(data.activeInMis) || 0,
         scope: data.scope,
         generatedAt: data.generatedAt,
@@ -651,14 +706,18 @@ export default function MisPage() {
   });
 
   const headerTotal = useMemo(() => {
-    const hasFilters = Boolean(q || Object.values(appliedFilters || {}).some((v) => v && v !== 'all' && v !== ''));
-    if (!hasFilters && stats) {
+    // Live list total — updates with desk tabs, cards, and filters (not a stale KPI click)
+    if (!loading && Number.isFinite(Number(pagination.total))) {
+      return Number(pagination.total);
+    }
+    if (stats) {
       if (deskView === 'all' && Number.isFinite(Number(stats.total))) return Number(stats.total);
       if (deskView === 'mine' && Number.isFinite(Number(stats.mine))) return Number(stats.mine);
       if (deskView === 'company' && Number.isFinite(Number(stats.company))) return Number(stats.company);
+      if (deskView === 'employees' && Number.isFinite(Number(stats.employeeRecords))) return Number(stats.employeeRecords);
     }
-    return pagination.total || rows.length || 0;
-  }, [q, appliedFilters, deskView, stats, pagination.total, rows.length]);
+    return Number(pagination.total) || rows.length || 0;
+  }, [loading, deskView, stats, pagination.total, rows.length]);
   const totalLabel = headerTotal.toLocaleString();
   const filteredCount = pagination.total > 0 ? pagination.total : (rows.length || 0);
   const totalPages = Math.max(1, Number(pagination.pages) || 1);
@@ -674,7 +733,8 @@ export default function MisPage() {
       limit: String(extra.limit ?? PAGE_SIZE),
     });
     if (q) params.set('q', q);
-    if (deskView && deskView !== 'all') params.set('desk', deskView);
+    // Always send desk (including "all") so the API never falls back incorrectly
+    if (deskView) params.set('desk', deskView);
     appendMisFilters(params, appliedFilters);
     if (extra.idsOnly) params.set('idsOnly', '1');
     if (extra.idSkip) params.set('idSkip', String(extra.idSkip));
@@ -1616,15 +1676,15 @@ export default function MisPage() {
   }
 
   return (
-    <div className="page-shell-ats font-sans text-stone-900" role="main" aria-label="MIS">
+    <div className="page-shell-ats animate-page-enter font-sans text-stone-900" role="main" aria-label="MIS">
       <PageHeader
         icon={Megaphone}
         title="MIS"
-        subtitle={misPageSubtitle(user, headerTotal, totalLabel)}
+        subtitle={misPageSubtitle(user, headerTotal, totalLabel, deskView)}
         gradientTitle
       >
         <div
-          className="flex w-full items-center gap-1.5 sm:gap-2 justify-start md:justify-end flex-nowrap min-w-0"
+          className="flex w-full items-center gap-1.5 sm:gap-2 justify-start md:justify-end flex-wrap sm:flex-nowrap min-w-0"
           data-tour="mis-actions"
         >
           <button
@@ -1654,7 +1714,7 @@ export default function MisPage() {
             type="button"
             onClick={() => setAddOpen(true)}
             disabled={uploading}
-            className="inline-flex h-10 min-w-0 flex-1 sm:flex-none items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br from-brand-600 to-teal-600 px-3 sm:px-3.5 text-sm font-semibold text-white shadow-md shadow-brand-500/20 hover:opacity-95 disabled:opacity-50"
+            className="inline-flex h-10 min-w-0 flex-1 basis-[8.5rem] sm:flex-none sm:basis-auto items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br from-brand-600 to-teal-600 px-3 sm:px-3.5 text-sm font-semibold text-white shadow-md shadow-brand-500/20 hover:opacity-95 disabled:opacity-50"
           >
             <Plus size={16} className="shrink-0" />
             <span className="truncate">Add contact</span>
@@ -1662,46 +1722,73 @@ export default function MisPage() {
         </div>
       </PageHeader>
 
-      {/* Overview cards — top of page so KPIs stay above the directory */}
-      <section className="min-w-0" aria-label="Directory overview" data-tour="mis-tip">
-        <div className={`grid grid-cols-1 min-[420px]:grid-cols-2 ${canSeeAllDesk ? 'xl:grid-cols-5' : 'xl:grid-cols-4'} gap-3`}>
-          {canSeeAllDesk ? (
-            <StatCard
-              icon={Inbox}
-              label="All contacts"
-              value={stats?.total ?? 0}
-              caption="Organisation directory overview"
-              gradient="from-sky-500 to-brand-400"
-              loading={statsLoading}
-              aligned
-              onClick={() => openDeskCard('all')}
-            />
-          ) : null}
+      {/* Overview cards — same KPI grid rhythm as dashboard */}
+      <section className="mb-8 sm:mb-10 min-w-0 w-full" aria-label="Directory overview" data-tour="mis-tip">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-3 min-w-0">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-bold tracking-tight text-stone-900 break-words">Overview</h2>
+            <p className="text-xs text-stone-500 mt-0.5 break-words">
+              {isOwner ? 'Organisation totals · live figures' : 'Your desk metrics · live figures'}
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:gap-4 md:gap-5 min-w-0 w-full grid-cols-1 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+          <StatCard
+            icon={Inbox}
+            label="Total"
+            value={stats?.total ?? 0}
+            caption={
+              isOwner
+                ? 'All contacts in the organisation'
+                : 'Shared directory + your records'
+            }
+            gradient="from-sky-500 to-brand-400"
+            loading={statsLoading}
+            aligned
+            onClick={() => openDeskCard('all')}
+          />
           <StatCard
             icon={Building2}
             label="Organisation"
             value={stats?.company ?? 0}
-            caption="Shared company directory"
+            caption={isOwner ? 'Company directory uploads' : 'Shared company directory'}
             gradient="from-indigo-500 to-blue-400"
             loading={statsLoading}
             aligned
             onClick={() => openDeskCard('company')}
           />
-          <StatCard
-            icon={UserRound}
-            label="My records"
-            value={stats?.mine ?? 0}
-            caption="Contacts you added"
-            gradient="from-brand-500 to-teal-500"
-            loading={statsLoading}
-            aligned
-            onClick={() => openDeskCard('mine')}
-          />
+          {isOwner ? (
+            <StatCard
+              icon={Users}
+              label="Employee records"
+              value={stats?.employeeRecords ?? 0}
+              caption="Contacts added by employees · all time"
+              gradient="from-brand-500 to-teal-500"
+              loading={statsLoading}
+              aligned
+              onClick={() => openDeskCard('employees')}
+            />
+          ) : (
+            <StatCard
+              icon={UserRound}
+              label="My records"
+              value={stats?.mine ?? 0}
+              caption="Contacts you added · all time"
+              gradient="from-brand-500 to-teal-500"
+              loading={statsLoading}
+              aligned
+              onClick={() => openDeskCard('mine')}
+            />
+          )}
           <StatCard
             icon={UserCheck}
             label="In Candidates"
             value={stats?.movedToCandidates ?? 0}
-            caption={showingMovedOnly ? 'Filtered · click another card to exit' : 'Only contacts you moved from MIS'}
+            caption={
+              showingMovedOnly && appliedFilters.datePeriod !== 'month'
+                ? 'Filtered · click another card to exit'
+                : (isOwner ? 'Moved to Candidates · all time' : 'Moved by you · all time')
+            }
             gradient="from-violet-500 to-indigo-500"
             loading={statsLoading}
             aligned
@@ -1711,21 +1798,35 @@ export default function MisPage() {
             icon={CalendarPlus}
             label="Added this month"
             value={stats?.newThisMonth ?? 0}
-            caption="New on your desk this month"
+            caption={isOwner ? 'New contacts this month' : 'New on your desk this month'}
             gradient="from-emerald-500 to-lime-400"
             loading={statsLoading}
             aligned
             onClick={() => {
               setDraftFilters({ ...EMPTY_MIS_FILTERS, datePeriod: 'month' });
               setAppliedFilters({ ...EMPTY_MIS_FILTERS, datePeriod: 'month' });
-              setDeskView('mine');
+              setDeskView(isOwner ? 'all' : (canSeeMyRecords ? 'mine' : 'company'));
               setPage(1);
             }}
           />
+          <StatCard
+            icon={UserCheck}
+            label="Moved this month"
+            value={stats?.movedThisMonth ?? 0}
+            caption={
+              showingMovedOnly && appliedFilters.datePeriod === 'month'
+                ? 'Filtered · click another card to exit'
+                : (isOwner ? 'Moves to Candidates this month' : 'Your moves this month')
+            }
+            gradient="from-fuchsia-500 to-violet-400"
+            loading={statsLoading}
+            aligned
+            onClick={showMovedThisMonth}
+          />
         </div>
-        <p className="mt-2.5 text-[12px] text-stone-500 leading-snug flex items-start gap-1.5 min-w-0">
+        <p className="mt-3 text-[12px] text-stone-500 leading-snug flex items-start gap-1.5 min-w-0">
           <Info size={13} className="shrink-0 text-brand-600 mt-0.5" />
-          <span className="min-w-0" title={misTipCaption(user)}>{misTipCaption(user)}</span>
+          <span className="min-w-0 break-words" title={misTipCaption(user)}>{misTipCaption(user)}</span>
         </p>
       </section>
 
@@ -1744,27 +1845,30 @@ export default function MisPage() {
       />
 
       {/* Directory workspace: desks + search + table stay together (no scroll gap on tab switch) */}
-      <div className="card-ats-bordered relative overflow-visible min-h-[320px]">
+      <div className="card-ats-bordered relative overflow-x-hidden min-w-0 min-h-[320px]">
+        {showDeskTabs ? (
         <div
-          className="px-3 sm:px-5 pt-3 sm:pt-4 pb-0 border-b border-stone-100/90 bg-gradient-to-b from-stone-50/50 to-white"
+          className="px-3 sm:px-5 pt-3 sm:pt-4 pb-3 sm:pb-0 border-b border-stone-100/90 bg-gradient-to-b from-stone-50/50 to-white"
           data-tour="mis-desk-tabs"
         >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 min-w-0">
+          <div className="flex flex-col gap-3 min-w-0 sm:flex-row sm:items-center sm:justify-between sm:gap-2.5">
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-stone-400">Directory</p>
-              <p className="text-[12px] text-stone-500 mt-0.5 truncate">
+              <p className="text-[12px] text-stone-500 mt-0.5 break-words sm:truncate">
                 {loading && deskSwitchLabel
                   ? `Updating ${deskSwitchLabel.toLowerCase()}…`
-                  : misDeskHint(deskView)}
+                  : misDeskHint(deskView, user)}
               </p>
             </div>
-            <div className="overflow-x-auto scrollbar-thin min-w-0 sm:max-w-full">
-              <div className="inline-flex items-center gap-0.5 p-1 rounded-xl border border-stone-200 bg-white shadow-sm shadow-stone-900/5">
+            <div className="w-full min-w-0 sm:w-auto sm:max-w-full overflow-x-auto scrollbar-thin">
+              <div className="flex w-full sm:w-auto sm:inline-flex items-stretch sm:items-center gap-0.5 p-1 rounded-xl border border-stone-200 bg-white shadow-sm shadow-stone-900/5">
                 {[
                   canSeeAllDesk
-                    ? { id: 'all', label: 'All', icon: Layers, hint: 'Organisation directory and your records' }
+                    ? { id: 'all', label: 'All', icon: Layers, hint: 'Full organisation directory' }
                     : null,
-                  { id: 'mine', label: 'My records', icon: UserRound, hint: 'Contacts you added' },
+                  canSeeMyRecords
+                    ? { id: 'mine', label: 'My records', icon: UserRound, hint: 'Only contacts you added' }
+                    : null,
                   { id: 'company', label: 'Organisation', icon: Building2, hint: 'Shared organisation directory' },
                 ].filter(Boolean).map((tab) => {
                   const Icon = tab.icon;
@@ -1776,7 +1880,7 @@ export default function MisPage() {
                       onClick={() => setDeskView(tab.id)}
                       disabled={loading && active}
                       title={tab.hint}
-                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 sm:px-3 h-9 text-sm font-semibold transition-colors whitespace-nowrap ${
+                      className={`inline-flex flex-1 sm:flex-none items-center justify-center gap-1.5 rounded-lg px-2 sm:px-3 h-9 text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap min-w-0 ${
                         active
                           ? 'bg-gradient-to-br from-brand-600 to-teal-600 text-white shadow-md shadow-brand-500/20'
                           : 'text-stone-600 hover:bg-stone-50'
@@ -1787,7 +1891,7 @@ export default function MisPage() {
                       ) : (
                         <Icon size={14} className="shrink-0 opacity-90" />
                       )}
-                      <span>{tab.label}</span>
+                      <span className="truncate">{tab.label}</span>
                     </button>
                   );
                 })}
@@ -1795,6 +1899,12 @@ export default function MisPage() {
             </div>
           </div>
         </div>
+        ) : (
+        <div className="px-3 sm:px-5 pt-3 sm:pt-4 pb-3 border-b border-stone-100/90 bg-gradient-to-b from-stone-50/50 to-white min-w-0" data-tour="mis-desk-tabs">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-stone-400">Directory</p>
+          <p className="text-[12px] text-stone-500 mt-0.5 break-words">{misDeskHint(deskView, user)}</p>
+        </div>
+        )}
 
         {selectedIds.length > 0 ? (
           <MisBulkToolbar
@@ -1813,16 +1923,16 @@ export default function MisPage() {
             onSelectAllFiltered={handleSelectAllFiltered}
           />
         ) : null}
-        <div className="px-3 sm:px-5 py-3 sm:py-3.5 border-b border-stone-100/90 space-y-2.5 bg-white" data-tour="mis-search">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0">
-            <div className="relative flex-1 min-w-0 flex h-10 overflow-hidden rounded-xl border border-stone-200/90 bg-white shadow-sm shadow-stone-900/5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/15 transition-all">
+        <div className="px-3 sm:px-5 py-3 sm:py-3.5 border-b border-stone-100/90 space-y-3 bg-gradient-to-b from-white to-stone-50/40 min-w-0" data-tour="mis-search">
+          <div className="flex flex-col gap-2.5 min-w-0 sm:flex-row sm:items-center">
+            <div className="relative flex-1 min-w-0 flex h-11 overflow-hidden rounded-2xl border border-stone-200/90 bg-white shadow-sm shadow-stone-900/5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/15 transition-all">
               <div className="relative flex-1 min-w-0">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none z-[1]" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none z-[1]" />
                 <input
                   type="text"
                   placeholder="Search by name, email, company, or phone"
                   aria-label="Search directory"
-                  className="w-full h-full min-w-0 pl-10 pr-9 bg-transparent border-0 outline-none ring-0 shadow-none text-sm font-medium text-stone-900 placeholder:text-stone-400"
+                  className="w-full h-full min-w-0 pl-11 pr-10 bg-transparent border-0 outline-none ring-0 shadow-none text-sm font-medium text-stone-900 placeholder:text-stone-400"
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
@@ -1831,7 +1941,7 @@ export default function MisPage() {
                   <button
                     type="button"
                     onClick={() => { setDraft(''); setQ(''); setPage(1); }}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 z-[1]"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 z-[1]"
                     title="Clear search"
                   >
                     <X size={14} />
@@ -1839,10 +1949,10 @@ export default function MisPage() {
                 ) : null}
               </div>
             </div>
-            <div className="inline-flex items-center gap-2 flex-shrink-0">
+            <div className="flex w-full sm:w-auto items-center gap-2 flex-shrink-0 min-w-0">
               <button
                 type="button"
-                className="btn-secondary h-10 justify-center shadow-sm shadow-stone-900/5 px-3.5 min-w-[6.75rem]"
+                className="btn-secondary h-11 flex-1 sm:flex-none justify-center shadow-sm shadow-stone-900/5 px-4 min-w-0 sm:min-w-[7rem] rounded-2xl"
                 onClick={runSearch}
                 disabled={loading}
               >
@@ -1855,9 +1965,9 @@ export default function MisPage() {
                   setDraftFilters({ ...appliedFilters });
                   setShowFilters((v) => !v);
                 }}
-                className={`relative inline-flex h-10 w-10 sm:w-auto sm:px-3.5 items-center justify-center gap-2 rounded-xl font-semibold border shadow-sm shadow-stone-900/5 transition-all text-sm ${
+                className={`relative inline-flex h-11 w-11 sm:w-auto sm:px-4 shrink-0 items-center justify-center gap-2 rounded-2xl font-semibold border shadow-sm shadow-stone-900/5 transition-all text-sm ${
                   showFilters || activeFilterCount > 0
-                    ? 'border-brand-400 bg-brand-50 text-brand-800'
+                    ? 'border-brand-400 bg-gradient-to-br from-brand-50 to-teal-50 text-brand-800 ring-1 ring-brand-200/60'
                     : 'border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50 text-stone-700'
                 }`}
                 title="Refine results"
@@ -1866,7 +1976,7 @@ export default function MisPage() {
                 <Filter size={15} strokeWidth={1.75} />
                 <span className="hidden sm:inline">Filters</span>
                 {activeFilterCount > 0 ? (
-                  <span className="absolute -top-1 -right-1 sm:static sm:relative inline-flex items-center justify-center min-w-[1.15rem] h-4 sm:h-5 px-1 sm:px-1.5 rounded-full sm:rounded bg-stone-900 text-white text-[9px] sm:text-[10px] font-bold tabular-nums">
+                  <span className="absolute -top-1.5 -right-1.5 sm:static sm:relative inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-gradient-to-br from-brand-600 to-teal-600 text-white text-[10px] font-bold tabular-nums shadow-sm shadow-brand-500/30">
                     {activeFilterCount}
                   </span>
                 ) : null}
@@ -1875,29 +1985,36 @@ export default function MisPage() {
           </div>
 
           {activeChips.length > 0 && !showFilters ? (
-            <div className="flex flex-wrap items-center gap-2 pt-0.5">
-              <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400">Applied</span>
-              {activeChips.map((chip) => (
+            <div className="rounded-2xl border border-brand-100/80 bg-gradient-to-r from-brand-50/70 via-white to-teal-50/40 px-3 py-2.5 sm:px-3.5 shadow-sm shadow-brand-500/5 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 min-w-0">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 border border-brand-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-brand-700 shadow-sm">
+                  <Filter size={10} className="text-brand-600" />
+                  Applied
+                </span>
+                {activeChips.map((chip) => (
+                  <button
+                    key={chip.key}
+                    type="button"
+                    onClick={() => clearOneFilter(chip.key)}
+                    className="group inline-flex items-center gap-1.5 max-w-full rounded-full border border-stone-200/90 bg-white pl-2.5 pr-1.5 py-1 text-left shadow-sm shadow-stone-900/5 hover:border-brand-300 hover:bg-brand-50/50 transition-colors"
+                    title={`Remove ${chip.label}`}
+                  >
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-400 shrink-0">{chip.label}</span>
+                    <span className="text-xs font-semibold text-stone-800 truncate max-w-[10rem] sm:max-w-[14rem]">{chip.value}</span>
+                    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-stone-400 group-hover:bg-white group-hover:text-brand-700 transition-colors">
+                      <X size={11} aria-hidden="true" />
+                    </span>
+                  </button>
+                ))}
                 <button
-                  key={chip.key}
                   type="button"
-                  onClick={() => clearOneFilter(chip.key)}
-                  className="cand-filters-chip"
-                  title={`Remove ${chip.label}`}
+                  className="sm:ml-auto inline-flex h-8 items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-600 shadow-sm hover:border-stone-300 hover:bg-stone-50 transition-colors"
+                  onClick={clearFilters}
                 >
-                  <span className="cand-filters-chip-key">{chip.label}</span>
-                  <span className="cand-filters-chip-val">{chip.value}</span>
-                  <X size={11} className="opacity-70 flex-shrink-0" aria-hidden="true" />
+                  <RotateCcw size={12} />
+                  Clear all
                 </button>
-              ))}
-              <button
-                type="button"
-                className="h-8 px-2.5 rounded-lg text-xs font-semibold text-stone-600 hover:bg-stone-100 inline-flex items-center gap-1"
-                onClick={clearFilters}
-              >
-                <RotateCcw size={12} />
-                Clear all
-              </button>
+              </div>
             </div>
           ) : null}
 
@@ -1921,18 +2038,18 @@ export default function MisPage() {
           />
         </div>
 
-        <div className="relative min-h-[280px]" data-tour="mis-table">
+        <div className="relative min-h-[240px] sm:min-h-[280px] min-w-0" data-tour="mis-table">
           <div
             ref={tableScrollRef}
-            className={`cand-table-scroll overflow-x-auto select-none transition-[filter,opacity] duration-300 ease-out ${
+            className={`cand-table-scroll overflow-x-auto overscroll-x-contain select-none transition-[filter,opacity] duration-300 ease-out min-w-0 ${
               showOverlay
                 ? 'pointer-events-none select-none opacity-45 blur-[2.5px] saturate-75'
                 : 'opacity-100 blur-0'
-            }`}
-            onMouseDown={showOverlay ? undefined : onTableDragScrollStart}
-            onMouseMove={showOverlay ? undefined : onTableDragScrollMove}
-            onMouseUp={showOverlay ? undefined : onTableDragScrollEnd}
-            onMouseLeave={showOverlay ? undefined : onTableDragScrollEnd}
+            } max-sm:[-ms-overflow-style:none] max-sm:[scrollbar-width:none] max-sm:[&::-webkit-scrollbar]:hidden`}
+            onPointerDown={showOverlay ? undefined : onTableDragScrollStart}
+            onPointerMove={showOverlay ? undefined : onTableDragScrollMove}
+            onPointerUp={showOverlay ? undefined : onTableDragScrollEnd}
+            onPointerCancel={showOverlay ? undefined : onTableDragScrollEnd}
             onCopy={guardTableCopy}
             aria-busy={showOverlay}
           >
@@ -2077,9 +2194,9 @@ export default function MisPage() {
           ) : null}
         </div>
 
-        <div className="border-t border-stone-100 bg-stone-50/50 px-4 sm:px-5 py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3 min-w-0">
-            <p className="text-xs sm:text-sm text-stone-500 font-medium">
+        <div className="border-t border-stone-100 bg-stone-50/50 px-3 sm:px-5 py-3 sm:py-3.5 flex flex-col gap-3 min-w-0 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-1 min-w-0 sm:flex-row sm:items-center sm:gap-3">
+            <p className="text-xs sm:text-sm text-stone-500 font-medium break-words">
               Showing{' '}
               <span className="text-stone-800 font-semibold tabular-nums">
                 {rangeFrom.toLocaleString()}–{rangeTo.toLocaleString()}
@@ -2096,12 +2213,12 @@ export default function MisPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0">
             <button
               type="button"
               onClick={() => goToPage(1)}
               disabled={safePage <= 1 || loading}
-              className="min-h-[44px] px-3 rounded-xl border-2 border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:border-brand-300 disabled:opacity-40 transition-all"
+              className="hidden sm:inline-flex min-h-[44px] px-3 rounded-xl border-2 border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:border-brand-300 disabled:opacity-40 transition-all items-center"
               aria-label="First page"
             >
               First
@@ -2110,9 +2227,9 @@ export default function MisPage() {
               type="button"
               onClick={() => goToPage(safePage - 1)}
               disabled={safePage <= 1 || loading}
-              className="min-h-[44px] px-4 rounded-xl border-2 border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:border-brand-300 disabled:opacity-40 transition-all"
+              className="min-h-[44px] px-3 sm:px-4 rounded-xl border-2 border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:border-brand-300 disabled:opacity-40 transition-all"
             >
-              Previous
+              Prev
             </button>
 
             <div className="flex items-center gap-1" role="navigation" aria-label="Pagination">
@@ -2126,7 +2243,7 @@ export default function MisPage() {
                   onClick={() => goToPage(p)}
                   disabled={loading}
                   aria-current={p === safePage ? 'page' : undefined}
-                  className={`min-h-[44px] min-w-[44px] rounded-xl text-sm font-semibold transition disabled:opacity-40 ${pageButtonClass(p === safePage)}`}
+                  className={`min-h-[44px] min-w-[40px] sm:min-w-[44px] rounded-xl text-sm font-semibold transition disabled:opacity-40 ${pageButtonClass(p === safePage)}`}
                 >
                   {p}
                 </button>
@@ -2140,7 +2257,7 @@ export default function MisPage() {
               type="button"
               onClick={() => goToPage(safePage + 1)}
               disabled={safePage >= totalPages || loading}
-              className="min-h-[44px] px-4 rounded-xl border-2 border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:border-brand-300 disabled:opacity-40 transition-all"
+              className="min-h-[44px] px-3 sm:px-4 rounded-xl border-2 border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:border-brand-300 disabled:opacity-40 transition-all"
             >
               Next
             </button>
@@ -2148,7 +2265,7 @@ export default function MisPage() {
               type="button"
               onClick={() => goToPage(totalPages)}
               disabled={safePage >= totalPages || loading}
-              className="min-h-[44px] px-3 rounded-xl border-2 border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:border-brand-300 disabled:opacity-40 transition-all"
+              className="hidden sm:inline-flex min-h-[44px] px-3 rounded-xl border-2 border-stone-200 bg-white text-sm font-semibold text-stone-700 hover:border-brand-300 disabled:opacity-40 transition-all items-center"
               aria-label="Last page"
             >
               Last
@@ -2374,7 +2491,7 @@ export default function MisPage() {
                     </div>
                   ))}
                 </div>
-                <p className="text-sm text-stone-600 leading-relaxed">{uploadUi.result.message}</p>
+                <p className="text-sm text-stone-600 leading-relaxed">{humanizeUploadError(uploadUi.result.message, 'Import finished.')}</p>
                 {Array.isArray(uploadUi.result.errors) && uploadUi.result.errors.length ? (
                   <div className="rounded-xl border border-stone-200 bg-stone-50/80 max-h-36 overflow-y-auto p-3">
                     <p className="text-[11px] font-bold uppercase tracking-wider text-stone-500 mb-1.5">
@@ -2383,7 +2500,7 @@ export default function MisPage() {
                     <ul className="space-y-1 text-xs text-stone-600">
                       {uploadUi.result.errors.slice(0, 12).map((err, i) => (
                         <li key={`${err.sheet || ''}-${err.row}-${i}`}>
-                          {err.sheet ? `${err.sheet} · ` : ''}Row {err.row}: {err.message}
+                          {err.sheet ? `${err.sheet} · ` : ''}Row {err.row}: {humanizeUploadError(err.message, 'This row could not be imported.')}
                         </li>
                       ))}
                     </ul>
@@ -2394,11 +2511,27 @@ export default function MisPage() {
 
             {uploadUi.phase === 'error' ? (
               <div className="space-y-3">
-                <p className="text-sm text-rose-700 font-medium">{uploadUi.error || 'Upload failed'}</p>
+                <p className="text-sm text-rose-700 font-medium">
+                  {humanizeUploadError(uploadUi.error, 'The spreadsheet could not be imported. Check the file and try again.')}
+                </p>
                 {uploadUi.result && (uploadUi.result.created > 0 || uploadUi.result.duplicates > 0) ? (
                   <p className="text-sm text-stone-600">
                     Partial progress before the issue: {uploadUi.result.created || 0} added, {uploadUi.result.duplicates || 0} duplicates, {uploadUi.result.skipped || 0} failed.
                   </p>
+                ) : null}
+                {Array.isArray(uploadUi.result?.errors) && uploadUi.result.errors.length ? (
+                  <div className="rounded-xl border border-rose-100 bg-rose-50/70 max-h-36 overflow-y-auto p-3">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-rose-700 mb-1.5">
+                      Why rows were skipped
+                    </p>
+                    <ul className="space-y-1 text-xs text-rose-900">
+                      {uploadUi.result.errors.slice(0, 12).map((err, i) => (
+                        <li key={`${err.sheet || ''}-${err.row}-${i}`}>
+                          {err.sheet ? `${err.sheet} · ` : ''}Row {err.row}: {humanizeUploadError(err.message, 'This row could not be imported.')}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ) : null}
               </div>
             ) : null}

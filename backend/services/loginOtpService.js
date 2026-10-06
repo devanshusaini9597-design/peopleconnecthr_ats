@@ -15,6 +15,7 @@ const {
   escapeHtml,
 } = require('./emailBrandLayout');
 const { JWT_SECRET } = require('../middleware/authMiddleware');
+const { isDeployedLoginSurface } = require('../utils/deployedSurface');
 const logger = require('../utils/logger');
 
 const OTP_TTL_MS = 10 * 60 * 1000;
@@ -22,11 +23,57 @@ const OTP_RESEND_MS = 45 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 const OTP_SELECT = '+loginOtpHash +loginOtpExpires +loginOtpAttempts +loginOtpSentAt';
 
+/** Gmail-style local-part before +. */
+function plusAliasMailbox(email) {
+  const s = String(email || '').trim().toLowerCase();
+  const at = s.lastIndexOf('@');
+  if (at < 1) return s;
+  const local = s.slice(0, at);
+  const domain = s.slice(at + 1);
+  const plus = local.indexOf('+');
+  const baseLocal = plus >= 0 ? local.slice(0, plus) : local;
+  return `${baseLocal}@${domain}`;
+}
+
+/**
+ * Deliver OTP to a reachable mailbox. Plus-aliases (QA skillnix.qa+role@gmail.com)
+ * go to the shared inbox. Optional QA_OTP_INBOX pins that inbox explicitly.
+ */
+function otpDeliveryAddress(accountEmail) {
+  const account = String(accountEmail || '').trim();
+  if (!account) return account;
+  const pinned = String(process.env.QA_OTP_INBOX || '').trim();
+  if (pinned && plusAliasMailbox(account) === plusAliasMailbox(pinned)) {
+    return pinned;
+  }
+  const local = account.split('@')[0] || '';
+  if (local.includes('+') && /@gmail\.com$/i.test(account)) {
+    return plusAliasMailbox(account);
+  }
+  return account;
+}
+
 /** Temporary pause — password login skips the email code. OTP code stays in place. */
 function isLoginOtpPaused() {
-  if (String(process.env.NODE_ENV || '').trim() === 'production') return false;
+  if (isDeployedLoginSurface()) return false;
   const v = String(process.env.LOGIN_OTP_PAUSED || '').trim().toLowerCase();
   return v === '1' || v === 'true' || v === 'yes';
+}
+
+function flagOn(name) {
+  const v = String(process.env[name] || '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
+/**
+ * Console skip / env pause / owner bypass stay local-only.
+ * Testing-phase overlay password may skip OTP on live while DEV_TEMP_PASSWORD_IN_PRODUCTION=1.
+ */
+function canSkipLoginOtpChallenge({ usedDevTempPassword, skipLoginOtp, ownerBypass } = {}) {
+  if (isDeployedLoginSurface()) {
+    return Boolean(usedDevTempPassword && flagOn('DEV_TEMP_PASSWORD_IN_PRODUCTION'));
+  }
+  return Boolean(usedDevTempPassword || skipLoginOtp || ownerBypass || isLoginOtpPaused());
 }
 
 function httpError(message, statusCode = 400, extra = {}) {
@@ -104,7 +151,8 @@ function buildOtpEmailHtml(user, code, brand, { otpToken } = {}) {
     bodyHtml: `
       <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hi ${first},</p>
       <p style="margin:0 0 4px 0;color:#475569;line-height:1.7;">
-        Use this one-time code to finish signing in to <strong style="color:#0f172a;">${escapeHtml(brand.name)}</strong>.
+        Use this one-time code to finish signing in to <strong style="color:#0f172a;">${escapeHtml(brand.name)}</strong>
+        as <strong style="color:#0f172a;">${escapeHtml(user.email)}</strong>.
       </p>
       ${otpCodeHtml(code, brand.brandColor)}
       <p style="margin:16px 0 0 0;color:#64748b;font-size:13px;line-height:1.65;">
@@ -127,14 +175,16 @@ async function sendLoginOtpEmail(user, code, otpToken) {
     system: true,
   });
   const html = buildOtpEmailHtml(user, code, brand, { otpToken });
+  const deliveryTo = otpDeliveryAddress(user.email);
   const text = [
+    `Sign-in for ${user.email}.`,
     `Your ${brand.name} sign-in code is ${code}. It expires in 10 minutes.`,
     `Need a new code? ${loginOtpResendUrl({ otpToken, email: user.email })}`,
   ].join('\n');
   try {
     await sendEmail(
-      user.email,
-      `Your ${brand.name} sign-in code`,
+      deliveryTo,
+      `Your ${brand.name} sign-in code for ${user.email}`,
       html,
       text,
       {
@@ -145,9 +195,10 @@ async function sendLoginOtpEmail(user, code, otpToken) {
         system: true,
       }
     );
-    return { sent: true };
+    logger.info({ email: user.email, deliveryTo }, 'Login OTP email queued');
+    return { sent: true, deliveryTo };
   } catch (err) {
-    logger.error({ err: err.message, email: user.email }, 'Login OTP email failed');
+    logger.error({ err: err.message, email: user.email, deliveryTo }, 'Login OTP email failed');
     if (err.message === 'EMAIL_NOT_CONFIGURED' && process.env.NODE_ENV !== 'test') {
       logger.warn({ email: user.email }, 'Dev-only login OTP (email not configured)');
     }
@@ -203,17 +254,17 @@ async function verifyLoginOtp({ otpToken, code }, req) {
     throw httpError('This sign-in code expired. Sign in again to get a new one.', 401);
   }
 
-  const attempts = Number(user.loginOtpAttempts || 0);
-  if (attempts >= OTP_MAX_ATTEMPTS) {
-    user.loginOtpHash = undefined;
-    user.loginOtpExpires = undefined;
-    user.loginOtpAttempts = 0;
-    await user.save();
-    throw httpError('Too many incorrect codes. Sign in again to get a new one.', 401);
-  }
-
   if (!otpMatches(user._id, cleaned, user.loginOtpHash)) {
-    user.loginOtpAttempts = attempts + 1;
+    const attempts = Number(user.loginOtpAttempts) || 0;
+    const nextAttempts = attempts + 1;
+    user.loginOtpAttempts = nextAttempts;
+    if (nextAttempts >= OTP_MAX_ATTEMPTS) {
+      user.loginOtpHash = undefined;
+      user.loginOtpExpires = undefined;
+      user.loginOtpAttempts = 0;
+      await user.save();
+      throw httpError('Too many incorrect codes. Sign in again to get a new one.', 401);
+    }
     await user.save();
     throw httpError('That code is incorrect. Check the email and try again.', 401);
   }
@@ -272,7 +323,11 @@ module.exports = {
   generateOtp,
   hashOtp,
   otpMatches,
+  plusAliasMailbox,
+  otpDeliveryAddress,
   isLoginOtpPaused,
+  isDeployedLoginSurface,
+  canSkipLoginOtpChallenge,
   issueLoginOtpChallenge,
   verifyLoginOtp,
   resendLoginOtp,

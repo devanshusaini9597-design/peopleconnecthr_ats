@@ -531,7 +531,8 @@ router.put('/:id', verifyToken, requireRecruiterOrAbove, async (req, res) => {
     const nextIndustry = updates.industry !== undefined
       ? String(updates.industry || '').trim()
       : String(existing.industry || '').trim();
-    if (!existing.isTemplate && String(nextStatus || '').toLowerCase() !== 'draft' && !nextIndustry) {
+    const pinOnly = Object.keys(req.body || {}).every((key) => key === 'pinned');
+    if (!pinOnly && !existing.isTemplate && String(nextStatus || '').toLowerCase() !== 'draft' && !nextIndustry) {
       return res.status(400).json({ message: 'Select an industry/tag before publishing this job.' });
     }
 

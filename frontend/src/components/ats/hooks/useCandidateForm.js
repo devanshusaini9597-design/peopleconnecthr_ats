@@ -47,7 +47,16 @@ function pickJobIdForEdit(fresh = {}, listRow = {}, deskJobId = '', jobs = []) {
   return jobSelectValue(listRow.jobCode || listRow.jobId || listRow.taggedJobId, jobs);
 }
 
-export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, currentPage, setCurrentPage, API_URL, jobIdFilter = '', jobs = [] } = {}) {
+const FORM_SKIP_KEYS = new Set([
+  'statusHistory', '_id', '__v', 'updatedAt', 'createdAt', 'organizationId', 'createdBy',
+  'misContactId', 'fromMis', 'personId', 'applications', 'taggedJobId', 'candidateCode',
+  'applicationCode', 'talentPoolIds', 'sharedWith', 'hiddenFromFreelancerIds',
+  'embedding', 'embeddingUpdatedAt', 'demographics', 'messagingConsent', 'marketingConsent',
+  'talentPoolConsent', 'gdprErasedAt', 'phoneVerifiedAt', 'resumeParsedAt', 'statusEnteredAt',
+  'stageLogBackfilledAt', 'hiredDate', 'appliedAt', 'freelancerHiddenAt',
+]);
+
+export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, currentPage, setCurrentPage, API_URL, jobIdFilter = '', jobs = [], viewMode = 'all' } = {}) {
   const { user, updateUser } = useAuth();
   const isFreelancer = user?.role === 'freelancer';
   const canEditSpoc = canEditCandidateSpoc(user?.role);
@@ -68,7 +77,7 @@ export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, cur
   const fieldRefs = {
     name: useRef(null), email: useRef(null), contact: useRef(null), ctc: useRef(null),
     position: useRef(null), companyName: useRef(null), location: useRef(null), spoc: useRef(null),
-    pan: useRef(null), product: useRef(null), resume: useRef(null),
+    pan: useRef(null), product: useRef(null), resume: useRef(null), jobId: useRef(null),
   };
   const [masterPositions, setMasterPositions] = useState([]);
   const [masterClients, setMasterClients] = useState([]);
@@ -228,6 +237,10 @@ export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, cur
           errors.resume = 'A resume is required before this candidate can be saved.';
         }
       }
+
+      if (!editId && !String(trimmed.jobId || '').trim()) {
+        errors.jobId = 'Select a Job ID. Every new candidate must be tagged to a job.';
+      }
     }
 
     if (step === 'experience') {
@@ -284,7 +297,8 @@ export function useCandidateForm({ toast, fetchData, searchQuery, filterJob, cur
   const handleEdit = async (candidate) => {
     try {
       // Fetch fresh candidate data from backend
-      const response = await authenticatedFetch(`${API_URL}/${candidate._id}`);
+      const view = encodeURIComponent(viewMode || 'all');
+      const response = await authenticatedFetch(`${API_URL}/${candidate._id}?view=${view}`);
       if (response.ok) {
         const freshCandidate = await response.json();
         setEditId(freshCandidate._id);
@@ -514,6 +528,10 @@ const handleAddCandidate = async (e) => {
     errors.ctc = 'Current CTC is required';
   }
 
+  if (!editId && !String(trimmed.jobId || '').trim()) {
+    errors.jobId = 'Select a Job ID. Every new candidate must be tagged to a job.';
+  }
+
   // Freelancer: resume is mandatory on create
   if (isFreelancer && !editId) {
     const hasResumeFile = trimmed.resume instanceof File;
@@ -533,7 +551,7 @@ const handleAddCandidate = async (e) => {
     setFormErrors(errors);
     const firstErrorField = Object.keys(errors)[0];
     // Switch to the tab that contains the error
-    if (['name', 'email', 'contact', 'position', 'companyName', 'location', 'resume'].includes(firstErrorField)) {
+    if (['name', 'email', 'contact', 'position', 'companyName', 'location', 'resume', 'jobId'].includes(firstErrorField)) {
       setFormSection('basic');
     } else if (['experience', 'ctc', 'expectedCtc', 'noticePeriod', 'fls', 'status'].includes(firstErrorField)) {
       setFormSection('experience');
@@ -564,7 +582,7 @@ const handleAddCandidate = async (e) => {
     // Use FormData for both create and edit (supports file upload)
     const data = new FormData();
     Object.keys(trimmed).forEach((key) => {
-      if (['statusHistory', '_id', '__v', 'updatedAt', 'createdAt', 'organizationId', 'createdBy'].includes(key)) return;
+      if (FORM_SKIP_KEYS.has(key)) return;
       if (key === 'resume') {
         if (trimmed[key] instanceof File) data.append('resume', trimmed[key]);
       } else if (key === 'customFields') {

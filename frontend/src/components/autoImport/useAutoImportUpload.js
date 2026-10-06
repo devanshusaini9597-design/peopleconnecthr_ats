@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import BASE_API_URL from '../../config';
 import { authenticatedFetch, handleUnauthorized } from '../../utils/fetchUtils';
 import { MAX_BYTES } from './constants';
+import { humanizeUploadError } from '../../utils/humanizeUploadError';
 
 /**
  * Upload → map → validate actions for auto-import wizard.
@@ -129,7 +130,23 @@ export function useAutoImportUpload({
           : `Validated ${totalValidated} rows — select what to import.`
       );
     } catch (err) {
-      if (err.message !== 'Unauthorized') toast.error(err.message || 'Upload failed');
+      if (err.message !== 'Unauthorized') {
+        const reason = humanizeUploadError(err.message, 'The spreadsheet could not be imported. Check the file and try again.');
+        if (typeof setConfirmModal === 'function') {
+          setConfirmModal({
+            isOpen: true,
+            type: 'danger',
+            eyebrow: 'Import',
+            title: 'Upload could not be completed',
+            message: reason,
+            confirmText: 'Close',
+            showCancel: false,
+            onConfirm: () => setConfirmModal({ isOpen: false }),
+          });
+        } else {
+          toast.error(reason);
+        }
+      }
       setStep(columnMapping ? 'map' : 'upload');
     } finally {
       setIsUploading(false);
@@ -137,7 +154,7 @@ export function useAutoImportUpload({
       setUploadPercent(0);
     }
   }, [
-    toast, excelHeaders, persistLastMapping,
+    toast, excelHeaders, persistLastMapping, setConfirmModal,
     setStep, setIsUploading, setUploadProgress, setUploadPercent, setImportResult,
     setReviewData, setStats, setSelected, setBucket, setPage, setActiveColumnMapping,
   ]);

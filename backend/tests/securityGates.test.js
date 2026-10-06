@@ -39,6 +39,8 @@ describe('production auth bypasses stay off', () => {
     else process.env.DEV_TEMP_PASSWORD_IN_PRODUCTION = prevEnv.DEV_TEMP_PASSWORD_IN_PRODUCTION;
     if (prevEnv.DEV_TEMP_PASSWORD_ORGANIZATION_ID === undefined) delete process.env.DEV_TEMP_PASSWORD_ORGANIZATION_ID;
     else process.env.DEV_TEMP_PASSWORD_ORGANIZATION_ID = prevEnv.DEV_TEMP_PASSWORD_ORGANIZATION_ID;
+    if (prevEnv.DEV_TEMP_PASSWORD_ALL_EMPLOYEES === undefined) delete process.env.DEV_TEMP_PASSWORD_ALL_EMPLOYEES;
+    else process.env.DEV_TEMP_PASSWORD_ALL_EMPLOYEES = prevEnv.DEV_TEMP_PASSWORD_ALL_EMPLOYEES;
   });
 
   it('ignores LOGIN_OTP_PAUSED in production', () => {
@@ -52,6 +54,14 @@ describe('production auth bypasses stay off', () => {
     process.env.DEV_TEMP_PASSWORD = 'SkillnixCheck2026!';
     process.env.DEV_TEMP_PASSWORD_DOMAIN = 'skillnixrecruitment.com';
     expect(isDevTempPasswordLogin('adarsh@skillnixrecruitment.com', 'SkillnixCheck2026!')).toBe(false);
+  });
+
+  it('ignores ALL_EMPLOYEES overlay in production without the testing-phase flag', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DEV_TEMP_PASSWORD = 'SkillnixCheck2026!';
+    process.env.DEV_TEMP_PASSWORD_ALL_EMPLOYEES = '1';
+    delete process.env.DEV_TEMP_PASSWORD_IN_PRODUCTION;
+    expect(isDevTempPasswordLogin('recruiter@acme.com', 'SkillnixCheck2026!')).toBe(false);
   });
 });
 

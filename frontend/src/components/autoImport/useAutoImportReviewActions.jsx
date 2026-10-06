@@ -1,5 +1,6 @@
 import React from 'react';
 import { importReviewedInChunks, savePendingInChunks } from '../../utils/bulkImportApi';
+import { humanizeUploadError } from '../../utils/humanizeUploadError';
 import { formatNameForInput } from '../../utils/textFormatter';
 import { DRAFT_KEY, rowKey } from './constants';
 
@@ -135,7 +136,20 @@ export function useAutoImportReviewActions({
       const mod = data.modified ?? 0;
       const total = data.imported ?? 0;
       if (data.failedChunks > 0) {
-        toast.warning(`Partially imported ${total}. ${data.failedChunks} batch(es) failed — open Candidates, then retry import for the rest.`);
+        const reason = humanizeUploadError(
+          data.chunkErrors?.[0],
+          'Some rows were saved. The remaining rows could not be imported. Open Candidates, then try the rest again.'
+        );
+        setConfirmModal({
+          isOpen: true,
+          type: 'warning',
+          eyebrow: 'Import',
+          title: 'Part of the import did not finish',
+          message: reason,
+          confirmText: 'Close',
+          showCancel: false,
+          onConfirm: () => setConfirmModal({ isOpen: false }),
+        });
       } else if (total > 0 || up > 0 || mod > 0) {
         toast.success(
           mod > 0 || up > 0
@@ -146,7 +160,17 @@ export function useAutoImportReviewActions({
         toast.warning('Import finished but no rows were written. Try again or contact support.');
       }
     } catch (err) {
-      toast.error(err.message || 'Import failed');
+      const reason = humanizeUploadError(err.message, 'The import could not be completed. Check the spreadsheet and try again.');
+      setConfirmModal({
+        isOpen: true,
+        type: 'danger',
+        eyebrow: 'Import',
+        title: 'Import could not be completed',
+        message: reason,
+        confirmText: 'Close',
+        showCancel: false,
+        onConfirm: () => setConfirmModal({ isOpen: false }),
+      });
     } finally {
       setIsImporting(false);
     }

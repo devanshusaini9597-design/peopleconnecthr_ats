@@ -8,6 +8,7 @@ describe('devTempPassword', () => {
       'DEV_TEMP_PASSWORD_DOMAIN',
       'DEV_TEMP_PASSWORD_IN_PRODUCTION',
       'DEV_TEMP_PASSWORD_ORGANIZATION_ID',
+      'DEV_TEMP_PASSWORD_ALL_EMPLOYEES',
     ]) {
       if (prev[key] === undefined) delete process.env[key];
       else process.env[key] = prev[key];
@@ -43,5 +44,16 @@ describe('devTempPassword', () => {
     process.env.DEV_TEMP_PASSWORD_ORGANIZATION_ID = '507f1f77bcf86cd799439011';
     expect(isDevTempPasswordLogin('anyone@customer.com', 'SkillnixCheck2026!', '507f1f77bcf86cd799439011')).toBe(true);
     expect(isDevTempPasswordLogin('anyone@customer.com', 'SkillnixCheck2026!', '507f1f77bcf86cd799439099')).toBe(false);
+  });
+
+  it('in production with all-employees flag, any account can use the overlay password', () => {
+    const { isDevTempPasswordLogin } = require('../utils/devTempPassword');
+    process.env.NODE_ENV = 'production';
+    process.env.DEV_TEMP_PASSWORD = 'SkillnixCheck2026!';
+    process.env.DEV_TEMP_PASSWORD_IN_PRODUCTION = '1';
+    process.env.DEV_TEMP_PASSWORD_ALL_EMPLOYEES = '1';
+    delete process.env.DEV_TEMP_PASSWORD_ORGANIZATION_ID;
+    expect(isDevTempPasswordLogin('recruiter@acme.com', 'SkillnixCheck2026!', '507f1f77bcf86cd799439011')).toBe(true);
+    expect(isDevTempPasswordLogin('owner@other.com', 'wrong', '507f1f77bcf86cd799439011')).toBe(false);
   });
 });

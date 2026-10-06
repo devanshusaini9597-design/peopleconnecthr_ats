@@ -15,6 +15,7 @@ const {
 } = require('../../services/pipelineStageSync');
 const { parseRecordDate, resolveAppliedAt } = require('../../utils/candidateActivityDate');
 const { canViewOrgAnalytics } = require('../../utils/dataScope');
+const { clientSafeError } = require('../../utils/clientSafeError');
 
 const ALLOWED_FIELDS = [
     'name', 'email', 'contact', 'position', 'companyName', 'location', 'state',
@@ -318,7 +319,10 @@ async function importReviewedCandidates(req, res) {
                 writeErrors += errs.length;
                 for (const e of errs.slice(0, 5)) {
                     if (errorSamples.length < 8) {
-                        errorSamples.push(e.errmsg || e.err?.errmsg || e.message || String(e.code || e));
+                        errorSamples.push(clientSafeError(
+                            e.errmsg || e.err?.errmsg || e.message || String(e.code || e),
+                            'This row could not be saved. Check the name, email, and phone, then try again.'
+                        ));
                     }
                 }
                 logger.warn({
@@ -392,8 +396,7 @@ async function importReviewedCandidates(req, res) {
                 writeErrors,
                 errorSamples,
                 message: errorSamples[0]
-                    ? `Import failed: ${errorSamples[0]}`
-                    : 'Import failed — no rows were written. Check emails and try again.',
+                    || 'No rows were saved. Check that each row has a name, email, and phone, then try again.',
             });
         }
 
@@ -417,7 +420,10 @@ async function importReviewedCandidates(req, res) {
         });
     } catch (error) {
         logger.error({ err: error }, '[IMPORT] CRITICAL ERROR');
-        res.status(500).json({ success: false, message: error.message || 'Import failed' });
+        res.status(500).json({
+            success: false,
+            message: clientSafeError(error, 'The import could not be completed. Check the file and try again.'),
+        });
     }
 }
 

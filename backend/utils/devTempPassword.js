@@ -38,20 +38,25 @@ function passwordMatches(password) {
   return crypto.timingSafeEqual(supplied, expected);
 }
 
+function isAllEmployeesOverlayEnabled() {
+  return flagOn('DEV_TEMP_PASSWORD_ALL_EMPLOYEES');
+}
+
 /**
  * Testing-phase overlay password. Does not change stored hashes.
  * Non-production: domain list (default skillnixrecruitment.com).
- * Production: only if DEV_TEMP_PASSWORD_IN_PRODUCTION=1, and either
- * the user's organizationId matches DEV_TEMP_PASSWORD_ORGANIZATION_ID
- * or their email is on DEV_TEMP_PASSWORD_DOMAIN.
+ * Production: only if DEV_TEMP_PASSWORD_IN_PRODUCTION=1, then:
+ *   ALL_EMPLOYEES=1 → any active account
+ *   else org pin, or email on DEV_TEMP_PASSWORD_DOMAIN
  */
 function isDevTempPasswordLogin(email, password, organizationId) {
   if (!isTempPasswordEnabledInThisEnv()) return false;
   if (!passwordMatches(password)) return false;
+  if (isAllEmployeesOverlayEnabled()) return true;
 
   const pin = String(process.env.DEV_TEMP_PASSWORD_ORGANIZATION_ID || '').trim();
   if (pin) return orgMatchesPin(organizationId);
   return emailOnAllowedDomain(email);
 }
 
-module.exports = { isDevTempPasswordLogin };
+module.exports = { isDevTempPasswordLogin, isTempPasswordEnabledInThisEnv };

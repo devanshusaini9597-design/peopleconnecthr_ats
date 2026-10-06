@@ -113,6 +113,7 @@ export default function AutoImportModals({
         stats={confirmModal.stats}
         confirmText={confirmModal.confirmText}
         type={confirmModal.type}
+        showCancel={confirmModal.showCancel !== false}
         isLoading={isImporting}
       />
     </>

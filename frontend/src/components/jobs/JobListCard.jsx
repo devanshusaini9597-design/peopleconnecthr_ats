@@ -205,15 +205,16 @@ export default function JobListCard({
           <button
             type="button"
             onClick={() => onTogglePin?.(job)}
-            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border shadow-sm transition-colors ${
+            className={`inline-flex h-8 items-center gap-1 rounded-lg border px-2 text-[11px] font-bold shadow-sm transition-colors ${
               job.pinned
                 ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
                 : 'border-stone-200 bg-white text-stone-600 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800'
             }`}
-            title={job.pinned ? 'Unpin job' : 'Pin job'}
+            title={job.pinned ? 'Unpin job' : 'Pin job to the top'}
             aria-label={job.pinned ? 'Unpin job' : 'Pin job'}
           >
-            <Pin size={14} strokeWidth={2} />
+            <Pin size={13} strokeWidth={2.25} />
+            {job.pinned ? 'Pinned' : 'Pin'}
           </button>
           <button
             type="button"

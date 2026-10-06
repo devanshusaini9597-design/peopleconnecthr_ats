@@ -17,6 +17,7 @@ const { normalizeText } = require('../utils/textNormalize');
 const { publicSiteBase } = require('./emailBrandLayout');
 const { JWT_SECRET } = require('../middleware/authMiddleware');
 const logger = require('../utils/logger');
+const { clientSafeError } = require('../utils/clientSafeError');
 
 function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
@@ -37,7 +38,7 @@ function assertMisOwner(user) {
   }
 }
 
-/** Owner uploads stay org-shared; employee adds stay personal (visible to self + owner). */
+/** Only owner uploads land on the shared organisation desk; admin + employees → personal. */
 function deskScopeForUser(user) {
   return user?.role === 'owner' ? 'org' : 'personal';
 }
@@ -134,15 +135,23 @@ function userCreatedByIds(user) {
 /**
  * Narrow list to My contacts / Company directory / All (within misListFilter visibility).
  * desk=mine → rows the user created; desk=company → org-shared (deskScope !== personal).
- * desk=all is owner/admin only — other employees are coerced to mine.
+ * desk=all → full list visibility for that role (owner: org; others: shared + own personal).
  */
 function canUseMisAllDesk(user) {
-  return user?.role === 'owner' || user?.role === 'admin';
+  if (!user?.role) return false;
+  if (user.role === 'owner' || user.role === 'admin') return true;
+  return ['hr_manager', 'hr_recruiter', 'recruiter', 'sales'].includes(user.role);
 }
 
 function resolveMisDeskView(user, desk) {
   const view = String(desk || '').toLowerCase().trim();
+  // Owner has no personal desk — coerce "mine" to organisation overview
+  if (view === 'mine' && user?.role === 'owner') {
+    return 'all';
+  }
   if (view === 'mine' || view === 'company') return view;
+  // Owner: all employee personal desks (contacts added by the team)
+  if (view === 'employees' && user?.role === 'owner') return 'employees';
   if (view === 'all' && canUseMisAllDesk(user)) return 'all';
   // Missing / invalid: owner defaults to all; employees (incl. admin) to mine
   if (!view && user?.role === 'owner') return 'all';
@@ -156,6 +165,8 @@ function applyMisDeskView(filter, user, desk) {
   if (view === 'all') return next;
   const andParts = Array.isArray(next.$and) ? [...next.$and] : [];
   if (view === 'mine') {
+    // Strict: only contacts THIS user created — never other employees' desks.
+    // Applies equally to owner, admin, and every individual employee.
     const me = userCreatedByIds(user);
     if (!me.length) {
       next._id = { $in: [] };
@@ -163,7 +174,11 @@ function applyMisDeskView(filter, user, desk) {
     }
     andParts.push({ createdBy: { $in: me } });
   } else if (view === 'company') {
+    // Shared organisation directory only (excludes every personal desk)
     andParts.push({ deskScope: { $ne: 'personal' } });
+  } else if (view === 'employees') {
+    // Owner-only: every employee personal desk
+    andParts.push({ deskScope: 'personal' });
   }
   if (andParts.length) next.$and = andParts;
   return next;
@@ -279,29 +294,33 @@ function buildMisQueryFilter(user, query = {}) {
     filter.experience = { $regex: escapeRx(expMax), $options: 'i' };
   }
 
-  // Date period:
-  // - My desk → createdAt (when this employee added the contact) so cards match the table
-  // - Company / All → tracker recordDate with createdAt fallback
+  // Date period — when filtering "In Candidates", use move date; otherwise contact Date / createdAt
+  const movedFlagEarly = String(query.moved || query.movedToCandidates || '').toLowerCase().trim();
+  const filteringMoved = movedFlagEarly === '1' || movedFlagEarly === 'yes' || movedFlagEarly === 'moved';
   try {
     const { buildDateFilter } = require('../utils/analyticsTime');
     const period = trimStr(query.dateRange || query.period || query.datePeriod);
     const dateFilter = buildDateFilter(period || 'all', query.from || query.dateFrom, query.to || query.dateTo);
     if (dateFilter) {
-      const desk = resolveMisDeskView(user, query.desk || query.deskScope || query.view);
-      if (desk === 'mine') {
-        andParts.push({ createdAt: dateFilter });
+      if (filteringMoved) {
+        andParts.push({ movedToCandidateAt: dateFilter });
       } else {
-        andParts.push({
-          $or: [
-            { recordDate: dateFilter },
-            {
-              $and: [
-                { $or: [{ recordDate: null }, { recordDate: { $exists: false } }] },
-                { createdAt: dateFilter },
-              ],
-            },
-          ],
-        });
+        const desk = resolveMisDeskView(user, query.desk || query.deskScope || query.view);
+        if (desk === 'mine') {
+          andParts.push({ createdAt: dateFilter });
+        } else {
+          andParts.push({
+            $or: [
+              { recordDate: dateFilter },
+              {
+                $and: [
+                  { $or: [{ recordDate: null }, { recordDate: { $exists: false } }] },
+                  { createdAt: dateFilter },
+                ],
+              },
+            ],
+          });
+        }
       }
     }
   } catch (err) {
@@ -312,13 +331,20 @@ function buildMisQueryFilter(user, query = {}) {
     filter.$and = [...(Array.isArray(filter.$and) ? filter.$and : []), ...andParts];
   }
 
-  // Moved-to-Candidates filter stays inside role visibility (misListFilter),
-  // and skips desk-tab narrowing so the card count matches the list.
+  // "In Candidates" filter:
+  // - owner → every moved contact in the organisation
+  // - admin/employees → only contacts they moved (movedBy)
+  // Skip desk tab narrowing so list totals match the KPI cards.
   const movedFlag = String(query.moved || query.movedToCandidates || '').toLowerCase().trim();
   if (movedFlag === '1' || movedFlag === 'yes' || movedFlag === 'moved') {
+    const me = userCreatedByIds(user);
+    const movedClauses = [{ movedToCandidateAt: { $exists: true, $ne: null } }];
+    if (user.role !== 'owner') {
+      movedClauses.push(me.length ? { movedBy: { $in: me } } : { _id: { $in: [] } });
+    }
     filter.$and = [
       ...(Array.isArray(filter.$and) ? filter.$and : []),
-      { movedToCandidateAt: { $exists: true, $ne: null } },
+      ...movedClauses,
     ];
     return filter;
   }
@@ -348,6 +374,9 @@ async function countMisDesk(user, organizationId, desk = 'all') {
     }
     if (view === 'company') {
       return countMs({ ...orgMatch, deskScope: { $ne: 'personal' } });
+    }
+    if (view === 'employees') {
+      return countMs({ ...orgMatch, deskScope: 'personal' });
     }
     return countMs(orgMatch);
   }
@@ -463,7 +492,7 @@ async function listContacts(user, query = {}) {
     };
   }
 
-  const [rows, total] = await Promise.all([
+  const [rowsRaw, total] = await Promise.all([
     MisContact.find(filter)
       .sort(misListSort())
       .skip((page - 1) * limit)
@@ -472,7 +501,18 @@ async function listContacts(user, query = {}) {
       .lean(),
     resolveTotal(),
   ]);
-  const rowCount = (rows || []).length;
+
+  // Defense-in-depth: My records must never leak another user's contacts
+  let rows = rowsRaw || [];
+  if (desk === 'mine') {
+    const me = new Set(userCreatedByIds(user).map(String));
+    rows = rows.filter((row) => {
+      const ownerId = String(row?.createdBy?._id || row?.createdBy || '');
+      return ownerId && me.has(ownerId);
+    });
+  }
+
+  const rowCount = rows.length;
   const floor = (page - 1) * limit + rowCount + (rowCount === limit ? 1 : 0);
   const counted = Number(total);
   const resolvedTotal = Number.isFinite(counted)
@@ -505,43 +545,73 @@ function assertMisActor(user) {
 }
 
 /**
- * Report data scope by role (must match list security):
- * - owner → full organisation (all desks)
- * - admin → same as MIS list (shared directory + own personal; never others’ personal)
- * - other employees → only contacts they added
+ * Who may view organisation-wide MIS reports (and drill into any employee).
+ * Matches MIS “All desk” leadership — owner + admin only.
  */
-function resolveMisReportScope(user) {
+function canViewMisOrgReports(user) {
+  return user?.role === 'owner' || user?.role === 'admin';
+}
+
+/**
+ * Report data scope by role (never trust query identity for non-leaders):
+ * - owner / admin → full organisation, or one employee when ?userId= is validated
+ * - other employees → only contacts they added (ignore spoofed userId)
+ *
+ * Period metrics use the contact Date field (recordDate), falling back to upload
+ * time (createdAt) only when Date was never set — same as the MIS list table.
+ */
+async function resolveMisReportScope(user, query = {}) {
   const organizationId = user.organizationId;
   const orgMatch = organizationIdMatch(organizationId) || { organizationId };
   const me = userCreatedByIds(user);
-  const role = user.role;
+  const canOrg = canViewMisOrgReports(user);
 
-  if (role === 'owner') {
+  let requestedUserId = '';
+  if (canOrg) {
+    const raw = String(query.userId || query.employeeId || '').trim();
+    if (raw && raw !== 'all' && raw !== 'me') requestedUserId = raw;
+  }
+
+  if (canOrg && requestedUserId) {
+    const { assertOrgEmployee } = require('../utils/dataScope');
+    const target = await assertOrgEmployee(organizationId, requestedUserId);
+    const ids = [target._id, String(target._id)];
+    return {
+      scope: 'employee',
+      dateMode: 'tracker',
+      base: { ...orgMatch, createdBy: { $in: ids } },
+      me,
+      scopedUserId: String(target._id),
+      scopedUserName: target.name || (target.email || '').split('@')[0] || 'Employee',
+      scopedUserEmail: target.email || '',
+      scopedUserRole: target.role || '',
+      canSelectEmployee: true,
+    };
+  }
+
+  if (canOrg) {
     return {
       scope: 'organisation',
       dateMode: 'tracker',
       base: orgMatch,
       me,
+      scopedUserId: null,
+      scopedUserName: null,
+      canSelectEmployee: true,
     };
   }
 
-  if (role === 'admin') {
-    return {
-      scope: 'visible',
-      dateMode: 'tracker',
-      base: misListFilter(organizationId, user),
-      me,
-    };
-  }
-
-  // recruiter / sales / hr_* — personal performance only
+  // recruiter / sales / hr_* — personal performance only (never company directory)
   return {
     scope: 'self',
-    dateMode: 'createdAt',
+    dateMode: 'tracker',
     base: me.length
       ? { ...orgMatch, createdBy: { $in: me } }
       : { _id: { $in: [] } },
     me,
+    scopedUserId: me.length ? String(me[0]) : null,
+    scopedUserName: null,
+    canSelectEmployee: false,
   };
 }
 
@@ -674,23 +744,59 @@ async function getMisStats(user) {
   }
 
   const countMs = (q) => MisContact.countDocuments(q).maxTimeMS(20000).catch(() => 0);
-  const newThisMonthQ = (monthRange && me.length)
-    ? { ...orgMatch, createdBy: { $in: me }, createdAt: monthRange }
-    : { _id: { $in: [] } };
+  const isOwner = user.role === 'owner';
 
-  const movedScopeFilter = misListFilter(organizationId, user, {
-    movedToCandidateAt: { $exists: true, $ne: null },
-  });
+  // Month intake: owner = org-wide by contact Date; others = contacts they added (createdAt).
+  let newThisMonthQ = { _id: { $in: [] } };
+  if (monthRange) {
+    if (isOwner) {
+      newThisMonthQ = {
+        ...orgMatch,
+        $or: [
+          { recordDate: monthRange },
+          {
+            $and: [
+              { $or: [{ recordDate: null }, { recordDate: { $exists: false } }] },
+              { createdAt: monthRange },
+            ],
+          },
+        ],
+      };
+    } else if (me.length) {
+      newThisMonthQ = { ...orgMatch, createdBy: { $in: me }, createdAt: monthRange };
+    }
+  }
+
+  // Owner: all MIS→Candidates moves in the org. Others: only moves they performed.
+  const movedScopeFilter = isOwner
+    ? {
+      ...orgMatch,
+      movedToCandidateAt: { $exists: true, $ne: null },
+    }
+    : (me.length
+      ? {
+        ...orgMatch,
+        movedToCandidateAt: { $exists: true, $ne: null },
+        movedBy: { $in: me },
+      }
+      : { _id: { $in: [] } });
+  const movedThisMonthFilter = monthRange
+    ? { ...movedScopeFilter, movedToCandidateAt: monthRange }
+    : { _id: { $in: [] } };
   const activeScopeFilter = misListFilter(organizationId, user, {
     $or: [{ movedToCandidateAt: null }, { movedToCandidateAt: { $exists: false } }],
   });
 
-  const [total, company, mine, newThisMonth, movedToCandidates, activeInMis] = await Promise.all([
+  const [total, company, mine, employeeRecords, newThisMonth, movedToCandidates, movedThisMonth, activeInMis] = await Promise.all([
     countMisDesk(user, organizationId, 'all').then((n) => (n == null ? 0 : n)),
     countMisDesk(user, organizationId, 'company').then((n) => (n == null ? 0 : n)),
     countMisDesk(user, organizationId, 'mine').then((n) => (n == null ? 0 : n)),
+    isOwner
+      ? countMs({ ...orgMatch, deskScope: 'personal' })
+      : countMisDesk(user, organizationId, 'mine').then((n) => (n == null ? 0 : n)),
     countMs(newThisMonthQ),
     countMs(movedScopeFilter),
+    countMs(movedThisMonthFilter),
     countMs(activeScopeFilter),
   ]);
 
@@ -698,8 +804,10 @@ async function getMisStats(user) {
     total: Number(total) || 0,
     mine: Number(mine) || 0,
     company: Number(company) || 0,
+    employeeRecords: Number(employeeRecords) || 0,
     newThisMonth: Number(newThisMonth) || 0,
     movedToCandidates: Number(movedToCandidates) || 0,
+    movedThisMonth: Number(movedThisMonth) || 0,
     activeInMis: Number(activeInMis) || 0,
     scope: user.role === 'owner' ? 'owner' : 'employee',
     createdBySelf: me.length > 0,
@@ -712,21 +820,28 @@ async function getMisStats(user) {
 }
 
 /**
- * MIS reports for a period — totals, desks, status mix, duplicacy.
- * Scoped securely by role via resolveMisReportScope (never query-string identity).
+ * MIS reports for a period — totals, desks, status mix, integrity / duplicacy.
+ * Scoped securely by role via resolveMisReportScope (never trust query identity).
  */
 async function getMisReports(user, query = {}) {
   assertMisActor(user);
 
-  // Ignore any attempt to spoof another org / user via query
+  // Ignore org spoofing; userId is only consumed inside resolveMisReportScope for owner/admin
   const safeQuery = { ...(query || {}) };
   delete safeQuery.organizationId;
   delete safeQuery.orgId;
-  delete safeQuery.userId;
-  delete safeQuery.employeeId;
   delete safeQuery.createdBy;
 
-  const { scope, dateMode, base, me } = resolveMisReportScope(user);
+  const scopeInfo = await resolveMisReportScope(user, safeQuery);
+  const {
+    scope,
+    dateMode,
+    base,
+    me,
+    scopedUserId = null,
+    scopedUserName = null,
+    canSelectEmployee = false,
+  } = scopeInfo;
 
   const period = trimStr(safeQuery.dateRange || safeQuery.period || safeQuery.datePeriod) || 'month';
   const from = safeQuery.from || safeQuery.dateFrom || safeQuery.customFrom;
@@ -734,106 +849,144 @@ async function getMisReports(user, query = {}) {
 
   let dateFilter = null;
   let periodLabel = period;
+  let chartCfg = null;
+  let prevFilter = null;
   try {
-    const { buildDateFilter, getDateRangeLabel } = require('../utils/analyticsTime');
+    const {
+      buildDateFilter,
+      getDateRangeLabel,
+      chartBucketConfig,
+      previousPeriodFilter,
+    } = require('../utils/analyticsTime');
     dateFilter = buildDateFilter(period === 'all' ? 'all' : period, from, to);
     periodLabel = typeof getDateRangeLabel === 'function'
       ? getDateRangeLabel(period, from, to)
       : (period === 'custom' && from && to ? `${from} → ${to}` : period);
+    chartCfg = chartBucketConfig(period === 'all' ? 'month' : period, from, to);
+    prevFilter = previousPeriodFilter(period === 'all' ? 'all' : period, from, to);
   } catch (err) {
     logger.warn({ err: err.message }, 'MIS reports date filter skipped');
   }
 
+  // Period stats follow contact Date (recordDate), with upload time only as fallback
   const periodMatch = applyMisPeriodFilter(base, dateFilter, dateMode);
-  const companyPeriod = andMisFilter(periodMatch, { deskScope: { $ne: 'personal' } });
-  const personalPeriod = andMisFilter(periodMatch, { deskScope: 'personal' });
+  const prevMatch = prevFilter ? applyMisPeriodFilter(base, prevFilter, dateMode) : null;
+  const uploadedMatch = applyMisPeriodFilter(base, dateFilter, 'createdAt');
+  const isOrgView = scope === 'organisation';
+  const isSelfView = scope === 'self';
 
-  const countMs = (q, ms = 20000) => MisContact.countDocuments(q).maxTimeMS(ms).catch(() => 0);
+  // Integrity: tracker Date placed in this period on contacts that were uploaded earlier
+  const periodStart = dateFilter?.$gte || null;
+  const recycledMatch = periodStart
+    ? andMisFilter(base, {
+      recordDate: dateFilter,
+      createdAt: { $lt: periodStart },
+    })
+    : null;
+  // Integrity: edits in this period on contacts that were uploaded earlier
+  const touchedOldMatch = periodStart
+    ? andMisFilter(base, {
+      updatedAt: dateFilter,
+      createdAt: { $lt: periodStart },
+    })
+    : null;
+
+  const countMs = (q, ms = 8000) => {
+    if (!q) return Promise.resolve(0);
+    return MisContact.countDocuments(q).maxTimeMS(ms).catch(() => 0);
+  };
+
+  const emptyAgg = Promise.resolve([]);
   const dateExpr = dateMode === 'createdAt'
     ? '$createdAt'
     : { $ifNull: ['$recordDate', '$createdAt'] };
 
-  const [totalInPeriod, companyInPeriod, personalInPeriod, statusAgg, sourceAgg, trendAgg, phoneDupes, emailOverlap, phoneOverlap, allTimeTotal] = await Promise.all([
-    countMs(periodMatch),
-    countMs(companyPeriod),
-    countMs(personalPeriod),
-    MisContact.aggregate([
-      { $match: periodMatch },
-      {
-        $group: {
-          _id: {
-            $cond: [
-              { $or: [{ $eq: ['$status', null] }, { $eq: ['$status', ''] }] },
-              'NEW',
-              { $toUpper: '$status' },
-            ],
-          },
-          count: { $sum: 1 },
-        },
-      },
-      { $sort: { count: -1 } },
-      { $limit: 30 },
-    ]).option({ maxTimeMS: 20000 }).catch(() => []),
-    MisContact.aggregate([
-      { $match: periodMatch },
-      {
-        $group: {
-          _id: {
-            $let: {
-              vars: { s: { $trim: { input: { $ifNull: ['$source', ''] } } } },
-              in: {
+  // One period scan for charts + desk mix + contributors (avoids 5–6 separate heavy queries)
+  const periodFacetPromise = MisContact.aggregate([
+    { $match: periodMatch },
+    {
+      $facet: {
+        total: [{ $count: 'n' }],
+        company: isSelfView
+          ? []
+          : [{ $match: { deskScope: { $ne: 'personal' } } }, { $count: 'n' }],
+        personal: [{ $match: { deskScope: 'personal' } }, { $count: 'n' }],
+        byStatus: [
+          {
+            $group: {
+              _id: {
                 $cond: [
-                  { $or: [{ $eq: ['$$s', null] }, { $eq: ['$$s', ''] }] },
-                  'Unspecified',
-                  '$$s',
+                  { $or: [{ $eq: ['$status', null] }, { $eq: ['$status', ''] }] },
+                  'NEW',
+                  { $toUpper: '$status' },
                 ],
               },
+              count: { $sum: 1 },
             },
           },
-          count: { $sum: 1 },
-        },
-      },
-      { $sort: { count: -1 } },
-      { $limit: 12 },
-    ]).option({ maxTimeMS: 20000 }).catch(() => []),
-    MisContact.aggregate([
-      { $match: periodMatch },
-      {
-        $group: {
-          _id: {
-            $dateToString: {
-              format: '%Y-%m-%d',
-              date: dateExpr,
-            },
-          },
-          count: { $sum: 1 },
-        },
-      },
-      { $sort: { _id: 1 } },
-      { $limit: 120 },
-    ]).option({ maxTimeMS: 20000 }).catch(() => []),
-    MisContact.aggregate([
-      { $match: base },
-      {
-        $project: {
-          phoneKey: {
-            $let: {
-              vars: {
-                raw: { $ifNull: ['$phone', { $ifNull: ['$contact', ''] }] },
+          { $sort: { count: -1 } },
+          { $limit: 20 },
+        ],
+        byClient: [
+          {
+            $group: {
+              _id: {
+                $cond: [
+                  { $or: [{ $eq: ['$client', null] }, { $eq: ['$client', ''] }] },
+                  'Unspecified',
+                  '$client',
+                ],
               },
-              in: {
-                $replaceAll: {
-                  input: { $replaceAll: { input: '$$raw', find: ' ', replacement: '' } },
-                  find: '-',
-                  replacement: '',
-                },
-              },
+              count: { $sum: 1 },
             },
           },
-        },
+          { $sort: { count: -1 } },
+          { $limit: 10 },
+        ],
+        byTrend: [
+          {
+            $group: {
+              _id: { $dateToString: { format: '%Y-%m-%d', date: dateExpr } },
+              count: { $sum: 1 },
+            },
+          },
+          { $sort: { _id: 1 } },
+          { $limit: 400 },
+        ],
+        byContributor: isOrgView
+          ? [
+            { $group: { _id: '$createdBy', added: { $sum: 1 } } },
+            { $sort: { added: -1 } },
+            { $limit: 40 },
+          ]
+          : [],
       },
-      { $match: { phoneKey: { $nin: [null, ''] } } },
-      { $group: { _id: '$phoneKey', count: { $sum: 1 }, ids: { $push: '$_id' } } },
+    },
+  ]).option({ maxTimeMS: 12000, allowDiskUse: true }).catch(() => [{}]);
+
+  // Integrity + overlap: period-scoped (not all-time) so reports stay fast
+  const [
+    periodFacetRows,
+    prevInPeriod,
+    uploadedInPeriod,
+    allTimeTotal,
+    recycledCount,
+    touchedOldCount,
+    phoneDupes,
+    emailOverlap,
+    phoneOverlap,
+    recycledByUserAgg,
+    recycledSamples,
+  ] = await Promise.all([
+    periodFacetPromise,
+    countMs(prevMatch, 6000),
+    countMs(uploadedMatch, 6000),
+    countMs(base, 6000),
+    countMs(recycledMatch, 6000),
+    countMs(touchedOldMatch, 6000),
+    MisContact.aggregate([
+      { $match: andMisFilter(periodMatch, { phone: { $nin: [null, ''] } }) },
+      { $group: { _id: '$phone', count: { $sum: 1 } } },
       { $match: { count: { $gt: 1 } } },
       {
         $group: {
@@ -842,17 +995,22 @@ async function getMisReports(user, query = {}) {
           duplicateRows: { $sum: '$count' },
         },
       },
-    ]).option({ maxTimeMS: 20000 }).catch(() => []),
+    ]).option({ maxTimeMS: 6000 }).catch(() => []),
     (async () => {
       try {
         const Candidate = require('../models/Candidate');
-        const emails = await MisContact.distinct('email', { ...base, email: { $nin: [null, ''] } });
+        const emailRows = await MisContact.aggregate([
+          { $match: andMisFilter(periodMatch, { email: { $nin: [null, ''] } }) },
+          { $group: { _id: '$email' } },
+          { $limit: 3000 },
+        ]).option({ maxTimeMS: 6000 }).catch(() => []);
+        const emails = (emailRows || []).map((r) => r._id).filter(Boolean);
         if (!emails.length) return 0;
         const orgMatch = organizationIdMatch(user.organizationId) || { organizationId: user.organizationId };
         return Candidate.countDocuments({
           ...orgMatch,
           email: { $in: emails },
-        }).maxTimeMS(15000).catch(() => 0);
+        }).maxTimeMS(6000).catch(() => 0);
       } catch {
         return 0;
       }
@@ -860,83 +1018,219 @@ async function getMisReports(user, query = {}) {
     (async () => {
       try {
         const Candidate = require('../models/Candidate');
-        const orgMatch = organizationIdMatch(user.organizationId) || { organizationId: user.organizationId };
-        const phones = await MisContact.aggregate([
-          { $match: base },
-          {
-            $project: {
-              phoneKey: {
-                $trim: {
-                  input: { $ifNull: ['$phone', { $ifNull: ['$contact', ''] }] },
-                },
-              },
-            },
-          },
-          { $match: { phoneKey: { $nin: [null, ''] } } },
-          { $group: { _id: '$phoneKey' } },
-          { $limit: 20000 },
-        ]).option({ maxTimeMS: 15000 });
-        const keys = (phones || []).map((p) => p._id).filter(Boolean);
+        const phoneRows = await MisContact.aggregate([
+          { $match: andMisFilter(periodMatch, { phone: { $nin: [null, ''] } }) },
+          { $group: { _id: '$phone' } },
+          { $limit: 3000 },
+        ]).option({ maxTimeMS: 6000 }).catch(() => []);
+        const keys = (phoneRows || []).map((p) => p._id).filter(Boolean);
         if (!keys.length) return 0;
+        const orgMatch = organizationIdMatch(user.organizationId) || { organizationId: user.organizationId };
         return Candidate.countDocuments({
           ...orgMatch,
-          $or: [
-            { phone: { $in: keys } },
-            { contact: { $in: keys } },
-          ],
-        }).maxTimeMS(15000).catch(() => 0);
+          phone: { $in: keys },
+        }).maxTimeMS(6000).catch(() => 0);
       } catch {
         return 0;
       }
     })(),
-    countMs(base, 20000),
+    isOrgView && recycledMatch
+      ? MisContact.aggregate([
+        { $match: recycledMatch },
+        { $group: { _id: '$createdBy', recycled: { $sum: 1 } } },
+        { $sort: { recycled: -1 } },
+        { $limit: 40 },
+      ]).option({ maxTimeMS: 6000 }).catch(() => [])
+      : emptyAgg,
+    (isOrgView || scope === 'employee') && recycledMatch
+      ? MisContact.find(recycledMatch)
+        .select('name email phone recordDate createdAt createdBy')
+        .sort({ recordDate: -1 })
+        .limit(15)
+        .maxTimeMS(6000)
+        .lean()
+        .catch(() => [])
+      : Promise.resolve([]),
   ]);
+
+  const facet = (periodFacetRows && periodFacetRows[0]) || {};
+  const statusAgg = facet.byStatus || [];
+  const clientAgg = facet.byClient || [];
+  const trendAgg = facet.byTrend || [];
+  const contributorAgg = facet.byContributor || [];
+  const totalInPeriod = facet.total?.[0]?.n || 0;
+  const companyInPeriod = facet.company?.[0]?.n || 0;
+  const personalInPeriod = facet.personal?.[0]?.n || 0;
 
   const phoneDup = phoneDupes?.[0] || {};
   const companyN = Number(companyInPeriod) || 0;
   const personalN = Number(personalInPeriod) || 0;
   const inPeriod = Number(totalInPeriod) || 0;
+  const prevN = Number(prevInPeriod) || 0;
+  const uploadedN = Number(uploadedInPeriod) || 0;
+  const recycledN = Number(recycledCount) || 0;
+  const touchedN = Number(touchedOldCount) || 0;
+
+  // Fill trend buckets (day or week) so charts are continuous and accurate
+  const trendMap = new Map();
+  for (const row of trendAgg || []) {
+    if (row?._id) trendMap.set(String(row._id), Number(row.count) || 0);
+  }
+  let trend = [];
+  const granularity = chartCfg?.granularity || 'daily';
+  if (chartCfg?.dayKeys?.length) {
+    if (chartCfg.rollup === 'week') {
+      trend = chartCfg.dayKeys.map((bucket) => {
+        let count = 0;
+        const startKey = bucket.startKey || bucket.key;
+        const endKey = bucket.endKey || bucket.key;
+        for (const [day, n] of trendMap.entries()) {
+          if (day >= startKey && day <= endKey) count += n;
+        }
+        return {
+          date: startKey,
+          endDate: endKey,
+          label: bucket.day || startKey,
+          count,
+        };
+      });
+    } else {
+      trend = chartCfg.dayKeys.map((d) => ({
+        date: d.key,
+        label: d.day || d.key,
+        count: trendMap.get(d.key) || 0,
+      }));
+    }
+  } else {
+    trend = [...trendMap.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, count]) => ({ date, label: date, count }));
+  }
+
+  // Resolve contributor names for org leaderboard
+  let byContributor = [];
+  if (isOrgView && (contributorAgg?.length || recycledByUserAgg?.length)) {
+    const User = require('../models/User');
+    const recycledMap = new Map(
+      (recycledByUserAgg || []).map((r) => [String(r._id), Number(r.recycled) || 0])
+    );
+    const ids = [
+      ...new Set([
+        ...(contributorAgg || []).map((r) => String(r._id)),
+        ...(recycledByUserAgg || []).map((r) => String(r._id)),
+      ].filter(Boolean)),
+    ];
+    const users = ids.length
+      ? await User.find({ _id: { $in: ids }, organizationId: user.organizationId })
+        .select('name email role')
+        .lean()
+        .catch(() => [])
+      : [];
+    const userMap = new Map(users.map((u) => [String(u._id), u]));
+    const addedMap = new Map(
+      (contributorAgg || []).map((r) => [String(r._id), Number(r.added) || 0])
+    );
+    byContributor = ids
+      .map((id) => {
+        const u = userMap.get(id);
+        const added = addedMap.get(id) || 0;
+        const recycled = recycledMap.get(id) || 0;
+        return {
+          userId: id,
+          name: u?.name || (u?.email || '').split('@')[0] || 'Unknown',
+          email: u?.email || '',
+          role: u?.role || '',
+          added,
+          recycledTrackerDates: recycled,
+          risk: recycled > 0 && recycled >= Math.max(3, Math.ceil(added * 0.25))
+            ? 'high'
+            : recycled > 0
+              ? 'watch'
+              : 'ok',
+        };
+      })
+      .sort((a, b) => b.added - a.added || b.recycledTrackerDates - a.recycledTrackerDates);
+  }
+
+  const samples = (recycledSamples || []).map((row) => ({
+    id: String(row._id),
+    name: row.name || '',
+    email: row.email || '',
+    phone: row.phone || row.contact || '',
+    recordDate: row.recordDate ? new Date(row.recordDate).toISOString().slice(0, 10) : null,
+    createdAt: row.createdAt ? new Date(row.createdAt).toISOString().slice(0, 10) : null,
+    createdBy: row.createdBy ? String(row.createdBy) : null,
+  }));
+
+  const deltaPct = prevN > 0
+    ? Math.round(((inPeriod - prevN) / prevN) * 100)
+    : (inPeriod > 0 ? 100 : 0);
 
   return {
     period,
     periodLabel,
     scope,
+    granularity,
     generatedAt: new Date().toISOString(),
     totals: {
       allTime: Number(allTimeTotal) || 0,
       inPeriod,
-      companyInPeriod: companyN,
+      previousPeriod: prevN,
+      deltaPct,
+      uploadedInPeriod: uploadedN,
+      // Company desk counts only for leadership / employee drill-down — never for self reports
+      companyInPeriod: isSelfView ? 0 : companyN,
       personalInPeriod: personalN,
     },
     byStatus: (statusAgg || []).map((row) => ({
       status: String(row._id || 'NEW'),
       count: Number(row.count) || 0,
     })),
-    bySource: (sourceAgg || []).map((row) => ({
-      source: String(row._id || 'Unspecified'),
+    byClient: (clientAgg || []).map((row) => ({
+      client: String(row._id || 'Unspecified'),
       count: Number(row.count) || 0,
     })),
-    trend: (trendAgg || [])
-      .filter((row) => row && row._id)
-      .map((row) => ({
-        date: String(row._id),
-        count: Number(row.count) || 0,
-      })),
-    deskMix: [
-      { label: scope === 'organisation' ? 'Organisation' : 'Shared desk', key: 'company', count: companyN },
-      { label: 'Personal records', key: 'personal', count: personalN },
-    ].filter((row) => row.count > 0),
+    trend,
+    deskMix: [],
+    employeeMix: isOrgView
+      ? byContributor
+        .filter((row) => (Number(row.added) || 0) > 0)
+        .slice(0, 10)
+        .map((row) => ({
+          label: row.name,
+          key: row.userId,
+          count: Number(row.added) || 0,
+        }))
+      : [],
+    byContributor,
     duplicacy: {
       phoneDuplicateGroups: Number(phoneDup.duplicateGroups) || 0,
       phoneDuplicateRows: Number(phoneDup.duplicateRows) || 0,
       emailOverlapWithCandidates: Number(emailOverlap) || 0,
       phoneOverlapWithCandidates: Number(phoneOverlap) || 0,
+      recycledTrackerDates: recycledN,
+      touchedOldContacts: touchedN,
+      samples: (isOrgView || scope === 'employee') ? samples : [],
     },
-    // Help UI explain scope without leaking other desks
+    integrity: {
+      trulyNewInPeriod: uploadedN,
+      recycledTrackerDates: recycledN,
+      touchedOldContacts: touchedN,
+      riskLevel: recycledN >= 20 || (recycledN > 0 && recycledN >= Math.ceil(Math.max(inPeriod, 1) * 0.3))
+        ? 'high'
+        : recycledN > 0 || touchedN >= 50
+          ? 'watch'
+          : 'ok',
+      note: 'Metrics use each contact’s Date field. Upload time applies only when Date is blank. Integrity checks cover the selected period.',
+    },
     meta: {
       role: user.role,
-      selfOnly: scope === 'self',
-      includesOthersPersonal: scope === 'organisation',
+      dateMode: dateMode || 'tracker',
+      selfOnly: isSelfView,
+      includesOthersPersonal: isOrgView,
+      canSelectEmployee,
+      scopedUserId,
+      scopedUserName,
       actorId: me.length ? String(me[0]) : null,
     },
   };
@@ -1346,7 +1640,11 @@ async function moveToCandidates(user, ids = [], options = {}) {
     } catch (err) {
       skippedInvalid += 1;
       if (errors.length < 40) {
-        errors.push({ id: row._id, email, message: err.message || 'Move failed' });
+        errors.push({
+          id: row._id,
+          email,
+          message: clientSafeError(err, 'This contact could not be moved to Candidates. Check the row and try again.'),
+        });
       }
     }
   }

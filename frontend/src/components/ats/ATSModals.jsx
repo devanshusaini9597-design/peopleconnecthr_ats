@@ -245,6 +245,19 @@ export default function ATSModals(props) {
         setImportConfirmation={importer.setImportConfirmation}
       />
 
+      <ConfirmationModal
+        isOpen={Boolean(importer.importFailure)}
+        onClose={() => importer.setImportFailure?.(null)}
+        onConfirm={() => importer.setImportFailure?.(null)}
+        type="danger"
+        eyebrow="Import"
+        title={importer.importFailure?.title || 'Import could not be completed'}
+        message={importer.importFailure?.message || 'The spreadsheet could not be imported. Check the file and try again.'}
+        confirmText="Close"
+        showCancel={false}
+        zClass="z-[320]"
+      />
+
       <ExportExcelModal
         showDownloadModal={props.showDownloadModal}
         setShowDownloadModal={props.setShowDownloadModal}

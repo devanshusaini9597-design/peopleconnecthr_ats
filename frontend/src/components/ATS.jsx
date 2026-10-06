@@ -200,6 +200,7 @@ const ATS = forwardRef((props, ref) => {
     toast, fetchData, searchQuery, filterJob, currentPage, setCurrentPage, API_URL,
     jobIdFilter,
     jobs,
+    viewMode: candidatesViewMode,
   });
   const {
     setShowModal, setEditId, setFormData, setFormErrors,
@@ -293,7 +294,11 @@ const ATS = forwardRef((props, ref) => {
   }, [listQueryOptions, candidatesViewMode, employeeScope.userId, setSelectedIds]);
 
   useEffect(() => {
-    if (!canUseFeature(orgPlan, 'analytics.dei', { internalPreviewAccess: Boolean(user?.internalPreviewAccess) })) {
+    if (!canUseFeature(orgPlan, 'analytics.dei', {
+      isDemo: Boolean(user?.isDemo),
+      internalPreviewAccess: Boolean(user?.internalPreviewAccess),
+      previewModules: user?.previewModules,
+    })) {
       return undefined;
     }
     let cancelled = false;
@@ -305,7 +310,7 @@ const ATS = forwardRef((props, ref) => {
       } catch { /* optional */ }
     })();
     return () => { cancelled = true; };
-  }, [orgPlan, user?.internalPreviewAccess, setBlindMode]);
+  }, [orgPlan, user?.isDemo, user?.internalPreviewAccess, setBlindMode]);
 
   useEffect(() => {
     if (!form.showModal) return undefined;
@@ -362,8 +367,9 @@ const ATS = forwardRef((props, ref) => {
       handleEdit, handleShareClick, handleDelete, handleResumePreview, handleResumeDownload,
       handleSendEmail, sendWhatsApp, blindMode, currentPage,
       orgCandidateFields, candidates, isFreelancer, jobIdFilter,
+      whatsAppApiEnabled: canUseFeature(orgPlan, 'integrations.whatsapp'),
     }),
-    [blindMode, currentPage, orgCandidateFields, candidates, handleEdit, handleShareClick, isFreelancer, jobIdFilter] // eslint-disable-line react-hooks/exhaustive-deps
+    [blindMode, currentPage, orgCandidateFields, candidates, handleEdit, handleShareClick, isFreelancer, jobIdFilter, orgPlan] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const availableColumnKeys = useMemo(() => allColumns.map((c) => c.key), [allColumns]);
