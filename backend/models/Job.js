@@ -37,6 +37,12 @@ const jobSchema = new mongoose.Schema({
     enum: ['full_time', 'part_time', 'contract', 'internship', 'freelance'],
     default: 'full_time'
   },
+  workplaceType: {
+    type: String,
+    enum: ['onsite', 'hybrid', 'remote'],
+    default: 'onsite',
+  },
+  validThrough: { type: Date },
 
   // ── Compensation ───────────────────────────────────────────────────
   ctc: { type: String, default: '' },                      // Legacy field
@@ -106,6 +112,14 @@ const jobSchema = new mongoose.Schema({
     postedAt: { type: Date, default: Date.now },
     postedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
   }],
+
+  /** Platform Google for Jobs Indexing API status (not tenant-facing). */
+  googleJobs: {
+    lastNotifiedAt: { type: Date },
+    lastType: { type: String, default: '' },
+    lastHttpStatus: { type: Number },
+    lastError: { type: String, default: '' },
+  },
 
   // ── Counters (denormalized for performance) ────────────────────────
   applicationCount: { type: Number, default: 0 },

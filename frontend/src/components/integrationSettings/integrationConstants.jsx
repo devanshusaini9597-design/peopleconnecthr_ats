@@ -95,7 +95,6 @@ export const card = (id, name, desc, category, icon, color, bg, feature, fields)
 
 export const EMAIL_PROVIDERS = [
   card('smtp', 'Custom SMTP', 'Connect your own email server', 'email', Mail, 'text-brand-600', 'bg-brand-50', null, ['host', 'port', 'username', 'password', 'fromEmail']),
-  card('zeptomail', 'Zoho ZeptoMail', 'High deliverability transactional email', 'email', Mail, 'text-amber-500', 'bg-amber-50', 'integrations.byoEmail', ['apiKey', 'fromEmail']),
   card('sendgrid', 'SendGrid', 'Cloud-based email delivery', 'email', Mail, 'text-teal-600', 'bg-teal-50', 'integrations.byoEmail', ['apiKey', 'fromEmail']),
   card('ses', 'AWS SES', 'Amazon Simple Email Service', 'email', Mail, 'text-orange-600', 'bg-orange-50', 'integrations.byoEmail', ['accessKeyId', 'secretAccessKey', 'region', 'fromEmail']),
   card('mailgun', 'Mailgun', 'Developer-friendly email API', 'email', Mail, 'text-red-600', 'bg-red-50', 'integrations.byoEmail', ['apiKey', 'domain', 'fromEmail']),
@@ -129,7 +128,7 @@ export const WHATSAPP_PROVIDERS = [
 
 export const JOB_BOARD_PROVIDERS = [
   card('indeed_feed', 'Indeed Feed', 'Pull-based XML feed for Indeed', 'job_board', Briefcase, 'text-brand-600', 'bg-brand-50', 'integrations.jobBoard', ['feedUrl']),
-  card('google_jobs_feed', 'Google Jobs Feed', 'Pull-based feed for Google Jobs', 'job_board', Briefcase, 'text-blue-600', 'bg-blue-50', 'integrations.jobBoard', ['feedUrl']),
+  card('google_jobs_feed', 'Google for Jobs', 'Platform-indexed for every published careers job. No tenant feed URL.', 'job_board', Briefcase, 'text-blue-600', 'bg-blue-50', 'integrations.jobBoard', []),
   card('webhook', 'Custom Relay / Zapier', 'Push jobs to middleware or partner endpoint', 'job_board', Briefcase, 'text-teal-600', 'bg-teal-50', 'integrations.jobBoard', ['webhookUrl']),
   card('linkedin', 'LinkedIn', 'Direct job posting to LinkedIn', 'job_board', Briefcase, 'text-sky-700', 'bg-sky-50', 'integrations.jobBoard', ['accessToken', 'organizationUrn']),
   card('ziprecruiter', 'ZipRecruiter', 'Post jobs to ZipRecruiter', 'job_board', Briefcase, 'text-green-700', 'bg-green-50', 'integrations.jobBoard', ['apiKey', 'employerId']),
@@ -221,11 +220,11 @@ export const FIELD_LABELS = {
   account: 'Snowflake Account', warehouse: 'Warehouse', database: 'Database', schema: 'Schema', role: 'Role (optional)',
   teamId: 'Slack Team ID (for workspace mapping)',
   signingSecret: 'Signing Secret', botToken: 'Bot Token',
-  listKey: 'Zoho Mailing List Key (default / general)',
+  listKey: 'Mailing list key (default / general)',
   listKeySubscribe: 'Subscribe list key',
   listKeyJobAlerts: 'Job alerts list key',
   listKeyNurture: 'Talent pool / nurture list key',
-  topicId: 'Zoho Topic ID (optional)',
+  topicId: 'Topic ID (optional)',
 };
 
 export const FIELD_HINTS = {
@@ -237,10 +236,10 @@ export const FIELD_HINTS = {
   organizationUrn: 'urn:li:organization:12345',
   privateKey: 'PEM key with \\n line breaks', prefix: 'Optional folder prefix in bucket',
   listKey: 'Fallback / general list (used when a purpose list is empty)',
-  listKeySubscribe: 'Zoho list for “Subscribe for Updates”',
-  listKeyJobAlerts: 'Zoho list for new job / hiring marketing',
-  listKeyNurture: 'Zoho list for talent-pool nurture',
-  topicId: 'From Zoho Campaigns → Contacts → Topics (required on newer accounts)',
+  listKeySubscribe: 'List for “Subscribe for Updates”',
+  listKeyJobAlerts: 'List for new job / hiring marketing',
+  listKeyNurture: 'List for talent-pool nurture',
+  topicId: 'Topic id from your mailing account (required on newer accounts)',
   refreshToken: 'OAuth refresh token — leave blank to keep existing',
 };
 
@@ -301,23 +300,10 @@ export const SLACK_PROVIDERS = [
   card('teams', 'Microsoft Teams', 'Outgoing webhook for candidate search stub', 'slack_app', Plug, 'text-sky-600', 'bg-sky-50', 'integrations.slackApp', ['botToken', 'signingSecret'])
 ];
 
-export const MARKETING_PROVIDERS = [
-  card(
-    'zoho_campaigns',
-    'Zoho Campaigns',
-    'Marketing list + campaigns (list key, topic, OAuth or zapikey)',
-    'marketing',
-    Mail,
-    'text-amber-600',
-    'bg-amber-50',
-    'integrations.marketing',
-    ['listKey', 'listKeySubscribe', 'listKeyJobAlerts', 'listKeyNurture', 'topicId', 'fromEmail', 'clientId', 'clientSecret', 'refreshToken', 'apiKey']
-  ),
-];
+export const MARKETING_PROVIDERS = [];
 
 export const SECTIONS = [
   { title: 'Email Providers', icon: Mail, providers: EMAIL_PROVIDERS },
-  { title: 'Marketing / Campaigns', icon: Mail, providers: MARKETING_PROVIDERS },
   { title: 'Calendar', icon: Calendar, providers: CALENDAR_PROVIDERS },
   { title: 'AI / Scoring', icon: Bot, providers: AI_PROVIDERS },
   { title: 'SMS', icon: MessageSquare, providers: SMS_PROVIDERS },

@@ -24,7 +24,7 @@ const Organization = require('../models/Organization');
 const READ_ONLY_EVENTS = [
   eventTypes.CANDIDATE_CREATED, eventTypes.CANDIDATE_UPDATED, eventTypes.CANDIDATE_DELETED,
   eventTypes.APPLICATION_CREATED, eventTypes.APPLICATION_STAGE_CHANGED, eventTypes.APPLICATION_REJECTED, eventTypes.CANDIDATE_HIRED,
-  eventTypes.JOB_CREATED, eventTypes.JOB_PUBLISHED, eventTypes.JOB_CLOSED,
+  eventTypes.JOB_CREATED, eventTypes.JOB_PUBLISHED, eventTypes.JOB_UPDATED, eventTypes.JOB_CLOSED,
   eventTypes.INTERVIEW_SCHEDULED, eventTypes.INTERVIEW_COMPLETED, eventTypes.INTERVIEW_CANCELLED, eventTypes.SCORECARD_SUBMITTED
 ];
 
@@ -114,6 +114,33 @@ router.put('/:id', async (req, res) => {
 
     await endpoint.save();
     res.json({ success: true, data: { ...endpoint.toObject(), secret: undefined } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/:id/test', async (req, res) => {
+  try {
+    const endpoint = await WebhookEndpoint.findOne({ _id: req.params.id, organizationId: req.user.organizationId });
+    if (!endpoint) return res.status(404).json({ success: false, message: 'Webhook endpoint not found' });
+    const { deliverToEndpoint } = require('../services/webhookDispatcher');
+    const priorFailures = endpoint.consecutiveFailures || 0;
+    const priorActive = endpoint.isActive;
+    const delivery = await deliverToEndpoint(endpoint, 'webhook.test', {
+      organizationId: String(req.user.organizationId),
+      ping: true,
+      message: 'People Connect HR webhook test',
+    });
+    endpoint.consecutiveFailures = priorFailures;
+    endpoint.isActive = priorActive;
+    await endpoint.save();
+    res.json({
+      success: true,
+      delivery,
+      signatureHeader: 'X-PeopleConnectHR-Signature',
+      eventHeader: 'X-PeopleConnectHR-Event',
+      compatibilityHeaders: ['X-SkillNix-Signature', 'X-SkillNix-Event'],
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

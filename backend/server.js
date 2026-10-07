@@ -55,10 +55,12 @@ const { initNotificationListeners } = require('./events/listeners/notificationLi
 const { initAuditListeners } = require('./events/listeners/auditListener');
 const { registerIntegrationHandoffListeners } = require('./events/listeners/integrationHandoffListener');
 const { initSequenceTriggerListeners } = require('./events/listeners/sequenceTriggerListener');
+const { initGoogleJobsListeners } = require('./events/listeners/googleJobsListener');
 initNotificationListeners();
 initAuditListeners();
 registerIntegrationHandoffListeners();
 initSequenceTriggerListeners();
+initGoogleJobsListeners();
 
 // ── Routes ───────────────────────────────────────────────────────────
 const homeRoutes = require('./routes/home');
@@ -279,8 +281,23 @@ try {
 
 app.use('/api', globalApiLimiter);
 
+function sendHealth(req, res) {
+  const zohoKey = (process.env.ZOHO_ZEPTOMAIL_API_KEY || process.env.ZEPTOMAIL_API_KEY || '').trim();
+  const zohoFrom = (process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL || process.env.ZEPTOMAIL_FROM_EMAIL || '').trim();
+  const emailConfigured = Boolean(zohoKey && zohoFrom);
+  res.json({
+    status: 'ok',
+    version: 'v3-saas-enterprise-byok',
+    timestamp: new Date().toISOString(),
+    emailConfigured,
+    frontendUrlSet: Boolean((process.env.FRONTEND_URL || '').trim()),
+  });
+}
+app.get('/health', sendHealth);
+app.get('/api/health', sendHealth);
+
 app.use((req, res, next) => {
-  if (req.path === '/health' || req.originalUrl === '/health') return next();
+  if (req.path === '/health' || req.originalUrl === '/health' || req.originalUrl === '/api/health') return next();
   if (mongoose.connection.readyState !== 1) {
     return res.status(503).json({ success: false, message: 'Service unavailable. Database connection is not ready.' });
   }
@@ -314,6 +331,7 @@ app.use('/api', require('./routes/authRoutes'));
 app.use('/api/demo', require('./routes/demoRoutes'));
 app.use('/api', homeRoutes);
 app.use('/api/public', publicSubscribeRoutes);
+app.use('/api/public', require('./routes/publicDemoLeadRoutes'));
 app.use('/api/public', require('./routes/publicBrandRoutes'));
 app.use('/oauth/zoho', zohoOAuthRoutes);
 app.use('/oauth/google-calendar', calendarOAuthRoutes); // public callback (Google redirects here directly)
@@ -324,20 +342,61 @@ app.use('/api/integrations/oauth/outlook-calendar', outlookCalendarOAuthRoutes);
 app.use('/sso', ssoRoutes.publicRouter); // public SAML/OIDC SP endpoints
 app.use('/scim/v2', scimRoutes);
 app.use('/api/careers', careersRoutes);
+app.get('/sitemap.xml', async (_req, res) => {
+  try {
+    const { getJobsSitemapXml } = require('./services/googleJobsService');
+    const xml = await getJobsSitemapXml();
+    res.set({
+      'Content-Type': 'application/xml; charset=utf-8',
+      'Cache-Control': 'public, max-age=900',
+    }).send(xml);
+  } catch (err) {
+    res.status(500).type('txt').send('Failed to generate sitemap');
+  }
+});
+app.get('/robots.txt', (_req, res) => {
+  const { getRobotsTxt } = require('./services/googleJobsService');
+  res.set({
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Cache-Control': 'public, max-age=3600',
+  }).send(getRobotsTxt());
+});
 app.use('/api/partners', partnerSignupRoutes);
 app.use('/api/portal', portalRoutes);
 app.use('/api/status', statusRoutes);
 app.use('/api/scheduling', schedulingRoutes);
+app.use('/api/scheduling-links', schedulingRoutes);
 app.use('/api/career-page', careerPageBuilderRoutes);
 app.use('/api/surveys', surveyRoutes);
 app.use('/client-portal', clientPortalRoutes); // public, token-gated — see routes/clientPortalRoutes.js
 
 // ── Auth routes (rate limited) ───────────────────────────────────────
+const platformOpsService = require('./services/platformOpsService');
+async function platformListTenants(req, res) {
+  try {
+    const data = await platformOpsService.listTenants(req.user, req.query);
+    return res.json({ success: true, data });
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({
+      success: false,
+      code: err.code || undefined,
+      message: err.message || 'Server error',
+    });
+  }
+}
+app.get('/api/platform/orgs', verifyToken, platformListTenants);
+app.get('/api/platform/organizations', verifyToken, platformListTenants);
+app.use('/api/platform', require('./routes/platformOpsRoutes'));
 app.use('/api/onboarding', onboardingRoutes);
+app.get('/api/trial-requests', (req, res, next) => {
+  req.url = '/trial-requests';
+  onboardingRoutes(req, res, next);
+});
 
 // ── Protected routes ─────────────────────────────────────────────────
 app.use('/api/mfa', mfaRoutes);
 app.use('/api/security', verifyToken, securityRoutes);
+app.use('/api/organization/security', verifyToken, securityRoutes);
 app.use('/api/compliance', verifyToken, complianceRoutes);
 app.use('/api/organization', verifyToken, organizationRoutes);
 app.use('/api/applications', verifyToken, applicationRoutes);
@@ -362,6 +421,17 @@ app.use('/candidates', verifyToken, candidateRoutes);
 app.use('/api/candidates', verifyToken, candidateRoutes); // versioned-friendly alias
 app.use('/api/v1/candidates', verifyToken, candidateRoutes);
 app.use('/api/email', verifyToken, emailRoutes);
+app.get('/api/email-reports', verifyToken, emailRoutes.listEmailReportsHandler);
+app.use('/api/email-reports', verifyToken, (req, _res, next) => {
+  const raw = String(req.url || '/');
+  const qIdx = raw.indexOf('?');
+  const path = (qIdx >= 0 ? raw.slice(0, qIdx) : raw) || '/';
+  const qs = qIdx >= 0 ? raw.slice(qIdx) : '';
+  if (path !== '/' && path !== '' && !path.startsWith('/reports')) {
+    req.url = `/reports${path}${qs}`;
+  }
+  next();
+}, emailRoutes);
 app.use('/api/email-templates', verifyToken, emailTemplateRoutes);
 app.use('/api/positions', positionRoutes);
 app.use('/api/clients', clientRoutes);
@@ -382,9 +452,26 @@ app.use('/api/inbox', verifyToken, inboxRoutes); // requireFeature('messaging.in
 app.use('/api/sequences', verifyToken, sequenceRoutes); // requireFeature('messaging.sequences')
 app.use('/api/dei', verifyToken, deiRoutes); // requireFeature('analytics.dei')
 app.use('/api/forms', formBuilderRoutes); // verifyToken + requireFeature('careers.formBuilder')
+app.use('/api/form-builder', formBuilderRoutes);
+app.use('/api/job-application-forms', formBuilderRoutes);
 app.use('/api/chatbot', chatbotRoutes); // public ask/config + gated admin settings
 app.use('/api/saved-searches', verifyToken, savedSearchRoutes);
 app.use('/api/scorecard-templates', verifyToken, scorecardTemplateRoutes);
+app.get('/api/scorecards', verifyToken, async (req, res) => {
+  try {
+    if (!req.user?.organizationId) {
+      return res.status(400).json({ success: false, message: 'Organization required' });
+    }
+    const Scorecard = require('./models/Scorecard');
+    const rows = await Scorecard.find({ organizationId: req.user.organizationId })
+      .sort({ updatedAt: -1 })
+      .limit(200)
+      .lean();
+    return res.json({ success: true, data: rows });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
 app.use('/api/comments', verifyToken, commentRoutes);
 app.use('/api/my-team', myTeamRoutes);
 app.use('/api/public/announcements', publicAnnouncementRoutes); // careers-site banners (no auth)
@@ -474,19 +561,7 @@ app.use('/uploads', (req, res, next) => {
   next();
 }, express.static(uploadDir));
 
-// ── Health Check ─────────────────────────────────────────────────────
-app.get('/health', (req, res) => {
-  const zohoKey = (process.env.ZOHO_ZEPTOMAIL_API_KEY || process.env.ZEPTOMAIL_API_KEY || '').trim();
-  const zohoFrom = (process.env.ZOHO_ZEPTOMAIL_FROM_EMAIL || process.env.ZEPTOMAIL_FROM_EMAIL || '').trim();
-  const emailConfigured = Boolean(zohoKey && zohoFrom);
-  res.json({
-    status: 'ok',
-    version: 'v3-saas-enterprise-byok',
-    timestamp: new Date().toISOString(),
-    emailConfigured,
-    frontendUrlSet: Boolean((process.env.FRONTEND_URL || '').trim()),
-  });
-});
+// Health is mounted early as GET /health and GET /api/health.
 
 // Auth handlers live in routes/authRoutes.js (mounted earlier at /api).
 // Legacy register path without /api prefix:
@@ -503,7 +578,8 @@ app.use('/api/jobs', require('./routes/jobRoutes'));
 // DATABASE CONNECTION
 // ══════════════════════════════════════════════════════════════════════
 
-const mongoUrl = process.env.MONGODB_URL || process.env.MONGODB_URI || process.env.DATABASE_URL || 'mongodb://localhost:27017/allinone';
+const { resolveMongoUrl, maskMongoUrl } = require('./utils/mongoUrl');
+const mongoUrl = resolveMongoUrl();
 
 const startServer = () => {
   const server = app.listen(PORT, () => {
@@ -536,7 +612,7 @@ const startServer = () => {
   server.keepAliveTimeout = 61000;
 };
 
-logger.info('🔌 Connecting to MongoDB...', mongoUrl.replace(/^(mongodb\+srv:\/\/[^:]+):[^@]+@/, '$1:****@'));
+logger.info('🔌 Connecting to MongoDB...', maskMongoUrl(mongoUrl));
 
 mongoose.connect(mongoUrl, {
   serverSelectionTimeoutMS: 30000,

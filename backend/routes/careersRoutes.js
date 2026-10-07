@@ -85,6 +85,27 @@ async function handlePlatformJobsXml(_req, res) {
 router.get('/jobs.xml', handlePlatformJobsXml);
 router.get('/careerjet.xml', handlePlatformJobsXml);
 
+router.get('/sitemap.xml', async (req, res) => {
+  try {
+    const { getJobsSitemapXml } = require('../services/googleJobsService');
+    const xml = await getJobsSitemapXml();
+    res.set({
+      'Content-Type': 'application/xml; charset=utf-8',
+      'Cache-Control': 'public, max-age=900',
+    }).send(xml);
+  } catch (error) {
+    sendJobsXmlError(res, error);
+  }
+});
+
+router.get('/robots.txt', (_req, res) => {
+  const { getRobotsTxt } = require('../services/googleJobsService');
+  res.set({
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Cache-Control': 'public, max-age=3600',
+  }).send(getRobotsTxt());
+});
+
 /**
  * GET /:orgSlug/jobs.xml
  * Indeed/Google-for-Jobs-compatible XML feed — plain-text errors (not JSON).
@@ -92,6 +113,16 @@ router.get('/careerjet.xml', handlePlatformJobsXml);
 router.get('/:orgSlug/jobs.xml', async (req, res) => {
   try {
     const xml = await svc.getJobsXmlFeed(req.params.orgSlug);
+    sendJobsXml(res, xml);
+  } catch (error) {
+    sendJobsXmlError(res, error);
+  }
+});
+
+router.get('/:orgSlug/sitemap.xml', async (req, res) => {
+  try {
+    const { getJobsSitemapXml } = require('../services/googleJobsService');
+    const xml = await getJobsSitemapXml(req.params.orgSlug);
     sendJobsXml(res, xml);
   } catch (error) {
     sendJobsXmlError(res, error);
@@ -134,6 +165,34 @@ router.get('/:orgSlug/jobs/:jobId', async (req, res) => {
     res.json({ success: true, ...result });
   } catch (error) {
     handle(res, error);
+  }
+});
+
+router.get('/:orgSlug/jobs/:jobId/jsonld', async (req, res) => {
+  try {
+    const result = await svc.getPublicJob(req.params.orgSlug, req.params.jobId);
+    res.set({
+      'Content-Type': 'application/ld+json; charset=utf-8',
+      'Cache-Control': 'public, max-age=300',
+    }).send(JSON.stringify(result.jsonLd || {}));
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
+router.get('/:orgSlug/jobs/:jobId/google.html', async (req, res) => {
+  try {
+    const html = await svc.getGoogleJobHtml(req.params.orgSlug, req.params.jobId);
+    res.set({
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'public, max-age=300',
+      'Content-Security-Policy': "default-src 'self'; script-src 'unsafe-inline'; img-src 'self' https: data:; style-src 'unsafe-inline'",
+    }).send(html);
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).type('html').send(`<p>${error.message}</p>`);
+    }
+    return res.status(500).type('html').send('<p>Failed to render job</p>');
   }
 });
 

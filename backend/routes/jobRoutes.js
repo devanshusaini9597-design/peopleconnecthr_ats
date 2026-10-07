@@ -36,6 +36,8 @@ const {
 const { allocatePublicId, ensurePublicId } = require('../services/jobPublicIdService');
 const { attachJobPipelineStats } = require('../utils/jobPipelineStats');
 const { attachShareVia } = require('../utils/jobShareAttribution');
+const { stripHtmlTags } = require('../utils/textNormalize');
+const { inferWorkplaceType } = require('../utils/jobLocationParse');
 
 const router = express.Router();
 const jdUpload = multer({
@@ -63,6 +65,56 @@ function syncLocations(data) {
     data.location = data.locations.join(', ');
   }
   return data;
+}
+
+function applyWorkplaceType(data) {
+  const allowed = ['onsite', 'hybrid', 'remote'];
+  const raw = String(data.workplaceType || '').toLowerCase().trim();
+  const inferred = inferWorkplaceType({ ...data, workplaceType: undefined });
+  if (raw === 'hybrid' || raw === 'remote') {
+    data.workplaceType = raw;
+  } else if (inferred === 'remote' || inferred === 'hybrid') {
+    data.workplaceType = inferred;
+  } else {
+    data.workplaceType = allowed.includes(raw) ? raw : 'onsite';
+  }
+  if (data.validThrough === '') data.validThrough = null;
+  return data;
+}
+
+function jobIsLive(job) {
+  if (!job || job.isTemplate) return false;
+  return String(job.status || '') === 'Open' && job.isPublished !== false;
+}
+
+function emitJobIndexEvents(existing, job, { deleted } = {}) {
+  if (deleted) {
+    eventBus.emit(eventTypes.JOB_CLOSED, {
+      organizationId: deleted.organizationId,
+      jobId: deleted._id,
+      job: deleted,
+    });
+    return;
+  }
+  if (!job || job.isTemplate) return;
+  if (jobIsLive(job)) {
+    const wasLive = jobIsLive(existing);
+    eventBus.emit(wasLive ? eventTypes.JOB_UPDATED : eventTypes.JOB_PUBLISHED, {
+      organizationId: job.organizationId,
+      userId: job.createdBy,
+      resourceType: 'job',
+      resourceId: job._id,
+      jobId: job._id,
+      job,
+      title: job.title,
+    });
+  } else if (existing && jobIsLive(existing)) {
+    eventBus.emit(eventTypes.JOB_CLOSED, {
+      organizationId: job.organizationId,
+      jobId: job._id,
+      job,
+    });
+  }
 }
 
 function normalizeJobStatus(status) {
@@ -427,9 +479,10 @@ router.post('/', verifyToken, requireRecruiterOrAbove, checkPlanLimit('jobs'), a
 
     if (jobData.role && !jobData.title) jobData.title = jobData.role;
     if (jobData.title && !jobData.role) jobData.role = jobData.title;
-    if (jobData.title) jobData.title = String(jobData.title).toUpperCase();
-    if (jobData.role) jobData.role = String(jobData.role).toUpperCase();
+    if (jobData.title) jobData.title = stripHtmlTags(jobData.title).replace(/\s+/g, ' ').trim().toUpperCase();
+    if (jobData.role) jobData.role = stripHtmlTags(jobData.role).replace(/\s+/g, ' ').trim().toUpperCase();
     syncLocations(jobData);
+    applyWorkplaceType(jobData);
     if (jobData.status) jobData.status = normalizeJobStatus(jobData.status);
     if (jobData.priority !== undefined) jobData.priority = normalizeJobPriority(jobData.priority);
 
@@ -484,6 +537,7 @@ router.post('/', verifyToken, requireRecruiterOrAbove, checkPlanLimit('jobs'), a
       jobId: newJob._id,
       title: newJob.title,
     });
+    emitJobIndexEvents(null, newJob);
 
     const notifyEmail = req.body.notifyEmail !== false;
     if (!newJob.isTemplate && newJob.status === 'Open') {
@@ -512,9 +566,12 @@ router.put('/:id', verifyToken, requireRecruiterOrAbove, async (req, res) => {
     delete updates.jobCode;
     if (updates.role && !updates.title) updates.title = updates.role;
     if (updates.title && !updates.role) updates.role = updates.title;
-    if (updates.title) updates.title = String(updates.title).toUpperCase();
-    if (updates.role) updates.role = String(updates.role).toUpperCase();
+    if (updates.title) updates.title = stripHtmlTags(updates.title).replace(/\s+/g, ' ').trim().toUpperCase();
+    if (updates.role) updates.role = stripHtmlTags(updates.role).replace(/\s+/g, ' ').trim().toUpperCase();
     syncLocations(updates);
+    if (updates.workplaceType !== undefined || updates.location || updates.locations) {
+      applyWorkplaceType(updates);
+    }
     if (updates.status) updates.status = normalizeJobStatus(updates.status);
     if (updates.priority !== undefined) updates.priority = normalizeJobPriority(updates.priority);
     await syncHiringManager(updates, scope.organizationId || req.user.organizationId);
@@ -532,7 +589,9 @@ router.put('/:id', verifyToken, requireRecruiterOrAbove, async (req, res) => {
       ? String(updates.industry || '').trim()
       : String(existing.industry || '').trim();
     const pinOnly = Object.keys(req.body || {}).every((key) => key === 'pinned');
-    if (!pinOnly && !existing.isTemplate && String(nextStatus || '').toLowerCase() !== 'draft' && !nextIndustry) {
+    const prevStatus = String(existing.status || '').toLowerCase();
+    const goingLive = String(nextStatus || '').toLowerCase() === 'open' && prevStatus !== 'open';
+    if (!pinOnly && !existing.isTemplate && goingLive && !nextIndustry) {
       return res.status(400).json({ message: 'Select an industry/tag before publishing this job.' });
     }
 
@@ -602,7 +661,43 @@ router.put('/:id', verifyToken, requireRecruiterOrAbove, async (req, res) => {
     if (!job.publicId && !job.isTemplate) {
       await ensurePublicId(job);
     }
+    if (!pinOnly) emitJobIndexEvents(existing, job);
     res.json(job);
+  } catch (err) {
+    jobRouteError(res, err);
+  }
+});
+
+router.post('/:id/duplicate', verifyToken, requireRecruiterOrAbove, checkPlanLimit('jobs'), async (req, res) => {
+  try {
+    const scope = req.user.organizationId
+      ? { organizationId: req.user.organizationId }
+      : { createdBy: req.user.id };
+    const src = await Job.findOne({ _id: req.params.id, ...scope }).lean();
+    if (!src) return res.status(404).json({ message: 'Job not found' });
+
+    const copy = { ...src };
+    delete copy._id;
+    delete copy.createdAt;
+    delete copy.updatedAt;
+    delete copy.__v;
+    delete copy.seenBy;
+    delete copy.closedAt;
+    delete copy.openedAt;
+    delete copy.publishedAt;
+    copy.status = 'Draft';
+    copy.isPublished = false;
+    copy.createdBy = req.user.id;
+    copy.organizationId = req.user.organizationId || src.organizationId;
+    const baseTitle = String(src.title || src.role || 'JOB').replace(/\s+COPY$/i, '');
+    copy.title = `${baseTitle} COPY`;
+    copy.role = copy.title;
+    copy.jobCode = await allocateJobCode(copy.organizationId);
+    copy.publicId = await allocatePublicId();
+
+    const job = new Job(copy);
+    await job.save();
+    res.status(201).json(job);
   } catch (err) {
     jobRouteError(res, err);
   }
@@ -644,6 +739,7 @@ router.delete('/:id', verifyToken, requireRecruiterOrAbove, async (req, res) => 
       });
     }
 
+    emitJobIndexEvents(null, null, { deleted });
     res.json({ message: 'Job deleted successfully', id: req.params.id });
   } catch (err) {
     res.status(500).json({ message: err.message });

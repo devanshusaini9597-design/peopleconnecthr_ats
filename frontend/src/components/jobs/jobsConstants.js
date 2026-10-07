@@ -48,6 +48,7 @@ export const JOBS_PAGE_SIZE = 12;
 export const JOB_BOARD_OPTIONS = [
   { value: 'linkedin', label: 'LinkedIn Jobs', description: 'Push via LinkedIn Jobs API' },
   { value: 'indeed_feed', label: 'Indeed feed', description: 'XML / feed sync' },
+  { value: 'google_jobs_feed', label: 'Google for Jobs', description: 'Platform-indexed JobPosting pages' },
   { value: 'webhook', label: 'Webhook', description: 'POST to configured endpoint' },
 ];
 
@@ -72,6 +73,12 @@ export const EMPLOYMENT_OPTIONS = [
   { value: 'contract', label: 'CONTRACT' },
   { value: 'internship', label: 'INTERNSHIP' },
   { value: 'freelance', label: 'FREELANCE' },
+];
+
+export const WORKPLACE_OPTIONS = [
+  { value: 'onsite', label: 'ON-SITE' },
+  { value: 'hybrid', label: 'HYBRID' },
+  { value: 'remote', label: 'REMOTE' },
 ];
 
 export const EMPLOYMENT_LABELS = Object.fromEntries(EMPLOYMENT_OPTIONS.map((o) => [o.value, o.label]));
@@ -113,6 +120,8 @@ export const initialForm = {
   ctc: '',
   experience: '',
   employmentType: 'full_time',
+  workplaceType: 'onsite',
+  validThrough: '',
   openings: 1,
   priority: 'medium',
   skills: [],
@@ -310,6 +319,8 @@ export function jobFromRecord(job) {
     ctc: String(job.ctc || '').toUpperCase(),
     experience: String(job.experience || '').toUpperCase(),
     employmentType: job.employmentType || 'full_time',
+    workplaceType: job.workplaceType || 'onsite',
+    validThrough: job.validThrough ? String(job.validThrough).slice(0, 10) : '',
     openings: job.openings || 1,
     priority: String(job.priority || 'medium').toLowerCase() === 'urgent' ? 'urgent' : (job.priority || 'medium'),
     skills: (job.skills || []).map((s) => String(s).toUpperCase()),

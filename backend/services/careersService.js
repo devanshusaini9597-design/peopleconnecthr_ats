@@ -208,6 +208,8 @@ function toPublicJobDoc(job, org = {}) {
     openedAt: raw.openedAt,
     updatedAt: raw.updatedAt,
     ...(salaryRange ? { salaryRange } : {}),
+    workplaceType: raw.workplaceType || undefined,
+    validThrough: raw.validThrough || undefined,
   };
 }
 
@@ -246,7 +248,7 @@ function trimStr(v) {
   return String(v ?? '').trim();
 }
 
-const JOB_FEED_SELECT = 'title location employmentType description salaryRange updatedAt jobCode publicId clientName organizationId';
+const JOB_FEED_SELECT = 'title location locations employmentType workplaceType description salaryRange updatedAt publishedAt jobCode publicId clientName organizationId';
 
 /**
  * Indeed/Google-for-Jobs-compatible XML feed of published jobs for one tenant.
@@ -348,7 +350,7 @@ async function getCareersPage(orgSlug) {
   assertCareersLive(org);
 
   const jobs = await Job.find(publicOpenJobFilter(org._id))
-    .select('title department location locations employmentType isPublished priority skills createdAt openedAt publishedAt industry experience clientName jobCode grade updatedAt publicId description')
+    .select('title department location locations employmentType workplaceType isPublished priority skills createdAt openedAt publishedAt industry experience clientName jobCode grade updatedAt publicId description')
     .sort({ priority: -1, openedAt: -1, createdAt: -1 });
 
   for (const job of jobs) {
@@ -390,7 +392,7 @@ async function getPublicJob(orgSlug, jobId) {
   const job = await findPublicOpenJob(
     org._id,
     jobId,
-    'title department location locations description skills employmentType salaryRange experience clientName grade industry isPublished publishedAt jobCode publicId'
+    'title department location locations description skills employmentType workplaceType validThrough salaryRange experience clientName grade industry isPublished publishedAt openedAt createdAt updatedAt jobCode publicId'
   );
   if (!job) throw httpError('Job not found', 404);
 
@@ -420,9 +422,12 @@ async function getPublicJob(orgSlug, jobId) {
   }
 
   const publicJob = toPublicJobDoc(job, org);
+  const { buildJobPostingJsonLd } = require('./googleJobsService');
+  const jsonLd = buildJobPostingJsonLd(job, org);
   return {
     data: publicJob,
     job: publicJob,
+    jsonLd,
     organization: {
       name: org.name,
       logo: org.logo,
@@ -432,6 +437,21 @@ async function getPublicJob(orgSlug, jobId) {
     applicationForm,
     fieldOptions: await loadCareersFieldOptions(org._id),
   };
+}
+
+async function getGoogleJobHtml(orgSlug, jobId) {
+  const org = await Organization.findOne({ slug: orgSlug })
+    .select('name logo slug atsSettings.careersPageEnabled isDemo isActive archivedAt updatedAt');
+  if (!org) throw httpError('Organization not found', 404);
+  assertCareersLive(org);
+
+  const job = await findPublicOpenJob(org._id, jobId, JOB_FEED_SELECT + ' industry experience department workplaceType validThrough publishedAt openedAt createdAt');
+  if (!job) throw httpError('Job not found', 404);
+  await ensurePublicId(job);
+
+  const { buildJobPostingJsonLd, renderGoogleJobHtml } = require('./googleJobsService');
+  const jsonLd = buildJobPostingJsonLd(job, org);
+  return renderGoogleJobHtml(job, org, jsonLd);
 }
 
 /**
@@ -773,7 +793,19 @@ async function submitApplication(orgSlug, jobId, body = {}, file = null, rateKey
   const job = await findPublicOpenJob(org._id, jobId);
   if (!job) throw httpError('Job not available', 404);
 
-  const customResponses = parseCustomResponses(body.customResponses);
+  const CORE_APPLY_KEYS = new Set([
+    'name', 'firstName', 'lastName', 'email', 'phone', 'contact', 'position',
+    'companyName', 'company', 'location', 'experience', 'ctc', 'expectedCtc',
+    'noticePeriod', 'source', 'coverLetter', 'remark', 'resume', 'customResponses',
+  ]);
+  const customResponses = { ...parseCustomResponses(body.customResponses) };
+  if (body && typeof body === 'object' && !Array.isArray(body)) {
+    for (const [key, val] of Object.entries(body)) {
+      if (CORE_APPLY_KEYS.has(key)) continue;
+      if (val == null || val === '') continue;
+      if (customResponses[key] == null) customResponses[key] = val;
+    }
+  }
   const name = trimStr(body.name || [body.firstName, body.lastName].filter(Boolean).join(' '));
   const email = normalizeEmail(body.email);
   const phone = trimStr(body.phone || body.contact);
@@ -1035,6 +1067,7 @@ module.exports = {
   resolveByDomain,
   getCareersPage,
   getPublicJob,
+  getGoogleJobHtml,
   checkAlreadyApplied,
   submitApplication,
   careersJobUrl,

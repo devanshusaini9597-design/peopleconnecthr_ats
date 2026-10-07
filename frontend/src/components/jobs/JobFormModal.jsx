@@ -14,7 +14,7 @@ import { authenticatedFetch } from '../../utils/fetchUtils';
 import { fetchPicklist, searchPicklistOptions, PICKLIST_DROPDOWN_LIMIT, PICKLIST_MIN_SEARCH } from '../../utils/orgListFetch';
 import { DEFAULT_CTC_BANDS } from '../../utils/ctcRanges';
 import {
-  STATUS_OPTIONS, EMPLOYMENT_OPTIONS,
+  STATUS_OPTIONS, EMPLOYMENT_OPTIONS, WORKPLACE_OPTIONS,
   GRADE_STARTERS, INDUSTRY_STARTERS, LOCATION_STARTERS, EXPERIENCE_STARTERS,
   initialForm,
 } from './jobsConstants';
@@ -1108,6 +1108,28 @@ export default function JobFormModal({
                   onChange={(v) => patch({ employmentType: v || 'full_time' })}
                   options={EMPLOYMENT_OPTIONS}
                   placeholder="FULL-TIME"
+                />
+              </div>
+
+              <div className="min-w-0">
+                <FieldLabel>Workplace</FieldLabel>
+                <PremiumSelect
+                  variant="list"
+                  className="w-full min-w-0"
+                  value={formData.workplaceType || 'onsite'}
+                  onChange={(v) => patch({ workplaceType: v || 'onsite' })}
+                  options={WORKPLACE_OPTIONS}
+                  placeholder="ON-SITE"
+                />
+              </div>
+
+              <div className="min-w-0">
+                <FieldLabel>Listing expiry</FieldLabel>
+                <input
+                  type="date"
+                  className={fieldClass}
+                  value={formData.validThrough || ''}
+                  onChange={(e) => patch({ validThrough: e.target.value })}
                 />
               </div>
 

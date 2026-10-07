@@ -15,6 +15,7 @@ class FeedBoardAdapter {
   constructor(config) {
 
     this.config = config.credentials || {};
+    this.provider = String(config.provider || '').toLowerCase();
 
   }
 
@@ -22,6 +23,14 @@ class FeedBoardAdapter {
 
   async postJob(job) {
 
+    if (this.provider === 'google_jobs_feed') {
+      return {
+        posted: true,
+        mode: 'google_jobs',
+        message: 'Published careers jobs are indexed for Google for Jobs at the platform level.',
+        jobId: job._id,
+      };
+    }
     return { posted: true, mode: 'feed', message: 'Job included in public feed (pull-based).', jobId: job._id };
 
   }
@@ -38,6 +47,7 @@ class FeedBoardAdapter {
 
   async testConnection() {
 
+    if (this.provider === 'google_jobs_feed') return true;
     if (!this.config.feedUrl) throw new Error('feedUrl is not configured for this feed-based job board integration.');
 
     return true;

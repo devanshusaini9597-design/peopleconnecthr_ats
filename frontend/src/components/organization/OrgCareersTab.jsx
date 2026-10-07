@@ -29,6 +29,7 @@ export default function OrgCareersTab({ org, setOrg }) {
             </h3>
             <p className="text-sm text-stone-500 mt-1 max-w-xl leading-relaxed">
               Host a branded job board to attract talent directly from your website.
+              Published openings are also eligible for Google for Jobs across the platform — no extra feed setup.
             </p>
           </div>
           <BrandToggle

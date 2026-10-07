@@ -4,7 +4,7 @@ import {
   ArrowLeft, MapPin, Briefcase, Clock, UploadCloud, CheckCircle, AlertCircle,
   Building, FileText, ChevronRight, ChevronLeft, User, IndianRupee, Send, Lock, X, Copy,
 } from 'lucide-react';
-import API_URL from '../config';
+import { careersApiUrl } from '../utils/careersApi';
 import { employmentLabel } from './jobs/jobsConstants';
 import PublicAnnouncementBanner from './PublicAnnouncementBanner';
 import PremiumSelect from './ui/PremiumSelect';
@@ -211,6 +211,7 @@ const JobDetailPublic = () => {
   const navigate = useNavigate();
   const [job, setJob] = useState(null);
   const [org, setOrg] = useState(null);
+  const [jsonLd, setJsonLd] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const formRef = useRef(null);
@@ -269,7 +270,7 @@ const JobDetailPublic = () => {
       (async () => {
         try {
           const res = await fetch(
-            `${API_URL}/api/careers/${orgSlug}/jobs/${jobId}/application-status?email=${encodeURIComponent(parsed.email)}`,
+            `${careersApiUrl(orgSlug, `jobs/${jobId}/application-status`)}?email=${encodeURIComponent(parsed.email)}`,
           );
           const data = await res.json().catch(() => ({}));
           if (data.alreadyApplied) {
@@ -294,12 +295,13 @@ const JobDetailPublic = () => {
     const fetchJob = async () => {
       try {
         setLoading(true);
-        const res = await fetch(`${API_URL}/api/careers/${orgSlug}/jobs/${jobId}`);
+        const res = await fetch(careersApiUrl(orgSlug, `jobs/${jobId}`));
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.message || 'Job not found or no longer available');
         const nextJob = data.job || data.data;
         setJob(nextJob);
         setOrg(data.organization);
+        setJsonLd(data.jsonLd || null);
         setApplicationForm(data.applicationForm || null);
         if (data.fieldOptions) {
           setFieldOptions({
@@ -322,12 +324,40 @@ const JobDetailPublic = () => {
         }
       } catch (err) {
         setError(err.message);
+        setJsonLd(null);
       } finally {
         setLoading(false);
       }
     };
     fetchJob();
   }, [orgSlug, jobId]);
+
+  useEffect(() => {
+    if (!jsonLd) return undefined;
+    const id = 'google-jobposting-jsonld';
+    let el = document.getElementById(id);
+    if (!el) {
+      el = document.createElement('script');
+      el.id = id;
+      el.type = 'application/ld+json';
+      document.head.appendChild(el);
+    }
+    const token = job?.publicId || job?.id || jobId;
+    if (import.meta.env.PROD && orgSlug && token) {
+      el.src = `/api/careers/${encodeURIComponent(orgSlug)}/jobs/${encodeURIComponent(token)}/jsonld`;
+      el.text = '';
+    } else {
+      el.removeAttribute('src');
+      el.text = JSON.stringify(jsonLd);
+    }
+    const prevTitle = document.title;
+    const employer = jsonLd?.hiringOrganization?.name || org?.name || '';
+    if (jsonLd?.title) document.title = employer ? `${jsonLd.title} — ${employer}` : jsonLd.title;
+    return () => {
+      el.remove();
+      document.title = prevTitle;
+    };
+  }, [jsonLd, org?.name, orgSlug, job?.publicId, job?.id, jobId]);
 
   const markAlreadyApplied = useCallback((email) => {
     setAlreadyApplied(true);
@@ -353,7 +383,7 @@ const JobDetailPublic = () => {
       if (hasEmail) params.set('email', normalized);
       if (hasPhone) params.set('phone', phoneDigits);
       const res = await fetch(
-        `${API_URL}/api/careers/${orgSlug}/jobs/${jobId}/application-status?${params.toString()}`,
+        `${careersApiUrl(orgSlug, `jobs/${jobId}/application-status`)}?${params.toString()}`,
       );
       const data = await res.json().catch(() => ({}));
       if (data.alreadyApplied) {
@@ -637,7 +667,7 @@ const JobDetailPublic = () => {
       const via = String(sessionStorage.getItem(`careersVia:${orgSlug}:${jobId}`) || '').trim();
       if (via) fd.append('via', via);
 
-      const res = await fetch(`${API_URL}/api/careers/${orgSlug}/jobs/${jobId}/apply`, {
+      const res = await fetch(careersApiUrl(orgSlug, `jobs/${jobId}/apply`), {
         method: 'POST',
         body: fd,
       });

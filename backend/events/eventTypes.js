@@ -16,6 +16,7 @@ module.exports = {
   // Job events
   JOB_CREATED: 'job.created',
   JOB_PUBLISHED: 'job.published',
+  JOB_UPDATED: 'job.updated',
   JOB_CLOSED: 'job.closed',
   
   // Interview events
@@ -27,6 +28,8 @@ module.exports = {
   // Team events
   USER_INVITED: 'user.invited',
   USER_JOINED: 'user.joined',
+  USER_SIGNED_IN: 'user.signed_in',
+  USER_SIGNED_OUT: 'user.signed_out',
   USER_ROLE_CHANGED: 'user.role_changed',
   USER_REMOVED: 'user.removed',
   

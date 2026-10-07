@@ -33,12 +33,47 @@
         { "key": "Pragma", "value": "no-cache" },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://api.stripe.com https://challenges.cloudflare.com https://peopleconnecthrats-production.up.railway.app https://restcountries.com; frame-src 'self' blob: data: about: https://js.stripe.com https://hooks.stripe.com https://challenges.cloudflare.com https://peopleconnecthrats-production.up.railway.app https://www.peopleconnecthr.com; child-src 'self' blob: data: about:; worker-src 'self' blob:; object-src 'self' blob:; base-uri 'self'; form-action 'self' mailto:; frame-ancestors 'none'"
+          "value": "default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://api.stripe.com https://challenges.cloudflare.com https://peopleconnecthrats-production.up.railway.app https://peopleconnecthr-ats-production.up.railway.app https://restcountries.com; frame-src 'self' blob: data: about: https://js.stripe.com https://hooks.stripe.com https://challenges.cloudflare.com https://peopleconnecthrats-production.up.railway.app https://peopleconnecthr-ats-production.up.railway.app https://www.peopleconnecthr.com; child-src 'self' blob: data: about:; worker-src 'self' blob:; object-src 'self' blob:; base-uri 'self'; form-action 'self' mailto:; frame-ancestors 'none'"
         }
       ]
     }
   ],
   "rewrites": [
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api/careers/sitemap.xml"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/api/careers/robots.txt"
+    },
+    {
+      "source": "/careers/:orgSlug/jobs/:jobId",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(Googlebot|Google-InspectionTool|bingbot|Slurp|DuckDuckBot).*"
+        }
+      ],
+      "destination": "/api/careers/:orgSlug/jobs/:jobId/google.html"
+    },
+    {
+      "source": "/api/careers/test-company-a",
+      "destination": "https://peopleconnecthr-ats-production.up.railway.app/api/careers/test-company-a"
+    },
+    {
+      "source": "/api/careers/test-company-a/:path*",
+      "destination": "https://peopleconnecthr-ats-production.up.railway.app/api/careers/test-company-a/:path*"
+    },
+    {
+      "source": "/api/careers/test-company-b",
+      "destination": "https://peopleconnecthr-ats-production.up.railway.app/api/careers/test-company-b"
+    },
+    {
+      "source": "/api/careers/test-company-b/:path*",
+      "destination": "https://peopleconnecthr-ats-production.up.railway.app/api/careers/test-company-b/:path*"
+    },
     {
       "source": "/api/:path*",
       "destination": "https://peopleconnecthrats-production.up.railway.app/api/:path*"
