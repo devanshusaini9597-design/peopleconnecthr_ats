@@ -252,9 +252,15 @@ function employeeDeskFilter(user, organizationId) {
 
 /** Owner / admin / HR manager may view org-wide dashboard & analytics. */
 const ORG_WIDE_ANALYTICS_ROLES = ['owner', 'admin', 'hr_manager'];
+/** Only company operators may open the full candidate book. Employees stay on their own desk. */
+const ORG_WIDE_CANDIDATE_ROLES = ['owner', 'admin'];
 
 function canViewOrgAnalytics(user) {
   return Boolean(user && ORG_WIDE_ANALYTICS_ROLES.includes(user.role));
+}
+
+function canViewOrgCandidateBook(user) {
+  return Boolean(user && ORG_WIDE_CANDIDATE_ROLES.includes(user.role));
 }
 
 function requestedAnalyticsUserId(req) {
@@ -383,12 +389,11 @@ function orgOrOwnerScope(req) {
 }
 
 /**
- * Mutate one candidate: managers/org-wide; recruiters only their SPOC desk or rows shared with them.
- * Prevents employees from editing another employee's desk data.
+ * Mutate one candidate: owner/admin org-wide; employees only their SPOC desk or rows shared with them.
  */
 function candidateWriteScope(req) {
   const user = req.user || {};
-  if (isFreelancer(user) || canViewOrgAnalytics(user)) {
+  if (isFreelancer(user) || canViewOrgCandidateBook(user)) {
     return orgOrOwnerScope(req);
   }
 
@@ -449,9 +454,10 @@ async function freelancerCreatedInOrg(organizationId) {
 
 async function companyEmployeeDesk(user, organizationId) {
   if (isFreelancer(user)) return freelancerDeskFilter(user, organizationId);
+  // Own SPOC / createdBy rows only. Do not attach every applicant on jobs this
+  // user owns — that leaked other employees' desk data into the Candidates table.
   const desk = employeeDeskFilter(user, organizationId);
-  const merged = await mergeDeskWithJobApplicants(user, organizationId, desk);
-  return excludeFreelancerCreated(organizationId, merged);
+  return excludeFreelancerCreated(organizationId, desk);
 }
 
 /**
@@ -469,7 +475,7 @@ function candidateListFilter(req, viewMode) {
   }
 
   if (viewMode === 'all' || !viewMode) {
-    if (canViewOrgAnalytics(user)) {
+    if (canViewOrgCandidateBook(user)) {
       return organizationIdMatch(user.organizationId) || own;
     }
     return employeeDeskFilter(user, user.organizationId);
@@ -498,7 +504,8 @@ function candidateResumeScope(req) {
 
 /**
  * Full candidates list scope (async).
- * Managers may pass ?userId= for that employee's company desk.
+ * Owner/admin may pass ?userId= for that employee's company desk.
+ * Employees (including HR manager / recruiter / sales) always stay on their own desk.
  * freelanceOnly / view=shared is a separate freelancer-handoff list.
  */
 async function candidateListScope(req, viewMode) {
@@ -509,7 +516,7 @@ async function candidateListScope(req, viewMode) {
     return candidateListFilter(req, viewMode);
   }
 
-  if (canViewOrgAnalytics(user)) {
+  if (canViewOrgCandidateBook(user)) {
     const requestedId = requestedAnalyticsUserId(req);
     if (requestedId) {
       let targetUser = user;
@@ -768,7 +775,9 @@ module.exports = {
   misWriteFilter,
   withoutUnsharedFreelancerDesks,
   ORG_WIDE_ANALYTICS_ROLES,
+  ORG_WIDE_CANDIDATE_ROLES,
   canViewOrgAnalytics,
+  canViewOrgCandidateBook,
   requestedAnalyticsUserId,
   analyticsScope,
   analyticsScopeMeta,

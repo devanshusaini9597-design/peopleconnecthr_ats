@@ -639,7 +639,7 @@ async function getCandidateById(req, res) {
         if (!mongoose.Types.ObjectId.isValid(id) || id.length !== 24) {
             return res.status(404).json({ message: 'Candidate not found' });
         }
-        const viewMode = String(req.query?.view || 'all').trim();
+        const viewMode = String(req.query?.view || '').trim();
         const scope = await candidateListScope(req, viewMode);
         const candidate = await Candidate.findOne({ _id: id, ...scope })
             .select('-embedding')

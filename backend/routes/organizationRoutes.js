@@ -121,7 +121,7 @@ router.put('/candidate-fields/last-mapping', requireRecruiterOrAbove, async (req
   }
 });
 
-router.get('/members', async (req, res) => {
+router.get('/members', requireAdmin, async (req, res) => {
   try {
     if (isFreelancer(req.user)) {
       return res.status(403).json({ success: false, message: 'Access denied' });

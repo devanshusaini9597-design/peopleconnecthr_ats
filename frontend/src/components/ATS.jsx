@@ -8,7 +8,7 @@ import usePageTour from '../hooks/usePageTour';
 import { useAuth } from '../context/AuthContext';
 import { canUseFeature } from '../config/planFeatures';
 import { ctcRanges } from '../utils/ctcRanges';
-import { canViewOrgAnalytics } from '../utils/analyticsScope';
+import { canViewOrgCandidateBook } from '../utils/analyticsScope';
 import useEmployeeAnalyticsScope from '../hooks/useEmployeeAnalyticsScope';
 import EmployeeScopeSelect from './analytics/EmployeeScopeSelect';
 import { buildAtsHref } from '../utils/atsLinks';
@@ -61,16 +61,18 @@ const ATS = forwardRef((props, ref) => {
   const listQueryOptionsRef = useRef(null);
 
   const viewFromUrl = String(searchParams.get('view') || '').toLowerCase();
-  const canSeeOrgCandidates = canViewOrgAnalytics(user?.role);
+  const canSeeOrgCandidates = canViewOrgCandidateBook(user?.role);
   const employeeScope = useEmployeeAnalyticsScope();
-  // Recruiters: default to SPOC desk (mine). Owner/admin/manager: org-wide unless employee selected.
+  // Employees always stay on their own desk. Owner/admin may open the org book or one employee.
   const candidatesViewMode = isFreelancer
     ? 'mine'
-    : employeeScope.userId
-      ? 'mine'
-      : (viewFromUrl === 'mine' || viewFromUrl === 'shared' || viewFromUrl === 'all'
-        ? viewFromUrl
-        : (canSeeOrgCandidates ? 'all' : 'mine'));
+    : !canSeeOrgCandidates
+      ? (viewFromUrl === 'shared' ? 'shared' : 'mine')
+      : employeeScope.userId
+        ? 'mine'
+        : (viewFromUrl === 'mine' || viewFromUrl === 'shared' || viewFromUrl === 'all'
+          ? viewFromUrl
+          : 'all');
   const [freelanceOnly, setFreelanceOnly] = useState(false);
   const [showImportMenu, setShowImportMenu] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
@@ -78,7 +80,7 @@ const ATS = forwardRef((props, ref) => {
 
   const data = useCandidatesData({
     candidatesViewMode,
-    scopeUserId: employeeScope.userId || '',
+    scopeUserId: canSeeOrgCandidates ? (employeeScope.userId || '') : '',
     toast,
   });
   const {
@@ -509,7 +511,7 @@ const ATS = forwardRef((props, ref) => {
         setShowDownloadModal={setShowDownloadModal}
       />
 
-      {!isFreelancer && employeeScope.canSelect ? (
+      {!isFreelancer && canSeeOrgCandidates && employeeScope.canSelect ? (
         <div className="mb-4 rounded-xl border border-stone-200/80 bg-gradient-to-r from-stone-50/90 via-white to-white p-3 sm:p-3.5 shadow-sm shadow-stone-900/5">
           <EmployeeScopeSelect
             value={employeeScope.employeeParam}

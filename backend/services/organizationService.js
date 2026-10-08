@@ -298,9 +298,32 @@ async function saveLastImportMapping(organizationId, body) {
   return lastImportMapping;
 }
 
+const MEMBER_DIRECTORY_FIELDS = [
+  'name',
+  'email',
+  'role',
+  'phone',
+  'isActive',
+  'lastLoginAt',
+  'lastActiveAt',
+  'profilePicture',
+  'customRoleId',
+  'reportsTo',
+  'deskDefaults',
+  'invitedBy',
+  'mustChangePassword',
+  'onboardingCompleted',
+  'mfaEnabled',
+  'isEmailVerified',
+  'signupStatus',
+  'companyName',
+  'createdAt',
+  'updatedAt',
+].join(' ');
+
 async function listMembers(organizationId) {
   return User.find({ organizationId })
-    .select('-password -inviteToken')
+    .select(MEMBER_DIRECTORY_FIELDS)
     .populate('reportsTo', 'name email role')
     .sort({ name: 1, email: 1 });
 }

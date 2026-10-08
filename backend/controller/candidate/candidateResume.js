@@ -23,7 +23,7 @@ async function checkEmail(req, res) {
 async function getResume(req, res) {
     try {
         if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' });
-        const viewMode = String(req.query?.view || 'all').trim();
+        const viewMode = String(req.query?.view || '').trim();
         const scope = await candidateListScope(req, viewMode);
         const candidate = await Candidate.findOne({ _id: req.params.id, ...scope }).select('resume').lean();
         if (!candidate || !candidate.resume) {
@@ -133,6 +133,9 @@ async function getResume(req, res) {
 async function parseLogic(req, res) {
     try {
         if (!req.file) return res.status(400).json({ message: "File missing" });
+        const { resumeFileError } = require('../../utils/uploadAllowlist');
+        const badResume = resumeFileError(req.file);
+        if (badResume) return res.status(400).json({ success: false, message: badResume });
 
         const mimetype = req.file.mimetype;
         // Disk storage: read file into buffer for the parser, then clean up
@@ -194,15 +197,14 @@ async function parseLogic(req, res) {
             error: err.message
         });
 
-        // Use the parser's error message directly if it's user-friendly
-        const isUserFriendly = err.message.includes('scanned') || err.message.includes('image') || err.message.includes('text-based');
-        res.status(500).json({
+        const isUserFriendly = /scanned|image|text-based|extract|empty|pdf/i.test(String(err.message || ''));
+        res.status(400).json({
+            success: false,
+            message: isUserFriendly ? err.message : 'Could not extract text from this file.',
             error: isUserFriendly ? err.message : 'Resume parsing failed',
             details: err.message,
             filename: req.file?.originalname,
-            suggestion: isUserFriendly
-              ? 'Try a clearer scan, or a text-based PDF/DOCX'
-              : 'Try uploading a PDF, DOC, DOCX, TXT, RTF, or a clear scan/image of the resume'
+            suggestion: 'Try a text-based PDF or DOCX resume.',
         });
     } finally {
         if (req.file?.path) {

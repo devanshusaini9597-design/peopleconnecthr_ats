@@ -126,10 +126,23 @@ describe('freelancer isolation', () => {
 
   it('org member directory and usage are blocked for freelancers', () => {
     const orgSrc = fs.readFileSync(require.resolve('../routes/organizationRoutes'), 'utf8');
-    expect(orgSrc).toMatch(/router\.get\('\/members'[\s\S]*isFreelancer/);
+    expect(orgSrc).toMatch(/router\.get\('\/members',\s*requireAdmin/);
     expect(orgSrc).toMatch(/router\.get\('\/usage',\s*requireRecruiterOrAbove/);
     const teamSrc = fs.readFileSync(require.resolve('../routes/teamRoutes'), 'utf8');
     expect(teamSrc).toMatch(/role === 'freelancer'/);
+  });
+
+  it('freelancer welcome modal does not offer Jobs or company Applications', () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, '../../frontend/src/components/welcomeModalConstants.js'),
+      'utf8'
+    );
+    const freelancerBlock = src.slice(src.indexOf('FREELANCER_ACTIONS'), src.indexOf('export function welcomeActionsForRole'));
+    expect(freelancerBlock).toMatch(/\/mandates/);
+    expect(freelancerBlock).toMatch(/\/my-pipeline/);
+    expect(freelancerBlock).toMatch(/\/feedback/);
+    expect(freelancerBlock).not.toMatch(/path: '\/jobs'/);
+    expect(freelancerBlock).not.toMatch(/path: '\/applications'/);
   });
 
   it('resume upload allowlist rejects executable and script types', () => {
@@ -151,6 +164,7 @@ describe('freelancer isolation', () => {
     expect(src).toMatch(/\/mandates/);
     expect(src).toMatch(/\/my-pipeline/);
     expect(src).not.toMatch(/'\/jobs'/);
+    expect(src).not.toMatch(/'\/billing'/);
     expect(src).not.toMatch(/'\/organization'/);
     expect(src).not.toMatch(/'\/applications'/);
   });

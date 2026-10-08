@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { verifyToken } = require('../middleware/authMiddleware');
+const { requireAdmin, requireRecruiterOrAbove } = require('../middleware/rbacMiddleware');
 const {
   getCompanyDomain,
   inviteTeamMember,
@@ -24,7 +25,7 @@ function handle(res, err) {
 // everyone in the same org sees the same team directory, regardless of who
 // sent each invite). Falls back to the legacy per-inviter view only for
 // accounts that somehow have no organizationId yet.
-router.get('/', async (req, res) => {
+router.get('/', requireRecruiterOrAbove, async (req, res) => {
   try {
     if (req.user?.role === 'freelancer') {
       return res.status(403).json({ success: false, message: 'Access denied' });
@@ -61,7 +62,7 @@ router.get('/domain-info', async (req, res) => {
 });
 
 // POST - Invite a team member (with domain validation)
-router.post('/', async (req, res) => {
+router.post('/', requireAdmin, async (req, res) => {
   try {
     const result = await inviteTeamMember(req.user, req.body);
     res.status(201).json({
@@ -79,7 +80,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT - Update a team member
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireAdmin, async (req, res) => {
   try {
     const member = await updateTeamMember(req.user, req.params.id, req.body);
     res.json({ success: true, member, message: 'Team member updated successfully' });
@@ -89,7 +90,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE - Remove a team member
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireAdmin, async (req, res) => {
   try {
     await deleteTeamMember(req.user, req.params.id);
     res.json({ success: true, message: 'Team member removed successfully' });

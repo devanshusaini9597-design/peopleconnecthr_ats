@@ -9,6 +9,7 @@ const {
   applicationListFilter,
   withoutUnsharedFreelancerDesks,
   canViewOrgAnalytics,
+  canViewOrgCandidateBook,
   analyticsScope,
   analyticsScopeMeta,
   applicationAnalyticsScope,
@@ -242,6 +243,15 @@ describe('dataScope', () => {
     expect(canViewOrgAnalytics({ role: 'freelancer' })).toBe(false);
   });
 
+  test('org-wide candidate book is owner/admin only', () => {
+    expect(canViewOrgCandidateBook({ role: 'owner' })).toBe(true);
+    expect(canViewOrgCandidateBook({ role: 'admin' })).toBe(true);
+    expect(canViewOrgCandidateBook({ role: 'hr_manager' })).toBe(false);
+    expect(canViewOrgCandidateBook({ role: 'hr_recruiter' })).toBe(false);
+    expect(canViewOrgCandidateBook({ role: 'sales' })).toBe(false);
+    expect(canViewOrgCandidateBook({ role: 'freelancer' })).toBe(false);
+  });
+
   test('recruiter analytics use SPOC name or own createdBy (ignore other userId)', async () => {
     const otherId = new mongoose.Types.ObjectId();
     const req = {
@@ -433,16 +443,33 @@ describe('dataScope', () => {
       query: { view: 'all' },
     };
     const Job = require('../models/Job');
-    const Application = require('../models/Application');
     const User = require('../models/User');
     const jobSpy = jest.spyOn(Job, 'find').mockReturnValue({ distinct: jest.fn().mockResolvedValue([]) });
-    const appSpy = jest.spyOn(Application, 'find').mockReturnValue({ distinct: jest.fn().mockResolvedValue([]) });
     const userSpy = jest.spyOn(User, 'find').mockReturnValue({ distinct: jest.fn().mockResolvedValue([freelancerId]) });
     const scope = await candidateListScope(req, 'all');
     expect(JSON.stringify(scope)).not.toContain('sharedWith.userId');
     expect(scope.organizationId).toBeUndefined();
+    expect(jobSpy).not.toHaveBeenCalled();
     jobSpy.mockRestore();
-    appSpy.mockRestore();
+    userSpy.mockRestore();
+  });
+
+  test('hr_manager candidate list stays on own desk even with view=all', async () => {
+    const { candidateListScope } = require('../utils/dataScope');
+    const User = require('../models/User');
+    const userSpy = jest.spyOn(User, 'find').mockReturnValue({ distinct: jest.fn().mockResolvedValue([freelancerId]) });
+    const scope = await candidateListScope({
+      user: {
+        id: recruiterId,
+        role: 'hr_manager',
+        organizationId: orgId,
+        name: 'RANGOLI NEGI',
+        email: 'rangoli@example.com',
+      },
+      query: { view: 'all' },
+    }, 'all');
+    expect(scope.organizationId).toBeUndefined();
+    expect(JSON.stringify(scope)).toContain(String(recruiterId));
     userSpy.mockRestore();
   });
 
@@ -468,13 +495,28 @@ describe('dataScope', () => {
     expect(JSON.stringify(scope)).not.toContain('"organizationId":"' + String(orgId) + '"');
   });
 
-  test('manager write scope is org-wide', () => {
+  test('owner write scope is org-wide', () => {
     const { candidateWriteScope } = require('../utils/dataScope');
     const req = {
       user: { id: recruiterId, role: 'owner', organizationId: orgId, name: 'Owner' },
     };
     const scope = candidateWriteScope(req);
     expect(scope.organizationId?.$in || scope.organizationId).toBeTruthy();
+  });
+
+  test('hr_manager write scope is own desk, not full org', () => {
+    const { candidateWriteScope } = require('../utils/dataScope');
+    const scope = candidateWriteScope({
+      user: {
+        id: recruiterId,
+        role: 'hr_manager',
+        organizationId: orgId,
+        name: 'RANGOLI NEGI',
+        email: 'rangoli@example.com',
+      },
+    });
+    expect(scope.$or).toBeDefined();
+    expect(JSON.stringify(scope)).toContain(String(recruiterId));
   });
 
   test('resume preview follows list view, not write scope', () => {
@@ -509,8 +551,9 @@ describe('dataScope', () => {
       user: { id: recruiterId, role: 'admin', organizationId: orgId },
       query: { view: 'all' },
     });
-    expect(scope.organizationId).toEqual(orgId);
-    expect(scope.organizationId).not.toEqual(orgB);
+    const orgMatch = scope.organizationId?.$in || [scope.organizationId];
+    expect(orgMatch.map(String)).toEqual(expect.arrayContaining([String(orgId)]));
+    expect(orgMatch.map(String)).not.toContain(String(orgB));
   });
 
   test('employee desk never equals company-wide org match', () => {

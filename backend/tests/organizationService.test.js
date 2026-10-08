@@ -44,6 +44,17 @@ describe('organizationService contracts', () => {
     expect(typeof svc.renamePipelineStage).toBe('function');
     expect(typeof svc.mergePipelineStages).toBe('function');
   });
+
+  it('member directory omits mailbox secrets and MFA backup codes', () => {
+    const fs = require('fs');
+    const src = fs.readFileSync(require.resolve('../services/organizationService'), 'utf8');
+    expect(src).toMatch(/MEMBER_DIRECTORY_FIELDS/);
+    const block = src.slice(src.indexOf('MEMBER_DIRECTORY_FIELDS'), src.indexOf('async function listMembers'));
+    expect(block).not.toMatch(/emailSettings/);
+    expect(block).not.toMatch(/mfaBackupCodes/);
+    expect(block).not.toMatch(/password/);
+    expect(block).not.toMatch(/inviteToken/);
+  });
 });
 
 describe('resetMemberPassword', () => {

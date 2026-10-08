@@ -1,4 +1,4 @@
-const { orgOrOwnerScope } = require('./candidateValidation');
+const { candidateListScope } = require('../../utils/dataScope');
 const { exportCandidates } = require('../../services/candidateExportService');
 const logger = require('../../utils/logger');
 
@@ -6,9 +6,11 @@ async function exportCandidatesExcel(req, res) {
   try {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
     const selected = Boolean(req.body?.selected);
+    const viewMode = String(req.body?.view || req.query?.view || '').trim();
+    const scopeFilter = await candidateListScope(req, viewMode);
     const { buffer, filename, count } = await exportCandidates({
       user: req.user,
-      scopeFilter: orgOrOwnerScope(req),
+      scopeFilter,
       ids,
       selected,
     });

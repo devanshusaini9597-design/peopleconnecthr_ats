@@ -10,6 +10,7 @@ const {
   jobListFilter,
   applicationListFilter,
   canViewOrgAnalytics,
+  canViewOrgCandidateBook,
   misListFilter,
   candidateListScope,
 } = require('../utils/dataScope');
@@ -49,15 +50,15 @@ function denyAll() {
 
 /**
  * Same visibility as the Candidates list.
- * Owner / admin / HR manager: company-wide.
- * Recruiter / sales / other employees: own SPOC desk + shared with them.
+ * Owner / admin: company-wide.
+ * HR manager / recruiter / sales / other employees: own SPOC desk.
  * Freelancer: own desk only.
  * Never honor client view=all / userId on this endpoint.
  */
 async function resolveCandidateScope(req) {
   const user = req.user || {};
   if (!user.organizationId) return denyAll();
-  const viewMode = canViewOrgAnalytics(user) ? 'all' : 'mine';
+  const viewMode = canViewOrgCandidateBook(user) ? 'all' : 'mine';
   return candidateListScope({ user, query: {} }, viewMode);
 }
 

@@ -1,7 +1,12 @@
 export const ORG_WIDE_ANALYTICS_ROLES = ['owner', 'admin', 'hr_manager'];
+export const ORG_WIDE_CANDIDATE_ROLES = ['owner', 'admin'];
 
 export function canViewOrgAnalytics(role) {
   return ORG_WIDE_ANALYTICS_ROLES.includes(role);
+}
+
+export function canViewOrgCandidateBook(role) {
+  return ORG_WIDE_CANDIDATE_ROLES.includes(role);
 }
 
 export function appendUserId(url, userId) {

@@ -223,7 +223,7 @@ const router = createBrowserRouter([
       { path: '/settings', element: <ProfileSettingsPage /> },
       { path: '/profile', element: <Navigate to="/settings" replace /> },
       { path: '/profile/*', element: <Navigate to="/settings" replace /> },
-      { path: '/team', element: <TeamPage /> },
+      { path: '/team', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'hr_manager']}><TeamPage /></ProtectedRoute> },
       { path: '/interviews', element: <Suspense fallback={<LoadingFallback />}><InterviewsPage /></Suspense> },
       { path: '/organization', element: <Suspense fallback={<LoadingFallback />}><OrganizationSettingsPage /></Suspense> },
       { path: '/organization/integrations', element: <Suspense fallback={<LoadingFallback />}><IntegrationSettingsPage /></Suspense> },
