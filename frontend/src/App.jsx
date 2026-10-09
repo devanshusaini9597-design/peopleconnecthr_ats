@@ -90,7 +90,6 @@ const PushNotificationsPage = React.lazy(() => import('./components/PushNotifica
 const NotificationSettingsPage = React.lazy(() => import('./components/NotificationSettingsPage'));
 const EmbedChatbotPage = React.lazy(() => import('./components/EmbedChatbotPage'));
 const MarketingPage = React.lazy(() => import('./components/MarketingPage'));
-const PricingPage = React.lazy(() => import('./components/PricingPage'));
 const SupportFeedbackPage = React.lazy(() => import('./components/SupportFeedbackPage'));
 const CompanySupportDeskPage = React.lazy(() => import('./components/CompanySupportDeskPage'));
 const FreelanceReviewPage = React.lazy(() => import('./components/FreelanceReviewPage'));
@@ -153,7 +152,7 @@ const router = createBrowserRouter([
   { path: '/book/:tokenOrSlug', element: withPage(SelfBookPage) },
   { path: '/survey/:token', element: withPage(SurveyTakePage) },
   { path: '/embed/chatbot/:orgSlug', element: withPage(EmbedChatbotPage) },
-  { path: '/pricing', element: withPage(PricingPage) },
+  { path: '/pricing', element: withPage(MarketingPage) },
   { path: '/features', element: withPage(MarketingPage) },
   { path: '/enterprise', element: withPage(MarketingPage) },
   { path: '/security', element: withPage(MarketingPage) },
