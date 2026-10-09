@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { authenticatedFetch } from '../utils/fetchUtils';
 import { useAuth } from '../context/AuthContext';
 
-const HEARTBEAT_MS = 45_000;
+const HEARTBEAT_MS = 90_000;
 
 /** Keeps lastActiveAt fresh while any signed-in user has the app tab visible. */
 export default function usePresenceHeartbeat() {

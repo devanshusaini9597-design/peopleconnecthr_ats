@@ -2,23 +2,25 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="apple-touch-icon" href="/logo.png" />
+    <link rel="icon" type="image/png" href="/favicon.png?v=4" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=4" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#0d9488" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
+    <link rel="preload" as="image" href="/landing/dashboard.webp" type="image/webp" fetchpriority="high" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <title>People Connect HR</title>
     <script>
       (function () {
         try {
           var host = location.hostname;
           if (!host || host === 'localhost' || host === '127.0.0.1' || host === 'www.peopleconnecthr.com') return;
-          if (host === 'peopleconnecthr.com' || /\.vercel\.app$/i.test(host)) {
+          if (host.indexOf('staging') !== -1) return;
+          if (host === 'peopleconnecthr.com' || host === 'frontend-self-one-14.vercel.app') {
             location.replace('https://www.peopleconnecthr.com' + location.pathname + location.search + location.hash);
           }
         } catch (e) {}

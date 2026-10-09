@@ -54,6 +54,7 @@ const applicationSchema = new mongoose.Schema({
 
 // Indexes
 applicationSchema.index({ organizationId: 1, jobId: 1, candidateId: 1 }, { unique: true });
+applicationSchema.index({ organizationId: 1, jobId: 1, appliedAt: -1 });
 applicationSchema.index(
   { organizationId: 1, applicationCode: 1 },
   { unique: true, sparse: true, partialFilterExpression: { applicationCode: { $exists: true, $type: 'string' } } },

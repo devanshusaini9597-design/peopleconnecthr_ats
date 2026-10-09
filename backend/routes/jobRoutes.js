@@ -35,6 +35,7 @@ const {
 } = require('../services/jobCodeService');
 const { allocatePublicId, ensurePublicId } = require('../services/jobPublicIdService');
 const { attachJobPipelineStats } = require('../utils/jobPipelineStats');
+const { organizationIdMatch } = require('../utils/dataScope');
 const { attachShareVia } = require('../utils/jobShareAttribution');
 const { stripHtmlTags } = require('../utils/textNormalize');
 const { inferWorkplaceType } = require('../utils/jobLocationParse');
@@ -272,17 +273,61 @@ router.get('/', verifyToken, async (req, res) => {
   try {
     const { isTemplate } = req.query;
     const query = jobListFilter(req, { isTemplate });
+    const lite = String(req.query.lite || '') === '1' || String(req.query.summary || '') === '1';
+
+    if (lite) {
+      const jobs = await Job.find(query)
+        .setOptions(req.user.organizationId ? { _tenantId: req.user.organizationId } : {})
+        .select('title role jobCode status isPublished publicId location department employmentType createdAt applicationCount')
+        .sort({ createdAt: -1 })
+        .limit(2000)
+        .lean();
+      const orgMatch = organizationIdMatch(req.user.organizationId);
+      if (orgMatch && jobs.length) {
+        try {
+          const Application = require('../models/Application');
+          const rows = await Application.aggregate([
+            { $match: { ...orgMatch, jobId: { $in: jobs.map((job) => job._id) } } },
+            {
+              $group: {
+                _id: '$jobId',
+                applicationCount: { $sum: 1 },
+                people: { $addToSet: '$candidateId' },
+              },
+            },
+          ]).option({ maxTimeMS: 8000 });
+          const byId = new Map(rows.map((row) => [String(row._id), row]));
+          for (const job of jobs) {
+            const row = byId.get(String(job._id));
+            if (!row) {
+              job.uniqueCandidateCount = Number(job.applicationCount) || 0;
+              continue;
+            }
+            job.applicationCount = row.applicationCount;
+            job.uniqueCandidateCount = Array.isArray(row.people) ? row.people.length : 0;
+          }
+        } catch (countErr) {
+          logger.warn('[jobRoutes] lite job counts fell back to stored totals', countErr.message);
+          for (const job of jobs) {
+            if (job.uniqueCandidateCount == null) {
+              job.uniqueCandidateCount = Number(job.applicationCount) || 0;
+            }
+          }
+        }
+      }
+      return res.json(jobs);
+    }
 
     const staffFields = isFreelancer(req.user) ? 'name role' : 'name email role';
     const jobs = await Job.find(query).setOptions(
       req.user.organizationId ? { _tenantId: req.user.organizationId } : {}
     ).populate('hiringManager', staffFields).populate('createdBy', staffFields)
       .sort({ pinned: -1, pinnedAt: -1, createdAt: -1 });
-    for (const job of jobs) {
-      if (!job.isTemplate && !job.publicId) {
-        await ensurePublicId(job);
-      }
-    }
+    await Promise.all(
+      jobs
+        .filter((job) => !job.isTemplate && !job.publicId)
+        .map((job) => ensurePublicId(job).catch(() => null))
+    );
     const withPipeline = await attachJobPipelineStats(req.user.organizationId, jobs);
     res.json(attachShareVia(withPipeline, req.user));
   } catch (err) {

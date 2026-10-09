@@ -12,11 +12,24 @@ export const clearClientAuthStorage = () => {
   localStorage.removeItem('orgId');
 };
 
+const MARKETING_PREFIXES = [
+  '/pricing', '/features', '/enterprise', '/security', '/integrations',
+  '/ai-automation', '/faq', '/contact', '/privacy', '/terms', '/customers',
+  '/trust', '/status', '/demo',
+];
+
+export const isPublicMarketingPath = (path = typeof window !== 'undefined' ? window.location.pathname : '') => {
+  const p = String(path || '');
+  if (p === '/' || p === '') return true;
+  return MARKETING_PREFIXES.some((prefix) => p === prefix || p.startsWith(`${prefix}/`));
+};
+
 export const isPublicAuthPath = (path = typeof window !== 'undefined' ? window.location.pathname : '') => {
   const p = String(path || '');
   return (
-    p.startsWith('/login')
-    || p.startsWith('/demo')
+    isPublicMarketingPath(p)
+    || p.startsWith('/login')
+    || p.startsWith('/pchr-ops')
     || p.startsWith('/register')
     || p.startsWith('/reset-password')
     || p.startsWith('/verify-email')
@@ -41,7 +54,11 @@ export const handleLogout = async () => {
     /* still clear locally if the network call fails */
   }
   clearClientAuthStorage();
-  if (!isPublicAuthPath()) {
+  const path = typeof window !== 'undefined' ? window.location.pathname : '';
+  // Always hard-load /login after leaving the app so React Router does not
+  // keep `state.from` (e.g. Candidates) and send the next sign-in there.
+  // Stay put on other public auth screens (demo, platform ops sign-in).
+  if (path.startsWith('/login') || !isPublicAuthPath(path)) {
     window.location.replace('/login');
   }
 };

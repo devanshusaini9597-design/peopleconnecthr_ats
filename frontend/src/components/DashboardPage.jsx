@@ -13,6 +13,7 @@ import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils
 import { useAuth } from '../context/AuthContext';
 import { DASH_TOUR_KEY, DASH_TOUR_STEPS, FREELANCER_DASH_TOUR_KEY, FREELANCER_DASH_TOUR_STEPS } from './dashboard/dashboardConstants';
 import { DashboardKpis, DashboardMainGrid, DashboardLowerGrid } from './dashboard/DashboardPanels';
+import PlanUsageCard from './dashboard/PlanUsageCard';
 import FreelancerDashboard from './dashboard/FreelancerDashboard';
 import useAnnouncementNavUpdates from '../hooks/useAnnouncementNavUpdates';
 import useJobNavUpdates from '../hooks/useJobNavUpdates';
@@ -21,7 +22,7 @@ import { DATE_RANGE_LABELS } from './analytics/constants';
 import { AnalyticsInlineLoader, AnalyticsPanelOverlay } from './analytics/AnalyticsPanelLoader';
 import { consumeForcedTour, START_TOUR_EVENT } from '../utils/productTourTrigger';
 
-const AUTO_REFRESH_MS = 45_000;
+const AUTO_REFRESH_MS = 120_000;
 
 const DashboardPage = () => {
   const navigate = useNavigate();
@@ -153,7 +154,7 @@ const DashboardPage = () => {
     const onVis = () => {
       if (document.visibilityState === 'visible') fetchDashboardData({ silent: true });
     };
-    const onChanged = () => fetchDashboardData({ silent: true });
+    const onChanged = () => fetchDashboardData({ silent: true, force: true });
     window.addEventListener('focus', onVis);
     document.addEventListener('visibilitychange', onVis);
     window.addEventListener('candidates:changed', onChanged);
@@ -236,6 +237,7 @@ const DashboardPage = () => {
         open={showWelcome}
         onClose={() => setShowWelcome(false)}
         displayName={displayName}
+        role={user?.role}
       />
       <PageHeader
         icon={LayoutDashboard}
@@ -361,6 +363,7 @@ const DashboardPage = () => {
               </span>
             </button>
           ) : null}
+          {user?.role === 'owner' ? <PlanUsageCard /> : null}
           <div className="relative min-h-[280px]">
             {statsLoading && dashData && (
               <AnalyticsPanelOverlay label={`Refreshing ${uiPeriodLabel}…`} />

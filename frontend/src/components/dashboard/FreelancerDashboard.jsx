@@ -45,7 +45,7 @@ const SUB_LABEL = {
   rejected: 'Rejected',
 };
 
-const AUTO_REFRESH_MS = 20_000;
+const AUTO_REFRESH_MS = 60_000;
 
 /**
  * Freelancer dashboard — same card chrome / grid as company DashboardKpis + panels,
@@ -224,6 +224,7 @@ export default function FreelancerDashboard() {
             <QuickAction icon={Users} label="My Candidates" desc="Open your ATS desk" onClick={() => navigate('/ats')} tone="bg-sky-50 text-sky-600" />
             <QuickAction icon={Briefcase} label="Open Mandates" desc="Jobs you can submit against" onClick={() => navigate('/mandates')} tone="bg-indigo-50 text-indigo-600" />
             <QuickAction icon={Kanban} label="Pipeline Board" desc="Hiring manager status updates" onClick={() => navigate('/my-pipeline')} tone="bg-violet-50 text-violet-600" />
+            <QuickAction icon={Users} label="Freelance recruiters" desc="Your engagement record with this organization" onClick={() => navigate('/freelancers')} tone="bg-teal-50 text-teal-700" />
             <QuickAction icon={BarChart3} label="Analytics" desc="Your desk performance" onClick={() => navigate('/analytics')} tone="bg-fuchsia-50 text-fuchsia-600" />
             <QuickAction icon={MessageSquare} label="Support" desc="Tickets · hiring team replies live" onClick={() => navigate('/feedback')} tone="bg-amber-50 text-amber-700" />
           </div>

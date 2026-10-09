@@ -3,7 +3,7 @@ import { authenticatedFetch } from '../utils/fetchUtils';
 import { useAuth } from '../context/AuthContext';
 import { planHasFeature } from '../config/planFeatures';
 
-const POLL_MS = 30_000;
+const POLL_MS = 90_000;
 
 export default function useAnnouncementNavUpdates() {
   const { user, organization } = useAuth();

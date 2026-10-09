@@ -3,7 +3,7 @@ import { authenticatedFetch } from '../utils/fetchUtils';
 import { useAuth } from '../context/AuthContext';
 import { planHasFeature } from '../config/planFeatures';
 
-const POLL_MS = 30_000;
+const POLL_MS = 60_000;
 const EMPLOYEE_ROLES = ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales'];
 
 export default function useInboxNavUpdates() {

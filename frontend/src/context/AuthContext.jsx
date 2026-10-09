@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { BASE_API_URL } from '../config';
 import { getEntitlements } from '../config/planFeatures';
-import { handleLogout as hardLogout, isPublicAuthPath } from '../utils/authUtils';
+import { handleLogout as hardLogout, isPublicAuthPath, isPublicMarketingPath } from '../utils/authUtils';
 
 const AuthContext = createContext(null);
 
@@ -36,6 +36,7 @@ export const AuthProvider = ({ children }) => {
       const response = await fetch(`${BASE_API_URL}/api/profile`, {
         credentials: 'include',
         cache: 'no-store',
+        priority: isPublicMarketingPath() ? 'low' : 'high',
       });
 
       // A newer login/acceptSession invalidated this in-flight check

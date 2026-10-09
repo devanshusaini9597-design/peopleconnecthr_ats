@@ -37,9 +37,11 @@
     "@aws-sdk/s3-request-presigner": "^3.1101.0",
     "@napi-rs/canvas": "^0.1.92",
     "@node-saml/node-saml": "^5.1.0",
+    "@scure/base": "1.1.9",
     "axios": "^1.6.0",
     "bcrypt": "^5.1.1",
     "bullmq": "^6.0.8",
+    "compression": "^1.8.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "csv-parser": "^3.2.0",
@@ -53,6 +55,7 @@
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
     "mailparser": "^3.9.28",
+    "mammoth": "^1.13.0",
     "migrate-mongo": "^14.0.7",
     "mongoose": "^8.21.0",
     "multer": "^2.0.2",
@@ -67,7 +70,13 @@
     "stripe": "^17.4.0",
     "tesseract.js": "^7.0.0",
     "textract": "^2.5.0",
+    "web-push": "^3.6.7",
     "zeptomail": "^7.0.2"
+  },
+  "overrides": {
+    "@scure/base": "1.1.9",
+    "@xmldom/xmldom": "0.8.15",
+    "tar": "7.5.22"
   },
   "devDependencies": {
     "husky": "^9.1.7",

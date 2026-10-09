@@ -13,7 +13,7 @@ const PresenceContext = createContext({
   refresh: async () => {},
 });
 
-const POLL_MS = 45_000;
+const POLL_MS = 90_000;
 
 export function PresenceProvider({ children }) {
   const { user } = useAuth();

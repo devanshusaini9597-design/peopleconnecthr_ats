@@ -88,7 +88,7 @@ const NotificationBell = () => {
   // Poll count every 30 seconds
   useEffect(() => {
     fetchCount();
-    const interval = setInterval(fetchCount, 30000);
+    const interval = setInterval(fetchCount, 60000);
     const onRefresh = () => { fetchCount(); };
     window.addEventListener('jobs:changed', onRefresh);
     window.addEventListener('notifications:refresh', onRefresh);

@@ -17,6 +17,39 @@ const {
 const { backfillStageHistoryForOrg } = require('../services/stageHistoryService');
 const { getDashboardPipelineMetrics } = require('../services/pipelineMetricsService');
 
+const DASH_CACHE_TTL_MS = 30_000;
+const dashStatsCache = new Map();
+
+function dashboardCacheKey(req) {
+  return [
+    req.user?.organizationId || '',
+    req.user?.id || '',
+    req.query.dateRange || 'all',
+    req.query.customFrom || '',
+    req.query.customTo || '',
+    req.query.cohortMonth || '',
+    req.query.userId || '',
+  ].join('|');
+}
+
+function readDashCache(key) {
+  const hit = dashStatsCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > DASH_CACHE_TTL_MS) {
+    dashStatsCache.delete(key);
+    return null;
+  }
+  return hit.payload;
+}
+
+function writeDashCache(key, payload) {
+  if (dashStatsCache.size > 200) {
+    const oldest = dashStatsCache.keys().next().value;
+    dashStatsCache.delete(oldest);
+  }
+  dashStatsCache.set(key, { at: Date.now(), payload });
+}
+
 async function scopedFilter(req, res) {
   try {
     // Owner/admin/manager: full org analytics. Recruiter: own SPOC desk only.
@@ -198,6 +231,16 @@ exports.getDashboardStats = async (req, res) => {
     const userFilter = await scopedFilter(req, res);
     if (!userFilter) return;
 
+    const forceRefresh = String(req.query.refresh || '') === '1';
+    const cacheKey = dashboardCacheKey(req);
+    if (!forceRefresh) {
+      const cached = readDashCache(cacheKey);
+      if (cached) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        return res.status(200).json(cached);
+      }
+    }
+
     const now = new Date();
     const dateRange = String(req.query.dateRange || 'all').trim();
     const customFrom = req.query.customFrom || '';
@@ -220,7 +263,7 @@ exports.getDashboardStats = async (req, res) => {
     const scopedWithDate = withActivityDateRange(userFilter, dateFilter);
     const scopedPrev = prevFilter ? withActivityDateRange(userFilter, prevFilter) : null;
 
-    // Heal pipeline / casing, and keep Rejected on the org stage list
+    // Keep Rejected on the org stage list before metrics; heavy heal stays off the request.
     if (req.user?.organizationId) {
       try {
         const { ensureCorePipelineStages } = require('../services/pipelineStageSync');
@@ -260,7 +303,6 @@ exports.getDashboardStats = async (req, res) => {
     else if (dateFilter?.$lt) chartRange.$lt = dateFilter.$lt;
 
     const queryOpts = { maxTimeMS: 12000 };
-    const forceRefresh = String(req.query.refresh || '') === '1';
     const settled = await Promise.allSettled([
       Candidate.countDocuments(userFilter, queryOpts),
       Candidate.countDocuments(scopedWithDate, queryOpts),
@@ -296,17 +338,17 @@ exports.getDashboardStats = async (req, res) => {
         { $limit: 5 },
       ], queryOpts),
       Candidate.aggregate([
-        { $match: scopedWithDate },
-        { $addFields: { activityDate: activityDateExpr() } },
-        { $sort: { activityDate: -1 } },
-        { $limit: 5 },
+        // Same desk as ATS directory — not the KPI period window.
+        { $match: userFilter },
+        { $sort: { createdAt: -1 } },
+        { $limit: 8 },
         {
           $project: {
             name: 1,
             position: 1,
             status: 1,
             source: 1,
-            createdAt: '$activityDate',
+            createdAt: 1,
           },
         },
       ], queryOpts),
@@ -498,7 +540,7 @@ exports.getDashboardStats = async (req, res) => {
     }));
 
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-    res.status(200).json({
+    const payload = {
       ...scopeMeta,
       dateRange,
       periodLabel: getDateRangeLabel(dateRange, customFrom, customTo),
@@ -579,7 +621,9 @@ exports.getDashboardStats = async (req, res) => {
         aging,
         velocity: metrics.velocity || [],
       },
-    });
+    };
+    writeDashCache(cacheKey, payload);
+    res.status(200).json(payload);
   } catch (err) {
     console.error('Dashboard stats error:', err);
     res.status(500).json({ message: 'Error fetching dashboard stats', error: err.message });

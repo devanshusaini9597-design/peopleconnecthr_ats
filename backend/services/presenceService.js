@@ -1,6 +1,6 @@
 const User = require('../models/User');
 
-const ONLINE_MS = 75_000;
+const ONLINE_MS = 150_000;
 const AWAY_MS = 10 * 60_000;
 
 function lastSeenAt(user) {

@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
  * count stays until each job is opened. markJobSeen(id) clears one;
  * markJobsSeen() bulk-clears (legacy / mandates optional).
  */
-const POLL_MS = 20_000;
+const POLL_MS = 90_000;
 
 let holdMinUntil = 0;
 let holdMinCount = 0;

@@ -36,6 +36,7 @@ const cookieParser = require('cookie-parser');
 const fs = require('fs');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const compression = require('compression');
 
 // ── Models ───────────────────────────────────────────────────────────
 const User = require('./models/User');
@@ -157,6 +158,7 @@ const PORT = process.env.PORT || 5000;
 app.set('trust proxy', 1);
 
 // ── Security Middleware ──────────────────────────────────────────────
+app.use(compression({ threshold: 1024 }));
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
@@ -186,7 +188,8 @@ if (!APP_FRONTEND_URL && process.env.NODE_ENV === 'production') {
 // ── Global API Rate Limit ────────────────────────────────────────────
 const globalApiLimiter = rateLimit({
   windowMs: 60 * 1000,     // 1 minute window
-  max: 300,                // 300 requests per minute per IP
+  // Office NAT: 50 employees share one IP. Chrome polls + list views need headroom.
+  max: Number(process.env.API_RATE_LIMIT_PER_MIN) || 2000,
   message: { success: false, message: 'Too many requests. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,

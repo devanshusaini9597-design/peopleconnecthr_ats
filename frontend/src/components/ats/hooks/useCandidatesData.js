@@ -117,7 +117,7 @@ export function useCandidatesData({ candidatesViewMode = 'all', scopeUserId = ''
       }
     } catch { /* ignore */ }
     try {
-      const jobRes = await authenticatedFetch(`${JOBS_URL}?isTemplate=false`);
+      const jobRes = await authenticatedFetch(`${JOBS_URL}?isTemplate=false&lite=1`);
       if (isUnauthorized(jobRes)) {
         handleUnauthorized();
         return;
