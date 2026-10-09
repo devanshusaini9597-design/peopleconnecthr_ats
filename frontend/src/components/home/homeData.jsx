@@ -281,3 +281,24 @@ export const PLANS = [
     cta: 'Talk to Sales', to: 'mailto:sales@peopleconnecthr.com', mail: true, highlight: false,
   },
 ];
+
+export const TESTIMONIALS = [
+  {
+    quote: 'We went from a shared spreadsheet to a real pipeline in an afternoon. Our recruiters actually know who is supposed to move next.',
+    name: 'Priya N.',
+    role: 'Head of Talent',
+    company: 'Northwind Robotics',
+  },
+  {
+    quote: 'The BYOK setup meant IT did not have to fight our security team. We plugged in our own email account and were sending in ten minutes.',
+    name: 'Marcus O.',
+    role: 'Recruiting Lead',
+    company: 'BlueOrbit Labs',
+  },
+  {
+    quote: 'Scorecards ended the vibes-based hiring debates in our team. Now every interview panel is on the same page before the debrief.',
+    name: 'Elena V.',
+    role: 'People Ops Manager',
+    company: 'Cascade Analytics',
+  },
+];
