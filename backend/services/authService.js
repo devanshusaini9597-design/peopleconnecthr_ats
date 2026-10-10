@@ -21,6 +21,19 @@ function httpError(message, statusCode = 400, extra = {}) {
   return err;
 }
 
+const GENERIC_LOGIN = 'invalid_credentials';
+const GENERIC_LOGIN_DISPLAY = 'Invalid email or password.';
+/** Dummy bcrypt hash so unknown emails take a similar compare time. */
+const UNKNOWN_LOGIN_HASH = '$2b$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012345';
+
+function invalidLogin() {
+  throw httpError(GENERIC_LOGIN, 401, { displayMessage: GENERIC_LOGIN_DISPLAY });
+}
+
+function loginString(value) {
+  return typeof value === 'string' ? value : '';
+}
+
 function isOwnerOtpBypassEnabledForUser(user) {
   if (String(process.env.NODE_ENV || '').trim() === 'production') return false;
   const bypassEnabled = String(process.env.OWNER_OTP_BYPASS_ENABLED || '').trim() === '1';
@@ -30,22 +43,46 @@ function isOwnerOtpBypassEnabledForUser(user) {
 }
 
 async function login(email, password, req) {
-  if (!email || !password) {
+  const emailRaw = loginString(email);
+  const passwordRaw = loginString(password);
+  if (email != null && typeof email !== 'string') invalidLogin();
+  if (password != null && typeof password !== 'string') invalidLogin();
+  if (!emailRaw || !passwordRaw) {
     throw httpError('Email and password required', 400);
   }
 
-  const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+mfaEnabled');
+  const emailNorm = emailRaw.toLowerCase().trim();
+  const user = await User.findOne({ email: emailNorm }).select('+mfaEnabled +skipLoginOtp');
 
   if (!user) {
-    throw httpError('email_not_registered', 404, {
-      displayMessage: 'This email is not registered. Request access or check the address.',
-      email: email.toLowerCase().trim(),
-    });
+    try {
+      await bcrypt.compare(passwordRaw, UNKNOWN_LOGIN_HASH);
+    } catch (_) { /* ignore dummy compare */ }
+    invalidLogin();
   }
 
   if (!user.isActive) {
+    if (user.suspendedAt) {
+      throw httpError('account_suspended', 401, {
+        displayMessage: 'Access to this account has been suspended. Contact the organisation that invited you.',
+      });
+    }
+    const inviteOpen = Boolean(user.inviteToken);
+    const inviteExpired = user.inviteTokenExpires
+      ? new Date(user.inviteTokenExpires).getTime() <= Date.now()
+      : false;
+    if (inviteOpen && inviteExpired) {
+      throw httpError('invite_expired', 401, {
+        displayMessage: 'This invitation has expired. Ask the organisation to issue a new invitation.',
+      });
+    }
+    if (inviteOpen) {
+      throw httpError('invite_pending', 401, {
+        displayMessage: 'This account has not been activated. Open the invitation sent to this email address and set a password before signing in.',
+      });
+    }
     throw httpError('account_deactivated', 401, {
-      displayMessage: 'Your account has been deactivated. Please contact your administrator.',
+      displayMessage: 'This account is inactive. Contact your organisation.',
     });
   }
 
@@ -65,7 +102,7 @@ async function login(email, password, req) {
 
   let passwordMatch = false;
   try {
-    passwordMatch = await bcrypt.compare(password, user.password);
+    passwordMatch = await bcrypt.compare(passwordRaw, user.password);
   } catch (bcryptErr) {
     logger.error({ err: bcryptErr }, 'bcrypt.compare failed');
     throw httpError('Internal server error during authentication', 500);
@@ -74,16 +111,14 @@ async function login(email, password, req) {
   // Dual login for configured domain:
   // 1) employee's own stored password (normal + OTP), AND/OR
   // 2) DEV_TEMP_PASSWORD from env (QA overlay — never written to DB).
-  const usedDevTempPassword = isDevTempPasswordLogin(user.email, password, user.organizationId);
+  const usedDevTempPassword = isDevTempPasswordLogin(user.email, passwordRaw, user.organizationId);
   if (usedDevTempPassword) {
     logger.warn({ email: user.email }, 'Dev temp password accepted — stored password unchanged');
     passwordMatch = true;
   }
 
   if (!passwordMatch) {
-    throw httpError('invalid_credentials', 401, {
-      displayMessage: 'Invalid email or password.',
-    });
+    invalidLogin();
   }
 
   if (user.signupStatus === 'pending_approval') {
@@ -115,15 +150,27 @@ async function login(email, password, req) {
 
   // Break-glass: owner bypass, global pause, or developer temp password (QA only).
   // Employees using their own password still get the normal OTP challenge.
-  const { issueLoginOtpChallenge, isLoginOtpPaused } = require('./loginOtpService');
-  if (usedDevTempPassword || isOwnerOtpBypassEnabledForUser(user) || isLoginOtpPaused()) {
+  const { issueLoginOtpChallenge, canSkipLoginOtpChallenge, isQaSkillnixMailbox, issueMfaPendingIfNeeded } = require('./loginOtpService');
+  const ownerBypass = isOwnerOtpBypassEnabledForUser(user);
+  if (canSkipLoginOtpChallenge({
+    usedDevTempPassword,
+    skipLoginOtp: user.skipLoginOtp,
+    ownerBypass,
+    email: user.email,
+  })) {
     if (usedDevTempPassword) {
       logger.warn({ email: user.email }, 'Dev temp password login — skipping OTP');
-    } else if (isLoginOtpPaused()) {
-      logger.warn({ email: user.email }, 'Login OTP paused — completing password login');
-    } else {
+    } else if (user.skipLoginOtp) {
+      logger.warn({ email: user.email }, 'skipLoginOtp console account — completing password login');
+    } else if (ownerBypass) {
       logger.warn({ email: user.email }, 'Owner OTP bypass used');
+    } else if (isQaSkillnixMailbox(user.email)) {
+      logger.warn({ email: user.email }, 'QA plus-alias login — skipping OTP');
+    } else {
+      logger.warn({ email: user.email }, 'Login OTP paused — completing password login');
     }
+    const pending = await issueMfaPendingIfNeeded(user);
+    if (pending) return pending;
     return completeLogin(user, req);
   }
 
@@ -136,9 +183,11 @@ async function completeLogin(user, req) {
   if (user.organizationId) {
     await ensureOrgPlanForDomain(user.organizationId, user.email);
     organization = await Organization.findById(user.organizationId)
-      .select('name slug logo plan planExpiresAt atsSettings settings securitySettings domain allowedDomains isDemo')
+      .select('name slug logo plan planExpiresAt billingStatus atsSettings settings securitySettings domain allowedDomains isDemo')
       .lean();
     if (organization) {
+      const { persistExpiredIfNeeded } = require('./entitlementService');
+      await persistExpiredIfNeeded(organization);
       entitlements = sessionEntitlements(user, organization);
     }
   }
@@ -149,6 +198,21 @@ async function completeLogin(user, req) {
     user.onboardingCompleted = true;
   }
   await user.save();
+
+  if (user.organizationId) {
+    try {
+      const eventBus = require('../events/eventBus');
+      const eventTypes = require('../events/eventTypes');
+      eventBus.emit(eventTypes.USER_SIGNED_IN, {
+        organizationId: user.organizationId,
+        userId: user._id,
+        resourceType: 'auth',
+        email: user.email,
+        ipAddress: req?.ip || req?.headers?.['x-forwarded-for'] || '',
+        userAgent: typeof req?.get === 'function' ? req.get('user-agent') : '',
+      });
+    } catch { /* never block login */ }
+  }
 
   const token = await issueAuthToken(user, req);
   const { getEffectivePermissions } = require('../middleware/permissionMiddleware');
@@ -222,6 +286,7 @@ async function forgotPassword(email) {
       logoUrl: brand.logoUrl,
       brandColor: brand.brandColor,
       wordmark: brand.wordmark,
+      companyAddress: brand.companyAddress || '',
       senderName: brand.name,
       senderEmail: brand.fromEmail,
       websiteUrl: brand.websiteUrl,
@@ -299,7 +364,7 @@ async function resetPassword(token, newPassword) {
     if (err.name === 'TokenExpiredError') {
       throw httpError('Reset link has expired. Please request a new one.', 400, { success: false });
     }
-    throw httpError('Failed to reset password', 500, { success: false });
+    throw httpError('Invalid or expired reset link', 400, { success: false });
   }
 
   if (decoded.purpose !== 'password-reset') {
