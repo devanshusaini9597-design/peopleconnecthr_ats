@@ -639,7 +639,7 @@ async function buildInviteEmailHtml(inviteUrl, orgName, inviterName, organizatio
       ? `
       <p style="margin:0 0 16px 0;font-size:16px;color:#0f172a;">Hello,</p>
       <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;"><strong style="color:#0f172a;">${safeInviter}</strong> at <strong style="color:#0f172a;">${safeOrg}</strong> has invited you to work as a freelance recruiter.</p>
-      <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;">This invitation is addressed only to the email it was sent to. A personal email address is accepted. Open the link, confirm your name, and set a password. You will then sign in to your own desk. You will not receive employee access to the company workspace.</p>
+      <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;">This invitation is issued to your email address. Confirm your name and set a password to activate access to the mandates assigned to you.</p>
       ${actionHtml}`
       : `
       <p style="margin:0 0 16px 0;font-size:16px;color:#0f172a;">Hi there,</p>
