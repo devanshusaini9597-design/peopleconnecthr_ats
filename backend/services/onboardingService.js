@@ -13,6 +13,7 @@ const { planForOrgDomain, validateInviteEmail } = require('../utils/orgDomain');
 const { applyPlanLimits, TRIAL_DURATION_DAYS } = require('../config/planLimits');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../middleware/authMiddleware');
+const { isAutoApproveSignupEnabled } = require('../utils/deployedSurface');
 
 function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
@@ -121,6 +122,8 @@ function buildVerificationEmailHtml(verificationUrl, brand) {
     logoUrl: brand.logoUrl,
     brandColor: brand.brandColor,
     wordmark: brand.wordmark,
+    companyAddress: brand.companyAddress || '',
+    socialLinks: brand.socialLinks || {},
     senderName: brand.name,
     senderEmail: brand.fromEmail,
     websiteUrl: brand.websiteUrl,
@@ -226,6 +229,7 @@ function buildSignupOtpEmailHtml({ name, code, brand, signupOtpToken, email }) {
     logoUrl: brand.logoUrl,
     brandColor: brand.brandColor,
     wordmark: brand.wordmark,
+    companyAddress: brand.companyAddress || '',
     senderName: brand.name,
     senderEmail: brand.fromEmail,
     websiteUrl: brand.websiteUrl,
@@ -295,7 +299,7 @@ async function createPendingUserFromSignup({ email, name, phone, companyName, pa
     if (name) user.name = name;
     if (phone) user.phone = phone;
     if (companyName) user.companyName = companyName;
-    user.signupStatus = 'pending_approval';
+    user.signupStatus = isAutoApproveSignupEnabled() ? 'active' : 'pending_approval';
     user.isEmailVerified = true;
     user.isActive = true;
     user.role = user.role || 'admin';
@@ -320,7 +324,7 @@ async function createPendingUserFromSignup({ email, name, phone, companyName, pa
       phone: phone || '',
       companyName: companyName || '',
       role: 'admin',
-      signupStatus: 'pending_approval',
+      signupStatus: isAutoApproveSignupEnabled() ? 'active' : 'pending_approval',
       isEmailVerified: true,
     });
     await user.save();
@@ -584,6 +588,7 @@ async function createOrg(userId, { name, domain: domainInput }) {
     planExpiresAt: plan === 'free_trial'
       ? new Date(Date.now() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000)
       : undefined,
+    billingStatus: plan === 'free_trial' ? 'trialing' : 'none',
   });
   applyPlanLimits(org, plan);
   await org.save();
@@ -603,29 +608,44 @@ async function createOrg(userId, { name, domain: domainInput }) {
   return { success: true, organization: org };
 }
 
-async function buildInviteEmailHtml(inviteUrl, orgName, inviterName, organizationId) {
+async function buildInviteEmailHtml(inviteUrl, orgName, inviterName, organizationId, options = {}) {
   const safeOrg = escapeHtml(orgName || 'your organization');
   const safeInviter = escapeHtml(inviterName || 'A teammate');
+  const freelancer = options.role === 'freelancer';
   const brand = organizationId ? await loadOrgEmailBrand(organizationId) : loadPlatformEmailBrand();
+  const actionHtml = `
+      <div style="text-align:center;">
+        ${brandButtonHtml({ href: inviteUrl, label: freelancer ? 'Activate freelance access' : 'Accept invitation', brandColor: brand.brandColor })}
+      </div>
+      <p style="margin:24px 0 0 0;color:#64748b;font-size:13px;line-height:1.6;">This invitation expires in <strong style="color:#334155;">7 days</strong>. It can be used only by the person it was sent to.</p>
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid #eef0f3;">
+        <p style="margin:0;color:#94a3b8;font-size:12px;line-height:1.6;">Button not working? Copy and paste this link into your browser:<br><a href="${inviteUrl}" style="color:${brand.brandColor};word-break:break-all;">${inviteUrl}</a></p>
+      </div>`;
   return wrapBrandedEmailHtml({
-    title: "You've been invited to join the team",
-    eyebrow: 'Team invitation',
+    title: freelancer
+      ? `Your freelance recruiter invitation from ${orgName || 'the hiring team'}`
+      : "You've been invited to join the team",
+    eyebrow: freelancer ? 'Freelance recruiter invitation' : 'Team invitation',
     orgName: brand.name,
     logoUrl: brand.logoUrl,
     brandColor: brand.brandColor,
     wordmark: brand.wordmark,
+    companyAddress: brand.companyAddress || '',
+    websiteUrl: brand.websiteUrl || '',
+    supportEmail: brand.supportEmail || '',
+    socialLinks: brand.socialLinks || {},
     senderName: inviterName,
-    bodyHtml: `
+    bodyHtml: freelancer
+      ? `
+      <p style="margin:0 0 16px 0;font-size:16px;color:#0f172a;">Hello,</p>
+      <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;"><strong style="color:#0f172a;">${safeInviter}</strong> at <strong style="color:#0f172a;">${safeOrg}</strong> has invited you to work as a freelance recruiter.</p>
+      <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;">This invitation is addressed only to the email it was sent to. A personal email address is accepted. Open the link, confirm your name, and set a password. You will then sign in to your own desk. You will not receive employee access to the company workspace.</p>
+      ${actionHtml}`
+      : `
       <p style="margin:0 0 16px 0;font-size:16px;color:#0f172a;">Hi there,</p>
       <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;"><strong style="color:#0f172a;">${safeInviter}</strong> has invited you to join <strong style="color:#0f172a;">${safeOrg}</strong>.</p>
       <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;">Accept the invitation to set up your account and start collaborating with the hiring team.</p>
-      <div style="text-align:center;">
-        ${brandButtonHtml({ href: inviteUrl, label: 'Accept invitation', brandColor: brand.brandColor })}
-      </div>
-      <p style="margin:24px 0 0 0;color:#64748b;font-size:13px;line-height:1.6;">This invitation expires in <strong style="color:#334155;">7 days</strong>.</p>
-      <div style="margin-top:20px;padding-top:16px;border-top:1px solid #eef0f3;">
-        <p style="margin:0;color:#94a3b8;font-size:12px;line-height:1.6;">Button not working? Copy and paste this link into your browser:<br><a href="${inviteUrl}" style="color:${brand.brandColor};word-break:break-all;">${inviteUrl}</a></p>
-      </div>`,
+      ${actionHtml}`,
   });
 }
 
@@ -741,10 +761,14 @@ async function inviteTeammate(actor, { email, role, name, customRoleId, reportsT
   let emailSent = false;
   let emailError = null;
   try {
-    const inviteHtml = await buildInviteEmailHtml(inviteUrl, orgName, inviterName, actor.organizationId);
+    const inviteHtml = await buildInviteEmailHtml(inviteUrl, orgName, inviterName, actor.organizationId, {
+      role: resolvedRole,
+    });
     await sendEmail(
       normalizedEmail,
-      `You're invited to join ${orgName || 'the team'}`,
+      isFreelancerInvite
+        ? `${orgName || 'A hiring team'} invited you as a freelance recruiter`
+        : `You're invited to join ${orgName || 'the team'}`,
       inviteHtml,
       `Accept your invitation: ${inviteUrl} (expires in 7 days)`,
       {
@@ -852,6 +876,7 @@ async function getInvite(token) {
   const inviterName = user.invitedBy?.name || user.invitedBy?.email || 'A teammate';
   const invite = {
     email: user.email,
+    name: user.name || '',
     role: user.role,
     organization: {
       name: orgName,
