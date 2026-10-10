@@ -6,7 +6,7 @@ const bcrypt = require('bcrypt');
 const User = require('../models/User');
 const Organization = require('../models/Organization');
 const { sendEmail } = require('./emailService');
-const { wrapBrandedEmailHtml, brandButtonHtml, loadPlatformEmailBrand, loadOrgEmailBrand, loadSendingEmailBrand, escapeHtml, otpCodeHtml, signupOtpResendUrl, registerPageUrl } = require('./emailBrandLayout');
+const { wrapBrandedEmailHtml, brandButtonHtml, loadPlatformEmailBrand, loadOrgEmailBrand, loadSendingEmailBrand, escapeHtml, otpCodeHtml, signupOtpResendUrl, registerPageUrl, loginPageUrl } = require('./emailBrandLayout');
 const logger = require('../utils/logger');
 const { validateWorkEmail, getEmailDomain, isValidEmailFormat } = require('../utils/workEmail');
 const { planForOrgDomain, validateInviteEmail } = require('../utils/orgDomain');
@@ -815,6 +815,67 @@ async function inviteTeammate(actor, { email, role, name, customRoleId, reportsT
   };
 }
 
+async function sendFreelancerActivatedNotice(user) {
+  if (user.role !== 'freelancer') return;
+  const brand = user.organizationId
+    ? await loadOrgEmailBrand(user.organizationId)
+    : loadPlatformEmailBrand();
+  const orgName = brand?.name || 'the hiring team';
+  const safeOrg = escapeHtml(orgName);
+  const safeName = escapeHtml(user.name || '');
+  const greeting = safeName ? `Hello ${safeName},` : 'Hello,';
+  const loginUrl = loginPageUrl();
+  const html = wrapBrandedEmailHtml({
+    title: 'Your account is active',
+    eyebrow: 'Account activated',
+    orgName: brand.name,
+    logoUrl: brand.logoUrl,
+    brandColor: brand.brandColor,
+    wordmark: brand.wordmark,
+    companyAddress: brand.companyAddress || '',
+    websiteUrl: brand.websiteUrl || '',
+    supportEmail: brand.supportEmail || '',
+    socialLinks: brand.socialLinks || {},
+    senderName: orgName,
+    bodyHtml: `
+      <p style="margin:0 0 16px 0;font-size:16px;color:#0f172a;">${greeting}</p>
+      <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;">Your freelance recruiter account with <strong style="color:#0f172a;">${safeOrg}</strong> is now active.</p>
+      <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;">Sign in with this email address and the password you set. Mandates assigned to you are available in your workspace.</p>
+      <div style="text-align:center;margin-top:24px;">
+        ${brandButtonHtml({ href: loginUrl, label: 'Sign in', brandColor: brand.brandColor })}
+      </div>`,
+  });
+  try {
+    await sendEmail(
+      user.email,
+      `${orgName} — your freelance recruiter account is active`,
+      html,
+      `Your freelance recruiter account with ${orgName} is active. Sign in at ${loginUrl}`,
+      {
+        senderName: orgName,
+        userId: user._id,
+        organizationId: user.organizationId,
+        system: true,
+      }
+    );
+  } catch (err) {
+    logger.warn(`[invite] activation email failed for ${user.email}: ${err.message}`);
+  }
+  try {
+    const { notifyUser } = require('../utils/reportingScope');
+    await notifyUser(user._id, {
+      type: 'system',
+      title: 'Account activated',
+      message: `Your freelance recruiter account with ${orgName} is active.`,
+      organizationId: user.organizationId,
+      linkUrl: '/my-pipeline',
+      priority: 'medium',
+    });
+  } catch (err) {
+    logger.warn(`[invite] activation notice skipped for ${user.email}: ${err.message}`);
+  }
+}
+
 async function acceptInvite({ token, name, password }, req) {
   const user = await User.findOne({ inviteToken: token, inviteTokenExpires: { $gt: Date.now() } });
   if (!user) throw httpError('Invalid or expired invitation', 400);
@@ -843,6 +904,11 @@ async function acceptInvite({ token, name, password }, req) {
       });
     } catch (err) {
       logger.warn(`[invite] partner join sync skipped for ${user.email}: ${err.message}`);
+    }
+    try {
+      await sendFreelancerActivatedNotice(user);
+    } catch (err) {
+      logger.warn(`[invite] activation notice failed for ${user.email}: ${err.message}`);
     }
   }
 
