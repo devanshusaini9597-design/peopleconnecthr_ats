@@ -617,7 +617,7 @@ async function buildInviteEmailHtml(inviteUrl, orgName, inviterName, organizatio
       <div style="text-align:center;">
         ${brandButtonHtml({ href: inviteUrl, label: freelancer ? 'Activate freelance access' : 'Accept invitation', brandColor: brand.brandColor })}
       </div>
-      <p style="margin:24px 0 0 0;color:#64748b;font-size:13px;line-height:1.6;">This invitation expires in <strong style="color:#334155;">7 days</strong>. It can be used only by the person it was sent to.</p>
+      <p style="margin:24px 0 0 0;color:#64748b;font-size:13px;line-height:1.6;">Valid for <strong style="color:#334155;">7 days</strong>.</p>
       <div style="margin-top:20px;padding-top:16px;border-top:1px solid #eef0f3;">
         <p style="margin:0;color:#94a3b8;font-size:12px;line-height:1.6;">Button not working? Copy and paste this link into your browser:<br><a href="${inviteUrl}" style="color:${brand.brandColor};word-break:break-all;">${inviteUrl}</a></p>
       </div>`;
@@ -872,7 +872,9 @@ async function getInvite(token) {
     .populate('invitedBy', 'name email');
   if (!user) throw httpError('Invalid or expired invitation', 400);
 
-  const orgName = user.organizationId?.name || '';
+  const orgId = user.organizationId?._id || user.organizationId;
+  const brand = orgId ? await loadOrgEmailBrand(orgId) : null;
+  const orgName = brand?.name || user.organizationId?.name || '';
   const inviterName = user.invitedBy?.name || user.invitedBy?.email || 'A teammate';
   const invite = {
     email: user.email,
@@ -881,6 +883,8 @@ async function getInvite(token) {
     organization: {
       name: orgName,
       domain: user.organizationId?.domain || '',
+      logoUrl: brand?.logoUrl || '',
+      brandColor: brand?.brandColor || '#0f766e',
     },
     inviter: {
       name: inviterName,
