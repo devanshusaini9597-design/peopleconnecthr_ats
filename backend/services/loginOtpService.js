@@ -65,15 +65,35 @@ function flagOn(name) {
   return v === '1' || v === 'true' || v === 'yes';
 }
 
+/** Staging kit only: skillnix.qa+role@gmail.com. Real tenant logins still use OTP. */
+function isQaSkillnixMailbox(email) {
+  return /^skillnix\.qa\+[^@\s]+@gmail\.com$/i.test(String(email || '').trim());
+}
+
+/** QA kit logins should not burn the IP auth limiter during checklist runs. */
+function skipAuthRateLimit(req) {
+  return isQaSkillnixMailbox(req?.body?.email);
+}
+
 /**
  * Console skip / env pause / owner bypass stay local-only.
  * Testing-phase overlay password may skip OTP on live while DEV_TEMP_PASSWORD_IN_PRODUCTION=1.
+ * QA plus-alias accounts skip OTP so staging checklist can run; production OTP is unchanged.
  */
-function canSkipLoginOtpChallenge({ usedDevTempPassword, skipLoginOtp, ownerBypass } = {}) {
+function canSkipLoginOtpChallenge({ usedDevTempPassword, skipLoginOtp, ownerBypass, email } = {}) {
   if (isDeployedLoginSurface()) {
-    return Boolean(usedDevTempPassword && flagOn('DEV_TEMP_PASSWORD_IN_PRODUCTION'));
+    if (usedDevTempPassword && flagOn('DEV_TEMP_PASSWORD_IN_PRODUCTION')) return true;
+    // Hyphen staging kit only — never skip OTP on the live customer API.
+    if (isQaSkillnixMailbox(email) && flagOn('STAGING_QA_OTP_SKIP')) return true;
+    return false;
   }
-  return Boolean(usedDevTempPassword || skipLoginOtp || ownerBypass || isLoginOtpPaused());
+  return Boolean(
+    usedDevTempPassword
+    || skipLoginOtp
+    || ownerBypass
+    || isLoginOtpPaused()
+    || isQaSkillnixMailbox(email)
+  );
 }
 
 function httpError(message, statusCode = 400, extra = {}) {
@@ -143,6 +163,7 @@ function buildOtpEmailHtml(user, code, brand, { otpToken } = {}) {
     logoUrl: brand.logoUrl,
     brandColor: brand.brandColor,
     wordmark: brand.wordmark,
+    companyAddress: brand.companyAddress || '',
     senderName: brand.name,
     senderEmail: brand.fromEmail,
     websiteUrl: brand.websiteUrl,
@@ -275,26 +296,31 @@ async function verifyLoginOtp({ otpToken, code }, req) {
   user.loginOtpSentAt = undefined;
   await user.save();
 
-  const withMfa = await User.findById(user._id).select('+mfaEnabled');
-  if (withMfa?.mfaEnabled) {
-    const mfaToken = jwt.sign(
-      { id: String(user._id), purpose: 'mfa_pending' },
-      JWT_SECRET,
-      { expiresIn: '10m' }
-    );
-    return {
-      kind: 'mfa_pending',
-      payload: {
-        requiresMfa: true,
-        mfaToken,
-        message: 'Enter the code from your authenticator app.',
-        user: { email: user.email, name: user.name || '' },
-      },
-    };
-  }
+  const pending = await issueMfaPendingIfNeeded(user);
+  if (pending) return pending;
 
   const { completeLogin } = require('./authService');
   return completeLogin(user, req);
+}
+
+/** After password (or OTP) succeeds, MFA-enabled accounts still need the authenticator step. */
+async function issueMfaPendingIfNeeded(user) {
+  const withMfa = await User.findById(user._id).select('+mfaEnabled');
+  if (!withMfa?.mfaEnabled) return null;
+  const mfaToken = jwt.sign(
+    { id: String(user._id), purpose: 'mfa_pending' },
+    JWT_SECRET,
+    { expiresIn: '10m' }
+  );
+  return {
+    kind: 'mfa_pending',
+    payload: {
+      requiresMfa: true,
+      mfaToken,
+      message: 'Enter the code from your authenticator app.',
+      user: { email: user.email, name: user.name || '' },
+    },
+  };
 }
 
 async function resendLoginOtp({ otpToken }) {
@@ -324,10 +350,13 @@ module.exports = {
   hashOtp,
   otpMatches,
   plusAliasMailbox,
+  isQaSkillnixMailbox,
+  skipAuthRateLimit,
   otpDeliveryAddress,
   isLoginOtpPaused,
   isDeployedLoginSurface,
   canSkipLoginOtpChallenge,
+  issueMfaPendingIfNeeded,
   issueLoginOtpChallenge,
   verifyLoginOtp,
   resendLoginOtp,
