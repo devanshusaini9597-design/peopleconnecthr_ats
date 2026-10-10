@@ -413,6 +413,22 @@ async function removeMember(organizationId, actorUserId, targetUserId) {
   if (!userToRemove) throw httpError('User not found', 404);
   if (userToRemove.role === 'owner') throw httpError('Cannot remove owner', 403);
 
+  if (userToRemove.role === 'freelancer') {
+    let actorName = '';
+    const actor = await User.findById(actorUserId).select('name email').lean();
+    actorName = actor?.name || actor?.email || '';
+    const FreelancerAccessLog = require('../models/FreelancerAccessLog');
+    await FreelancerAccessLog.create({
+      organizationId,
+      freelancerId: userToRemove._id,
+      name: userToRemove.name || '',
+      email: userToRemove.email || '',
+      action: 'removed',
+      actorId: actorUserId,
+      actorName,
+    });
+  }
+
   const { revokeAllSessionsForUser } = require('./sessionService');
   await revokeAllSessionsForUser(targetUserId);
   await User.findByIdAndDelete(targetUserId);
@@ -461,6 +477,7 @@ async function sendTemporaryPasswordEmail({ target, temporaryPassword, actorName
     logoUrl: brand.logoUrl,
     brandColor: brand.brandColor,
     wordmark: brand.wordmark,
+    companyAddress: brand.companyAddress || '',
     senderName: brand.name,
     senderEmail: brand.fromEmail,
     websiteUrl: brand.websiteUrl,

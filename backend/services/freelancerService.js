@@ -1536,8 +1536,9 @@ async function listFreelancerDirectory(user) {
 
   const [people, apps, submissionAgg] = await Promise.all([
     User.find({ organizationId: orgId, role: 'freelancer' })
-      .select('name email phone profilePicture isActive suspendedAt invitedBy inviteTokenExpires lastActiveAt lastLoginAt createdAt onboardingCompleted')
+      .select('name email phone profilePicture isActive suspendedAt suspendedBy invitedBy inviteTokenExpires lastActiveAt lastLoginAt createdAt onboardingCompleted')
       .populate('invitedBy', 'name email')
+      .populate('suspendedBy', 'name email')
       .sort({ isActive: -1, name: 1, email: 1 })
       .lean(),
     FreelancerApplication.find({ organizationId: orgId })
@@ -1617,6 +1618,9 @@ async function listFreelancerDirectory(user) {
       invitedBy: p.invitedBy
         ? { _id: p.invitedBy._id, name: p.invitedBy.name || '', email: p.invitedBy.email || '' }
         : null,
+      accessBy: suspended && p.suspendedBy
+        ? { name: p.suspendedBy.name || p.suspendedBy.email || '', at: p.suspendedAt || null }
+        : null,
       createdAt: p.createdAt || null,
       onboardingCompleted: p.onboardingCompleted !== false,
       application: app
@@ -1656,6 +1660,53 @@ async function listFreelancerDirectory(user) {
     away: freelancers.filter((f) => f.presence === 'away').length,
     offline: freelancers.filter((f) => f.isActive && f.presence === 'offline').length,
   };
+
+  const FreelancerAccessLog = require('../models/FreelancerAccessLog');
+  const removedLogs = await FreelancerAccessLog.find({
+    organizationId: orgId,
+    action: 'removed',
+  }).sort({ createdAt: -1 }).lean();
+  const liveIds = new Set(freelancers.map((row) => String(row._id)));
+  const seenRemoved = new Set();
+  for (const log of removedLogs) {
+    const id = String(log.freelancerId || '');
+    if (!id || liveIds.has(id) || seenRemoved.has(id)) continue;
+    seenRemoved.add(id);
+    const stats = statsByFreelancer.get(id) || null;
+    freelancers.push({
+      _id: log.freelancerId,
+      name: log.name || log.email || 'Removed recruiter',
+      email: log.email || '',
+      phone: '',
+      profilePicture: '',
+      isActive: false,
+      suspended: false,
+      removed: true,
+      onboardingStatus: 'removed',
+      presence: 'offline',
+      lastActiveAt: null,
+      lastLoginAt: null,
+      inviteExpiresAt: null,
+      inviteExpired: false,
+      invitedBy: null,
+      accessBy: { name: log.actorName || '', at: log.createdAt || null },
+      createdAt: log.createdAt || null,
+      onboardingCompleted: true,
+      application: null,
+      submissions: {
+        total: stats?.total || 0,
+        submitted: stats?.submitted || 0,
+        reviewing: stats?.reviewing || 0,
+        shortlisted: stats?.shortlisted || 0,
+        selection: stats?.selection || 0,
+        joined: stats?.joined || 0,
+        rejected: stats?.rejected || 0,
+        lastSubmittedAt: stats?.lastSubmittedAt || null,
+      },
+    });
+  }
+
+  counts.all = freelancers.length;
 
   return { freelancers, counts };
 }
@@ -1713,6 +1764,25 @@ async function getSelfOnboarding(user) {
 
 const FREELANCER_MANAGERS = ['owner', 'admin', 'hr_manager'];
 
+async function recordFreelancerAccess(actor, person, action) {
+  let actorName = actor.name || '';
+  const actorId = actor.id || actor._id;
+  if (!actorName && actorId) {
+    const row = await User.findById(actorId).select('name email').lean();
+    actorName = row?.name || row?.email || '';
+  }
+  const FreelancerAccessLog = require('../models/FreelancerAccessLog');
+  await FreelancerAccessLog.create({
+    organizationId: actor.organizationId,
+    freelancerId: person._id,
+    name: person.name || '',
+    email: person.email || '',
+    action,
+    actorId: actorId || null,
+    actorName,
+  });
+}
+
 function requireFreelancerManager(user) {
   if (isFreelancer(user) || !FREELANCER_MANAGERS.includes(user.role)) {
     throw httpError('Only an owner, admin, or HR manager can manage freelance recruiters', 403);
@@ -1758,9 +1828,11 @@ async function setFreelancerAccess(actor, freelancerId, suspended) {
     if (!alreadySuspended) {
       person.isActive = false;
       person.suspendedAt = new Date();
+      person.suspendedBy = actor.id || actor._id;
       person.inviteToken = undefined;
       person.inviteTokenExpires = undefined;
       await person.save();
+      await recordFreelancerAccess(actor, person, 'suspended');
       const { revokeAllSessionsForUser } = require('./sessionService');
       await revokeAllSessionsForUser(String(person._id));
     }
@@ -1772,7 +1844,9 @@ async function setFreelancerAccess(actor, freelancerId, suspended) {
   }
   person.isActive = true;
   person.suspendedAt = null;
+  person.suspendedBy = null;
   await person.save();
+  await recordFreelancerAccess(actor, person, 'restored');
   return { suspended: false, email: person.email };
 }
 
