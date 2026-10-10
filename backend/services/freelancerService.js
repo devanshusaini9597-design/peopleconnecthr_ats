@@ -56,12 +56,26 @@ const FREELANCER_ONBOARD_STEPS = [
 function freelancerOnboardingPipeline({
   isActive = true,
   inviteExpired = false,
+  suspended = false,
   name = '',
   phone = '',
   lastLoginAt = null,
   lastActiveAt = null,
   submissionsTotal = 0,
 } = {}) {
+  if (suspended) {
+    return {
+      steps: FREELANCER_ONBOARD_STEPS.map((meta) => ({ ...meta, state: 'upcoming' })),
+      status: 'suspended',
+      progress: 0,
+      profileReady: false,
+      deskLive: false,
+      producing: false,
+      accepted: false,
+      currentStepId: 'invited',
+      nextAction: 'Access suspended',
+    };
+  }
   const accepted = isActive !== false;
   const profileReady = Boolean(String(name || '').trim()) && Boolean(String(phone || '').trim());
   const deskLive = accepted && Boolean(lastLoginAt || lastActiveAt);
@@ -1522,7 +1536,7 @@ async function listFreelancerDirectory(user) {
 
   const [people, apps, submissionAgg] = await Promise.all([
     User.find({ organizationId: orgId, role: 'freelancer' })
-      .select('name email phone profilePicture isActive invitedBy inviteTokenExpires lastActiveAt lastLoginAt createdAt onboardingCompleted')
+      .select('name email phone profilePicture isActive suspendedAt invitedBy inviteTokenExpires lastActiveAt lastLoginAt createdAt onboardingCompleted')
       .populate('invitedBy', 'name email')
       .sort({ isActive: -1, name: 1, email: 1 })
       .lean(),
@@ -1565,13 +1579,15 @@ async function listFreelancerDirectory(user) {
     const app = appsByUserId.get(id) || appsByEmail.get(emailKey) || null;
     const stats = statsByFreelancer.get(id) || null;
     const seenAt = lastSeenAt(p);
-    const pending = p.isActive === false;
+    const suspended = p.isActive === false && Boolean(p.suspendedAt);
+    const pending = p.isActive === false && !suspended;
     const inviteExpired = pending && p.inviteTokenExpires
       ? new Date(p.inviteTokenExpires).getTime() <= Date.now()
       : false;
 
     const pipeline = freelancerOnboardingPipeline({
-      isActive: !pending,
+      isActive: !pending && !suspended,
+      suspended,
       inviteExpired,
       name: p.name,
       phone: p.phone || app?.phone || '',
@@ -1590,6 +1606,7 @@ async function listFreelancerDirectory(user) {
       phone: p.phone || app?.phone || '',
       profilePicture: p.profilePicture || '',
       isActive: p.isActive !== false,
+      suspended,
       onboardingStatus,
       pipeline,
       presence,
@@ -1634,6 +1651,7 @@ async function listFreelancerDirectory(user) {
     profile: freelancers.filter((f) => f.onboardingStatus === 'profile' || f.onboardingStatus === 'accepted').length,
     live: freelancers.filter((f) => f.onboardingStatus === 'live').length,
     producing: freelancers.filter((f) => f.onboardingStatus === 'producing').length,
+    suspended: freelancers.filter((f) => f.onboardingStatus === 'suspended').length,
     online: freelancers.filter((f) => f.presence === 'online').length,
     away: freelancers.filter((f) => f.presence === 'away').length,
     offline: freelancers.filter((f) => f.isActive && f.presence === 'offline').length,
@@ -1693,6 +1711,71 @@ async function getSelfOnboarding(user) {
   };
 }
 
+const FREELANCER_MANAGERS = ['owner', 'admin', 'hr_manager'];
+
+function requireFreelancerManager(user) {
+  if (isFreelancer(user) || !FREELANCER_MANAGERS.includes(user.role)) {
+    throw httpError('Only an owner, admin, or HR manager can manage freelance recruiters', 403);
+  }
+}
+
+async function findOrgFreelancer(actor, freelancerId) {
+  const person = await User.findOne({
+    _id: freelancerId,
+    organizationId: actor.organizationId,
+    role: 'freelancer',
+  });
+  if (!person) throw httpError('Freelance recruiter not found', 404);
+  return person;
+}
+
+async function updateFreelancerRecord(actor, freelancerId, body = {}) {
+  requireFreelancerManager(actor);
+  const person = await findOrgFreelancer(actor, freelancerId);
+  const name = String(body.name || '').trim().replace(/\s+/g, ' ');
+  if (!name) throw httpError('Enter the recruiter name', 400);
+  person.name = name.toUpperCase();
+  person.phone = String(body.phone || '').trim();
+  await person.save();
+  return {
+    _id: person._id,
+    name: person.name,
+    email: person.email,
+    phone: person.phone || '',
+  };
+}
+
+async function setFreelancerAccess(actor, freelancerId, suspended) {
+  requireFreelancerManager(actor);
+  const person = await findOrgFreelancer(actor, freelancerId);
+  const alreadySuspended = person.isActive === false && Boolean(person.suspendedAt);
+  const pendingInvite = person.isActive === false && !person.suspendedAt;
+
+  if (suspended) {
+    if (pendingInvite) {
+      throw httpError('This invitation has not been accepted. Remove the invitation instead of suspending it.', 400);
+    }
+    if (!alreadySuspended) {
+      person.isActive = false;
+      person.suspendedAt = new Date();
+      person.inviteToken = undefined;
+      person.inviteTokenExpires = undefined;
+      await person.save();
+      const { revokeAllSessionsForUser } = require('./sessionService');
+      await revokeAllSessionsForUser(String(person._id));
+    }
+    return { suspended: true, email: person.email };
+  }
+
+  if (pendingInvite) {
+    throw httpError('This person has not activated the invitation yet.', 400);
+  }
+  person.isActive = true;
+  person.suspendedAt = null;
+  await person.save();
+  return { suspended: false, email: person.email };
+}
+
 module.exports = {
   listSpocs,
   listMandates,
@@ -1714,6 +1797,8 @@ module.exports = {
   heartbeat,
   listFreelancerPresence,
   listFreelancerDirectory,
+  updateFreelancerRecord,
+  setFreelancerAccess,
   getSelfOnboarding,
   freelancerOnboardingPipeline,
   listReviewers: ops.listReviewers,

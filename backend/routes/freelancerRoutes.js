@@ -55,6 +55,16 @@ router.get('/directory', requireRecruiterOrAbove, run(async (req, res) => {
   res.json({ success: true, data });
 }));
 
+router.put('/directory/:id', requireRecruiterOrAbove, run(async (req, res) => {
+  const data = await svc.updateFreelancerRecord(req.user, req.params.id, req.body || {});
+  res.json({ success: true, data });
+}));
+
+router.post('/directory/:id/access', requireRecruiterOrAbove, run(async (req, res) => {
+  const data = await svc.setFreelancerAccess(req.user, req.params.id, req.body?.suspended !== false);
+  res.json({ success: true, data });
+}));
+
 router.get('/onboarding', run(async (req, res) => {
   if (isFreelancer(req.user)) {
     const data = await svc.getSelfOnboarding(req.user);

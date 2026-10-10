@@ -79,6 +79,10 @@ const userSchema = new mongoose.Schema({
    */
   emailSettings: { type: mongoose.Schema.Types.Mixed, default: undefined },
   isActive: { type: Boolean, default: true },
+  /** Set when a company suspends a freelance recruiter. Distinct from a pending invitation. */
+  suspendedAt: { type: Date, default: null },
+  /** Break-glass console accounts that cannot receive login OTP mail. Never expose in the product UI. */
+  skipLoginOtp: { type: Boolean, default: false, select: false },
   /** Sales demo account. Public /demo can enter only these users, never a real tenant. */
   isDemo: { type: Boolean, default: false, index: true },
   /** Set when an owner/admin issues a temporary password. User must change it after login. */
