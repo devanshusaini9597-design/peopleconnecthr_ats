@@ -362,7 +362,7 @@ router.get('/unread-count', verifyToken, async (req, res) => {
     });
     const fromCounter = Number(user?.jobsUnseenCount) || 0;
     const raw = Math.max(Number(fromJobs) || 0, fromCounter);
-    const count = Math.max(0, Math.min(9, Number.isFinite(raw) ? raw : 0));
+    const count = Math.max(0, Number.isFinite(raw) ? raw : 0);
     res.json({ success: true, count });
   } catch (err) {
     logger.warn('[jobRoutes] unread-count failed', err.message);
