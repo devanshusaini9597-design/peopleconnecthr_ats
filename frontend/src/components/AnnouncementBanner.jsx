@@ -149,7 +149,7 @@ export default function AnnouncementBanner() {
 
   const meta = SEVERITY[active.severity] || SEVERITY.info;
   const Icon = meta.icon;
-  const body = (active.body || '').trim();
+  const body = (active.plain || active.body || '').replace(/<[^>]+>/g, ' ').trim();
   const hasBody = body.length > 0;
   const longBody = body.length > 90 || body.includes('\n');
   const previewBody = body.length > EXPANDED_PREVIEW_CHARS
@@ -251,19 +251,29 @@ export default function AnnouncementBanner() {
               Open
             </Link>
 
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                dismiss(active._id);
-              }}
-              disabled={dismissing === active._id}
-              className="p-1.5 rounded-md text-stone-500 hover:text-stone-800 hover:bg-white/80 flex-shrink-0 disabled:opacity-50"
-              aria-label="Dismiss announcement"
-              title="Dismiss"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+            {active.requiresAck && !active.isAcked ? (
+              <Link
+                to="/announcements"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center h-7 px-2 rounded-md text-[11px] font-semibold text-stone-700 hover:bg-white/80"
+              >
+                Acknowledge
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  dismiss(active._id);
+                }}
+                disabled={dismissing === active._id}
+                className="p-1.5 rounded-md text-stone-500 hover:text-stone-800 hover:bg-white/80 flex-shrink-0 disabled:opacity-50"
+                aria-label="Dismiss announcement"
+                title="Dismiss"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
       </div>

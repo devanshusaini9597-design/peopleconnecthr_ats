@@ -50,7 +50,7 @@ async function getCompanyDomain(userId) {
   return {
     domain: DEFAULT_COMPANY_DOMAIN,
     allowedDomains: [],
-    companyName: 'SkillNix Recruitment Services',
+    companyName: 'People Connect HR',
   };
 }
 
@@ -72,7 +72,7 @@ function isValidCompanyEmail(email, companyInfo) {
 }
 
 async function inviteTeamMember(user, body) {
-  const { name, email, role, phone, department } = body;
+  const { name, email, role, phone, department, office } = body;
   if (!name || !email) throw httpError('Name and email are required');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
     throw httpError('Invalid email address');
@@ -87,7 +87,7 @@ async function inviteTeamMember(user, body) {
     }).select('_id');
     if (orgUser) {
       throw httpError(
-        'This person already has workspace access. Use Invite teammate to grant a Skillnix seat.',
+        'This person already has workspace access. Use Invite teammate to grant a People Connect HR seat.',
         409
       );
     }
@@ -125,6 +125,7 @@ async function inviteTeamMember(user, body) {
     role: role ? normalizeText(role) : 'External',
     phone: phone?.trim() || '',
     department: department ? normalizeText(department) : '',
+    office: office ? normalizeText(office) : '',
     invitationStatus: 'Active',
     invitedBy: user.id,
     invitedAt: new Date(),
@@ -283,7 +284,7 @@ async function listPendingInvitations(user) {
 }
 
 async function updateTeamMember(user, id, body) {
-  const { name, email, role, phone, department } = body;
+  const { name, email, role, phone, department, office } = body;
   const teamScope = user.organizationId ? { organizationId: user.organizationId } : { createdBy: user.id };
   const member = await TeamMember.findOne({ _id: id, ...teamScope });
   if (!member) {
@@ -304,6 +305,7 @@ async function updateTeamMember(user, id, body) {
   if (role !== undefined) member.role = normalizeText(role);
   if (phone !== undefined) member.phone = phone.trim();
   if (department !== undefined) member.department = normalizeText(department);
+  if (office !== undefined) member.office = normalizeText(office);
 
   await member.save();
 

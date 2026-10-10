@@ -20,7 +20,7 @@ export default function TeamMemberModal({
       open={open}
       onClose={onClose}
       title={editingId ? 'Edit stakeholder' : 'Add stakeholder'}
-      description="No Skillnix login. They show up as CC/BCC suggestions when you email candidates."
+      description="No People Connect HR login. They show up as CC/BCC suggestions when you email candidates."
       size="lg"
       footer={
         <>
@@ -94,6 +94,17 @@ export default function TeamMemberModal({
               />
             </div>
           </div>
+        </div>
+        <div>
+          <label className="label-ats">Office (optional)</label>
+          <input
+            type="text"
+            value={formData.office || ''}
+            onChange={(e) => setFormData((p) => ({ ...p, office: e.target.value.replace(/^\s+/, '').replace(/\s{2,}/g, ' ') }))}
+            onBlur={() => setFormData((p) => ({ ...p, office: (p.office || '').trim() }))}
+            className="input-ats"
+            placeholder="e.g. Bengaluru HQ"
+          />
         </div>
         <div>
           <label className="label-ats">Phone (optional)</label>

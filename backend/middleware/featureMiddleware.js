@@ -12,8 +12,9 @@ const logger = require('../utils/logger');
  */
 
 const mongoose = require('mongoose');
-const { planHasFeature, isInternalPreviewFeature } = require('../config/planFeatures');
+const { planHasFeature, isInternalPreviewFeature, canUseFeature } = require('../config/planFeatures');
 const { hasInternalPreviewAccess } = require('../utils/vendorDomains');
+const entitlements = require('../services/entitlementService');
 
 /**
  * Returns middleware that checks the org's plan includes `featureKey`.
@@ -36,10 +37,10 @@ const requireFeature = (featureKey) => {
         return next();
       }
 
-      // Freelancers inherit org announcements / push when the hosting company has them;
-      // also allow read/prefs even if FeatureGate UI was bypassed for their desk.
+      // Freelancers inherit push when the hosting company has it.
+      // Announcements stay on the company plan — same Professional gate as everyone else.
       if (
-        (featureKey === 'announcements' || featureKey === 'push.notifications')
+        featureKey === 'push.notifications'
         && String(req.user.role || '').toLowerCase() === 'freelancer'
       ) {
         return next();
@@ -47,29 +48,41 @@ const requireFeature = (featureKey) => {
 
       const Organization = mongoose.model('Organization');
       const org = await Organization.findById(req.user.organizationId)
-        .select('plan domain allowedDomains isDemo');
+        .select('plan planExpiresAt billingStatus domain allowedDomains isDemo atsSettings.internalPreview atsSettings.previewModules');
 
       if (!org) {
         return res.status(404).json({ success: false, message: 'Organization not found' });
       }
 
-      if (!planHasFeature(org.plan, featureKey)) {
+      await entitlements.persistExpiredIfNeeded(org);
+      const plan = entitlements.effectivePlan(org);
+
+      if (!planHasFeature(plan, featureKey)) {
         return res.status(403).json({
           success: false,
-          code: 'UPGRADE_REQUIRED',
-          message: `This feature (${featureKey}) is not included in your current plan. Please upgrade to continue.`,
+          code: entitlements.isUnpaid(org) ? 'PLAN_INACTIVE' : 'UPGRADE_REQUIRED',
+          message: entitlements.isUnpaid(org)
+            ? 'This workspace’s trial or subscription is no longer active. Open Billing to continue.'
+            : `This feature (${featureKey}) is not included in your current plan. Please upgrade to continue.`,
           feature: featureKey,
           currentPlan: org.plan
         });
       }
 
-      if (isInternalPreviewFeature(featureKey) && !hasInternalPreviewAccess(req.user, org)) {
-        return res.status(403).json({
-          success: false,
-          code: 'FEATURE_UNAVAILABLE',
-          message: 'This feature is not available.',
-          feature: featureKey,
+      if (isInternalPreviewFeature(featureKey)) {
+        const allowed = canUseFeature(plan, featureKey, {
+          isDemo: Boolean(org.isDemo || req.user.isDemo),
+          internalPreviewAccess: hasInternalPreviewAccess(req.user, org),
+          previewModules: org.atsSettings?.previewModules,
         });
+        if (!allowed) {
+          return res.status(403).json({
+            success: false,
+            code: 'FEATURE_UNAVAILABLE',
+            message: 'This feature is not available.',
+            feature: featureKey,
+          });
+        }
       }
 
       next();

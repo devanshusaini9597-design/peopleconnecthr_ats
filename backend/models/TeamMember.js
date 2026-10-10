@@ -10,7 +10,7 @@
  *   `rbacMiddleware.requireRole()` actually checks on every protected route.
  *   It is changed exclusively via `PUT /api/organization/members/:userId/role`
  *   (owner-only, in organizationRoutes.js).
- * - `TeamMember` is a stakeholder/directory row for CC/BCC (no Skillnix seat).
+ * - `TeamMember` is a stakeholder/directory row for CC/BCC (no People Connect HR seat).
  *   Workspace login identities live on `User` and are invited via
  *   `/api/onboarding/invite`. Its `role` field is
  *   a free-text job title/category ("Team Lead", "HR Manager", "SPOC", ...)
@@ -38,6 +38,8 @@ const teamMemberSchema = new mongoose.Schema({
   role: { type: String, default: 'Team Member', trim: true },
   phone: { type: String, default: '', trim: true },
   department: { type: String, default: '', trim: true },
+  /** Office / site label used by announcement targeting. */
+  office: { type: String, default: '', trim: true },
   
   // Invitation system fields for enterprise security
   invitationStatus: { 

@@ -15,7 +15,7 @@ export const TEAM_TOUR_KEY = 'skillnix_tour_team_v2';
 export const TEAM_TOUR_STEPS = [
   {
     title: 'Team Directory',
-    body: 'Everyone with a Skillnix seat appears here automatically. Add stakeholders for CC/BCC without giving them a login.',
+    body: 'Everyone with a People Connect HR seat appears here automatically. Add stakeholders for CC/BCC without giving them a login.',
   },
   {
     target: '[data-tour="team-tip"]',
@@ -104,5 +104,6 @@ export const EMPTY_MEMBER_FORM = {
   role: 'Hiring Manager',
   phone: '',
   department: '',
+  office: '',
   message: '',
 };

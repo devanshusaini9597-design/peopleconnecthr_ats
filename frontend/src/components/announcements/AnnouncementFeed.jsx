@@ -1,10 +1,11 @@
 import React from 'react';
 import {
   Megaphone, Trash2, Pencil, Info, CheckCircle2, Calendar, Users, Globe2,
-  LayoutTemplate, Sparkles, Check, Ban,
+  LayoutTemplate, Sparkles, Check, Ban, Pin, ClipboardCheck,
 } from 'lucide-react';
 import EmptyState from '../ui/EmptyState';
 import { AUDIENCES, severityMeta, formatWhen } from './announcementsConstants';
+import NoticeBody from './NoticeBody';
 
 function ChannelGuide({ careersSlug }) {
   return (
@@ -75,10 +76,13 @@ export default function AnnouncementFeed({
   onReactivate,
   onPurge,
   onDismiss,
+  onDelivery,
   readOnly = false,
+  fullWidth = false,
+  footer = null,
 }) {
   return (
-    <div data-tour="ann-feed" className={`${readOnly ? '' : 'lg:col-span-8'} min-w-0`}>
+    <div data-tour="ann-feed" className={`${fullWidth || readOnly ? '' : 'lg:col-span-8'} min-w-0`}>
       <div className="card-ats-bordered relative overflow-hidden min-h-[32rem] flex flex-col">
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
         <div className="relative px-4 sm:px-5 pt-5 pb-3 border-b border-stone-100 flex items-center justify-between gap-3">
@@ -153,20 +157,30 @@ export default function AnnouncementFeed({
                             <span className="badge-neutral text-[10px] capitalize">
                               {(AUDIENCES.find((x) => x.value === a.audience) || AUDIENCES[0]).label}
                             </span>
-                            {a.isActive ? (
-                              <span className="badge-success text-[10px]">
-                                {a.audience === 'public' ? 'Active · careers site' : 'Active · in-app'}
-                              </span>
-                            ) : (
-                              <span className="badge-neutral text-[10px]">Inactive</span>
-                            )}
+                            <span className={`text-[10px] ${a.isActive && a.status !== 'draft' ? 'badge-success' : 'badge-neutral'}`}>
+                              {a.status === 'draft'
+                                ? 'Draft'
+                                : !a.isActive
+                                  ? 'Inactive'
+                                  : a.startsAt && new Date(a.startsAt) > new Date()
+                                    ? 'Scheduled'
+                                    : a.audience === 'public' ? 'Active · careers site' : 'Active · in-app'}
+                            </span>
+                            {a.pinned ? <span className="badge-brand text-[10px] inline-flex items-center gap-1"><Pin className="w-3 h-3" />Pinned</span> : null}
+                            {a.requiresAck ? <span className="badge-warning text-[10px]">Ack required</span> : null}
+                            {typeof a.readCount === 'number' ? (
+                              <span className="badge-neutral text-[10px]">{a.readCount} read</span>
+                            ) : null}
                           </div>
                           <h3 className="text-base font-bold text-stone-900 tracking-tight mt-2 break-words">
                             {a.title}
                           </h3>
-                          <p className="text-sm text-stone-600 mt-1.5 whitespace-pre-wrap break-words leading-relaxed">
-                            {a.body}
-                          </p>
+                          <div className="text-sm text-stone-600 mt-1.5 leading-relaxed">
+                            <NoticeBody body={a.body} />
+                          </div>
+                          {a.authorName ? (
+                            <p className="text-[11px] text-stone-400 mt-2">From {a.authorName}</p>
+                          ) : null}
                           {a.createdAt && (
                             <p className="text-[11px] text-stone-400 mt-3 font-medium inline-flex items-center gap-1.5">
                               <Calendar className="w-3.5 h-3.5" />
@@ -184,6 +198,17 @@ export default function AnnouncementFeed({
                             >
                               <Check className="w-3.5 h-3.5" />
                               Read
+                            </button>
+                          ) : null}
+                          {!readOnly && onDelivery ? (
+                            <button
+                              type="button"
+                              onClick={() => onDelivery(a)}
+                              className="p-2 rounded-xl text-stone-400 hover:text-brand-700 hover:bg-brand-50 transition-colors"
+                              aria-label="Delivery"
+                              title="Who read this"
+                            >
+                              <ClipboardCheck className="w-4 h-4" />
                             </button>
                           ) : null}
                           {!readOnly && onEdit ? (
@@ -236,6 +261,7 @@ export default function AnnouncementFeed({
                   );
                 })}
               </div>
+              {footer}
 
               {showGuide && (
                 <div className="mt-auto pt-1">

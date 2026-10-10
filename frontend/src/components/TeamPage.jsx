@@ -224,6 +224,7 @@ const TeamPage = () => {
       role: member.role || 'Hiring Manager',
       phone: member.phone || '',
       department: member.department || '',
+      office: member.office || '',
     });
     setEditingId(member._id);
     setShowForm(true);
@@ -289,7 +290,7 @@ const TeamPage = () => {
       <PageHeader
         icon={Users}
         title={t('pages.team.title')}
-        subtitle="People with Skillnix access, plus stakeholders you CC on candidate mail."
+        subtitle="People with workspace access, plus stakeholders you CC on candidate mail."
         gradientTitle
       >
         <button

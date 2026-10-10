@@ -27,7 +27,6 @@ async function emailAnnouncementToAudience({
 
   try {
     const User = require('../models/User');
-    const { listAudienceUserIds } = require('../utils/reportingScope');
     const { sendEmailQueued } = require('./emailService');
     const {
       wrapBrandedEmailHtml,
@@ -37,7 +36,9 @@ async function emailAnnouncementToAudience({
       publicSiteBase,
     } = require('./emailBrandLayout');
 
-    const ids = await listAudienceUserIds(organizationId, announcement.audience || 'all');
+    const { resolveAnnouncementRecipientIds } = require('./announcementAudience');
+    const { toPlainText } = require('../utils/announcementContent');
+    const ids = await resolveAnnouncementRecipientIds(organizationId, announcement);
     const skip = String(actorId || '');
     const unique = [...new Set((ids || []).map((id) => String(id)).filter(Boolean))]
       .filter((id) => id !== skip);
@@ -58,11 +59,14 @@ async function emailAnnouncementToAudience({
     const severity = SEVERITY_LABEL[announcement.severity] || 'Notice';
     const publisher = String(actorName || brand.name || 'Leadership').trim();
     const title = String(announcement.title).trim();
-    const bodyHtml = escapeHtml(announcement.body)
-      .replace(/\r\n/g, '\n')
-      .replace(/\n/g, '<br/>');
+    const plainBody = toPlainText(announcement.body || '');
+    const looksHtml = /<[a-z][\s\S]*>/i.test(String(announcement.body || ''));
+    const bodyHtml = looksHtml
+      ? String(announcement.body)
+      : escapeHtml(plainBody).replace(/\n/g, '<br/>');
 
     let sent = 0;
+    let failed = 0;
     for (const user of users) {
       try {
         const firstName = String(user.name || '').trim().split(/\s+/)[0] || 'there';
@@ -74,6 +78,7 @@ async function emailAnnouncementToAudience({
           logoUrl: brand.logoUrl,
           brandColor: brand.brandColor || '#0d9488',
           wordmark: brand.wordmark,
+          companyAddress: brand.companyAddress || '',
           senderName: brand.name,
           senderEmail: brand.fromEmail,
           websiteUrl: brand.websiteUrl,
@@ -114,7 +119,7 @@ async function emailAnnouncementToAudience({
           '',
           `${publisher} published a company notice: ${title}`,
           '',
-          String(announcement.body || '').trim(),
+          plainBody,
           '',
           `Open noticeboard: ${boardUrl}`,
         ].join('\n');
@@ -134,6 +139,7 @@ async function emailAnnouncementToAudience({
         );
         sent += 1;
       } catch (err) {
+        failed += 1;
         logger.warn(
           `[announcementEmail] Failed for ${user.email}: ${err.message}`
         );
@@ -141,7 +147,7 @@ async function emailAnnouncementToAudience({
     }
 
     logger.info(`[announcementEmail] Sent ${sent}/${users.length} for org ${organizationId}`);
-    return { sent, total: users.length };
+    return { sent, failed, total: users.length };
   } catch (err) {
     logger.warn(`[announcementEmail] ${err.message}`);
     return { sent: 0, error: err.message };

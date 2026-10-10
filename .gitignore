@@ -9,6 +9,7 @@ frontend/.env.local
 
 # Dependencies — never commit
 node_modules/
+.venv-tour/
 
 # Build output
 frontend/dist/
@@ -16,6 +17,7 @@ frontend/build/
 
 # Uploads / local storage
 backend/uploads/
+backend/private-uploads/
 backend/backups/
 
 # Logs

@@ -4,6 +4,7 @@ import {
   ChevronRight, Info, CheckCircle2, AlertTriangle, Siren,
 } from 'lucide-react';
 import { severityMeta, formatWhen } from './announcementsConstants';
+import NoticeBody from './NoticeBody';
 
 const SEV_ICON = {
   info: Info,
@@ -24,14 +25,19 @@ export default function AnnouncementInbox({
   markingAll = false,
   q,
   setQ,
+  serverCounts = null,
+  onOpen,
+  onAcknowledge,
+  onViewChange,
 }) {
   const [selectedId, setSelectedId] = useState(null);
   const [view, setView] = useState('all'); // all | unread | read
 
   const counts = useMemo(() => {
+    if (serverCounts) return serverCounts;
     const unread = rows.filter((r) => !r.isRead).length;
     return { total: rows.length, unread, read: rows.length - unread };
-  }, [rows]);
+  }, [rows, serverCounts]);
 
   const filtered = useMemo(() => {
     const query = (q || '').trim().toLowerCase();
@@ -55,6 +61,14 @@ export default function AnnouncementInbox({
       setSelectedId(filtered[0]._id);
     }
   }, [filtered, selectedId]);
+
+  const openNotice = onOpen;
+  const selectedKey = selected?._id;
+  const selectedRead = selected?.isRead;
+  React.useEffect(() => {
+    if (!selectedKey || selectedRead || !openNotice || !selected) return;
+    openNotice(selected);
+  }, [selectedKey, selectedRead]);
 
   return (
     <div className="space-y-4 animate-fade-in" data-tour="ann-inbox">
@@ -119,7 +133,10 @@ export default function AnnouncementInbox({
             <button
               key={f.key}
               type="button"
-              onClick={() => setView(f.key)}
+              onClick={() => {
+                setView(f.key);
+                onViewChange?.(f.key);
+              }}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
                 view === f.key
                   ? 'bg-stone-900 text-white border-stone-900'
@@ -179,9 +196,16 @@ export default function AnnouncementInbox({
                       <li key={a._id}>
                         <button
                           type="button"
-                          onClick={() => setSelectedId(a._id)}
+                          onClick={() => {
+                            setSelectedId(a._id);
+                            if (!a.isRead && onOpen) onOpen(a);
+                          }}
                           className={`w-full text-left px-4 py-3.5 transition-colors ${
-                            active ? 'bg-brand-50/70' : 'hover:bg-stone-50/80'
+                            active
+                              ? 'bg-brand-50/70'
+                              : !a.isRead
+                                ? 'bg-amber-50 hover:bg-amber-100/70'
+                                : 'hover:bg-stone-50/80'
                           }`}
                         >
                           <div className="flex items-start gap-3">
@@ -195,10 +219,12 @@ export default function AnnouncementInbox({
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
                                 {!a.isRead ? (
-                                  <span className="w-1.5 h-1.5 rounded-full bg-teal-500 flex-shrink-0" />
+                                  <span className="inline-flex items-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white flex-shrink-0">
+                                    New
+                                  </span>
                                 ) : null}
                                 <p className={`text-[13px] truncate ${
-                                  a.isRead ? 'font-medium text-stone-700' : 'font-bold text-stone-900'
+                                  a.isRead ? 'font-medium text-stone-700' : 'font-bold text-stone-950'
                                 }`}>
                                   {a.title}
                                 </p>
@@ -271,21 +297,29 @@ export default function AnnouncementInbox({
                         <p className="text-[11px] text-stone-400 mt-2 font-medium inline-flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5" />
                           Published {formatWhen(selected.createdAt)}
+                          {selected.authorName ? ` · ${selected.authorName}` : ''}
                         </p>
                       ) : null}
                     </div>
 
                     <div className="flex-1 px-5 sm:px-6 py-5 overflow-y-auto">
-                      <p className="text-sm text-stone-700 whitespace-pre-wrap break-words leading-relaxed">
-                        {selected.body}
-                      </p>
+                      <NoticeBody body={selected.body} className="text-sm text-stone-700 leading-relaxed" />
                     </div>
 
                     <div className="px-5 sm:px-6 py-3.5 border-t border-stone-100 bg-stone-50/50 flex flex-wrap items-center justify-between gap-2">
                       <p className="text-[11px] text-stone-400">
-                        From your organization leadership
+                        From {selected.authorName || 'your organization'}
                       </p>
-                      {!selected.isRead && onMarkRead ? (
+                      {selected.requiresAck && !selected.isAcked && onAcknowledge ? (
+                        <button
+                          type="button"
+                          onClick={() => onAcknowledge(selected)}
+                          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-bold text-white bg-stone-900 hover:bg-stone-800 transition-colors"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          I have read this
+                        </button>
+                      ) : !selected.isRead && onMarkRead ? (
                         <button
                           type="button"
                           onClick={() => onMarkRead(selected)}

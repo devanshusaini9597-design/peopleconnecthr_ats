@@ -223,6 +223,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
   freelancer: [
     'modules.dashboard',
     'modules.analytics',
+    'modules.announcements',
     'modules.jobs',
     'modules.candidates',
     'modules.pipeline',

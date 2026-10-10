@@ -47,11 +47,11 @@ export default function PublicAnnouncementBanner({ orgSlug }) {
         <Icon className="w-4 h-4 flex-shrink-0 mt-0.5 sm:mt-0 opacity-95" />
         <div className="min-w-0 flex-1 text-sm">
           <span className="font-bold tracking-tight">{item.title}</span>
-          {item.body ? (
+          {(item.body || '').replace(/<[^>]+>/g, ' ').trim() ? (
             <span className="opacity-95">
               <span className="mx-1.5 opacity-60 hidden sm:inline">·</span>
               <span className="block sm:inline font-medium sm:font-normal mt-0.5 sm:mt-0 leading-snug">
-                {item.body}
+                {(item.body || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()}
               </span>
             </span>
           ) : null}
