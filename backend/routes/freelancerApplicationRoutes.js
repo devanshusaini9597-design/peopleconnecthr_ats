@@ -22,12 +22,27 @@ const run = (fn) => async (req, res) => {
 router.use(verifyToken, requireOrganization, requireOwnerOrAdmin);
 
 router.get('/', run(async (req, res) => {
-  const data = await svc.listApplications(req.user, { status: req.query.status });
+  const data = await svc.listApplications(req.user, req.query || {});
+  res.json({ success: true, data });
+}));
+
+router.post('/bulk', run(async (req, res) => {
+  const data = await svc.bulkApplications(req.user, req.body || {});
   res.json({ success: true, data });
 }));
 
 router.post('/', run(async (req, res) => {
   const data = await svc.createApplication(req.user, req.body || {});
+  res.json({ success: true, data });
+}));
+
+router.get('/unread-count', run(async (req, res) => {
+  const count = await svc.unreadApplicationCount(req.user);
+  res.json({ success: true, count });
+}));
+
+router.post('/:id/mark-seen', run(async (req, res) => {
+  const data = await svc.markApplicationSeen(req.user, req.params.id);
   res.json({ success: true, data });
 }));
 

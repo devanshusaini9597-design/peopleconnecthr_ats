@@ -3,6 +3,7 @@
  */
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const Organization = require('../models/Organization');
 const User = require('../models/User');
 const FreelancerApplication = require('../models/FreelancerApplication');
@@ -19,6 +20,7 @@ const {
   publicSiteBase,
 } = require('./emailBrandLayout');
 const { orgJobCodePrefix } = require('./jobCodeService');
+const { organizationIdMatch } = require('../utils/dataScope');
 
 function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
@@ -188,31 +190,98 @@ function firstName(name) {
   return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
 }
 
+function trackSecret() {
+  return process.env.JWT_SECRET || process.env.JOB_SHARE_SECRET || 'dev-only-secret-CHANGE-IN-PRODUCTION';
+}
+
+function signPartnerTrackToken(organizationId, applicationId, email) {
+  const body = Buffer.from(JSON.stringify({
+    o: String(organizationId || ''),
+    a: String(applicationId || ''),
+    e: normalizeEmail(email),
+    exp: Date.now() + 180 * 24 * 60 * 60 * 1000,
+  }), 'utf8').toString('base64url');
+  const sig = crypto.createHmac('sha256', trackSecret()).update(body).digest('hex');
+  return `${body}.${sig}`;
+}
+
+function verifyPartnerTrackToken(token) {
+  const raw = String(token || '').trim();
+  const dot = raw.lastIndexOf('.');
+  if (dot < 8) return null;
+  const body = raw.slice(0, dot);
+  const sig = raw.slice(dot + 1);
+  const expected = crypto.createHmac('sha256', trackSecret()).update(body).digest('hex');
+  const given = Buffer.from(sig, 'utf8');
+  const want = Buffer.from(expected, 'utf8');
+  if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    if (!parsed?.o || !parsed?.a || !parsed?.e || Number(parsed.exp) < Date.now()) return null;
+    if (!isValidEmail(parsed.e)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function partnerStatusUrl(org, application) {
+  const slug = String(org?.slug || '').trim();
+  if (!slug) return '';
+  const base = `${publicSiteBase().replace(/\/$/, '')}/partners/${encodeURIComponent(slug)}`;
+  const token = application?._id
+    ? signPartnerTrackToken(application.organizationId || org._id, application._id, application.email)
+    : '';
+  if (!token) return base;
+  return `${base}?s=${encodeURIComponent(token)}`;
+}
+
+function publicTrackPayload(row) {
+  const pipeline = buildPublicPartnerPipeline(row);
+  const given = firstName(row.name);
+  return {
+    found: true,
+    ...pipeline,
+    name: given === 'there' ? '' : given,
+    trackToken: signPartnerTrackToken(row.organizationId, row._id, row.email),
+  };
+}
+
 async function notifyApplicant(org, application, kind) {
   if (!application?.email) return false;
   const brand = await loadOrgEmailBrand(org._id);
   const orgName = org.name || brand.name || 'our team';
   const reference = String(application.referenceCode || '').trim();
   const greeting = `Hi ${escapeHtml(firstName(application.name))},`;
+  const statusUrl = partnerStatusUrl(org, application);
   let title = 'Partnership application received';
   let subject = `We received your partnership application | ${orgName}`;
   let lead = `Thank you for applying to join <strong style="color:#0f172a;">${escapeHtml(orgName)}</strong> as a freelance recruitment partner.`;
-  let detail = 'Your application is now with the partnership desk. A member of the team will review your profile. If you are shortlisted, they will contact you on the email or mobile number you provided. Workspace access is issued only by a formal invitation — this application does not create an account.';
+  let detail = 'Your application has been received and is under review. Our team will assess your profile and, if shortlisted, will contact you on the email or mobile number provided. Please retain the reference below for any correspondence.';
   let statusLabel = 'Received — under review';
 
   if (kind === 'contacted') {
     title = 'Partnership application update';
     subject = `Your partnership application is moving forward | ${orgName}`;
     lead = `Your partnership application with <strong style="color:#0f172a;">${escapeHtml(orgName)}</strong> has been reviewed.`;
-    detail = 'A member of our partnership team will contact you shortly on the email or mobile number you provided. Please keep this reference for any correspondence.';
+    detail = 'A member of our partnership team will contact you shortly on the email or mobile number you provided. You may view the current status of this application using the link below.';
     statusLabel = 'Shortlisted — we will contact you';
   } else if (kind === 'rejected') {
     title = 'Partnership application update';
     subject = `Update on your partnership application | ${orgName}`;
     lead = `Thank you for your interest in partnering with <strong style="color:#0f172a;">${escapeHtml(orgName)}</strong>.`;
-    detail = 'After review, we are not able to move forward with a partnership at this time. You may submit a fresh application in the future if your practice changes.';
+    detail = 'After careful review, we are not able to proceed with a partnership at this time. We appreciate the time you took to apply.';
     statusLabel = 'Not proceeding';
   }
+
+  const trackCta = statusUrl
+    ? `<p style="margin:16px 0 8px 0;color:#475569;line-height:1.7;">View live status on the partnership page. You may be asked to confirm your application reference and the email used on this application.</p>
+      <div style="text-align:center;">${brandButtonHtml({
+        href: statusUrl,
+        label: 'View application status',
+        brandColor: brand.brandColor,
+      })}</div>`
+    : '';
 
   const html = wrapBrandedEmailHtml({
     title,
@@ -221,6 +290,10 @@ async function notifyApplicant(org, application, kind) {
     logoUrl: brand.logoUrl,
     brandColor: brand.brandColor,
     wordmark: brand.wordmark,
+    companyAddress: brand.companyAddress || '',
+    websiteUrl: brand.websiteUrl || '',
+    supportEmail: brand.supportEmail || '',
+    socialLinks: brand.socialLinks || {},
     bodyHtml: `
       <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">${greeting}</p>
       <p style="margin:0 0 12px 0;color:#475569;line-height:1.7;">${lead}</p>
@@ -230,17 +303,31 @@ async function notifyApplicant(org, application, kind) {
         { label: 'Status', value: statusLabel },
         { label: 'Email on file', value: application.email },
       ], brand.brandColor)}
+      ${trackCta}
     `,
   });
 
+  const plainTrack = statusUrl ? ` View status: ${statusUrl}` : '';
   await sendEmail(
     application.email,
     subject,
     html,
-    `${title}. Reference ${reference || 'on file'}. Status: ${statusLabel}.`,
-    { organizationId: org._id, senderName: brand.name, system: true },
+    `${title}. Reference ${reference || 'on file'}. Status: ${statusLabel}.${plainTrack}`,
+    partnerMailOptions(org, brand, application),
   );
   return true;
+}
+
+/** Status and confirmation mail uses the workspace sender name and reply-to. */
+function partnerMailOptions(org, brand, application, actor) {
+  const replyTo = String(brand?.replyToEmail || '').trim();
+  return {
+    organizationId: org._id,
+    senderName: brand?.name || org.name || 'People Connect HR',
+    system: true,
+    userId: actor?.id || actor?._id || application?.reviewedBy || undefined,
+    ...(replyTo ? { replyTo } : {}),
+  };
 }
 
 async function persistPartnerResume(file) {
@@ -331,6 +418,10 @@ async function notifyCompany(org, application) {
       logoUrl: brand.logoUrl,
       brandColor: brand.brandColor,
       wordmark: brand.wordmark,
+      companyAddress: brand.companyAddress || '',
+      websiteUrl: brand.websiteUrl || '',
+      supportEmail: brand.supportEmail || '',
+      socialLinks: brand.socialLinks || {},
       bodyHtml: `
         <p style="margin:0 0 12px 0;color:#475569;line-height:1.7;">
           ${escapeHtml(application.name)} submitted an independent recruiter application for
@@ -349,15 +440,52 @@ async function notifyCompany(org, application) {
       `${title} — ${application.name}`,
       html,
       `${application.name} submitted an independent recruiter application. Review: ${inboxUrl}`,
-      { organizationId: org._id, senderName: brand.name, system: true },
+      partnerMailOptions(org, brand, application),
     );
   } catch (err) {
     logger.warn({ err }, 'Freelancer application email failed');
   }
 }
 
-function publicApplicationStatus(status) {
+const PARTNER_PIPELINE = [
+  {
+    id: 'pending',
+    label: 'Received',
+    caption: 'Under review',
+    description: 'Your application has been received and is under review. Our team will assess your profile in due course.',
+    nextAction: 'No action is required from you at this time.',
+  },
+  {
+    id: 'contacted',
+    label: 'In review',
+    caption: 'Shortlisted',
+    description: 'Your application has been shortlisted. Our team will contact you using the email or mobile number you provided.',
+    nextAction: 'Please remain available on the contact details submitted with this application.',
+  },
+  {
+    id: 'invited',
+    label: 'Invitation',
+    caption: 'Action required',
+    description: 'An invitation has been sent to the email on this application. Please follow the instructions in that message to proceed.',
+    nextAction: 'Please review your email and complete the steps in the invitation.',
+  },
+  {
+    id: 'joined',
+    label: 'Confirmed',
+    caption: 'Active partner',
+    description: 'You are now an active freelance recruitment partner with this organisation.',
+    nextAction: 'You may sign in with the account created after you accepted the invitation.',
+  },
+];
+
+function normalizePartnerStatus(status) {
   const key = status === 'approved' ? 'invited' : String(status || 'pending');
+  if (key === 'rejected') return 'rejected';
+  return PARTNER_PIPELINE.some((s) => s.id === key) ? key : 'pending';
+}
+
+function publicApplicationStatus(status) {
+  const key = normalizePartnerStatus(status);
   const labels = {
     pending: 'Received — under review',
     contacted: 'Shortlisted — we will contact you',
@@ -365,7 +493,98 @@ function publicApplicationStatus(status) {
     joined: 'Joined the company',
     rejected: 'Not proceeding',
   };
-  return { status: labels[key] ? key : 'pending', statusLabel: labels[key] || labels.pending };
+  return { status: key, statusLabel: labels[key] || labels.pending };
+}
+
+function stampMilestone(doc, status, at) {
+  const when = at instanceof Date ? at : new Date(at || Date.now());
+  if (status === 'contacted' && !doc.contactedAt) doc.contactedAt = when;
+  if (status === 'invited' && !doc.invitedAt) doc.invitedAt = when;
+  if (status === 'joined' && !doc.joinedAt) doc.joinedAt = when;
+  if (status === 'rejected' && !doc.rejectedAt) doc.rejectedAt = when;
+  doc.statusEnteredAt = when;
+}
+
+function appendPartnerStatusHistory(doc, status, { note = '', actorName = '', at } = {}) {
+  if (!doc) return null;
+  const normalized = normalizePartnerStatus(status);
+  const when = at instanceof Date ? at : new Date(at || Date.now());
+  if (!Array.isArray(doc.statusHistory)) doc.statusHistory = [];
+  const last = doc.statusHistory[doc.statusHistory.length - 1];
+  const lastStatus = last ? normalizePartnerStatus(last.status) : '';
+  if (lastStatus === normalized) {
+    stampMilestone(doc, normalized, last.at || when);
+    return last;
+  }
+  const entry = {
+    status: normalized,
+    at: when,
+    note: String(note || '').trim().slice(0, 500),
+    actorName: String(actorName || '').trim().slice(0, 120),
+  };
+  doc.statusHistory.push(entry);
+  stampMilestone(doc, normalized, when);
+  return entry;
+}
+
+function historyTimestamp(row, status) {
+  const want = normalizePartnerStatus(status);
+  const hist = Array.isArray(row?.statusHistory) ? row.statusHistory : [];
+  for (let i = hist.length - 1; i >= 0; i -= 1) {
+    if (normalizePartnerStatus(hist[i].status) === want && hist[i].at) return hist[i].at;
+  }
+  if (want === 'pending') return row?.createdAt || null;
+  if (want === 'contacted') return row?.contactedAt || null;
+  if (want === 'invited') return row?.invitedAt || null;
+  if (want === 'joined') return row?.joinedAt || null;
+  if (want === 'rejected') return row?.rejectedAt || null;
+  return null;
+}
+
+function buildPublicPartnerPipeline(row) {
+  const pub = publicApplicationStatus(row?.status);
+  const current = PARTNER_PIPELINE.findIndex((s) => s.id === pub.status);
+  const rejected = pub.status === 'rejected';
+  const steps = PARTNER_PIPELINE.map((step, index) => {
+    let state = 'upcoming';
+    if (rejected) {
+      state = index === 0 ? 'done' : 'ended';
+    } else if (index < current) state = 'done';
+    else if (index === current) state = 'current';
+    const at = state === 'upcoming' || state === 'ended' ? null : historyTimestamp(row, step.id);
+    return {
+      id: step.id,
+      label: step.label,
+      caption: step.caption,
+      description: step.description,
+      state,
+      at: at || null,
+    };
+  });
+  if (rejected) {
+    steps.push({
+      id: 'rejected',
+      label: 'Not proceeding',
+      caption: 'Closed',
+      description: 'After review, this partnership is not moving forward at this time.',
+      state: 'current',
+      at: historyTimestamp(row, 'rejected') || row?.rejectedAt || row?.reviewedAt || null,
+    });
+  }
+  const currentStep = steps.find((s) => s.state === 'current') || steps[0];
+  const meta = PARTNER_PIPELINE.find((s) => s.id === pub.status);
+  return {
+    ...pub,
+    referenceCode: String(row?.referenceCode || '').trim(),
+    submittedAt: row?.createdAt || null,
+    updatedAt: row?.updatedAt || null,
+    statusEnteredAt: row?.statusEnteredAt || historyTimestamp(row, pub.status) || row?.createdAt || null,
+    nextAction: rejected
+      ? 'A second application cannot be submitted with the same email or mobile number.'
+      : (meta?.nextAction || PARTNER_PIPELINE[0].nextAction),
+    currentStepId: currentStep?.id || 'pending',
+    steps,
+  };
 }
 
 function duplicateFromRecords(existingApp) {
@@ -441,17 +660,30 @@ async function trackApplication(orgSlug, rawBody, rateKey) {
   if (!org) throw httpError('Organization not found', 404);
   assertPartnerPageLive(org);
 
-  const referenceCode = trimStr(rawBody.reference || rawBody.referenceCode).toUpperCase();
-  const email = normalizeEmail(rawBody.email);
-  if (!referenceCode || !isValidEmail(email)) {
-    throw httpError('Enter the application reference and the email used on the application.', 400);
+  const token = trimStr(rawBody.token || rawBody.s);
+  let row = null;
+  if (token) {
+    const claims = verifyPartnerTrackToken(token);
+    if (!claims || String(claims.o) !== String(org._id) || !/^[a-fA-F0-9]{24}$/.test(String(claims.a))) {
+      return { found: false, message: 'No application matches that status link. Use your reference and email instead.' };
+    }
+    row = await FreelancerApplication.findOne({
+      _id: claims.a,
+      organizationId: org._id,
+      email: claims.e,
+    });
+  } else {
+    const referenceCode = trimStr(rawBody.reference || rawBody.referenceCode).toUpperCase();
+    const email = normalizeEmail(rawBody.email);
+    if (!referenceCode || !isValidEmail(email)) {
+      throw httpError('Enter the application reference and the email used on the application.', 400);
+    }
+    row = await FreelancerApplication.findOne({
+      organizationId: org._id,
+      referenceCode,
+      email,
+    });
   }
-
-  const row = await FreelancerApplication.findOne({
-    organizationId: org._id,
-    referenceCode,
-    email,
-  });
 
   if (!row) {
     return { found: false, message: 'No application matches that reference and email.' };
@@ -465,33 +697,23 @@ async function trackApplication(orgSlug, rawBody, rateKey) {
     if (member?.isActive && row.inviteUrl) {
       row.status = 'joined';
       row.reviewedAt = row.reviewedAt || new Date();
+      appendPartnerStatusHistory(row, 'joined', { note: 'Partner joined the organisation' });
       await row.save();
     }
   }
 
-  const pub = publicApplicationStatus(row.status);
-  const order = ['pending', 'contacted', 'invited', 'joined'];
-  const current = order.indexOf(pub.status);
-  const steps = [
-    { id: 'pending', label: 'Received' },
-    { id: 'contacted', label: 'In conversation' },
-    { id: 'invited', label: 'Company invitation' },
-    { id: 'joined', label: 'Joined the team' },
-  ].map((step, index) => ({
-    ...step,
-    state: pub.status === 'rejected'
-      ? 'ended'
-      : (index < current ? 'done' : index === current ? 'current' : 'upcoming'),
-  }));
-  return {
-    found: true,
-    referenceCode: row.referenceCode,
-    status: pub.status,
-    statusLabel: pub.statusLabel,
-    submittedAt: row.createdAt,
-    updatedAt: row.updatedAt,
-    steps,
-  };
+  if (!Array.isArray(row.statusHistory) || !row.statusHistory.length) {
+    appendPartnerStatusHistory(row, 'pending', { at: row.createdAt || new Date(), note: 'Application submitted' });
+    const live = normalizePartnerStatus(row.status);
+    if (live !== 'pending') {
+      appendPartnerStatusHistory(row, live, {
+        at: row.statusEnteredAt || row.reviewedAt || row.updatedAt || new Date(),
+      });
+    }
+    await row.save();
+  }
+
+  return publicTrackPayload(row);
 }
 
 async function submitApplication(orgSlug, rawBody, file, rateKey) {
@@ -534,6 +756,8 @@ async function submitApplication(orgSlug, rawBody, file, rateKey) {
     commercialNote: fields.commercialNote,
     coverNote: fields.coverNote,
     status: 'pending',
+    statusEnteredAt: new Date(),
+    statusHistory: [{ status: 'pending', at: new Date(), note: 'Application submitted', actorName: '' }],
     referenceCode: existingApp?.referenceCode
       ? String(existingApp.referenceCode).trim().toUpperCase()
       : await allocatePartnerReference(org._id),
@@ -549,6 +773,9 @@ async function submitApplication(orgSlug, rawBody, file, rateKey) {
       await removePartnerResumeFile(existingApp.resumePath);
     }
     Object.assign(existingApp, payload, { reviewedAt: null, reviewedBy: null, reviewNote: '' });
+    if (!Array.isArray(existingApp.statusHistory) || !existingApp.statusHistory.length) {
+      appendPartnerStatusHistory(existingApp, 'pending', { note: 'Application submitted' });
+    }
     application = await existingApp.save();
   } else {
     application = await FreelancerApplication.create(payload);
@@ -565,16 +792,27 @@ async function submitApplication(orgSlug, rawBody, file, rateKey) {
     logger.warn({ err }, 'Freelancer applicant confirmation email failed');
   }
 
+  const pipeline = publicTrackPayload(application);
   return {
     message: 'Your partnership application has been received. Please keep your reference for any correspondence.',
-    referenceCode: application.referenceCode || '',
     email: application.email,
-    status: 'pending',
     confirmationSent,
+    ...pipeline,
   };
 }
 
-function serializeApplication(doc) {
+function viewerIdOf(user) {
+  return String(user?.id || user?._id || '');
+}
+
+function applicationIsNew(row, viewerId) {
+  const status = row.status === 'approved' ? 'invited' : row.status;
+  if (status !== 'pending' || !viewerId) return false;
+  const seen = Array.isArray(row.seenBy) ? row.seenBy.map((id) => String(id)) : [];
+  return !seen.includes(String(viewerId));
+}
+
+function serializeApplication(doc, viewerId) {
   const row = doc && typeof doc.toObject === 'function' ? doc.toObject() : { ...(doc || {}) };
   const reviewer = row.reviewedBy && typeof row.reviewedBy === 'object' ? row.reviewedBy : null;
   return {
@@ -601,6 +839,20 @@ function serializeApplication(doc) {
     reviewNote: row.reviewNote || '',
     reviewedAt: row.reviewedAt || null,
     contactedAt: row.contactedAt || null,
+    invitedAt: row.invitedAt || null,
+    joinedAt: row.joinedAt || null,
+    rejectedAt: row.rejectedAt || null,
+    statusEnteredAt: row.statusEnteredAt || null,
+    statusHistory: Array.isArray(row.statusHistory)
+      ? row.statusHistory.map((entry) => ({
+        status: entry.status === 'approved' ? 'invited' : entry.status,
+        at: entry.at || null,
+        note: entry.note || '',
+        actorName: entry.actorName || '',
+      }))
+      : [],
+    pipeline: buildPublicPartnerPipeline(row).steps,
+    isNew: applicationIsNew(row, viewerId),
     reviewedByName: reviewer?.name || reviewer?.email || '',
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -762,30 +1014,93 @@ async function identityMapForApplications(organizationId, rows) {
   return pack.byEmail;
 }
 
-async function listApplications(user, { status } = {}) {
-  assertOwnerOrAdmin(user);
-  const filter = { organizationId: user.organizationId };
+function partnerListFilter(user, query = {}) {
+  const orgMatch = organizationIdMatch(user.organizationId) || { organizationId: user.organizationId };
+  const and = [orgMatch];
+  const status = String(query.status || 'all');
   if (status && status !== 'all') {
     if (status === 'invited' || status === 'approved') {
-      filter.status = { $in: ['invited', 'approved'] };
+      and.push({ status: { $in: ['invited', 'approved'] } });
     } else if (['pending', 'contacted', 'joined', 'rejected'].includes(status)) {
-      filter.status = status;
+      and.push({ status });
     }
   }
+  const q = trimStr(query.q || query.search);
+  if (q) {
+    const rx = new RegExp(escapeRegex(q), 'i');
+    and.push({
+      $or: [
+        'name', 'email', 'phone', 'referenceCode', 'location', 'currentCompany',
+        'yearsExperience', 'specializations', 'rolesHired', 'availability',
+        'commercialNote', 'coverNote', 'reviewNote',
+      ].map((field) => ({ [field]: rx })),
+    });
+  }
+  const location = trimStr(query.location);
+  if (location) and.push({ location: new RegExp(escapeRegex(location), 'i') });
+  const resume = String(query.hasResume || query.resume || '').toLowerCase();
+  if (resume === 'yes' || resume === '1') {
+    and.push({ resumePath: { $exists: true, $nin: ['', null] } });
+  } else if (resume === 'no' || resume === '0') {
+    and.push({ $or: [{ resumePath: { $exists: false } }, { resumePath: '' }, { resumePath: null }] });
+  }
+  const from = trimStr(query.from || query.appliedFrom);
+  const to = trimStr(query.to || query.appliedTo);
+  if (from || to) {
+    const createdAt = {};
+    if (from) {
+      const start = new Date(from);
+      if (!Number.isNaN(start.getTime())) createdAt.$gte = start;
+    }
+    if (to) {
+      const end = new Date(to);
+      if (!Number.isNaN(end.getTime())) {
+        end.setHours(23, 59, 59, 999);
+        createdAt.$lte = end;
+      }
+    }
+    if (Object.keys(createdAt).length) and.push({ createdAt });
+  }
+  return and.length === 1 ? and[0] : { $and: and };
+}
+
+async function listApplications(user, query = {}) {
+  assertOwnerOrAdmin(user);
+  const status = query.status;
+  const filter = partnerListFilter(user, { ...query, status });
   const rows = await FreelancerApplication.find(filter)
     .populate('reviewedBy', 'name email')
-    .sort({ createdAt: -1 })
-    .limit(500);
+    .sort({ createdAt: -1 });
   for (const row of rows) {
+    let dirty = false;
+    if (!String(row.referenceCode || '').trim()) {
+      await ensureReference(row);
+      dirty = true;
+    }
+    if (!Array.isArray(row.statusHistory) || !row.statusHistory.length) {
+      appendPartnerStatusHistory(row, 'pending', {
+        at: row.createdAt || new Date(),
+        note: 'Application submitted',
+      });
+      const live = normalizePartnerStatus(row.status);
+      if (live !== 'pending') {
+        appendPartnerStatusHistory(row, live, {
+          at: row.statusEnteredAt || row.reviewedAt || row.updatedAt || new Date(),
+        });
+      }
+      dirty = true;
+    }
     if (row.status === 'joined' && !row.inviteUrl) {
       row.status = 'pending';
       row.reviewedAt = null;
-      await row.save();
+      dirty = true;
     }
+    if (dirty) await row.save();
   }
   const identities = await identityMapForApplications(user.organizationId, rows);
+  const orgMatch = organizationIdMatch(user.organizationId) || { organizationId: user.organizationId };
   const counts = await FreelancerApplication.aggregate([
-    { $match: { organizationId: user.organizationId } },
+    { $match: orgMatch },
     { $group: { _id: '$status', n: { $sum: 1 } } },
   ]);
   const byStatus = { pending: 0, contacted: 0, invited: 0, joined: 0, rejected: 0 };
@@ -795,7 +1110,7 @@ async function listApplications(user, { status } = {}) {
   }
   return {
     applications: rows.map((row) => {
-      const serialized = serializeApplication(row);
+      const serialized = serializeApplication(row, viewerIdOf(user));
       serialized.teamState = serialized.status === 'joined'
         ? 'joined'
         : serialized.status === 'invited'
@@ -815,7 +1130,34 @@ async function getApplication(user, id) {
     organizationId: user.organizationId,
   }).populate('reviewedBy', 'name email');
   if (!row) throw httpError('Application not found', 404);
-  return serializeApplication(row);
+  if (!String(row.referenceCode || '').trim()) {
+    await ensureReference(row);
+    await row.save();
+  }
+  return serializeApplication(row, viewerIdOf(user));
+}
+
+async function unreadApplicationCount(user) {
+  assertOwnerOrAdmin(user);
+  const orgMatch = organizationIdMatch(user.organizationId) || { organizationId: user.organizationId };
+  const viewerId = viewerIdOf(user);
+  return FreelancerApplication.countDocuments({
+    ...orgMatch,
+    status: 'pending',
+    seenBy: { $ne: viewerId },
+  });
+}
+
+async function markApplicationSeen(user, id) {
+  assertOwnerOrAdmin(user);
+  const orgMatch = organizationIdMatch(user.organizationId) || { organizationId: user.organizationId };
+  const viewerId = viewerIdOf(user);
+  if (!viewerId) return { seen: false };
+  await FreelancerApplication.updateOne(
+    { _id: id, ...orgMatch },
+    { $addToSet: { seenBy: viewerId } },
+  );
+  return { seen: true, id: String(id) };
 }
 
 async function updateApplicationStatus(user, id, { status, reviewNote } = {}) {
@@ -829,6 +1171,8 @@ async function updateApplicationStatus(user, id, { status, reviewNote } = {}) {
     organizationId: user.organizationId,
   });
   if (!application) throw httpError('Application not found', 404);
+  const viewerId = viewerIdOf(user);
+  if (viewerId) application.seenBy.addToSet(viewerId);
 
   const note = trimStr(reviewNote).slice(0, 2000);
   const actor = {
@@ -878,20 +1222,32 @@ async function updateApplicationStatus(user, id, { status, reviewNote } = {}) {
   application.reviewNote = note;
   application.reviewedBy = actor.id;
   application.reviewedAt = new Date();
-  if (nextStatus === 'contacted') application.contactedAt = new Date();
+  if (normalizePartnerStatus(previousStatus) !== normalizePartnerStatus(application.status)) {
+    appendPartnerStatusHistory(application, application.status, {
+      note: note.slice(0, 500),
+      actorName: actor.name || actor.email || '',
+    });
+  } else if (nextStatus === 'contacted') {
+    stampMilestone(application, 'contacted', application.contactedAt || new Date());
+  }
   await ensureReference(application);
   await application.save();
 
+  let emailSent = false;
   if (previousStatus !== nextStatus && (nextStatus === 'contacted' || nextStatus === 'rejected')) {
     const org = await Organization.findById(user.organizationId).select('name slug').lean();
     if (org) {
-      notifyApplicant(org, application, nextStatus).catch((err) => {
+      try {
+        emailSent = await notifyApplicant(org, application, nextStatus);
+      } catch (err) {
         logger.warn({ err }, 'Freelancer applicant status email failed');
-      });
+        emailSent = false;
+      }
     }
   }
 
-  const serialized = serializeApplication(await application.populate('reviewedBy', 'name email'));
+  const serialized = serializeApplication(await application.populate('reviewedBy', 'name email'), viewerIdOf(user));
+  serialized.emailSent = emailSent || Boolean(serialized.inviteEmailSent);
   return serialized;
 }
 
@@ -1008,13 +1364,34 @@ async function createApplication(user, body = {}) {
   const existingApp = await findExistingApplication(user.organizationId, fields.email, fields.phone);
   const duplicate = duplicateFromRecords(existingApp);
   if (duplicate.duplicate) throw httpError(duplicate.message, 409, { code: duplicate.code });
+  const now = new Date();
   const row = await FreelancerApplication.create({
     organizationId: user.organizationId,
     ...fields,
     referenceCode: await allocatePartnerReference(user.organizationId),
     status: 'pending',
+    statusEnteredAt: now,
+    statusHistory: [{
+      status: 'pending',
+      at: now,
+      note: 'Record created',
+      actorName: user.name || user.email || '',
+    }],
   });
-  return serializeApplication(row);
+  await ensureReference(row);
+  if (row.isModified()) await row.save();
+
+  let confirmationSent = false;
+  try {
+    const org = await Organization.findById(user.organizationId).select('name slug').lean();
+    if (org) confirmationSent = await notifyApplicant(org, row, 'received');
+  } catch (err) {
+    logger.warn({ err }, 'Partner desk applicant confirmation email failed');
+  }
+
+  const serialized = serializeApplication(row, viewerIdOf(user));
+  serialized.confirmationSent = confirmationSent;
+  return serialized;
 }
 
 async function updateApplication(user, id, body = {}) {
@@ -1043,7 +1420,7 @@ async function updateApplication(user, id, body = {}) {
     throw httpError('Please enter a valid 10-digit mobile number.', 400);
   }
   await application.save();
-  return serializeApplication(await application.populate('reviewedBy', 'name email'));
+  return serializeApplication(await application.populate('reviewedBy', 'name email'), viewerIdOf(user));
 }
 
 async function linkInviteToApplication({ organizationId, email, userId, inviteUrl, inviteEmailSent }) {
@@ -1055,7 +1432,10 @@ async function linkInviteToApplication({ organizationId, email, userId, inviteUr
   application.userId = userId || application.userId;
   if (inviteUrl) application.inviteUrl = inviteUrl;
   application.inviteEmailSent = Boolean(inviteEmailSent);
-  if (application.status !== 'joined') application.status = 'invited';
+  if (application.status !== 'joined') {
+    application.status = 'invited';
+    appendPartnerStatusHistory(application, 'invited', { note: 'Company invitation issued' });
+  }
   application.reviewedAt = application.reviewedAt || new Date();
   await application.save();
   return application;
@@ -1069,9 +1449,35 @@ async function markFreelancerJoined({ organizationId, email, userId }) {
   if (!application || application.status === 'rejected') return null;
   application.userId = userId || application.userId;
   application.status = 'joined';
+  appendPartnerStatusHistory(application, 'joined', { note: 'Partner joined the organisation' });
   application.reviewedAt = new Date();
   await application.save();
   return application;
+}
+
+async function bulkApplications(user, { ids, action } = {}) {
+  assertOwnerOrAdmin(user);
+  const list = [...new Set((Array.isArray(ids) ? ids : []).map(String).filter(Boolean))];
+  if (!list.length) throw httpError('Select at least one application', 400);
+  const allowed = ['contacted', 'invited', 'rejected', 'delete'];
+  if (!allowed.includes(action)) throw httpError('Invalid bulk action', 400);
+  const result = { updated: 0, emailed: 0, failed: 0, failures: [] };
+  for (const id of list) {
+    try {
+      if (action === 'delete') {
+        await deleteApplication(user, id);
+        result.updated += 1;
+        continue;
+      }
+      const row = await updateApplicationStatus(user, id, { status: action });
+      result.updated += 1;
+      if (row?.emailSent || row?.inviteEmailSent) result.emailed += 1;
+    } catch (err) {
+      result.failed += 1;
+      result.failures.push({ id, message: err.message || 'Unable to update' });
+    }
+  }
+  return result;
 }
 
 async function deleteApplication(user, id) {
@@ -1094,6 +1500,9 @@ module.exports = {
   trackApplication,
   submitApplication,
   listApplications,
+  bulkApplications,
+  unreadApplicationCount,
+  markApplicationSeen,
   getApplication,
   createApplication,
   updateApplication,
@@ -1103,4 +1512,9 @@ module.exports = {
   reviewApplication,
   linkInviteToApplication,
   markFreelancerJoined,
+  buildPublicPartnerPipeline,
+  appendPartnerStatusHistory,
+  publicApplicationStatus,
+  signPartnerTrackToken,
+  verifyPartnerTrackToken,
 };
