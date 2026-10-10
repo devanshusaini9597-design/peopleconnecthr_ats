@@ -119,6 +119,8 @@ const FEATURES = {
   'messaging.consent': 'professional',
   'announcements': 'professional',
   'search.global': 'starter',
+  'mis.contacts': 'starter',
+  'agency.freelancerDesk': 'starter',
   'push.notifications': 'professional',
   'whiteLabel': 'enterprise',
 

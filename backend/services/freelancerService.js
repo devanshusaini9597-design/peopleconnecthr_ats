@@ -45,6 +45,77 @@ function candidateRefId(value) {
   return String(value);
 }
 
+const FREELANCER_ONBOARD_STEPS = [
+  { id: 'invited', label: 'Invited', caption: 'Seat issued' },
+  { id: 'accepted', label: 'Accepted', caption: 'Working for the company' },
+  { id: 'profile', label: 'Profile', caption: 'Name and phone on file' },
+  { id: 'desk', label: 'Desk live', caption: 'Signed in' },
+  { id: 'producing', label: 'On the desk', caption: 'First submission sent' },
+];
+
+function freelancerOnboardingPipeline({
+  isActive = true,
+  inviteExpired = false,
+  name = '',
+  phone = '',
+  lastLoginAt = null,
+  lastActiveAt = null,
+  submissionsTotal = 0,
+} = {}) {
+  const accepted = isActive !== false;
+  const profileReady = Boolean(String(name || '').trim()) && Boolean(String(phone || '').trim());
+  const deskLive = accepted && Boolean(lastLoginAt || lastActiveAt);
+  const producing = Number(submissionsTotal || 0) > 0;
+  const doneById = {
+    invited: true,
+    accepted,
+    profile: accepted && profileReady,
+    desk: deskLive,
+    producing,
+  };
+
+  let currentAssigned = false;
+  const steps = FREELANCER_ONBOARD_STEPS.map((meta) => {
+    const done = Boolean(doneById[meta.id]);
+    let state = 'upcoming';
+    if (done) state = 'done';
+    else if (!currentAssigned) {
+      state = 'current';
+      currentAssigned = true;
+    }
+    if (inviteExpired && !accepted && meta.id === 'invited') {
+      state = 'ended';
+    }
+    return {
+      ...meta,
+      caption: inviteExpired && !accepted && meta.id === 'invited' ? 'Invite expired — resend' : meta.caption,
+      state,
+    };
+  });
+
+  let status = 'invite_pending';
+  if (inviteExpired && !accepted) status = 'invite_expired';
+  else if (!accepted) status = 'invite_pending';
+  else if (!profileReady) status = 'profile';
+  else if (!deskLive) status = 'accepted';
+  else if (!producing) status = 'live';
+  else status = 'producing';
+
+  const doneCount = steps.filter((s) => s.state === 'done').length;
+  const current = steps.find((s) => s.state === 'current' || s.state === 'ended') || steps[steps.length - 1];
+  return {
+    steps,
+    status,
+    progress: Math.round((doneCount / Math.max(steps.length, 1)) * 100),
+    profileReady,
+    deskLive,
+    producing,
+    accepted,
+    currentStepId: current?.id || 'invited',
+    nextAction: current?.caption || '',
+  };
+}
+
 function presentSubmission(row, extraCandidate = null) {
   const populated = row?.candidateId && typeof row.candidateId === 'object' && row.candidateId.name
     ? row.candidateId
@@ -74,6 +145,7 @@ function presentSubmission(row, extraCandidate = null) {
     candidateSnapshot: { name, email, contact, position },
     candidateId: {
       ...(typeof row?.candidateId === 'object' ? row.candidateId : {}),
+      ...(populated && typeof populated === 'object' ? populated : {}),
       _id: populated?._id || candidateRefId(row?.candidateId) || undefined,
       name,
       email,
@@ -248,6 +320,10 @@ async function notifySpocOfSubmission({ user, spoc, candidate, job, note }) {
       logoUrl: brand.logoUrl,
       brandColor: brand.brandColor,
       wordmark: brand.wordmark,
+      companyAddress: brand.companyAddress || '',
+      websiteUrl: brand.websiteUrl || '',
+      supportEmail: brand.supportEmail || '',
+      socialLinks: brand.socialLinks || {},
       bodyHtml: `
         <p style="margin:0 0 16px 0;font-size:16px;color:#0f172a;">Hi ${escapeHtml(spoc.name || 'there')},</p>
         <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;">
@@ -353,6 +429,10 @@ async function notifyCompanyOfExistingCandidateShare({ user, spoc, candidate, jo
         logoUrl: brand.logoUrl,
         brandColor: brand.brandColor,
         wordmark: brand.wordmark,
+        companyAddress: brand.companyAddress || '',
+        websiteUrl: brand.websiteUrl || '',
+        supportEmail: brand.supportEmail || '',
+        socialLinks: brand.socialLinks || {},
         bodyHtml: `
           <p style="margin:0 0 16px 0;font-size:16px;color:#0f172a;">Hi ${escapeHtml(person.name || 'there')},</p>
           <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;">
@@ -452,6 +532,10 @@ async function notifyFreelancerOfDeskUpdate({
       logoUrl: brand.logoUrl,
       brandColor: brand.brandColor,
       wordmark: brand.wordmark,
+      companyAddress: brand.companyAddress || '',
+      websiteUrl: brand.websiteUrl || '',
+      supportEmail: brand.supportEmail || '',
+      socialLinks: brand.socialLinks || {},
       bodyHtml: `
         <p style="margin:0 0 16px 0;font-size:16px;color:#0f172a;">Hi ${escapeHtml(freelancer.name || 'there')},</p>
         <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;">
@@ -792,7 +876,7 @@ function submissionScopeQuery(user, id) {
   if (isFreelancer(user)) {
     query.freelancerId = user.id;
   } else if (!ops.isOrgWideViewer(user)) {
-    query.spocUserId = user.id;
+    query.spocUserId = ops.userRefMatch(user);
   }
   return query;
 }
@@ -821,12 +905,14 @@ async function listSubmissions(user, opts = {}) {
       },
     ];
   } else if (ops.isOrgWideViewer(user)) {
-    // Owner only: all freelance handoffs in the org
+    // Owner / admin / HR leadership: every freelance handoff in the org
   } else {
-    // Admin, manager, recruiter, sales: only handoffs where they are the mandate SPOC
-    filter.spocUserId = user.id;
+    // Recruiter / sales: only handoffs where they are the mandate SPOC
+    filter.spocUserId = ops.userRefMatch(user);
   }
-  if (!includeArchived) {
+  if (includeArchived) {
+    filter.archivedAt = { $exists: true, $ne: null };
+  } else {
     filter.archivedAt = null;
   }
 
@@ -835,8 +921,8 @@ async function listSubmissions(user, opts = {}) {
     .populate('jobId', 'title role location locations status department jobCode clientName priority')
     .populate('freelancerId', 'name email lastActiveAt lastLoginAt profilePicture')
     .populate('spocUserId', 'name email role phone')
-    .sort({ createdAt: -1 })
-    .limit(300)
+    .sort({ updatedAt: -1, createdAt: -1 })
+    .limit(5000)
     .lean();
   return hydrateSubmissions(rows);
 }
@@ -1365,6 +1451,10 @@ async function requestFeedback(user, submissionId) {
         logoUrl: brand.logoUrl,
         brandColor: brand.brandColor,
         wordmark: brand.wordmark,
+        companyAddress: brand.companyAddress || '',
+        websiteUrl: brand.websiteUrl || '',
+        supportEmail: brand.supportEmail || '',
+        socialLinks: brand.socialLinks || {},
         bodyHtml: `
           <p style="margin:0 0 16px 0;font-size:16px;color:#0f172a;">Hi ${escapeHtml(spoc.name || 'there')},</p>
           <p style="margin:0 0 8px 0;color:#475569;line-height:1.7;">
@@ -1420,6 +1510,187 @@ async function listFreelancerPresence(user) {
   });
 }
 
+/**
+ * Company freelancers directory — roster of invited + active freelance recruiters
+ * with presence, invite/onboarding state, linked partner application, and desk KPIs.
+ */
+async function listFreelancerDirectory(user) {
+  if (isFreelancer(user)) throw httpError('Company reviewers only', 403);
+
+  const orgId = user.organizationId;
+  const FreelancerApplication = require('../models/FreelancerApplication');
+
+  const [people, apps, submissionAgg] = await Promise.all([
+    User.find({ organizationId: orgId, role: 'freelancer' })
+      .select('name email phone profilePicture isActive invitedBy inviteTokenExpires lastActiveAt lastLoginAt createdAt onboardingCompleted')
+      .populate('invitedBy', 'name email')
+      .sort({ isActive: -1, name: 1, email: 1 })
+      .lean(),
+    FreelancerApplication.find({ organizationId: orgId })
+      .select('name email phone status referenceCode userId specializations yearsExperience location availability createdAt reviewedAt')
+      .lean(),
+    FreelancerSubmission.aggregate([
+      { $match: { organizationId: orgId, archivedAt: null } },
+      {
+        $group: {
+          _id: '$freelancerId',
+          total: { $sum: 1 },
+          submitted: { $sum: { $cond: [{ $eq: ['$status', 'submitted'] }, 1, 0] } },
+          reviewing: { $sum: { $cond: [{ $eq: ['$status', 'reviewing'] }, 1, 0] } },
+          shortlisted: { $sum: { $cond: [{ $eq: ['$status', 'shortlisted'] }, 1, 0] } },
+          joined: { $sum: { $cond: [{ $eq: ['$status', 'joined'] }, 1, 0] } },
+          rejected: { $sum: { $cond: [{ $eq: ['$status', 'rejected'] }, 1, 0] } },
+          lastSubmittedAt: { $max: '$createdAt' },
+        },
+      },
+    ]),
+  ]);
+
+  const appsByUserId = new Map();
+  const appsByEmail = new Map();
+  for (const app of apps) {
+    const emailKey = String(app.email || '').trim().toLowerCase();
+    if (emailKey) appsByEmail.set(emailKey, app);
+    if (app.userId) appsByUserId.set(String(app.userId), app);
+  }
+
+  const statsByFreelancer = new Map(
+    submissionAgg.map((row) => [String(row._id), row]),
+  );
+
+  const freelancers = people.map((p) => {
+    const id = String(p._id);
+    const emailKey = String(p.email || '').trim().toLowerCase();
+    const app = appsByUserId.get(id) || appsByEmail.get(emailKey) || null;
+    const stats = statsByFreelancer.get(id) || null;
+    const seenAt = lastSeenAt(p);
+    const pending = p.isActive === false;
+    const inviteExpired = pending && p.inviteTokenExpires
+      ? new Date(p.inviteTokenExpires).getTime() <= Date.now()
+      : false;
+
+    const pipeline = freelancerOnboardingPipeline({
+      isActive: !pending,
+      inviteExpired,
+      name: p.name,
+      phone: p.phone || app?.phone || '',
+      lastLoginAt: p.lastLoginAt,
+      lastActiveAt: seenAt,
+      submissionsTotal: stats?.total || 0,
+    });
+    const onboardingStatus = pipeline.status;
+
+    const presence = pending ? 'offline' : presenceStatus(seenAt);
+
+    return {
+      _id: p._id,
+      name: p.name || p.email || 'Freelance recruiter',
+      email: p.email || '',
+      phone: p.phone || app?.phone || '',
+      profilePicture: p.profilePicture || '',
+      isActive: p.isActive !== false,
+      onboardingStatus,
+      pipeline,
+      presence,
+      lastActiveAt: seenAt,
+      lastLoginAt: p.lastLoginAt || null,
+      inviteExpiresAt: pending ? (p.inviteTokenExpires || null) : null,
+      inviteExpired,
+      invitedBy: p.invitedBy
+        ? { _id: p.invitedBy._id, name: p.invitedBy.name || '', email: p.invitedBy.email || '' }
+        : null,
+      createdAt: p.createdAt || null,
+      onboardingCompleted: p.onboardingCompleted !== false,
+      application: app
+        ? {
+            id: app._id,
+            referenceCode: app.referenceCode || '',
+            status: app.status || '',
+            specializations: app.specializations || '',
+            yearsExperience: app.yearsExperience || '',
+            location: app.location || '',
+            availability: app.availability || '',
+            appliedAt: app.createdAt || null,
+          }
+        : null,
+      submissions: {
+        total: stats?.total || 0,
+        submitted: stats?.submitted || 0,
+        reviewing: stats?.reviewing || 0,
+        shortlisted: stats?.shortlisted || 0,
+        joined: stats?.joined || 0,
+        rejected: stats?.rejected || 0,
+        lastSubmittedAt: stats?.lastSubmittedAt || null,
+      },
+    };
+  });
+
+  const counts = {
+    all: freelancers.length,
+    invite_pending: freelancers.filter((f) => f.onboardingStatus === 'invite_pending').length,
+    invite_expired: freelancers.filter((f) => f.onboardingStatus === 'invite_expired').length,
+    profile: freelancers.filter((f) => f.onboardingStatus === 'profile' || f.onboardingStatus === 'accepted').length,
+    live: freelancers.filter((f) => f.onboardingStatus === 'live').length,
+    producing: freelancers.filter((f) => f.onboardingStatus === 'producing').length,
+    online: freelancers.filter((f) => f.presence === 'online').length,
+    away: freelancers.filter((f) => f.presence === 'away').length,
+    offline: freelancers.filter((f) => f.isActive && f.presence === 'offline').length,
+  };
+
+  return { freelancers, counts };
+}
+
+async function getSelfOnboarding(user) {
+  requireFreelancer(user);
+  const me = await User.findById(user.id || user._id)
+    .select('name email phone profilePicture lastActiveAt lastLoginAt createdAt invitedBy organizationId')
+    .populate('invitedBy', 'name email')
+    .lean();
+  if (!me) throw httpError('Account not found', 404);
+
+  const [summary, org] = await Promise.all([
+    getDeskSummary(user),
+    me.organizationId
+      ? Organization.findById(me.organizationId).select('name logo').lean()
+      : Promise.resolve(null),
+  ]);
+
+  const pipeline = freelancerOnboardingPipeline({
+    isActive: true,
+    inviteExpired: false,
+    name: me.name,
+    phone: me.phone,
+    lastLoginAt: me.lastLoginAt,
+    lastActiveAt: me.lastActiveAt,
+    submissionsTotal: summary.submittedTotal || 0,
+  });
+
+  return {
+    freelancer: {
+      _id: me._id,
+      name: me.name || '',
+      email: me.email || '',
+      phone: me.phone || '',
+      profilePicture: me.profilePicture || '',
+      createdAt: me.createdAt || null,
+      lastActiveAt: me.lastActiveAt || null,
+      lastLoginAt: me.lastLoginAt || null,
+      invitedBy: me.invitedBy
+        ? { name: me.invitedBy.name || '', email: me.invitedBy.email || '' }
+        : null,
+    },
+    organization: org ? { name: org.name || '', logo: org.logo || '' } : null,
+    pipeline,
+    desk: {
+      openMandates: summary.openMandates || 0,
+      totalCandidates: summary.totalCandidates || 0,
+      submittedTotal: summary.submittedTotal || 0,
+      awaitingReview: summary.awaitingReview || 0,
+    },
+    mandates: (summary.mandates || []).slice(0, 6),
+  };
+}
+
 module.exports = {
   listSpocs,
   listMandates,
@@ -1440,6 +1711,9 @@ module.exports = {
   presenceStatus,
   heartbeat,
   listFreelancerPresence,
+  listFreelancerDirectory,
+  getSelfOnboarding,
+  freelancerOnboardingPipeline,
   listReviewers: ops.listReviewers,
   reassignSpoc: ops.reassignSpoc,
   bulkDeskAction: ops.bulkDeskAction,

@@ -3,10 +3,11 @@ const router = express.Router();
 const { verifyToken } = require('../middleware/authMiddleware');
 const { requireOrganization } = require('../middleware/tenantMiddleware');
 const { requireFreelancerOrRecruiter, requireRecruiterOrAbove } = require('../middleware/rbacMiddleware');
+const { requireFeature } = require('../middleware/featureMiddleware');
 const { isFreelancer } = require('../utils/dataScope');
 const svc = require('../services/freelancerService');
 
-router.use(verifyToken, requireOrganization);
+router.use(verifyToken, requireOrganization, requireFeature('agency.freelancerDesk'));
 
 function handle(res, error) {
   const payload = { success: false, message: error.message };
@@ -30,6 +31,15 @@ const run = (fn) => async (req, res) => {
   }
 };
 
+router.get('/', run(async (req, res) => {
+  if (isFreelancer(req.user)) {
+    const data = await svc.getDeskSummary(req.user);
+    return res.json({ success: true, data });
+  }
+  const data = await svc.listFreelancerDirectory(req.user);
+  return res.json({ success: true, data });
+}));
+
 router.post('/heartbeat', run(async (req, res) => {
   const data = await svc.heartbeat(req.user);
   res.json({ success: true, data });
@@ -37,6 +47,20 @@ router.post('/heartbeat', run(async (req, res) => {
 
 router.get('/presence', requireRecruiterOrAbove, run(async (req, res) => {
   const data = await svc.listFreelancerPresence(req.user);
+  res.json({ success: true, data });
+}));
+
+router.get('/directory', requireRecruiterOrAbove, run(async (req, res) => {
+  const data = await svc.listFreelancerDirectory(req.user);
+  res.json({ success: true, data });
+}));
+
+router.get('/onboarding', run(async (req, res) => {
+  if (isFreelancer(req.user)) {
+    const data = await svc.getSelfOnboarding(req.user);
+    return res.json({ success: true, data });
+  }
+  const data = await svc.listFreelancerDirectory(req.user);
   res.json({ success: true, data });
 }));
 
