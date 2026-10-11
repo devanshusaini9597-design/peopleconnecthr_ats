@@ -9,7 +9,9 @@ const fs = require('fs');
 const multer = require('multer');
 const router = express.Router();
 const { verifyToken } = require('../middleware/authMiddleware');
-const { requireOwner, requireMisCompany } = require('../middleware/rbacMiddleware');
+const { checkPlanLimit } = require('../middleware/rbacMiddleware');
+const { requirePermission } = require('../middleware/permissionMiddleware');
+const { requireFeature } = require('../middleware/featureMiddleware');
 const { multerFileFilter } = require('../utils/uploadAllowlist');
 const svc = require('../services/misService');
 
@@ -76,11 +78,20 @@ router.get('/export/download', async (req, res) => {
   }
 });
 
-router.use(verifyToken, requireMisCompany);
+router.use(verifyToken, requirePermission('modules.mis'), requireFeature('mis.contacts'));
 
 router.get('/stats', async (req, res) => {
   try {
     // Identity comes only from the auth token — never from query/body
+    const data = await svc.getMisStats(req.user);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
+router.get('/summary', async (req, res) => {
+  try {
     const data = await svc.getMisStats(req.user);
     res.json({ success: true, ...data });
   } catch (error) {
@@ -174,7 +185,7 @@ router.post('/move-to-candidates', async (req, res) => {
 });
 
 /** Owner-only: start async export job (returns jobId immediately). */
-router.post('/export', requireOwner, async (req, res) => {
+router.post('/export', requirePermission('mis.export'), async (req, res) => {
   try {
     const data = await svc.startExportContacts(req.user, req.body || {});
     res.json({ success: true, ...data });
@@ -183,24 +194,25 @@ router.post('/export', requireOwner, async (req, res) => {
   }
 });
 
-router.get('/export/jobs/:jobId', requireOwner, async (req, res) => {
+router.get('/export/jobs/:jobId', requirePermission('mis.export'), async (req, res) => {
   try {
-    const data = svc.getExportJob(req.user, req.params.jobId);
+    const data = await svc.getExportJob(req.user, req.params.jobId);
     res.json({ success: true, ...data });
   } catch (error) {
     handle(res, error);
   }
 });
 
-router.post('/send-marketing', async (req, res) => {
+router.post('/send-marketing', checkPlanLimit('emails'), async (req, res) => {
   try {
     const data = await svc.sendMarketingToMis(req.user, req.body || {});
     res.json({ success: true, ...data });
   } catch (error) {
     const status = error.statusCode || 500;
+    const { publicMailError } = require('../utils/publicMailCopy');
     return res.status(status).json({
       success: false,
-      message: error.displayMessage || error.message,
+      message: publicMailError(error.displayMessage || error.message),
       ...(error.code ? { code: error.code } : {}),
     });
   }

@@ -18,6 +18,7 @@ import useAnnouncementNavUpdates from '../hooks/useAnnouncementNavUpdates';
 import useReportShareNavUpdates from '../hooks/useReportShareNavUpdates';
 import useSupportNavUpdates from '../hooks/useSupportNavUpdates';
 import useInboxNavUpdates from '../hooks/useInboxNavUpdates';
+import usePartnerNavUpdates from '../hooks/usePartnerNavUpdates';
 
 const Sidebar = ({ isOpen, setIsOpen }) => {
   const [collapsed, setCollapsed] = useState(false);
@@ -51,13 +52,15 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
         ...section,
         items: section.items.filter(
           (item) => {
-            if (item.onlyRoles && !item.onlyRoles.includes(userRole)) return false;
+            if (item.hidden) return false;
+            const gatedByModule = usePermissionPack && item.module;
+            if (!gatedByModule && item.onlyRoles && !item.onlyRoles.includes(userRole)) return false;
             if (item.platformOnly && !authUser?.isPlatformOperator) return false;
             if (item.internalPreview) {
               if (authUser?.isDemo) return false;
               if (item.feature ? !userCanUsePreview(authUser, item.feature) : !authUser?.internalPreviewAccess) return false;
             }
-            if (item.hideForRoles && item.hideForRoles.includes(userRole)) return false;
+            if (!gatedByModule && item.hideForRoles && item.hideForRoles.includes(userRole)) return false;
             if (item.externalCareers && !organization?.slug) return false;
             if (item.externalPartners && !organization?.slug) return false;
             if (usePermissionPack) {
@@ -73,7 +76,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
             if (item.anyIntegration) return planHasAnyIntegration(orgPlan);
             if (item.anyAi) return planHasAnyAiFeature(orgPlan);
             if (item.feature) {
-              const freelancerBypassFeature = userRole === 'freelancer' && (
+              const freelancerBypassFeature = !item.respectPlan && userRole === 'freelancer' && (
                 item.onlyRoles?.includes('freelancer') || item.freelancerAlways
               );
               if (!freelancerBypassFeature) return planHasFeature(orgPlan, item.feature);
@@ -189,6 +192,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
   const newReportSharesCount = useReportShareNavUpdates();
   const newSupportCount = useSupportNavUpdates();
   const inboxUnreadCount = useInboxNavUpdates();
+  const newPartnerCount = usePartnerNavUpdates();
   const navBadges = useMemo(() => {
     const badges = {};
     if (newJobsCount > 0) {
@@ -199,8 +203,9 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
     if (newReportSharesCount > 0) badges['/analytics'] = newReportSharesCount;
     if (newSupportCount > 0) badges['/feedback'] = newSupportCount;
     if (inboxUnreadCount > 0) badges['/inbox'] = inboxUnreadCount;
+    if (newPartnerCount > 0) badges['/freelancer-applications'] = newPartnerCount;
     return badges;
-  }, [newJobsCount, newAnnouncementsCount, newReportSharesCount, newSupportCount, inboxUnreadCount]);
+  }, [newJobsCount, newAnnouncementsCount, newReportSharesCount, newSupportCount, inboxUnreadCount, newPartnerCount]);
 
   useEffect(() => {
     const keys = visibleSections
@@ -261,9 +266,9 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
               <img src={resolveOrgLogoSrc(organization.logo)} alt="" className="w-9 h-9 rounded-xl object-contain bg-white flex-shrink-0 shadow-lg" />
             ) : (
               <img
-                src="/logo.png"
+                src="/app-icon.png?v=5"
                 alt="People Connect HR"
-                className="w-9 h-9 rounded-xl object-contain bg-white flex-shrink-0 shadow-lg shadow-teal-500/25 ring-1 ring-teal-400/20"
+                className="w-9 h-9 rounded-xl object-contain bg-white flex-shrink-0 shadow-sm ring-1 ring-stone-200"
               />
             )}
             {!collapsed && (

@@ -25,7 +25,7 @@ import { fetchPicklist, PICKLIST_DROPDOWN_LIMIT } from '../utils/orgListFetch';
 import { DEFAULT_CTC_BANDS } from '../utils/ctcRanges';
 import { dedupeByName } from '../utils/dedupeMasterData';
 import { guardTableCopy } from '../utils/tableCopyGuard';
-import { canAccessMis, canSeeMisAllDesk, canSeeMisMyRecords, canSeeMisDeskTabs, normalizeMisDesk, misPageSubtitle, misTipCaption, misDeskHint, canEditMisContact } from '../utils/misAccess';
+import { canAccessMis, canSeeMisAllDesk, canSeeMisMyRecords, canSeeMisDeskTabs, canViewMisOrgReports, normalizeMisDesk, misPageSubtitle, misTipCaption, misDeskHint, canEditMisContact, canExportMis } from '../utils/misAccess';
 import { humanizeUploadError } from '../utils/humanizeUploadError';
 import { MIS_TOUR_KEY, MIS_TOUR_STEPS } from './mis/misConstants';
 import ProductTour from './ui/ProductTour';
@@ -264,8 +264,8 @@ export default function MisPage() {
   const { user } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
-  const isOwner = user?.role === 'owner';
-  const isAdmin = user?.role === 'admin';
+  const isOwner = canExportMis(user);
+  const orgWide = canViewMisOrgReports(user);
   const canSeeAllDesk = canSeeMisAllDesk(user);
   const canSeeMyRecords = canSeeMisMyRecords(user);
   const showDeskTabs = canSeeMisDeskTabs(user);
@@ -373,13 +373,13 @@ export default function MisPage() {
     setDraft('');
     setQ('');
     setPage(1);
-    if (isOwner) setDeskView('all');
+    if (orgWide) setDeskView('all');
     toast.info(
-      isOwner ? 'Showing contacts moved to Candidates' : 'Showing contacts you moved to Candidates',
+      orgWide ? 'Showing contacts moved to Candidates' : 'Showing contacts you moved to Candidates',
       2800,
       { key: 'mis-moved-view' }
     );
-  }, [toast, isOwner, setDeskView]);
+  }, [toast, orgWide, setDeskView]);
 
   const showMovedThisMonth = useCallback(() => {
     announceLoadRef.current = false;
@@ -389,13 +389,13 @@ export default function MisPage() {
     setDraft('');
     setQ('');
     setPage(1);
-    if (isOwner) setDeskView('all');
+    if (orgWide) setDeskView('all');
     toast.info(
-      isOwner ? 'Showing moves to Candidates this month' : 'Showing your moves to Candidates this month',
+      orgWide ? 'Showing moves to Candidates this month' : 'Showing your moves to Candidates this month',
       2800,
       { key: 'mis-moved-month' }
     );
-  }, [toast, isOwner, setDeskView]);
+  }, [toast, orgWide, setDeskView]);
 
   const [loading, setLoading] = useState(true);
   const [listRefreshing, setListRefreshing] = useState(false);
@@ -1474,7 +1474,7 @@ export default function MisPage() {
 
   const handleExport = useCallback(async () => {
     if (!isOwner) {
-      toast.error('Only the company owner can export the directory');
+      toast.error('Export is not included in your role');
       return;
     }
     setExporting(true);
@@ -1728,7 +1728,7 @@ export default function MisPage() {
           <div className="min-w-0 flex-1">
             <h2 className="text-sm font-bold tracking-tight text-stone-900 break-words">Overview</h2>
             <p className="text-xs text-stone-500 mt-0.5 break-words">
-              {isOwner ? 'Organisation totals · live figures' : 'Your desk metrics · live figures'}
+              {orgWide ? 'Organisation totals · live figures' : 'Your desk metrics · live figures'}
             </p>
           </div>
         </div>
@@ -1738,7 +1738,7 @@ export default function MisPage() {
             label="Total"
             value={stats?.total ?? 0}
             caption={
-              isOwner
+              orgWide
                 ? 'All contacts in the organisation'
                 : 'Shared directory + your records'
             }
@@ -1751,13 +1751,13 @@ export default function MisPage() {
             icon={Building2}
             label="Organisation"
             value={stats?.company ?? 0}
-            caption={isOwner ? 'Company directory uploads' : 'Shared company directory'}
+            caption={orgWide ? 'Company directory uploads' : 'Shared company directory'}
             gradient="from-indigo-500 to-blue-400"
             loading={statsLoading}
             aligned
             onClick={() => openDeskCard('company')}
           />
-          {isOwner ? (
+          {orgWide ? (
             <StatCard
               icon={Users}
               label="Employee records"
@@ -1787,7 +1787,7 @@ export default function MisPage() {
             caption={
               showingMovedOnly && appliedFilters.datePeriod !== 'month'
                 ? 'Filtered · click another card to exit'
-                : (isOwner ? 'Moved to Candidates · all time' : 'Moved by you · all time')
+                : (orgWide ? 'Moved to Candidates · all time' : 'Moved by you · all time')
             }
             gradient="from-violet-500 to-indigo-500"
             loading={statsLoading}
@@ -1798,14 +1798,14 @@ export default function MisPage() {
             icon={CalendarPlus}
             label="Added this month"
             value={stats?.newThisMonth ?? 0}
-            caption={isOwner ? 'New contacts this month' : 'New on your desk this month'}
+            caption={orgWide ? 'New contacts this month' : 'New on your desk this month'}
             gradient="from-emerald-500 to-lime-400"
             loading={statsLoading}
             aligned
             onClick={() => {
               setDraftFilters({ ...EMPTY_MIS_FILTERS, datePeriod: 'month' });
               setAppliedFilters({ ...EMPTY_MIS_FILTERS, datePeriod: 'month' });
-              setDeskView(isOwner ? 'all' : (canSeeMyRecords ? 'mine' : 'company'));
+              setDeskView(orgWide ? 'all' : (canSeeMyRecords ? 'mine' : 'company'));
               setPage(1);
             }}
           />
@@ -1816,7 +1816,7 @@ export default function MisPage() {
             caption={
               showingMovedOnly && appliedFilters.datePeriod === 'month'
                 ? 'Filtered · click another card to exit'
-                : (isOwner ? 'Moves to Candidates this month' : 'Your moves this month')
+                : (orgWide ? 'Moves to Candidates this month' : 'Your moves this month')
             }
             gradient="from-fuchsia-500 to-violet-400"
             loading={statsLoading}
@@ -2153,7 +2153,7 @@ export default function MisPage() {
                           tone="teal"
                           message="No contacts in this desk"
                           subMessage={
-                            user?.role === 'owner'
+                            orgWide
                               ? 'Import a spreadsheet or add a contact to build the organisation directory.'
                               : 'Add a contact or import a file with Name and Email to get started.'
                           }

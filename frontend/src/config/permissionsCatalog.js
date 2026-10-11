@@ -15,6 +15,7 @@ export const PERMISSION_CATALOG = [
       { key: 'modules.reports', label: 'Reports Studio', kind: 'module' },
       { key: 'modules.dei', label: 'DEI', kind: 'module' },
       { key: 'modules.announcements', label: 'Announcements', kind: 'module' },
+      { key: 'announcements.publish', label: 'Publish announcements', kind: 'action' },
     ],
   },
   {
@@ -42,6 +43,11 @@ export const PERMISSION_CATALOG = [
       { key: 'modules.collaboration', label: 'Collaboration', kind: 'module' },
       { key: 'modules.formBuilder', label: 'Form Builder', kind: 'module' },
       { key: 'modules.assessments', label: 'Assessments', kind: 'module' },
+      { key: 'assessments.create', label: 'Create assessments', kind: 'action' },
+      { key: 'assessments.edit', label: 'Edit assessments', kind: 'action' },
+      { key: 'assessments.invite', label: 'Invite candidates', kind: 'action' },
+      { key: 'assessments.grade', label: 'Grade submissions', kind: 'action' },
+      { key: 'assessments.delete', label: 'Delete assessments', kind: 'action' },
       { key: 'modules.aiTools', label: 'AI Tools', kind: 'module' },
     ],
   },
@@ -106,6 +112,17 @@ export const PERMISSION_CATALOG = [
       { key: 'modules.emailSettings', label: 'Email Settings', kind: 'module' },
       { key: 'modules.pushNotifications', label: 'Push Notifications', kind: 'module' },
       { key: 'modules.profile', label: 'Profile', kind: 'module' },
+    ],
+  },
+  {
+    id: 'mis',
+    label: 'MIS',
+    description: 'Open the directory without handing over every action inside it',
+    items: [
+      { key: 'modules.mis', label: 'MIS directory', kind: 'module' },
+      { key: 'mis.viewOrg', label: 'Organisation-wide MIS', kind: 'action' },
+      { key: 'mis.editAny', label: 'Edit any MIS contact', kind: 'action' },
+      { key: 'mis.export', label: 'Export MIS', kind: 'action' },
     ],
   },
   {

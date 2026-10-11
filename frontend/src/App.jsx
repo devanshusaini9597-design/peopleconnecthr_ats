@@ -66,33 +66,34 @@ const ChromeExtensionSettingsPage = React.lazy(() => import('./components/Chrome
 const SecuritySettingsPage = React.lazy(() => import('./components/SecuritySettingsPage'));
 const TrustCenterPage = React.lazy(() => import('./components/TrustCenterPage'));
 const StatusPage = React.lazy(() => import('./components/StatusPage'));
-const ApprovalsPage = React.lazy(() => import('./components/ApprovalsPage'));
-const ReferralsPage = React.lazy(() => import('./components/ReferralsPage'));
 const SelfBookPage = React.lazy(() => import('./components/SelfBookPage'));
+const InterviewRoomPage = React.lazy(() => import('./components/InterviewRoomPage'));
 const SurveyTakePage = React.lazy(() => import('./components/SurveyTakePage'));
 const AiToolsPage = React.lazy(() => import('./components/AiToolsPage'));
 const SkillsPage = React.lazy(() => import('./components/SkillsPage'));
 const PositionsPage = React.lazy(() => import('./components/PositionsPage'));
 const InboxPage = React.lazy(() => import('./components/InboxPage'));
-const SequencesPage = React.lazy(() => import('./components/SequencesPage'));
-const DeiPage = React.lazy(() => import('./components/DeiPage'));
-const FormBuilderPage = React.lazy(() => import('./components/FormBuilderPage'));
-const ChatbotSettingsPage = React.lazy(() => import('./components/ChatbotSettingsPage'));
 const GlobalSearchPage = React.lazy(() => import('./components/GlobalSearchPage'));
 const ReportsStudioPage = React.lazy(() => import('./components/ReportsStudioPage'));
 const ScorecardTemplatesPage = React.lazy(() => import('./components/ScorecardTemplatesPage'));
 const AnnouncementsPage = React.lazy(() => import('./components/AnnouncementsPage'));
 const CompanyBrandPage = React.lazy(() => import('./components/CompanyBrandPage'));
-const CandidateCollaborationPage = React.lazy(() => import('./components/CandidateCollaborationPage'));
 const MyTeamPage = React.lazy(() => import('./components/MyTeamPage'));
-const MessagingConsentPage = React.lazy(() => import('./components/MessagingConsentPage'));
 const PushNotificationsPage = React.lazy(() => import('./components/PushNotificationsPage'));
 const NotificationSettingsPage = React.lazy(() => import('./components/NotificationSettingsPage'));
 const EmbedChatbotPage = React.lazy(() => import('./components/EmbedChatbotPage'));
 const MarketingPage = React.lazy(() => import('./components/MarketingPage'));
+const PricingPage = React.lazy(() => import('./components/PricingPage'));
+const FeaturesPage = React.lazy(() => import('./components/FeaturesPage'));
+const EnterprisePage = React.lazy(() => import('./components/EnterprisePage'));
+const SecurityPage = React.lazy(() => import('./components/SecurityPage'));
+const IntegrationsPage = React.lazy(() => import('./components/IntegrationsPage'));
+const PrivacyPage = React.lazy(() => import('./components/PrivacyPage'));
+const TermsPage = React.lazy(() => import('./components/TermsPage'));
 const SupportFeedbackPage = React.lazy(() => import('./components/SupportFeedbackPage'));
 const CompanySupportDeskPage = React.lazy(() => import('./components/CompanySupportDeskPage'));
 const FreelanceReviewPage = React.lazy(() => import('./components/FreelanceReviewPage'));
+const FreelancerOnboardingPage = React.lazy(() => import('./components/FreelancerOnboardingPage'));
 const FreelancerApplicationsPage = React.lazy(() => import('./components/FreelancerApplicationsPage'));
 const TrialRequestsPage = React.lazy(() => import('./components/TrialRequestsPage'));
 
@@ -150,18 +151,19 @@ const router = createBrowserRouter([
   { path: '/trust', element: withPage(TrustCenterPage) },
   { path: '/status', element: withPage(StatusPage) },
   { path: '/book/:tokenOrSlug', element: withPage(SelfBookPage) },
+  { path: '/interview-room/:token', element: withPage(InterviewRoomPage) },
   { path: '/survey/:token', element: withPage(SurveyTakePage) },
   { path: '/embed/chatbot/:orgSlug', element: withPage(EmbedChatbotPage) },
-  { path: '/pricing', element: withPage(MarketingPage) },
-  { path: '/features', element: withPage(MarketingPage) },
-  { path: '/enterprise', element: withPage(MarketingPage) },
-  { path: '/security', element: withPage(MarketingPage) },
-  { path: '/integrations', element: withPage(MarketingPage) },
+  { path: '/pricing', element: withPage(PricingPage) },
+  { path: '/features', element: withPage(FeaturesPage) },
+  { path: '/enterprise', element: withPage(EnterprisePage) },
+  { path: '/security', element: withPage(SecurityPage) },
+  { path: '/integrations', element: withPage(IntegrationsPage) },
   { path: '/ai-automation', element: withPage(MarketingPage) },
   { path: '/faq', element: withPage(FAQPage) },
   { path: '/contact', element: withPage(ContactPage) },
-  { path: '/privacy', element: withPage(MarketingPage) },
-  { path: '/terms', element: withPage(MarketingPage) },
+  { path: '/privacy', element: withPage(PrivacyPage) },
+  { path: '/terms', element: withPage(TermsPage) },
   { path: '/customers', element: withPage(MarketingPage) },
 
   { path: '/onboarding', element: <ProtectedRoute>{withPage(OnboardingPage)}</ProtectedRoute> },
@@ -183,12 +185,13 @@ const router = createBrowserRouter([
       { path: '/support-desk', element: withPage(CompanySupportDeskPage) },
       { path: '/trial-requests', element: withPage(TrialRequestsPage) },
       { path: '/freelance-review', element: withPage(FreelanceReviewPage) },
+      { path: '/freelancers', element: withPage(FreelancerOnboardingPage) },
       { path: '/freelancer-applications', element: <ProtectedRoute requiredRoles={['owner', 'admin']}>{withPage(FreelancerApplicationsPage)}</ProtectedRoute> },
       { path: '/applications', element: withPage(ApplicationsPage) },
       { path: '/recruitment', element: withPage(ApplicationsPage) },
       { path: '/ats', element: withPage(ATSPage) },
-      { path: '/mis', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales']}>{withPage(MisPage)}</ProtectedRoute> },
-      { path: '/mis-reports', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales']}>{withPage(MisReportsPage)}</ProtectedRoute> },
+      { path: '/mis', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales']} allowPermission="modules.mis">{withPage(MisPage)}</ProtectedRoute> },
+      { path: '/mis-reports', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales']} allowPermission="modules.mis">{withPage(MisReportsPage)}</ProtectedRoute> },
       { path: '/add-candidate', element: <Navigate to="/ats?add=1" replace /> },
       { path: '/resume-parsing', element: withPage(ResumeParsing) },
       { path: '/candidate-search', element: withPage(CandidateSearch) },
@@ -197,17 +200,17 @@ const router = createBrowserRouter([
       { path: '/positions', element: withPage(PositionsPage) },
       { path: '/inbox', element: withPage(InboxPage) },
       { path: '/inbox/:threadId', element: withPage(InboxPage) },
-      { path: '/sequences', element: <ProtectedRoute internalPreview>{withPage(SequencesPage)}</ProtectedRoute> },
-      { path: '/dei', element: <ProtectedRoute internalPreview>{withPage(DeiPage)}</ProtectedRoute> },
-      { path: '/form-builder', element: <ProtectedRoute internalPreview>{withPage(FormBuilderPage)}</ProtectedRoute> },
-      { path: '/organization/chatbot', element: withPage(ChatbotSettingsPage) },
-      { path: '/assessments', element: withPage(AssessmentsPage) },
+      { path: '/sequences', element: <Navigate to="/dashboard" replace /> },
+      { path: '/dei', element: <Navigate to="/dashboard" replace /> },
+      { path: '/form-builder', element: <Navigate to="/dashboard" replace /> },
+      { path: '/organization/chatbot', element: <Navigate to="/dashboard" replace /> },
+      { path: '/assessments', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales']} allowPermission="modules.assessments">{withPage(AssessmentsPage)}</ProtectedRoute> },
       { path: '/ai-tools', element: withPage(AiToolsPage) },
       { path: '/search', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales', 'interviewer', 'readonly']}>{withPage(GlobalSearchPage)}</ProtectedRoute> },
-      { path: '/collaboration', element: <ProtectedRoute internalPreview>{withPage(CandidateCollaborationPage)}</ProtectedRoute> },
+      { path: '/collaboration', element: <Navigate to="/dashboard" replace /> },
       { path: '/my-team', element: withPage(MyTeamPage) },
       { path: '/scorecard-templates', element: <ProtectedRoute internalPreview>{withPage(ScorecardTemplatesPage)}</ProtectedRoute> },
-      { path: '/messaging-consent', element: <ProtectedRoute internalPreview>{withPage(MessagingConsentPage)}</ProtectedRoute> },
+      { path: '/messaging-consent', element: <Navigate to="/dashboard" replace /> },
       { path: '/announcements', element: withPage(AnnouncementsPage) },
       { path: '/reports-studio', element: withPage(ReportsStudioPage) },
       { path: '/company-brand', element: withPage(CompanyBrandPage) },
@@ -239,8 +242,8 @@ const router = createBrowserRouter([
       { path: '/organization/chrome-extension', element: withPage(ChromeExtensionSettingsPage) },
       { path: '/organization/sso', element: withPage(SSOSettingsPage) },
       { path: '/organization/security', element: withPage(SecuritySettingsPage) },
-      { path: '/organization/approvals', element: <ProtectedRoute internalPreview>{withPage(ApprovalsPage)}</ProtectedRoute> },
-      { path: '/organization/referrals', element: <ProtectedRoute internalPreview>{withPage(ReferralsPage)}</ProtectedRoute> },
+      { path: '/organization/approvals', element: <Navigate to="/dashboard" replace /> },
+      { path: '/organization/referrals', element: <Navigate to="/dashboard" replace /> },
       { path: '/organization/webhooks-api', element: withPage(WebhooksApiPage) },
       { path: '/organization/scheduled-reports', element: withPage(ScheduledReportsPage) },
       { path: '/billing', element: withPage(BillingPage) },

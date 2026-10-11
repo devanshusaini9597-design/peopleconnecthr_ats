@@ -636,8 +636,26 @@ const MIS_COMPANY_ROLES = new Set([
   'owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales',
 ]);
 
+/** Organisation-wide MIS data (reports, employee drill-down, edit any contact). */
+const MIS_ORG_DATA_ROLES = new Set(['owner', 'admin', 'hr_manager']);
+
+function grantedPermission(user, key) {
+  if (!user) return false;
+  if (user.role === 'owner') return true;
+  if (Array.isArray(user.permissions)) return user.permissions.includes(key);
+  return null;
+}
+
 function isMisCompanyRole(user) {
+  const via = grantedPermission(user, 'modules.mis');
+  if (via !== null) return via;
   return Boolean(user && MIS_COMPANY_ROLES.has(user.role));
+}
+
+function canViewMisOrgData(user) {
+  const via = grantedPermission(user, 'mis.viewOrg');
+  if (via !== null) return via;
+  return Boolean(user && MIS_ORG_DATA_ROLES.has(user.role));
 }
 
 /**
@@ -656,7 +674,7 @@ function misListFilter(organizationId, user, extra = {}) {
     filter._id = { $in: [] };
     return filter;
   }
-  if (user.role === 'owner') {
+  if (canViewMisOrgData(user)) {
     if (Array.isArray(extraAnd) && extraAnd.length) {
       filter.$and = extraAnd;
     }
@@ -678,7 +696,7 @@ function misListFilter(organizationId, user, extra = {}) {
 
 /**
  * MIS mutate scope:
- * - owner / admin → any contact in the organisation
+ * - owner / admin / hr manager → any contact in the organisation
  * - other MIS roles → only rows they created (not shared Organisation desk rows)
  */
 function misWriteFilter(organizationId, user, extra = {}) {
@@ -686,7 +704,7 @@ function misWriteFilter(organizationId, user, extra = {}) {
   if (!user || isFreelancer(user) || !isMisCompanyRole(user)) {
     return { ...orgMatch, _id: { $in: [] }, ...extra };
   }
-  if (user.role === 'owner' || user.role === 'admin') {
+  if (canViewMisOrgData(user)) {
     return { ...orgMatch, ...extra };
   }
   const { userIdStr, userIdObj } = userIdParts(user);
@@ -771,9 +789,12 @@ module.exports = {
   applicationListFilter,
   MIS_COMPANY_ROLES,
   isMisCompanyRole,
+  canViewMisOrgData,
   misListFilter,
   misWriteFilter,
   withoutUnsharedFreelancerDesks,
+  excludeFreelancerCreated,
+  orgFreelancerCreatorIds,
   ORG_WIDE_ANALYTICS_ROLES,
   ORG_WIDE_CANDIDATE_ROLES,
   canViewOrgAnalytics,

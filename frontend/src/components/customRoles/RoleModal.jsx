@@ -146,9 +146,11 @@ const RoleModal = ({ open, initial, onClose, onSave, saving, catalog, systemMode
                 Permissions
               </h3>
               <p className="text-xs text-stone-500 mt-1 leading-relaxed">
-                <span className="font-semibold text-stone-600">Modules</span> = sidebar pages.
+                <span className="font-semibold text-stone-600">Modules</span> open the page.
                 {' '}
-                <span className="font-semibold text-stone-600">Actions</span> = create / edit / delete inside them.
+                <span className="font-semibold text-stone-600">Actions</span> are the buttons inside it.
+                Turn on MIS for a manager, and leave Export off if they should not download the directory.
+                Saving a system role updates everyone on that role. A custom role replaces the system pack for the people you assign it to. Owner always keeps full access.
               </p>
             </div>
             <div className="flex items-center gap-2">

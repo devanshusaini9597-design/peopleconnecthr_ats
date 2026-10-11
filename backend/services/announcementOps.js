@@ -225,14 +225,33 @@ async function resetEngagement(row, actorId) {
   row.markModified('receipts');
 }
 
+function personCard(person, receipt, dateKey) {
+  const email = person?.email || '';
+  const named = String(person?.name || '').trim();
+  const fallback = email.includes('@') ? email.split('@')[0].replace(/[._]+/g, ' ') : '';
+  return {
+    id: String(person?._id || ''),
+    name: named || fallback || 'Teammate',
+    email,
+    role: person?.role || '',
+    at: receipt?.[dateKey] || null,
+  };
+}
+
 async function receiptRoster(row) {
+  const { resolveAnnouncementRecipientIds } = require('./announcementAudience');
+  const authorId = String(row.createdBy?._id || row.createdBy || '');
+  const audienceIds = row.audience === 'public'
+    ? []
+    : await resolveAnnouncementRecipientIds(row.organizationId, row);
   const ids = [
+    ...audienceIds,
     ...(row.readBy || []),
     ...(row.dismissedBy || []),
     ...(row.ackedBy || []),
     ...(row.seenBy || []),
   ];
-  const unique = [...new Set(ids.map((id) => String(id)))].filter(Boolean).slice(0, 300);
+  const unique = [...new Set(ids.map((id) => String(id)))].filter(Boolean).slice(0, 400);
   const people = unique.length
     ? await User.find({ _id: { $in: unique } }).select('name email role').lean()
     : [];
@@ -241,24 +260,31 @@ async function receiptRoster(row) {
 
   const mapIds = (list, dateKey) => (list || []).map((id) => {
     const person = byId.get(String(id));
-    const receipt = receiptByUser.get(String(id));
-    return {
-      id: String(id),
-      name: person?.name || 'Teammate',
-      email: person?.email || '',
-      role: person?.role || '',
-      at: receipt?.[dateKey] || null,
-    };
-  });
+    if (!person) return null;
+    return personCard(person, receiptByUser.get(String(id)), dateKey);
+  }).filter(Boolean);
 
-  const authorId = String(row.createdBy?._id || row.createdBy || '');
+  const readIds = new Set((row.readBy || []).map((id) => String(id)));
+  const pending = audienceIds
+    .map((id) => String(id))
+    .filter((id) => id !== authorId && !readIds.has(id))
+    .map((id) => byId.get(id))
+    .filter(Boolean)
+    .map((person) => personCard(person, null, 'readAt'));
+
   return {
     authorName: authorName(row),
+    audience: row.audience,
+    requiresAck: Boolean(row.requiresAck),
+    endsAt: row.endsAt || null,
+    isActive: row.isActive !== false,
+    status: row.status || 'published',
     emailDelivery: row.emailDelivery || { status: 'skipped', sent: 0, failed: 0, total: 0 },
+    audienceSize: audienceIds.filter((id) => String(id) !== authorId).length,
     read: mapIds(row.readBy, 'readAt').filter((person) => person.id !== authorId),
-    dismissed: mapIds(row.dismissedBy, 'dismissedAt'),
-    acknowledged: mapIds(row.ackedBy, 'ackedAt'),
-    seen: mapIds(row.seenBy, 'seenAt').filter((person) => person.id !== authorId),
+    pending,
+    dismissed: mapIds(row.dismissedBy, 'dismissedAt').filter((person) => person.id !== authorId),
+    acknowledged: mapIds(row.ackedBy, 'ackedAt').filter((person) => person.id !== authorId),
   };
 }
 

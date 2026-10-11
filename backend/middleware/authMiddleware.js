@@ -102,6 +102,7 @@ const verifyToken = async (req, res, next) => {
       await touchSession(decoded.jti);
     }
 
+    const { getEffectivePermissions } = require('./permissionMiddleware');
     req.user = {
       id: user._id,
       organizationId: user.organizationId,
@@ -110,7 +111,8 @@ const verifyToken = async (req, res, next) => {
       name: user.name,
       customRoleId: user.customRoleId || null,
       isDemo: Boolean(user.isDemo),
-      jti: decoded.jti
+      jti: decoded.jti,
+      permissions: await getEffectivePermissions(user),
     };
     
     next();

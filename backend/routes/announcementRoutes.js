@@ -5,7 +5,6 @@ const multer = require('multer');
 const router = express.Router();
 const Announcement = require('../models/Announcement');
 const { requireFeature } = require('../middleware/featureMiddleware');
-const { requireAdmin } = require('../middleware/rbacMiddleware');
 const { requirePermission } = require('../middleware/permissionMiddleware');
 const { listTargetOptions } = require('../services/announcementAudience');
 const {
@@ -146,7 +145,7 @@ function readSchedule(body) {
   return { startsAt: starts || new Date(), endsAt: ends };
 }
 
-router.get('/targets', requireAdmin, async (req, res) => {
+router.get('/targets', requirePermission('announcements.publish'), async (req, res) => {
   try {
     const data = await listTargetOptions(req.user.organizationId);
     res.json({ success: true, data });
@@ -249,7 +248,7 @@ function includesAck(row, userId) {
   return (row.ackedBy || []).some((id) => String(id) === String(userId));
 }
 
-router.get('/all', requireAdmin, async (req, res) => {
+router.get('/all', requirePermission('announcements.publish'), async (req, res) => {
   try {
     const { page, limit, skip } = pageQuery(req);
     const now = new Date();
@@ -307,7 +306,7 @@ router.get('/all', requireAdmin, async (req, res) => {
   }
 });
 
-router.post('/', requireAdmin, async (req, res) => {
+router.post('/', requirePermission('announcements.publish'), async (req, res) => {
   try {
     const validated = validateAnnouncementContent(req.body || {});
     if (validated.error) return res.status(400).json({ success: false, message: validated.error });
@@ -354,7 +353,7 @@ router.post('/', requireAdmin, async (req, res) => {
   }
 });
 
-router.get('/:id/receipts', requireAdmin, async (req, res) => {
+router.get('/:id/receipts', requirePermission('announcements.publish'), async (req, res) => {
   try {
     const row = await Announcement.findOne({
       _id: req.params.id,
@@ -368,7 +367,7 @@ router.get('/:id/receipts', requireAdmin, async (req, res) => {
   }
 });
 
-router.post('/:id/attachments', requireAdmin, (req, res) => {
+router.post('/:id/attachments', requirePermission('announcements.publish'), (req, res) => {
   upload.array('files', ATTACHMENT_MAX)(req, res, async (err) => {
     if (err) {
       const message = err.code === 'LIMIT_FILE_SIZE'
@@ -442,7 +441,7 @@ router.get('/:id/attachments/:attachmentId', async (req, res) => {
   }
 });
 
-router.delete('/:id/attachments/:attachmentId', requireAdmin, async (req, res) => {
+router.delete('/:id/attachments/:attachmentId', requirePermission('announcements.publish'), async (req, res) => {
   try {
     const row = await Announcement.findOne({
       _id: req.params.id,
@@ -524,7 +523,7 @@ router.post('/:id/ack', async (req, res) => {
   }
 });
 
-router.patch('/:id', requireAdmin, async (req, res) => {
+router.patch('/:id', requirePermission('announcements.publish'), async (req, res) => {
   try {
     const row = await Announcement.findOne({
       _id: req.params.id,
@@ -604,7 +603,7 @@ router.patch('/:id', requireAdmin, async (req, res) => {
   }
 });
 
-router.delete('/:id', requireAdmin, async (req, res) => {
+router.delete('/:id', requirePermission('announcements.publish'), async (req, res) => {
   try {
     const hard = String(req.query.hard || '') === '1';
     if (hard) {

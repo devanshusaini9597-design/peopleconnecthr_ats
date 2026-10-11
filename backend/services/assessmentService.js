@@ -1,12 +1,14 @@
 /**
  * Assessments domain — take/submit + recruiter CRUD/invite/grade.
  */
+const mongoose = require('mongoose');
 const Assessment = require('../models/Assessment');
 const AssessmentInvite = require('../models/AssessmentInvite');
 const Candidate = require('../models/Candidate');
 const Organization = require('../models/Organization');
 const { sendEmailQueued } = require('./emailService');
-const { wrapBrandedEmailHtml, brandButtonHtml, loadOrgEmailBrand, escapeHtml } = require('./emailBrandLayout');
+const { wrapBrandedEmailHtml, brandButtonHtml, loadOrgEmailBrand, escapeHtml, publicSiteBase } = require('./emailBrandLayout');
+const { excludeFreelancerCreated, orgFreelancerCreatorIds, organizationIdMatch } = require('../utils/dataScope');
 const { planHasFeature } = require('../config/planFeatures');
 const { computeRiskScore, summarizeEvents } = require('../utils/proctoring');
 
@@ -20,7 +22,7 @@ function httpError(message, statusCode = 400, extra = {}) {
 async function takeAssessment(token) {
   const invite = await AssessmentInvite.findOne({ token }).populate('assessmentId');
   if (!invite) throw httpError('Invalid assessment link', 404);
-  if (invite.expiresAt < new Date() && invite.status === 'pending') {
+  if (invite.expiresAt < new Date() && (invite.status === 'pending' || invite.status === 'in_progress')) {
     invite.status = 'expired';
     await invite.save();
   }
@@ -133,15 +135,17 @@ async function submitAssessment(token, body) {
   const questionMap = new Map(assessment.questions.map((q) => [String(q._id), q]));
 
   let autoScoreTotal = 0;
-  const gradedAnswers = answers.map((a) => {
+  const gradedAnswers = (Array.isArray(answers) ? answers : []).slice(0, questionMap.size).map((a) => {
     const question = questionMap.get(String(a.questionId));
+    if (!question) return null;
     let autoScore;
-    if (question?.type === 'multiple_choice') {
-      autoScore = Number(a.response) === question.correctOptionIndex ? question.points || 0 : 0;
+    const response = String(a.response ?? '').slice(0, 20000);
+    if (question.type === 'multiple_choice') {
+      autoScore = Number(response) === question.correctOptionIndex ? question.points || 0 : 0;
       autoScoreTotal += autoScore;
     }
-    return { questionId: a.questionId, response: String(a.response ?? ''), autoScore };
-  });
+    return { questionId: question._id, response, autoScore };
+  }).filter(Boolean);
 
   invite.answers = gradedAnswers;
   invite.status = 'submitted';
@@ -165,8 +169,54 @@ async function submitAssessment(token, body) {
   return { message: 'Assessment submitted. The hiring team will review your answers.' };
 }
 
+function redactAnswerKeys(rows) {
+  return (rows || []).map((row) => ({
+    ...row,
+    questions: (row.questions || []).map((question) => {
+      const next = { ...question };
+      delete next.correctOptionIndex;
+      return next;
+    }),
+  }));
+}
+
+function asOrgId(organizationId) {
+  const raw = String(organizationId || '');
+  return mongoose.Types.ObjectId.isValid(raw) ? new mongoose.Types.ObjectId(raw) : organizationId;
+}
+
+async function refreshExpiredInvites(organizationId) {
+  await AssessmentInvite.updateMany(
+    {
+      organizationId,
+      status: { $in: ['pending', 'in_progress'] },
+      expiresAt: { $lt: new Date() },
+    },
+    { $set: { status: 'expired' } }
+  );
+}
+
 async function listAssessments(organizationId) {
-  return Assessment.find({ organizationId }).sort({ createdAt: -1 });
+  await refreshExpiredInvites(organizationId);
+  const rows = await Assessment.find({ organizationId }).sort({ createdAt: -1 }).lean();
+  const grouped = await AssessmentInvite.aggregate([
+    { $match: { organizationId: asOrgId(organizationId) } },
+    { $group: { _id: { assessmentId: '$assessmentId', status: '$status' }, n: { $sum: 1 } } },
+  ]);
+  const byAssessment = new Map();
+  for (const row of grouped) {
+    const id = String(row._id.assessmentId);
+    const bucket = byAssessment.get(id) || { pending: 0, in_progress: 0, submitted: 0, graded: 0, expired: 0, total: 0 };
+    const status = row._id.status || 'pending';
+    bucket[status] = (bucket[status] || 0) + row.n;
+    bucket.total += row.n;
+    byAssessment.set(id, bucket);
+  }
+  return rows.map((row) => ({
+    ...row,
+    maxScore: (row.questions || []).reduce((sum, question) => sum + (question.points || 0), 0),
+    inviteStats: byAssessment.get(String(row._id)) || { pending: 0, in_progress: 0, submitted: 0, graded: 0, expired: 0, total: 0 },
+  }));
 }
 
 async function resolveProctoringConfig(organizationId, proctoring) {
@@ -189,6 +239,41 @@ async function resolveProctoringConfig(organizationId, proctoring) {
   };
 }
 
+function normalizeQuestionType(type) {
+  const raw = String(type || 'text').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (['mcq', 'choice', 'single_choice', 'multiple_choice', 'multi_choice'].includes(raw)) return 'multiple_choice';
+  if (['code', 'coding', 'programming'].includes(raw)) return 'code';
+  return 'text';
+}
+
+function normalizeQuestions(questions) {
+  const list = (Array.isArray(questions) ? questions : []).map((q) => {
+    const type = normalizeQuestionType(q?.type);
+    const prompt = String(q?.prompt || q?.question || q?.text || '').trim();
+    const options = (Array.isArray(q?.options) ? q.options : [])
+      .map((option) => String(option || '').trim())
+      .filter(Boolean);
+    let correctOptionIndex = Number(q?.correctOptionIndex);
+    if (!Number.isInteger(correctOptionIndex) || correctOptionIndex < 0 || correctOptionIndex >= options.length) {
+      correctOptionIndex = 0;
+    }
+    return {
+      ...q,
+      type,
+      prompt,
+      options: type === 'multiple_choice' ? options : [],
+      correctOptionIndex: type === 'multiple_choice' ? correctOptionIndex : undefined,
+      points: Number(q?.points) >= 0 ? Number(q.points) : 10,
+      language: type === 'code' ? String(q?.language || '').trim() : '',
+    };
+  });
+  const blank = list.find((q) => !q.prompt);
+  if (blank) throw httpError('Every question needs a prompt');
+  const weakChoice = list.find((q) => q.type === 'multiple_choice' && q.options.length < 2);
+  if (weakChoice) throw httpError('Multiple choice questions need at least two options');
+  return list;
+}
+
 async function createAssessment(organizationId, userId, body) {
   const { title, description = '', durationMinutes = 45, questions = [], proctoring } = body;
   if (!title || !title.trim()) throw httpError('Title is required');
@@ -197,15 +282,20 @@ async function createAssessment(organizationId, userId, body) {
   }
 
   const proctoringConfig = await resolveProctoringConfig(organizationId, proctoring);
-  return Assessment.create({
-    organizationId,
-    title: title.trim(),
-    description,
-    durationMinutes,
-    questions,
-    proctoring: proctoringConfig,
-    createdBy: userId,
-  });
+  try {
+    return await Assessment.create({
+      organizationId,
+      title: title.trim(),
+      description,
+      durationMinutes,
+      questions: normalizeQuestions(questions),
+      proctoring: proctoringConfig,
+      createdBy: userId,
+    });
+  } catch (err) {
+    if (err.name === 'ValidationError') throw httpError(err.message, 400);
+    throw err;
+  }
 }
 
 async function updateAssessment(organizationId, id, body) {
@@ -214,7 +304,7 @@ async function updateAssessment(organizationId, id, body) {
   if (title !== undefined) update.title = title.trim();
   if (description !== undefined) update.description = description;
   if (durationMinutes !== undefined) update.durationMinutes = durationMinutes;
-  if (questions !== undefined) update.questions = questions;
+  if (questions !== undefined) update.questions = normalizeQuestions(questions);
   if (isActive !== undefined) update.isActive = isActive;
 
   if (proctoring !== undefined) {
@@ -237,13 +327,46 @@ async function deleteAssessment(organizationId, id) {
   return { message: 'Assessment deleted' };
 }
 
+async function searchInternalCandidates(organizationId, query) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  const orgMatch = organizationIdMatch(organizationId) || { organizationId };
+  const rx = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+  const filter = await excludeFreelancerCreated(organizationId, {
+    ...orgMatch,
+    $or: [{ name: rx }, { email: rx }, { phone: rx }, { contact: rx }],
+  });
+  return Candidate.find(filter).select('name email phone').limit(10).lean();
+}
+
+async function assertInternalCandidate(organizationId, candidate) {
+  const creatorId = candidate?.createdBy;
+  if (!creatorId) return;
+  const freelancerIds = await orgFreelancerCreatorIds(organizationId);
+  if (freelancerIds.some((id) => String(id) === String(creatorId))) {
+    throw httpError('Assessments are for internal hiring only. This record belongs to a freelance recruiter.', 403);
+  }
+}
+
 async function inviteCandidate(organizationId, userId, assessmentId, body) {
   const { candidateId, applicationId, expiresInHours = 72 } = body;
   const assessment = await Assessment.findOne({ _id: assessmentId, organizationId });
   if (!assessment) throw httpError('Assessment not found', 404);
+  if (assessment.isActive === false) throw httpError('This assessment is archived. Restore it before inviting anyone.', 400);
 
   const candidate = await Candidate.findOne({ _id: candidateId, organizationId });
   if (!candidate) throw httpError('Candidate not found', 404);
+  await assertInternalCandidate(organizationId, candidate);
+
+  const openInvite = await AssessmentInvite.findOne({
+    organizationId,
+    assessmentId: assessment._id,
+    candidateId: candidate._id,
+    status: { $in: ['pending', 'in_progress'] },
+  });
+  if (openInvite) {
+    throw httpError('This candidate already has an open invite. Copy or resend that link instead.');
+  }
 
   const token = AssessmentInvite.generateToken();
   const invite = await AssessmentInvite.create({
@@ -256,8 +379,7 @@ async function inviteCandidate(organizationId, userId, assessmentId, body) {
     expiresAt: new Date(Date.now() + expiresInHours * 60 * 60 * 1000),
   });
 
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-  const takeUrl = `${frontendUrl}/assessment/${token}`;
+  const takeUrl = `${publicSiteBase().replace(/\/$/, '')}/assessment/${token}`;
   const brand = await loadOrgEmailBrand(organizationId);
   const safeTitle = escapeHtml(assessment.title);
   const safeCandidateName = escapeHtml(candidate.name || 'Candidate');
@@ -268,6 +390,10 @@ async function inviteCandidate(organizationId, userId, assessmentId, body) {
     logoUrl: brand.logoUrl,
     brandColor: brand.brandColor,
     wordmark: brand.wordmark,
+    companyAddress: brand.companyAddress || '',
+    websiteUrl: brand.websiteUrl || '',
+    supportEmail: brand.supportEmail || '',
+    socialLinks: brand.socialLinks || {},
     bodyHtml: `
       <p style="margin:0 0 16px 0;font-size:15px;color:#0f172a;font-weight:600;">Dear ${safeCandidateName},</p>
       <p style="margin:0 0 12px 0;color:#334155;line-height:1.7;">As part of the selection process, you have been invited to complete the following assessment:</p>
@@ -281,19 +407,34 @@ async function inviteCandidate(organizationId, userId, assessmentId, body) {
       ${brandButtonHtml({ href: takeUrl, label: 'Start assessment', brandColor: brand.brandColor })}
       <p style="margin:20px 0 0 0;color:#64748b;font-size:13px;line-height:1.6;">Please attempt the assessment in a quiet environment without external assistance, unless stated otherwise. Contact us if you face any access issues.</p>`,
   });
-  await sendEmailQueued(
-    candidate.email,
-    `Complete your assessment — ${assessment.title}`,
-    html,
-    `Start your assessment: ${takeUrl}`
-  ).catch((err) => {
+  let emailSent = false;
+  try {
+    await sendEmailQueued(
+      candidate.email,
+      `Complete your assessment — ${assessment.title}`,
+      html,
+      `Start your assessment: ${takeUrl}`,
+      {
+        userId,
+        organizationId,
+        senderName: brand.name,
+        directReply: true,
+      }
+    );
+    emailSent = true;
+  } catch (err) {
     console.error('[assessments] Failed to send invite email:', err.message);
-  });
+    emailSent = false;
+  }
 
-  return invite;
+  const serialized = typeof invite.toObject === 'function' ? invite.toObject() : invite;
+  serialized.emailSent = emailSent;
+  serialized.takeUrl = takeUrl;
+  return serialized;
 }
 
 async function listInvites(organizationId, query) {
+  await refreshExpiredInvites(organizationId);
   const filter = { organizationId };
   if (query.assessmentId) filter.assessmentId = query.assessmentId;
   return AssessmentInvite.find(filter)
@@ -308,6 +449,58 @@ async function getInvite(organizationId, id) {
     .populate('assessmentId');
   if (!invite) throw httpError('Invite not found', 404);
   return invite;
+}
+
+async function resendInvite(organizationId, userId, inviteId) {
+  const invite = await AssessmentInvite.findOne({ _id: inviteId, organizationId })
+    .populate('candidateId')
+    .populate('assessmentId');
+  if (!invite) throw httpError('Invite not found', 404);
+  if (invite.status === 'submitted' || invite.status === 'graded') {
+    throw httpError('This assessment is already submitted');
+  }
+  const assessment = invite.assessmentId;
+  const candidate = invite.candidateId;
+  if (!assessment || !candidate?.email) throw httpError('Invite is missing a candidate email', 400);
+  invite.expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+  if (invite.status === 'expired') invite.status = 'pending';
+  invite.sentAt = new Date();
+  invite.sentBy = userId;
+  await invite.save();
+
+  const takeUrl = `${publicSiteBase().replace(/\/$/, '')}/assessment/${invite.token}`;
+  const brand = await loadOrgEmailBrand(organizationId);
+  const html = wrapBrandedEmailHtml({
+    title: `Complete your assessment — ${assessment.title}`,
+    category: 'assessment',
+    orgName: brand.name,
+    logoUrl: brand.logoUrl,
+    brandColor: brand.brandColor,
+    wordmark: brand.wordmark,
+    companyAddress: brand.companyAddress || '',
+    websiteUrl: brand.websiteUrl || '',
+    supportEmail: brand.supportEmail || '',
+    socialLinks: brand.socialLinks || {},
+    bodyHtml: `
+      <p style="margin:0 0 16px 0;font-size:15px;color:#0f172a;font-weight:600;">Dear ${escapeHtml(candidate.name || 'Candidate')},</p>
+      <p style="margin:0 0 12px 0;color:#334155;line-height:1.7;">Your assessment link has been refreshed. Please complete it before it expires.</p>
+      <p style="margin:0 0 16px 0;font-size:15px;font-weight:700;color:#0f172a;">${escapeHtml(assessment.title)}</p>
+      ${brandButtonHtml({ href: takeUrl, label: 'Start assessment', brandColor: brand.brandColor })}`,
+  });
+  let emailSent = false;
+  try {
+    await sendEmailQueued(
+      candidate.email,
+      `Complete your assessment — ${assessment.title}`,
+      html,
+      `Start your assessment: ${takeUrl}`,
+      { userId, organizationId, senderName: brand.name, directReply: true }
+    );
+    emailSent = true;
+  } catch (err) {
+    console.error('[assessments] Failed to resend invite email:', err.message);
+  }
+  return { emailSent, status: invite.status, expiresAt: invite.expiresAt };
 }
 
 async function getInviteIntegrity(organizationId, id) {
@@ -355,12 +548,15 @@ module.exports = {
   recordProctoringEvents,
   submitAssessment,
   listAssessments,
+  redactAnswerKeys,
+  searchInternalCandidates,
   createAssessment,
   updateAssessment,
   deleteAssessment,
   inviteCandidate,
   listInvites,
   getInvite,
+  resendInvite,
   getInviteIntegrity,
   gradeInvite,
 };

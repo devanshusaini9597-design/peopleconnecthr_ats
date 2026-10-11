@@ -8,7 +8,7 @@ export const ROLES_TOUR_STEPS = [
   {
     target: '[data-tour="roles-tip"]',
     title: 'How it works',
-    body: 'Modules control sidebar visibility. Actions control create / edit / delete inside those areas. Assign the role to a teammate from Organization → Team.',
+    body: 'Turn on a module to open the page. Turn on actions for the buttons inside it. Example: MIS on, Export off. Saving a system role updates everyone on that role. Assign a custom pack from Team.',
     placement: 'bottom',
   },
 ];

@@ -104,8 +104,8 @@ export const SECTIONS = [
       { labelKey: 'nav.items.analytics', label: 'Analytics', path: '/analytics', icon: BarChart3, roles: ['owner', 'admin', 'recruiter', 'interviewer', 'readonly', 'freelancer'], module: 'modules.analytics', freelancerAlways: true },
       { labelKey: 'nav.items.globalSearch', label: 'Global Search', path: '/search', icon: Search, roles: ['owner', 'admin', 'recruiter', 'interviewer', 'readonly'], feature: 'search.global', module: 'modules.search' },
       { labelKey: 'nav.items.reportsStudio', label: 'Reports Studio', path: '/reports-studio', icon: PieChart, roles: ['owner', 'admin', 'recruiter'], feature: 'analytics.advanced', module: 'modules.reports' },
-      { labelKey: 'nav.items.dei', label: 'DEI', path: '/dei', icon: Shield, roles: ['owner', 'admin'], feature: 'analytics.dei', module: 'modules.dei', internalPreview: true },
-      { labelKey: 'nav.items.announcements', label: 'Announcements', path: '/announcements', icon: Megaphone, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales', 'freelancer'], feature: 'announcements', module: 'modules.announcements', freelancerAlways: true },
+      { labelKey: 'nav.items.dei', label: 'DEI', path: '/dei', icon: Shield, roles: ['owner', 'admin'], feature: 'analytics.dei', module: 'modules.dei', internalPreview: true, hidden: true },
+      { labelKey: 'nav.items.announcements', label: 'Announcements', path: '/announcements', icon: Megaphone, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales', 'freelancer'], feature: 'announcements', module: 'modules.announcements', freelancerAlways: true, respectPlan: true },
     ]
   },
   {
@@ -124,10 +124,10 @@ export const SECTIONS = [
       { labelKey: 'nav.items.talentPools', label: 'Talent Pools', path: '/talent-pools', icon: Layers, roles: ['owner', 'admin', 'recruiter'], feature: 'candidates.talentPools', module: 'modules.talentPools' },
       { labelKey: 'nav.items.skills', label: 'Skills', path: '/skills', icon: Tags, roles: ['owner', 'admin', 'recruiter'], feature: 'candidates.skillsTaxonomy', module: 'modules.skills' },
       { labelKey: 'nav.items.positions', label: 'Positions', path: '/positions', icon: Briefcase, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer'], module: 'modules.candidates' },
-      { labelKey: 'nav.items.collaboration', label: 'Collaboration', path: '/collaboration', icon: MessageSquare, roles: ['owner', 'admin', 'recruiter'], feature: 'candidates.collaboration', module: 'modules.collaboration', internalPreview: true },
+      { labelKey: 'nav.items.collaboration', label: 'Collaboration', path: '/collaboration', icon: MessageSquare, roles: ['owner', 'admin', 'recruiter'], feature: 'candidates.collaboration', module: 'modules.collaboration', internalPreview: true, hidden: true },
       { labelKey: 'nav.items.myTeam', label: 'My Team', path: '/my-team', icon: UserPlus, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer'] },
-      { labelKey: 'nav.items.formBuilder', label: 'Form Builder', path: '/form-builder', icon: FormInput, roles: ['owner', 'admin', 'recruiter'], feature: 'careers.formBuilder', module: 'modules.formBuilder', internalPreview: true },
-      { labelKey: 'nav.items.assessments', label: 'Assessments', path: '/assessments', icon: ClipboardList, roles: ['owner', 'admin', 'recruiter'], feature: 'assessments', module: 'modules.assessments' },
+      { labelKey: 'nav.items.formBuilder', label: 'Form Builder', path: '/form-builder', icon: FormInput, roles: ['owner', 'admin', 'recruiter'], feature: 'careers.formBuilder', module: 'modules.formBuilder', internalPreview: true, hidden: true },
+      { labelKey: 'nav.items.assessments', label: 'Assessments', path: '/assessments', icon: ClipboardList, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], onlyRoles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer', 'interviewer', 'readonly', 'other'], feature: 'assessments', module: 'modules.assessments' },
       { labelKey: 'nav.items.aiTools', label: 'AI Tools', path: '/ai-tools', icon: Sparkles, roles: ['owner', 'admin', 'recruiter'], anyAi: true, module: 'modules.aiTools' },
     ]
   },
@@ -138,8 +138,8 @@ export const SECTIONS = [
     icon: Megaphone,
     roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'],
     items: [
-      { labelKey: 'nav.items.mis', label: 'MIS', path: '/mis', icon: Megaphone, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], onlyRoles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer', 'interviewer', 'readonly'] },
-      { labelKey: 'nav.items.misReports', label: 'MIS Reports', path: '/mis-reports', icon: FileText, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], onlyRoles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer', 'interviewer', 'readonly'] },
+      { labelKey: 'nav.items.mis', label: 'MIS', path: '/mis', icon: Megaphone, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], onlyRoles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer', 'interviewer', 'readonly'], module: 'modules.mis' },
+      { labelKey: 'nav.items.misReports', label: 'MIS Reports', path: '/mis-reports', icon: FileText, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], onlyRoles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer', 'interviewer', 'readonly'], module: 'modules.mis' },
     ]
   },
   {
@@ -153,7 +153,8 @@ export const SECTIONS = [
       { labelKey: 'nav.items.myPipeline', label: 'Pipeline Board', path: '/my-pipeline', icon: Kanban, roles: ['freelancer'], onlyRoles: ['freelancer'], module: 'modules.pipeline' },
       { labelKey: 'nav.items.partnerPage', label: 'Partnership page', path: '/partners', icon: Handshake, roles: ['owner', 'admin'], onlyRoles: ['owner', 'admin'], hideForRoles: ['freelancer', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter', 'interviewer', 'readonly', 'other'], module: 'modules.jobs', externalPartners: true },
       { labelKey: 'nav.items.freelancerApplications', label: 'Partner applications', path: '/freelancer-applications', icon: UserPlus, roles: ['owner', 'admin'], onlyRoles: ['owner', 'admin'], hideForRoles: ['freelancer', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter', 'interviewer', 'readonly', 'other'], module: 'modules.freelanceReview' },
-      { labelKey: 'nav.items.freelanceReview', label: 'Freelance Review', path: '/freelance-review', icon: Send, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer'], module: 'modules.freelanceReview' },
+      { labelKey: 'nav.items.freelancerOnboarding', label: 'Freelance recruiters', path: '/freelancers', icon: Users, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter', 'freelancer'], freelancerAlways: true, module: 'modules.freelanceReview' },
+      { labelKey: 'nav.items.freelanceReview', label: 'Pipeline board', path: '/freelance-review', icon: Send, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer'], module: 'modules.freelanceReview' },
       { labelKey: 'nav.items.supportDesk', label: 'Freelancer Support', path: '/support-desk', icon: LifeBuoy, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer'], module: 'modules.applications' },
       { labelKey: 'nav.items.feedback', label: 'Support', path: '/feedback', icon: LifeBuoy, roles: ['freelancer'] },
     ]
@@ -166,8 +167,8 @@ export const SECTIONS = [
     roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'],
     items: [
       { labelKey: 'nav.items.inbox', label: 'Inbox', path: '/inbox', icon: Inbox, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer', 'interviewer', 'readonly', 'other'], feature: 'messaging.inbox', module: 'modules.inbox' },
-      { labelKey: 'nav.items.sequences', label: 'Sequences', path: '/sequences', icon: MailPlus, roles: ['owner', 'admin', 'recruiter'], feature: 'messaging.sequences', module: 'modules.sequences', internalPreview: true },
-      { labelKey: 'nav.items.consent', label: 'Consent', path: '/messaging-consent', icon: ShieldCheck, roles: ['owner', 'admin', 'recruiter'], feature: 'messaging.consent', module: 'modules.consent', internalPreview: true },
+      { labelKey: 'nav.items.sequences', label: 'Sequences', path: '/sequences', icon: MailPlus, roles: ['owner', 'admin', 'recruiter'], feature: 'messaging.sequences', module: 'modules.sequences', internalPreview: true, hidden: true },
+      { labelKey: 'nav.items.consent', label: 'Consent', path: '/messaging-consent', icon: ShieldCheck, roles: ['owner', 'admin', 'recruiter'], feature: 'messaging.consent', module: 'modules.consent', internalPreview: true, hidden: true },
     ]
   },
   {
@@ -201,9 +202,9 @@ export const SECTIONS = [
       { labelKey: 'nav.items.scheduledReports', label: 'Scheduled Reports', path: '/organization/scheduled-reports', icon: CalendarClock, roles: ['owner', 'admin', 'hr_manager'], feature: 'reports.custom', module: 'modules.scheduledReports' },
       { labelKey: 'nav.items.whiteLabel', label: 'White-Label Kit', path: '/organization/white-label', icon: Palette, roles: ['owner', 'admin', 'hr_manager'], feature: 'whiteLabel', module: 'modules.whiteLabel' },
       { labelKey: 'nav.items.chromeExtension', label: 'Chrome Extension', path: '/organization/chrome-extension', icon: Chrome, roles: ['owner', 'admin', 'hr_manager'], module: 'modules.chromeExtension' },
-      { labelKey: 'nav.items.careersChatbot', label: 'Careers Chatbot', path: '/organization/chatbot', icon: MessageCircle, roles: ['owner', 'admin', 'hr_manager'], feature: 'careers.chatbot', module: 'modules.chatbot' },
-      { labelKey: 'nav.items.referrals', label: 'Referrals', path: '/organization/referrals', icon: Gift, roles: ['owner', 'admin', 'hr_manager'], feature: 'referrals.program', module: 'modules.referrals', internalPreview: true },
-      { labelKey: 'nav.items.approvals', label: 'Approvals', path: '/organization/approvals', icon: ListChecks, roles: ['owner', 'admin', 'hr_manager'], feature: 'workflows.approvals', module: 'modules.approvals', internalPreview: true },
+      { labelKey: 'nav.items.careersChatbot', label: 'Careers Chatbot', path: '/organization/chatbot', icon: MessageCircle, roles: ['owner', 'admin', 'hr_manager'], feature: 'careers.chatbot', module: 'modules.chatbot', hidden: true },
+      { labelKey: 'nav.items.referrals', label: 'Referrals', path: '/organization/referrals', icon: Gift, roles: ['owner', 'admin', 'hr_manager'], feature: 'referrals.program', module: 'modules.referrals', internalPreview: true, hidden: true },
+      { labelKey: 'nav.items.approvals', label: 'Approvals', path: '/organization/approvals', icon: ListChecks, roles: ['owner', 'admin', 'hr_manager'], feature: 'workflows.approvals', module: 'modules.approvals', internalPreview: true, hidden: true },
     ]
   },
   {
@@ -215,11 +216,10 @@ export const SECTIONS = [
     items: [
       { labelKey: 'nav.items.emailTemplates', label: 'Email Templates', path: '/email-templates', icon: Mail, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter'], hideForRoles: ['freelancer'], module: 'modules.emailTemplates' },
       { labelKey: 'nav.items.emailReports', label: 'Email Reports', path: '/email-reports', icon: Inbox, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter'], hideForRoles: ['freelancer'], module: 'modules.emailTemplates' },
-      { labelKey: 'nav.items.emailSettings', label: 'Email Settings', path: '/email-settings', icon: Settings, roles: ['owner', 'admin', 'hr_manager'], hideForRoles: ['freelancer'], feature: 'integrations.byoEmail', module: 'modules.emailSettings' },
+      { labelKey: 'nav.items.emailSettings', label: 'Email Settings', path: '/email-settings', icon: Settings, roles: ['owner', 'admin', 'hr_manager'], hideForRoles: ['freelancer'], module: 'modules.emailSettings' },
       { labelKey: 'nav.items.notificationSettings', label: 'Notification preferences', path: '/notification-settings', icon: BellRing, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'interviewer', 'readonly', 'other', 'freelancer'], module: 'modules.profile', freelancerAlways: true },
       { labelKey: 'nav.items.pushNotifications', label: 'Push Notifications', path: '/push-notifications', icon: Bell, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'interviewer', 'freelancer'], feature: 'push.notifications', module: 'modules.pushNotifications', freelancerAlways: true },
       { labelKey: 'nav.items.profile', label: 'Profile', path: '/settings', icon: User, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter', 'interviewer', 'readonly', 'other', 'freelancer'], module: 'modules.profile' },
-      { labelKey: 'nav.items.trialRequests', label: 'Trial requests', path: '/trial-requests', icon: UserPlus, roles: ['owner', 'admin', 'hr_manager', 'sales'], platformOnly: true },
     ]
   },
   {
@@ -229,7 +229,7 @@ export const SECTIONS = [
     icon: CreditCard,
     roles: ['owner'],
     items: [
-      { labelKey: 'nav.items.billing', label: 'Billing', path: '/billing', icon: CreditCard, roles: ['owner'], module: 'modules.billing' },
+      { labelKey: 'nav.items.billing', label: 'Billing', path: '/billing', icon: CreditCard, roles: ['owner'], hideForRoles: ['freelancer', 'admin', 'recruiter', 'hr_manager', 'hr_recruiter', 'sales', 'interviewer', 'readonly', 'other'], module: 'modules.billing' },
     ]
   }
 ];

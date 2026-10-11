@@ -18,6 +18,15 @@ const Organization = require('../models/Organization');
 const eventBus = require('../events/eventBus');
 const eventTypes = require('../events/eventTypes');
 
+/** Billing stays on Owner. Custom packs can open a page without taking every action on it. */
+const OWNER_ONLY_PERMISSIONS = ['modules.billing', 'billing.manage'];
+
+function sanitizePermissions(list = [], actorRole) {
+  const unique = [...new Set((Array.isArray(list) ? list : []).filter((key) => PERMISSIONS.includes(key)))];
+  if (actorRole === 'owner') return unique;
+  return unique.filter((key) => !OWNER_ONLY_PERMISSIONS.includes(key));
+}
+
 /** System roles that can be customized per org (Owner is never editable). */
 const EDITABLE_SYSTEM_ROLES = [
   { key: 'admin', label: 'Admin', description: 'Full org access except billing' },
@@ -117,12 +126,13 @@ router.put('/system-roles/:roleKey', async (req, res) => {
         message: `Unknown permissions: ${invalid.join(', ')}`,
       });
     }
+    const nextPermissions = sanitizePermissions(permissions, req.user.role);
 
     const org = await Organization.findById(req.user.organizationId);
     if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
 
     const next = { ...(org.rolePermissionOverrides || {}) };
-    next[roleKey] = permissions;
+    next[roleKey] = nextPermissions;
     org.rolePermissionOverrides = next;
     org.markModified('rolePermissionOverrides');
     await org.save();
@@ -133,7 +143,7 @@ router.put('/system-roles/:roleKey', async (req, res) => {
         ...meta,
         kind: 'system',
         isCustomized: true,
-        permissions,
+        permissions: nextPermissions,
         defaultPermissions: DEFAULT_ROLE_PERMISSIONS[roleKey] || [],
       },
     });
@@ -215,7 +225,7 @@ router.post('/', async (req, res) => {
       organizationId: req.user.organizationId,
       name: name.trim(),
       description: description || '',
-      permissions,
+      permissions: sanitizePermissions(permissions, req.user.role),
       createdBy: req.user.id
     });
 
@@ -244,7 +254,7 @@ router.put('/:id', async (req, res) => {
       if (invalid.length > 0) {
         return res.status(400).json({ success: false, message: `Unknown permissions: ${invalid.join(', ')}` });
       }
-      role.permissions = permissions;
+      role.permissions = sanitizePermissions(permissions, req.user.role);
     }
 
     await role.save();

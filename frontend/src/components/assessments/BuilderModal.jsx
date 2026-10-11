@@ -6,24 +6,33 @@ import {
   emptyQuestion, QUESTION_TYPE_OPTIONS, STRICTNESS_OPTIONS, actionBtn,
 } from './assessmentsConstants';
 
-export const BuilderModal = ({ open, onClose, onSave, saving, canProctor }) => {
+export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initial }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [durationMinutes, setDurationMinutes] = useState(45);
   const [questions, setQuestions] = useState([emptyQuestion()]);
   const [proctoringEnabled, setProctoringEnabled] = useState(false);
   const [strictness, setStrictness] = useState('standard');
+  const editing = Boolean(initial?._id);
 
   useEffect(() => {
-    if (open) {
-      setTitle('');
-      setDescription('');
-      setDurationMinutes(45);
-      setQuestions([emptyQuestion()]);
-      setProctoringEnabled(false);
-      setStrictness('standard');
-    }
-  }, [open]);
+    if (!open) return;
+    setTitle(initial?.title || '');
+    setDescription(initial?.description || '');
+    setDurationMinutes(initial?.durationMinutes || 45);
+    const loaded = (initial?.questions || []).map((question) => ({
+      _id: question._id,
+      type: question.type || 'text',
+      prompt: question.prompt || '',
+      options: question.options?.length ? question.options : ['', ''],
+      correctOptionIndex: question.correctOptionIndex || 0,
+      points: question.points ?? 10,
+      language: question.language || '',
+    }));
+    setQuestions(loaded.length ? loaded : [emptyQuestion()]);
+    setProctoringEnabled(Boolean(initial?.proctoring?.enabled));
+    setStrictness(initial?.proctoring?.strictness || 'standard');
+  }, [open, initial]);
 
   const updateQuestion = (idx, patch) => {
     setQuestions((qs) => qs.map((q, i) => (i === idx ? { ...q, ...patch } : q)));
@@ -46,14 +55,20 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor }) => {
   };
   const removeQuestion = (idx) => setQuestions((qs) => qs.filter((_, i) => i !== idx));
 
-  const valid = title.trim() && questions.length > 0 && questions.every((q) => q.prompt.trim());
+  const valid = title.trim() && questions.length > 0 && questions.every((q) => {
+    if (!q.prompt.trim()) return false;
+    if (q.type !== 'multiple_choice') return true;
+    return q.options.filter((option) => String(option || '').trim()).length >= 2;
+  });
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title="New Assessment"
-      description="Build a skills test — code answers are graded by your team."
+      title={editing ? 'Edit assessment' : 'New Assessment'}
+      description={editing
+        ? 'Update the test. Invites already sent keep their answers tied to the same questions.'
+        : 'Build a skills test — code answers are graded by your team.'}
       size="xl"
       footer={
         <>
@@ -70,7 +85,11 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor }) => {
             disabled={saving || !valid}
             className="btn-primary"
           >
-            {saving ? <><Loader2 size={16} className="animate-spin" /> Creating…</> : <><Plus size={16} /> Create Assessment</>}
+            {saving
+              ? <><Loader2 size={16} className="animate-spin" /> Saving…</>
+              : editing
+                ? 'Save changes'
+                : <><Plus size={16} /> Create Assessment</>}
           </button>
         </>
       }

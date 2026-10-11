@@ -8,8 +8,23 @@ export const MIS_COMPANY_ROLES = [
   'sales',
 ];
 
+function granted(user, key) {
+  if (!user) return false;
+  if (user.role === 'owner') return true;
+  if (Array.isArray(user.permissions)) return user.permissions.includes(key);
+  return null;
+}
+
 export function canAccessMis(user) {
+  const via = granted(user, 'modules.mis');
+  if (via !== null) return via;
   return Boolean(user && MIS_COMPANY_ROLES.includes(user.role));
+}
+
+export function canExportMis(user) {
+  const via = granted(user, 'mis.export');
+  if (via !== null) return via;
+  return user?.role === 'owner';
 }
 
 /**
@@ -35,6 +50,8 @@ export function canSeeMisDeskTabs(user) {
 
 /** Organisation-wide MIS reports + employee drill-down: owner, admin, and HR manager. */
 export function canViewMisOrgReports(user) {
+  const via = granted(user, 'mis.viewOrg');
+  if (via !== null) return via;
   return Boolean(user && (user.role === 'owner' || user.role === 'admin' || user.role === 'hr_manager'));
 }
 
@@ -97,6 +114,8 @@ export function misDeskHint(deskView, user) {
 
 /** Owner, admin, and HR manager may mutate any MIS contact in the organisation. */
 export function canEditAnyMisContact(user) {
+  const via = granted(user, 'mis.editAny');
+  if (via !== null) return via;
   return Boolean(user && (user.role === 'owner' || user.role === 'admin' || user.role === 'hr_manager'));
 }
 

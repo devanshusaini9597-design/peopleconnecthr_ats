@@ -10,6 +10,7 @@ const {
   misListFilter,
   misWriteFilter,
   isMisCompanyRole,
+  canViewMisOrgData,
   userIdParts,
   organizationIdMatch,
 } = require('../utils/dataScope');
@@ -26,16 +27,17 @@ function httpError(message, statusCode = 400, extra = {}) {
   return err;
 }
 
-function assertMisCompany(user) {
-  if (!user || !isMisCompanyRole(user) || user.role === 'freelancer') {
-    throw httpError('MIS is available to company employees only', 403, { code: 'MIS_COMPANY_ONLY' });
-  }
+async function assertMisCompany(user) {
+  if (!user) throw httpError('MIS is available to company employees only', 403, { code: 'MIS_COMPANY_ONLY' });
+  const { hasPermission } = require('../middleware/permissionMiddleware');
+  if (await hasPermission(user, 'modules.mis')) return;
+  throw httpError('MIS is not included in your role', 403, { code: 'MIS_COMPANY_ONLY' });
 }
 
-function assertMisOwner(user) {
-  if (!user || user.role !== 'owner') {
-    throw httpError('This MIS action is available to the company owner only', 403, { code: 'MIS_OWNER_ONLY' });
-  }
+async function assertMisExport(user) {
+  const { hasPermission } = require('../middleware/permissionMiddleware');
+  if (await hasPermission(user, 'mis.export')) return;
+  throw httpError('Export is not included in your role', 403, { code: 'MIS_EXPORT_DENIED' });
 }
 
 /** Only owner uploads land on the shared organisation desk; admin + employees → personal. */
@@ -138,23 +140,23 @@ function userCreatedByIds(user) {
  * desk=all → full list visibility for that role (owner: org; others: shared + own personal).
  */
 function canUseMisAllDesk(user) {
-  if (!user?.role) return false;
+  if (!user) return false;
+  if (Array.isArray(user.permissions)) return user.permissions.includes('modules.mis') || user.role === 'owner';
   if (user.role === 'owner' || user.role === 'admin') return true;
   return ['hr_manager', 'hr_recruiter', 'recruiter', 'sales'].includes(user.role);
 }
 
 function resolveMisDeskView(user, desk) {
   const view = String(desk || '').toLowerCase().trim();
-  // Owner has no personal desk — coerce "mine" to organisation overview
-  if (view === 'mine' && user?.role === 'owner') {
+  const orgWide = canViewMisOrgData(user);
+  // Owner, admin, and HR manager use the organisation directory — no personal desk.
+  if (view === 'mine' && orgWide) {
     return 'all';
   }
   if (view === 'mine' || view === 'company') return view;
-  // Owner: all employee personal desks (contacts added by the team)
-  if (view === 'employees' && user?.role === 'owner') return 'employees';
+  if (view === 'employees' && orgWide) return 'employees';
   if (view === 'all' && canUseMisAllDesk(user)) return 'all';
-  // Missing / invalid: owner defaults to all; employees (incl. admin) to mine
-  if (!view && user?.role === 'owner') return 'all';
+  if (!view && orgWide) return 'all';
   return 'mine';
 }
 
@@ -339,7 +341,7 @@ function buildMisQueryFilter(user, query = {}) {
   if (movedFlag === '1' || movedFlag === 'yes' || movedFlag === 'moved') {
     const me = userCreatedByIds(user);
     const movedClauses = [{ movedToCandidateAt: { $exists: true, $ne: null } }];
-    if (user.role !== 'owner') {
+    if (!canViewMisOrgData(user)) {
       movedClauses.push(me.length ? { movedBy: { $in: me } } : { _id: { $in: [] } });
     }
     filter.$and = [
@@ -367,7 +369,7 @@ async function countMisDesk(user, organizationId, desk = 'all') {
   const me = userCreatedByIds(user);
   const countMs = (q) => MisContact.countDocuments(q).maxTimeMS(20000).catch(() => null);
 
-  if (user.role === 'owner') {
+  if (canViewMisOrgData(user)) {
     if (view === 'mine') {
       if (!me.length) return 0;
       return countMs({ ...orgMatch, createdBy: { $in: me } });
@@ -418,7 +420,7 @@ function misQueryHasExtraFilters(query = {}) {
 }
 
 async function listContacts(user, query = {}) {
-  assertMisCompany(user);
+  await assertMisCompany(user);
   const organizationId = user.organizationId;
   if (!organizationId) throw httpError('Organization required', 403);
   const page = Math.max(1, Number(query.page) || 1);
@@ -536,8 +538,8 @@ async function listContacts(user, query = {}) {
 /**
  * Secure report/stats identity — never take organizationId / userId from the query string.
  */
-function assertMisActor(user) {
-  assertMisCompany(user);
+async function assertMisActor(user) {
+  await assertMisCompany(user);
   if (!user.organizationId) throw httpError('Organization required', 403);
   if (user.role !== 'owner' && !userCreatedByIds(user).length) {
     throw httpError('User identity required for MIS access', 403, { code: 'MIS_USER_REQUIRED' });
@@ -546,10 +548,10 @@ function assertMisActor(user) {
 
 /**
  * Who may view organisation-wide MIS reports (and drill into any employee).
- * Matches MIS “All desk” leadership — owner + admin only.
+ * Owner, admin, and HR manager.
  */
 function canViewMisOrgReports(user) {
-  return user?.role === 'owner' || user?.role === 'admin';
+  return canViewMisOrgData(user);
 }
 
 /**
@@ -653,7 +655,7 @@ function andMisFilter(base, clause) {
  * Future moves via /move-to-candidates still set movedBy + markers correctly.
  */
 async function resetFalseMisMoveMarks(user, { force = false } = {}) {
-  assertMisCompany(user);
+  await assertMisCompany(user);
   const organizationId = user.organizationId;
   if (!organizationId) throw httpError('Organization required', 403);
 
@@ -723,7 +725,7 @@ async function reconcileMisMoveHistory(user, options = {}) {
  * Cards: total / company / mine / newThisMonth / movedToCandidates.
  */
 async function getMisStats(user) {
-  assertMisActor(user);
+  await assertMisActor(user);
   const organizationId = user.organizationId;
   const me = userCreatedByIds(user);
   const orgMatch = organizationIdMatch(organizationId) || { organizationId };
@@ -744,12 +746,12 @@ async function getMisStats(user) {
   }
 
   const countMs = (q) => MisContact.countDocuments(q).maxTimeMS(20000).catch(() => 0);
-  const isOwner = user.role === 'owner';
+  const orgWide = canViewMisOrgData(user);
 
   // Month intake: owner = org-wide by contact Date; others = contacts they added (createdAt).
   let newThisMonthQ = { _id: { $in: [] } };
   if (monthRange) {
-    if (isOwner) {
+    if (orgWide) {
       newThisMonthQ = {
         ...orgMatch,
         $or: [
@@ -768,7 +770,7 @@ async function getMisStats(user) {
   }
 
   // Owner: all MIS→Candidates moves in the org. Others: only moves they performed.
-  const movedScopeFilter = isOwner
+  const movedScopeFilter = orgWide
     ? {
       ...orgMatch,
       movedToCandidateAt: { $exists: true, $ne: null },
@@ -791,7 +793,7 @@ async function getMisStats(user) {
     countMisDesk(user, organizationId, 'all').then((n) => (n == null ? 0 : n)),
     countMisDesk(user, organizationId, 'company').then((n) => (n == null ? 0 : n)),
     countMisDesk(user, organizationId, 'mine').then((n) => (n == null ? 0 : n)),
-    isOwner
+    orgWide
       ? countMs({ ...orgMatch, deskScope: 'personal' })
       : countMisDesk(user, organizationId, 'mine').then((n) => (n == null ? 0 : n)),
     countMs(newThisMonthQ),
@@ -824,7 +826,7 @@ async function getMisStats(user) {
  * Scoped securely by role via resolveMisReportScope (never trust query identity).
  */
 async function getMisReports(user, query = {}) {
-  assertMisActor(user);
+  await assertMisActor(user);
 
   // Ignore org spoofing; userId is only consumed inside resolveMisReportScope for owner/admin
   const safeQuery = { ...(query || {}) };
@@ -1242,7 +1244,7 @@ const BULK_UPDATE_FIELDS = [
 ];
 
 async function bulkUpdate(user, ids = [], updates = {}) {
-  assertMisCompany(user);
+  await assertMisCompany(user);
   const idList = (ids || []).map(String).filter(Boolean);
   if (!idList.length) throw httpError('No contacts selected');
   if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
@@ -1294,7 +1296,9 @@ async function bulkUpdate(user, ids = [], updates = {}) {
 }
 
 async function getContact(user, id) {
-  assertMisCompany(user);
+  await assertMisCompany(user);
+  const mongoose = require('mongoose');
+  if (!mongoose.Types.ObjectId.isValid(id)) throw httpError('Contact not found', 404);
   const filter = misListFilter(user.organizationId, user, { _id: id });
   const row = await MisContact.findOne(filter).populate('createdBy', 'name email');
   if (!row) throw httpError('Contact not found', 404);
@@ -1302,7 +1306,7 @@ async function getContact(user, id) {
 }
 
 async function createContact(user, body = {}) {
-  assertMisCompany(user);
+  await assertMisCompany(user);
   const organizationId = user.organizationId;
   const email = normalizeEmail(body.email);
   const name = trimStr(body.name);
@@ -1369,7 +1373,7 @@ async function createContact(user, body = {}) {
 }
 
 async function updateContact(user, id, body = {}) {
-  assertMisCompany(user);
+  await assertMisCompany(user);
   const filter = misWriteFilter(user.organizationId, user, { _id: id });
   const doc = await MisContact.findOne(filter);
   if (!doc) throw httpError('Contact not found', 404);
@@ -1412,7 +1416,7 @@ async function updateContact(user, id, body = {}) {
 }
 
 async function deleteContact(user, id) {
-  assertMisCompany(user);
+  await assertMisCompany(user);
   const filter = misWriteFilter(user.organizationId, user, { _id: id });
   const doc = await MisContact.findOneAndDelete(filter);
   if (!doc) throw httpError('Contact not found', 404);
@@ -1420,7 +1424,7 @@ async function deleteContact(user, id) {
 }
 
 async function bulkDelete(user, ids = []) {
-  assertMisCompany(user);
+  await assertMisCompany(user);
   const idList = (ids || []).map(String).filter(Boolean);
   if (!idList.length) throw httpError('No contacts selected');
   const filter = misWriteFilter(user.organizationId, user, { _id: { $in: idList } });
@@ -1439,7 +1443,7 @@ function getBulkUploadJob(user, jobId) {
 }
 
 async function sendMarketingToMis(user, body = {}) {
-  assertMisCompany(user);
+  await assertMisCompany(user);
   const ids = (body.ids || []).map(String).filter(Boolean);
   if (!ids.length) throw httpError('Select at least one contact');
   if (!trimStr(body.subject) || !trimStr(body.htmlBody)) {
@@ -1487,7 +1491,7 @@ async function sendMarketingToMis(user, body = {}) {
  * Skips already-moved rows, existing candidate email/phone conflicts, and invalid rows.
  */
 async function moveToCandidates(user, ids = [], options = {}) {
-  assertMisCompany(user);
+  await assertMisCompany(user);
   const idList = [...new Set((ids || []).map(String).filter(Boolean))];
   if (!idList.length) throw httpError('Select at least one MIS contact');
 
@@ -1812,7 +1816,7 @@ async function runMisExportJob(jobId) {
  * Returns a jobId immediately so Vercel/proxy does not time out on large workbooks.
  */
 async function startExportContacts(user, body = {}) {
-  assertMisOwner(user);
+  await assertMisExport(user);
   if (!user.organizationId) throw httpError('Organization required', 403);
 
   const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
@@ -1854,8 +1858,8 @@ async function startExportContacts(user, body = {}) {
   return exportJobSnapshot(job);
 }
 
-function getExportJob(user, jobId) {
-  assertMisOwner(user);
+async function getExportJob(user, jobId) {
+  await assertMisExport(user);
   const job = misExportJobs.get(String(jobId || ''));
   if (!job) throw httpError('Export job not found or expired', 404, { code: 'JOB_NOT_FOUND' });
   if (String(job.organizationId) !== String(user.organizationId)

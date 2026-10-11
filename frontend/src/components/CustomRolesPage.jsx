@@ -20,7 +20,7 @@ import { RolesSearchBar, RolesGrid } from './customRoles/RolesGrid';
 
 const CustomRolesPage = () => {
   const toast = useToast();
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const [tourOpen, setTourOpen] = usePageTour(ROLES_TOUR_KEY);
   const [loading, setLoading] = useState(true);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
@@ -143,6 +143,7 @@ const CustomRolesPage = () => {
         toast?.success?.(`${form.name} permissions updated — applies to all users with this role`);
         setShowModal(false);
         load();
+        refreshProfile?.();
         return;
       }
 
@@ -163,6 +164,7 @@ const CustomRolesPage = () => {
       toast?.success?.(isEdit ? 'Role updated' : 'Role created');
       setShowModal(false);
       load();
+      refreshProfile?.();
     } catch (err) {
       toast?.error?.('Failed to save role');
     } finally {

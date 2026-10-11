@@ -3,7 +3,8 @@ import { Navigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AppLoadingScreen from './ui/AppLoadingScreen';
 import API_URL from '../config';
-import { ForbiddenPage } from './RouteErrorPage';
+import { ForbiddenPage, NotFoundPage } from './RouteErrorPage';
+import { userCanUsePreview } from '../utils/previewAccess';
 
 const FREELANCER_PATHS = [
   '/dashboard',
@@ -24,7 +25,7 @@ function freelancerCanOpen(pathname) {
   return FREELANCER_PATHS.some((allow) => p === allow || p.startsWith(`${allow}/`));
 }
 
-export default function ProtectedRoute({ children, requiredRoles, internalPreview = false }) {
+export default function ProtectedRoute({ children, requiredRoles, allowPermission, internalPreview = false, previewFeature, platformOnly = false }) {
   const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
   const [resendLoading, setResendLoading] = useState(false);
@@ -40,7 +41,7 @@ export default function ProtectedRoute({ children, requiredRoles, internalPrevie
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to="/login" replace />;
   }
 
   if (user && user.isEmailVerified === false) {
@@ -116,12 +117,23 @@ export default function ProtectedRoute({ children, requiredRoles, internalPrevie
     return <Navigate to="/onboarding" replace />;
   }
 
-  if (requiredRoles && user && !requiredRoles.includes(user.role)) {
-    return <ForbiddenPage />;
+  if (platformOnly && !user?.isPlatformOperator) {
+    return <NotFoundPage />;
   }
 
-  if (internalPreview && (!user?.internalPreviewAccess || user?.isDemo)) {
-    return <ForbiddenPage />;
+  if (requiredRoles && user && !requiredRoles.includes(user.role)) {
+    const granted = allowPermission && (
+      user.role === 'owner' || (Array.isArray(user.permissions) && user.permissions.includes(allowPermission))
+    );
+    if (!granted) return <ForbiddenPage />;
+  }
+
+  if (internalPreview || previewFeature) {
+    if (user?.isDemo) return <NotFoundPage />;
+    const allowed = previewFeature
+      ? userCanUsePreview(user, previewFeature)
+      : Boolean(user?.internalPreviewAccess);
+    if (!allowed) return <NotFoundPage />;
   }
 
   if (user?.role === 'freelancer' && !freelancerCanOpen(location.pathname)) {

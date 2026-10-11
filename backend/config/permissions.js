@@ -16,6 +16,7 @@ const MODULE_PERMISSIONS = [
   'modules.reports',
   'modules.dei',
   'modules.announcements',
+  'modules.mis',
   'modules.jobs',
   'modules.applications',
   'modules.candidates',
@@ -65,6 +66,9 @@ const ACTION_PERMISSIONS = [
   'organization.editSettings', 'organization.manageIntegrations',
   'audit.view', 'audit.export',
   'billing.manage',
+  'announcements.publish',
+  'assessments.create', 'assessments.edit', 'assessments.invite', 'assessments.grade', 'assessments.delete',
+  'mis.viewOrg', 'mis.editAny', 'mis.export',
 ];
 
 const PERMISSIONS = [...MODULE_PERMISSIONS, ...ACTION_PERMISSIONS];
@@ -82,6 +86,7 @@ const PERMISSION_CATALOG = [
       { key: 'modules.reports', label: 'Reports Studio', kind: 'module' },
       { key: 'modules.dei', label: 'DEI', kind: 'module' },
       { key: 'modules.announcements', label: 'Announcements', kind: 'module' },
+      { key: 'announcements.publish', label: 'Publish announcements', kind: 'action' },
     ],
   },
   {
@@ -114,6 +119,11 @@ const PERMISSION_CATALOG = [
       { key: 'modules.collaboration', label: 'Collaboration', kind: 'module' },
       { key: 'modules.formBuilder', label: 'Form Builder', kind: 'module' },
       { key: 'modules.assessments', label: 'Assessments', kind: 'module' },
+      { key: 'assessments.create', label: 'Create assessments', kind: 'action' },
+      { key: 'assessments.edit', label: 'Edit assessments', kind: 'action' },
+      { key: 'assessments.invite', label: 'Invite candidates', kind: 'action' },
+      { key: 'assessments.grade', label: 'Grade submissions', kind: 'action' },
+      { key: 'assessments.delete', label: 'Delete assessments', kind: 'action' },
       { key: 'modules.aiTools', label: 'AI Tools', kind: 'module' },
     ],
   },
@@ -181,6 +191,17 @@ const PERMISSION_CATALOG = [
     ],
   },
   {
+    id: 'mis',
+    label: 'MIS',
+    description: 'Open the directory without handing over every action inside it',
+    items: [
+      { key: 'modules.mis', label: 'MIS directory', kind: 'module' },
+      { key: 'mis.viewOrg', label: 'Organisation-wide MIS', kind: 'action' },
+      { key: 'mis.editAny', label: 'Edit any MIS contact', kind: 'action' },
+      { key: 'mis.export', label: 'Export MIS', kind: 'action' },
+    ],
+  },
+  {
     id: 'billing',
     label: 'Billing',
     description: 'Plan and payments (typically owners only)',
@@ -195,10 +216,10 @@ const ALL_MODULES = [...MODULE_PERMISSIONS];
 
 const DEFAULT_ROLE_PERMISSIONS = {
   owner: [...PERMISSIONS],
-  admin: [...PERMISSIONS].filter((p) => p !== 'billing.manage' && p !== 'modules.billing'),
-  hr_manager: [...PERMISSIONS].filter((p) => p !== 'billing.manage' && p !== 'modules.billing' && p !== 'team.resetPassword'),
+  admin: [...PERMISSIONS].filter((p) => p !== 'billing.manage' && p !== 'modules.billing' && p !== 'mis.export'),
+  hr_manager: [...PERMISSIONS].filter((p) => p !== 'billing.manage' && p !== 'modules.billing' && p !== 'team.resetPassword' && p !== 'mis.export'),
   hr_recruiter: [
-    'modules.dashboard', 'modules.analytics', 'modules.search', 'modules.reports', 'modules.announcements',
+    'modules.dashboard', 'modules.analytics', 'modules.search', 'modules.reports', 'modules.announcements', 'modules.mis',
     'modules.jobs', 'modules.applications', 'modules.freelanceReview', 'modules.candidates', 'modules.pipeline', 'modules.resumeParsing',
     'modules.talentPools', 'modules.skills', 'modules.collaboration', 'modules.formBuilder', 'modules.assessments',
     'modules.aiTools',
@@ -210,9 +231,10 @@ const DEFAULT_ROLE_PERMISSIONS = {
     'applications.edit', 'applications.reject',
     'interviews.schedule', 'interviews.cancel', 'scorecards.submit',
     'freelance.scorecard',
+    'assessments.create', 'assessments.edit', 'assessments.invite', 'assessments.grade', 'assessments.delete',
   ],
   sales: [
-    'modules.dashboard', 'modules.analytics', 'modules.search', 'modules.announcements',
+    'modules.dashboard', 'modules.analytics', 'modules.search', 'modules.announcements', 'modules.mis',
     'modules.candidates', 'modules.pipeline', 'modules.talentPools',
     'modules.applications', 'modules.freelanceReview',
     'modules.inbox', 'modules.consent',

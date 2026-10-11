@@ -24,7 +24,17 @@ import { AssessmentDetail } from './assessments/AssessmentDetail';
 const AssessmentsPage = () => {
   const { t } = useTranslation();
   const toast = useToast();
-  const { organization } = useAuth();
+  const { organization, user } = useAuth();
+  const allow = (key) => {
+    if (user?.role === 'owner') return true;
+    if (Array.isArray(user?.permissions)) return user.permissions.includes(key);
+    return ['admin', 'hr_manager', 'hr_recruiter', 'recruiter'].includes(user?.role);
+  };
+  const canCreate = allow('assessments.create');
+  const canEdit = allow('assessments.edit');
+  const canInvite = allow('assessments.invite');
+  const canGrade = allow('assessments.grade');
+  const canDelete = allow('assessments.delete');
   const canProctor = planHasFeature(organization?.plan, 'assessments.proctoring');
   const [tourOpen, setTourOpen] = usePageTour(ASSESS_TOUR_KEY);
   const [loading, setLoading] = useState(true);
@@ -34,6 +44,8 @@ const AssessmentsPage = () => {
   const [query, setQuery] = useState('');
   const [sortBy, setSortBy] = useState('title');
   const [showBuilder, setShowBuilder] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [library, setLibrary] = useState('active');
   const [saving, setSaving] = useState(false);
   const [active, setActive] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -69,6 +81,9 @@ const AssessmentsPage = () => {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = assessments.filter((a) => {
+      const archived = a.isActive === false;
+      if (library === 'active' && archived) return false;
+      if (library === 'archived' && !archived) return false;
       if (!q) return true;
       return (
         (a.title || '').toLowerCase().includes(q) ||
@@ -84,22 +99,38 @@ const AssessmentsPage = () => {
       sorted.sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
     }
     return sorted;
-  }, [assessments, query, sortBy]);
+  }, [assessments, query, sortBy, library]);
 
-  const handleCreate = async (form) => {
+  const openCreate = () => {
+    setEditing(null);
+    setShowBuilder(true);
+  };
+
+  const openEdit = (assessment) => {
+    setEditing(assessment);
+    setShowBuilder(true);
+  };
+
+  const handleSave = async (form) => {
     setSaving(true);
+    const isEdit = Boolean(editing?._id);
     try {
-      const res = await authenticatedFetch('/api/assessments', { method: 'POST', body: JSON.stringify(form) });
+      const res = await authenticatedFetch(
+        isEdit ? `/api/assessments/${editing._id}` : '/api/assessments',
+        { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(form) }
+      );
       const data = await readApiJson(res);
       if (!res.ok || !data.success) {
-        toast?.error?.(data.message || 'Failed to create assessment');
+        toast?.error?.(data.message || (isEdit ? 'Failed to update assessment' : 'Failed to create assessment'));
         return;
       }
-      toast?.success?.('Assessment created');
+      toast?.success?.(isEdit ? 'Assessment updated' : 'Assessment created. Invite a candidate next.');
       setShowBuilder(false);
+      setEditing(null);
+      setActive(data.data);
       load();
     } catch (err) {
-      toast?.error?.(err?.message || 'Failed to create assessment');
+      toast?.error?.(err?.message || 'Failed to save assessment');
     } finally {
       setSaving(false);
     }
@@ -158,7 +189,13 @@ const AssessmentsPage = () => {
   return (
     <div className="page-shell-ats">
       {active ? (
-        <AssessmentDetail assessment={active} onBack={() => setActive(null)} />
+        <AssessmentDetail
+          assessment={active}
+          onBack={() => { setActive(null); load(); }}
+          onEdit={canEdit ? openEdit : null}
+          onUpdated={(next) => { setActive(next); load(); }}
+          access={{ edit: canEdit, invite: canInvite, grade: canGrade, archive: canEdit }}
+        />
       ) : (
         <>
           <PageHeader
@@ -167,9 +204,11 @@ const AssessmentsPage = () => {
             subtitle={t('pages.assessments.subtitle')}
             gradientTitle
           >
-            <button type="button" onClick={() => setShowBuilder(true)} className="btn-primary flex-1 sm:flex-none">
+            {canCreate ? (
+            <button type="button" onClick={openCreate} className="btn-primary flex-1 sm:flex-none">
               <Plus className="w-4 h-4" /> New Assessment
             </button>
+            ) : null}
           </PageHeader>
 
           <div
@@ -180,7 +219,7 @@ const AssessmentsPage = () => {
               <Info size={14} /> Tip
             </span>
             <span>
-              Create a test, open it to invite candidates, then grade submissions when they arrive.
+              Create a test, invite someone on the company desk, then grade the submission when it arrives. Freelance recruiter records are not included.
               Press <span className="font-semibold text-stone-800">?</span> for a tour.
             </span>
           </div>
@@ -197,9 +236,11 @@ const AssessmentsPage = () => {
                     <button type="button" onClick={load} className="btn-secondary">
                       <RefreshCw className="w-4 h-4" /> Retry
                     </button>
-                    <button type="button" onClick={() => setShowBuilder(true)} className="btn-primary">
+                    {canCreate ? (
+                    <button type="button" onClick={openCreate} className="btn-primary">
                       <Plus className="w-4 h-4" /> New Assessment
                     </button>
+                    ) : null}
                   </div>
                 }
               />
@@ -211,11 +252,11 @@ const AssessmentsPage = () => {
                 tone="violet"
                 message="No assessments yet"
                 subMessage="Create a skills test and invite candidates to take it."
-                action={
-                  <button type="button" onClick={() => setShowBuilder(true)} className="btn-primary">
+                action={canCreate ? (
+                  <button type="button" onClick={openCreate} className="btn-primary">
                     <Plus className="w-4 h-4" /> New Assessment
                   </button>
-                }
+                ) : null}
               />
             </div>
           ) : (
@@ -239,6 +280,22 @@ const AssessmentsPage = () => {
                         className="input-ats input-ats-icon"
                       />
                     </div>
+                  </div>
+                  <div className="flex rounded-lg border border-stone-200 p-0.5 bg-stone-50">
+                    {[
+                      ['active', 'Live'],
+                      ['archived', 'Archived'],
+                      ['all', 'All'],
+                    ].map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setLibrary(key)}
+                        className={`px-3 py-1.5 rounded-md text-xs font-bold ${library === key ? 'bg-stone-900 text-white' : 'text-stone-600'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
                   </div>
                   <div className="w-full sm:w-52">
                     <label className="label-ats">Sort</label>
@@ -282,6 +339,7 @@ const AssessmentsPage = () => {
                             ? <Shield className="w-5 h-5 text-brand-600" />
                             : <ClipboardList className="w-5 h-5 text-brand-600" />}
                         </div>
+                        {canDelete ? (
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); setDeleteTarget(a); }}
@@ -291,6 +349,7 @@ const AssessmentsPage = () => {
                         >
                           <Trash2 size={14} />
                         </button>
+                        ) : null}
                       </div>
                       <h3 className="font-bold text-stone-900 mt-3.5 tracking-tight line-clamp-2 break-words">{a.title}</h3>
                       {a.description && (
@@ -299,6 +358,20 @@ const AssessmentsPage = () => {
                       <div className="flex flex-wrap items-center gap-3 mt-4 pt-3 border-t border-stone-100 text-xs font-semibold text-stone-500">
                         <span className="inline-flex items-center gap-1"><ClipboardList className="w-3.5 h-3.5" /> {a.questions?.length || 0} questions</span>
                         <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {a.durationMinutes} min</span>
+                        {a.isActive === false ? <span className="badge-neutral">Archived</span> : null}
+                      </div>
+                      <div className="mt-3 grid grid-cols-4 gap-1.5 text-center">
+                        {[
+                          ['Sent', a.inviteStats?.total || 0],
+                          ['Open', (a.inviteStats?.pending || 0) + (a.inviteStats?.in_progress || 0)],
+                          ['In', a.inviteStats?.submitted || 0],
+                          ['Graded', a.inviteStats?.graded || 0],
+                        ].map(([label, value]) => (
+                          <div key={label} className="rounded-lg bg-stone-50 px-1 py-1.5">
+                            <p className="text-[10px] uppercase tracking-wide text-stone-400">{label}</p>
+                            <p className="text-sm font-bold text-stone-800 tabular-nums">{value}</p>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ))}
@@ -311,8 +384,9 @@ const AssessmentsPage = () => {
 
       <BuilderModal
         open={showBuilder}
-        onClose={() => setShowBuilder(false)}
-        onSave={handleCreate}
+        initial={editing}
+        onClose={() => { setShowBuilder(false); setEditing(null); }}
+        onSave={handleSave}
         saving={saving}
         canProctor={canProctor}
       />

@@ -120,15 +120,20 @@ export const AuthProvider = ({ children }) => {
           }
         });
     };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchProfile();
+    };
     window.addEventListener('auth:unauthorized', handleUnauth);
+    document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('auth:session-expired', handleUnauth);
     window.addEventListener('pageshow', onPageShow);
     return () => {
       window.removeEventListener('auth:unauthorized', handleUnauth);
       window.removeEventListener('auth:session-expired', handleUnauth);
       window.removeEventListener('pageshow', onPageShow);
+      document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [clearLocalAuth]);
+  }, [clearLocalAuth, fetchProfile]);
 
   const login = async (email, password) => {
     const response = await fetch(`${BASE_API_URL}/api/login`, {

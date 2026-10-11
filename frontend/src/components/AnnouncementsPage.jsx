@@ -22,8 +22,8 @@ import {
   TITLE_MAX,
   plainText,
   toLocalInput,
-  formatWhen,
 } from './announcements/announcementsConstants';
+import DeliveryPanel from './announcements/DeliveryPanel';
 import AnnouncementFormModal from './announcements/AnnouncementFormModal';
 import AnnouncementFeed from './announcements/AnnouncementFeed';
 import AnnouncementInbox from './announcements/AnnouncementInbox';
@@ -86,7 +86,10 @@ function AnnouncementsPageInner() {
   const toast = useToast();
   const { organization, user } = useAuth();
   const careersSlug = organization?.slug;
-  const canManage = canViewOrgAnalytics(user?.role);
+  const canManage = user?.role === 'owner'
+    || (Array.isArray(user?.permissions)
+      ? user.permissions.includes('announcements.publish')
+      : canViewOrgAnalytics(user?.role));
   const allowed = canOpenAnnouncements(user);
   const [tourOpen, setTourOpen] = usePageTour(ANN_TOUR_KEY);
   const [rows, setRows] = useState([]);
@@ -539,27 +542,11 @@ function AnnouncementsPageInner() {
           <Modal
             open={!!delivery}
             onClose={() => setDelivery(null)}
-            title="Delivery"
+            title="Delivery report"
             description={delivery?.title || ''}
             size="lg"
           >
-            {receiptsLoading ? (
-              <p className="text-sm text-stone-500">Loading receipts…</p>
-            ) : receipts ? (
-              <div className="space-y-4 text-sm">
-                <p className="text-stone-600">
-                  Email: <span className="font-semibold capitalize">{receipts.emailDelivery?.status || 'skipped'}</span>
-                  {receipts.emailDelivery?.total
-                    ? ` · ${receipts.emailDelivery.sent || 0} sent, ${receipts.emailDelivery.failed || 0} failed, of ${receipts.emailDelivery.total}`
-                    : ''}
-                </p>
-                <ReceiptList title="Read" people={receipts.read} />
-                <ReceiptList title="Acknowledged" people={receipts.acknowledged} />
-                <ReceiptList title="Dismissed the banner" people={receipts.dismissed} />
-              </div>
-            ) : (
-              <p className="text-sm text-stone-500">No delivery details.</p>
-            )}
+            <DeliveryPanel receipts={receipts} loading={receiptsLoading} notice={delivery} />
           </Modal>
           <TourHelpFab onClick={() => setTourOpen(true)} label="Take a tour" title="Take a tour of Announcements" />
           <ProductTour open={tourOpen} onClose={() => setTourOpen(false)} steps={ANN_TOUR_STEPS} storageKey={ANN_TOUR_KEY} />
@@ -583,25 +570,3 @@ function AnnouncementsPageInner() {
   );
 }
 
-function ReceiptList({ title, people = [] }) {
-  return (
-    <div>
-      <p className="text-xs font-bold uppercase tracking-wide text-stone-400">{title} · {people.length}</p>
-      {people.length === 0 ? (
-        <p className="text-xs text-stone-400 mt-1">None yet</p>
-      ) : (
-        <ul className="mt-1 divide-y divide-stone-100 border border-stone-100 rounded-lg">
-          {people.map((person) => (
-            <li key={`${title}-${person.id}`} className="px-3 py-2 flex items-center justify-between gap-3">
-              <span className="min-w-0">
-                <span className="block font-semibold text-stone-800 truncate">{person.name}</span>
-                <span className="block text-[11px] text-stone-400 truncate">{person.email}</span>
-              </span>
-              <span className="text-[11px] text-stone-400 flex-shrink-0">{person.at ? formatWhen(person.at) : ''}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
