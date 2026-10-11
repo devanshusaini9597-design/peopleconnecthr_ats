@@ -5,25 +5,18 @@ import { authenticatedFetch } from '../utils/fetchUtils';
 import AppLoadingScreen from './ui/AppLoadingScreen';
 import { NotFoundPage } from './RouteErrorPage';
 import { useAuth } from '../context/AuthContext';
-import { BASE_API_URL } from '../config';
 
 function OperatorSignIn({ onSignedIn }) {
   const { login, acceptSession, logout } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
-  const [otpToken, setOtpToken] = useState('');
-  const [step, setStep] = useState('password');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   const finishIfOperator = async (data) => {
     if (!data?.user?.isPlatformOperator) {
       await logout();
-      setStep('password');
-      setOtpToken('');
-      setOtpCode('');
       setError('This console is only for the platform owner account.');
       return false;
     }
@@ -38,40 +31,13 @@ function OperatorSignIn({ onSignedIn }) {
     setBusy(true);
     try {
       const data = await login(email.trim(), password);
-      if (data?.requiresOtp) {
-        setOtpToken(data.otpToken || '');
-        setStep('otp');
-        if (data.emailSent === false && data.message) setError(data.message);
-        return;
-      }
-      if (data?.requiresMfa || data?.requiresMfaEnrollment) {
-        setError('This account needs the product sign-in page for authenticator setup.');
+      if (data?.requiresOtp || data?.requiresMfa || data?.requiresMfaEnrollment) {
+        setError('This console uses email and password only. Try again in a minute.');
         return;
       }
       await finishIfOperator(data);
     } catch (err) {
       setError(err.message || 'Could not sign in.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onOtpSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setBusy(true);
-    try {
-      const res = await fetch(`${BASE_API_URL}/api/auth/verify-login-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ otpToken, code: otpCode }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.displayMessage || data.message || 'Invalid code.');
-      await finishIfOperator(data);
-    } catch (err) {
-      setError(err.message || 'Could not verify code.');
     } finally {
       setBusy(false);
     }
@@ -87,7 +53,7 @@ function OperatorSignIn({ onSignedIn }) {
         </div>
 
         <form
-          onSubmit={step === 'otp' ? onOtpSubmit : onPasswordSubmit}
+          onSubmit={onPasswordSubmit}
           className="rounded-2xl border border-stone-200 bg-white p-6 shadow-[var(--shadow-card)] space-y-4 relative overflow-hidden"
         >
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
@@ -95,54 +61,38 @@ function OperatorSignIn({ onSignedIn }) {
             <p className="text-sm text-rose-700 bg-rose-50 border border-rose-100 rounded-xl px-3 py-2">{error}</p>
           ) : null}
 
-          {step === 'password' ? (
-            <>
-              <label className="block">
-                <span className="text-xs font-semibold text-stone-500">Operator email</span>
-                <input
-                  type="email"
-                  autoComplete="username"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="input-ats mt-1 w-full"
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold text-stone-500">Password</span>
-                <div className="mt-1 relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    autoComplete="current-password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="input-ats w-full !pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-700"
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </label>
-            </>
-          ) : (
-            <label className="block">
-              <span className="text-xs font-semibold text-stone-500">Email code</span>
+          <label className="block">
+            <span className="text-xs font-semibold text-stone-500">Operator email</span>
+            <input
+              type="email"
+              autoComplete="username"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="input-ats mt-1 w-full"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold text-stone-500">Password</span>
+            <div className="mt-1 relative">
               <input
-                inputMode="numeric"
-                autoComplete="one-time-code"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
                 required
-                value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value)}
-                className="input-ats mt-1 w-full"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="input-ats w-full !pr-10"
               />
-            </label>
-          )}
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-700"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </label>
 
           <button
             type="submit"
@@ -150,7 +100,7 @@ function OperatorSignIn({ onSignedIn }) {
             className="btn-primary w-full"
           >
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-            {step === 'otp' ? 'Verify code' : 'Open console'}
+            Open console
           </button>
         </form>
       </div>

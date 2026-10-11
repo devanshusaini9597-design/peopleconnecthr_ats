@@ -10,6 +10,7 @@ describe('loginOtpService', () => {
     expect(typeof svc.isLoginOtpPaused).toBe('function');
     expect(typeof svc.verifyLoginOtp).toBe('function');
     expect(typeof svc.resendLoginOtp).toBe('function');
+    expect(typeof svc.issueMfaPendingIfNeeded).toBe('function');
   });
 
   it('generateOtp is a 6-digit string', () => {
@@ -49,6 +50,7 @@ describe('loginOtpService', () => {
       LOGIN_OTP_PAUSED: process.env.LOGIN_OTP_PAUSED,
       RAILWAY_ENVIRONMENT: process.env.RAILWAY_ENVIRONMENT,
       DEV_TEMP_PASSWORD_IN_PRODUCTION: process.env.DEV_TEMP_PASSWORD_IN_PRODUCTION,
+      STAGING_QA_OTP_SKIP: process.env.STAGING_QA_OTP_SKIP,
     };
     process.env.NODE_ENV = 'staging';
     process.env.LOGIN_OTP_PAUSED = '1';
@@ -60,10 +62,31 @@ describe('loginOtpService', () => {
       skipLoginOtp: true,
       ownerBypass: true,
     })).toBe(false);
+    expect(canSkipLoginOtpChallenge({
+      usedDevTempPassword: false,
+      skipLoginOtp: true,
+      email: 'owner@peopleconnecthr.com',
+    })).toBe(true);
+    expect(canSkipLoginOtpChallenge({
+      usedDevTempPassword: false,
+      skipLoginOtp: false,
+      email: 'owner@peopleconnecthr.com',
+    })).toBe(false);
     process.env.DEV_TEMP_PASSWORD_IN_PRODUCTION = '1';
     expect(canSkipLoginOtpChallenge({ usedDevTempPassword: true })).toBe(true);
     delete process.env.DEV_TEMP_PASSWORD_IN_PRODUCTION;
     expect(canSkipLoginOtpChallenge({ usedDevTempPassword: true })).toBe(false);
+    expect(canSkipLoginOtpChallenge({
+      email: 'skillnix.qa+a.owner@gmail.com',
+    })).toBe(false);
+    process.env.STAGING_QA_OTP_SKIP = '1';
+    expect(canSkipLoginOtpChallenge({
+      email: 'skillnix.qa+a.owner@gmail.com',
+    })).toBe(true);
+    delete process.env.STAGING_QA_OTP_SKIP;
+    expect(canSkipLoginOtpChallenge({
+      email: 'owner@skillnixrecruitment.com',
+    })).toBe(false);
     if (prev.NODE_ENV === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = prev.NODE_ENV;
     if (prev.LOGIN_OTP_PAUSED === undefined) delete process.env.LOGIN_OTP_PAUSED;
@@ -72,6 +95,8 @@ describe('loginOtpService', () => {
     else process.env.RAILWAY_ENVIRONMENT = prev.RAILWAY_ENVIRONMENT;
     if (prev.DEV_TEMP_PASSWORD_IN_PRODUCTION === undefined) delete process.env.DEV_TEMP_PASSWORD_IN_PRODUCTION;
     else process.env.DEV_TEMP_PASSWORD_IN_PRODUCTION = prev.DEV_TEMP_PASSWORD_IN_PRODUCTION;
+    if (prev.STAGING_QA_OTP_SKIP === undefined) delete process.env.STAGING_QA_OTP_SKIP;
+    else process.env.STAGING_QA_OTP_SKIP = prev.STAGING_QA_OTP_SKIP;
   });
 
   it('otpDeliveryAddress sends Gmail plus-aliases to the shared inbox', () => {
@@ -85,6 +110,13 @@ describe('loginOtpService', () => {
     expect(otpDeliveryAddress('foo+tag@gmail.com')).toBe('foo@gmail.com');
     if (prev === undefined) delete process.env.QA_OTP_INBOX;
     else process.env.QA_OTP_INBOX = prev;
+  });
+
+  it('skipAuthRateLimit only for QA plus-alias kit emails', () => {
+    const { skipAuthRateLimit } = require('../services/loginOtpService');
+    expect(skipAuthRateLimit({ body: { email: 'skillnix.qa+a.owner@gmail.com' } })).toBe(true);
+    expect(skipAuthRateLimit({ body: { email: 'owner@skillnixrecruitment.com' } })).toBe(false);
+    expect(skipAuthRateLimit({ body: { email: 'nobody@example.com' } })).toBe(false);
   });
 
   it('locks out after 5 incorrect OTP attempts', () => {

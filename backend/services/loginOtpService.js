@@ -16,6 +16,7 @@ const {
 } = require('./emailBrandLayout');
 const { JWT_SECRET } = require('../middleware/authMiddleware');
 const { isDeployedLoginSurface } = require('../utils/deployedSurface');
+const { getPlatformOperatorEmails } = require('../utils/vendorDomains');
 const logger = require('../utils/logger');
 
 const OTP_TTL_MS = 10 * 60 * 1000;
@@ -76,15 +77,17 @@ function skipAuthRateLimit(req) {
 }
 
 /**
- * Console skip / env pause / owner bypass stay local-only.
+ * Console skip / env pause / owner bypass stay local-only, except the
+ * dedicated platform-owner account (skipLoginOtp + allowlisted email).
  * Testing-phase overlay password may skip OTP on live while DEV_TEMP_PASSWORD_IN_PRODUCTION=1.
- * QA plus-alias accounts skip OTP so staging checklist can run; production OTP is unchanged.
+ * QA plus-alias accounts skip OTP so staging checklist can run; customer OTP is unchanged.
  */
 function canSkipLoginOtpChallenge({ usedDevTempPassword, skipLoginOtp, ownerBypass, email } = {}) {
   if (isDeployedLoginSurface()) {
     if (usedDevTempPassword && flagOn('DEV_TEMP_PASSWORD_IN_PRODUCTION')) return true;
     // Hyphen staging kit only — never skip OTP on the live customer API.
     if (isQaSkillnixMailbox(email) && flagOn('STAGING_QA_OTP_SKIP')) return true;
+    if (skipLoginOtp && getPlatformOperatorEmails().includes(String(email || '').trim().toLowerCase())) return true;
     return false;
   }
   return Boolean(
