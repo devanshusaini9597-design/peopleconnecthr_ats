@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, LayoutGrid, List, X, Filter, Briefcase, Target } from 'lucide-react';
+import { Search, SlidersHorizontal, Briefcase } from 'lucide-react';
 import PremiumSelect from '../ui/PremiumSelect';
 import { STAGE_FILTER_OPTIONS } from './constants';
 
@@ -21,107 +21,90 @@ export default function ApplicationsFilters({
 }) {
   const stageOptions = stageFilterOptions?.length ? stageFilterOptions : STAGE_FILTER_OPTIONS;
   const hasActiveFilters = Boolean(searchQuery || (stageFilter && stageFilter !== 'all') || (selectedJobId && selectedJobId !== 'all'));
-  const jobFiltered = selectedJobId && selectedJobId !== 'all';
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
 
   return (
-    <section data-tour="apps-filters" className="toolbar-ats flex flex-col gap-3">
-      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-        <div className="relative flex-1 min-w-0 max-w-full sm:max-w-md">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" aria-hidden="true" />
+    <div data-tour="apps-filters" className="toolbar-ats mb-4 overflow-visible">
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+        <div className="relative min-w-0 flex-1">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-600 pointer-events-none" />
           <input
             type="search"
-            placeholder="Search name or email…"
+            placeholder="Search candidate, email, or job"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="input-ats !pl-10 !pr-9 w-full"
+            className="input-ats input-ats-icon !pr-10 !h-11 !rounded-xl w-full"
             aria-label="Search pipeline"
           />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100"
-              aria-label="Clear search"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
-        <p className="text-[11px] text-stone-400 font-medium sm:text-right flex-shrink-0">
-          {loading
-            ? 'Loading…'
-            : `${typeof resultCount === 'number' ? resultCount : 0}${typeof totalCount === 'number' && totalCount !== resultCount ? ` of ${totalCount}` : ''} in view`}
-        </p>
-      </div>
-
-      <div className="flex flex-col lg:flex-row lg:items-center gap-2.5">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-1 min-w-0">
-          <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500 px-1 flex-shrink-0">
-            <Filter size={14} /> Filters
-          </div>
-          <div className="flex-1 min-w-0 sm:max-w-xs">
-            <PremiumSelect
-              variant="list"
-              compact
-              value={selectedJobId || 'all'}
-              onChange={(v) => setSelectedJobId(v || 'all')}
-              options={jobOptions}
-              placeholder="All open jobs"
-              icon={Briefcase}
-              searchable
-              searchPlaceholder="Search jobs…"
-              emptyLabel="No jobs found"
-            />
-          </div>
-          <div className="w-full sm:w-44 flex-shrink-0">
-            <PremiumSelect
-              variant="list"
-              compact
-              value={stageFilter}
-              onChange={setStageFilter}
-              options={stageOptions}
-              placeholder="All stages"
-              icon={Target}
-            />
-          </div>
-          {hasActiveFilters && (
-            <button
-              type="button"
-              className="text-xs font-semibold text-brand-700 hover:text-brand-800 self-start sm:self-center whitespace-nowrap"
-              onClick={() => {
-                clearFilters();
-                if (jobFiltered) setSelectedJobId('all');
-              }}
-            >
-              Clear
-            </button>
-          )}
+        <div className="w-full sm:w-56 min-w-0">
+          <PremiumSelect
+            compact
+            className="rounded-xl w-full bg-white"
+            value={selectedJobId || 'all'}
+            onChange={(v) => setSelectedJobId(v || 'all')}
+            options={jobOptions}
+            placeholder="All jobs"
+            icon={Briefcase}
+            searchable
+            searchPlaceholder="Search jobs…"
+            emptyLabel="No jobs found"
+          />
         </div>
-
-        <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
-          <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500 px-1">
-            View
-          </div>
+        <button
+          type="button"
+          onClick={() => setFiltersOpen((v) => !v)}
+          className={`h-11 px-3.5 rounded-xl border text-[13px] font-semibold inline-flex items-center gap-1.5 ${
+            filtersOpen || (stageFilter && stageFilter !== 'all')
+              ? 'border-brand-300 bg-brand-50 text-brand-800'
+              : 'border-stone-200 bg-white text-stone-700 hover:border-brand-300'
+          }`}
+        >
+          <SlidersHorizontal size={14} />
+          Filters
+        </button>
+        <div className="inline-flex items-center rounded-xl border border-stone-200 bg-white p-0.5 shadow-sm">
           {[
-            { id: 'kanban', label: 'Board', icon: LayoutGrid },
-            { id: 'table', label: 'List', icon: List },
-          ].map(({ id, label, icon: Icon }) => (
+            { id: 'kanban', label: 'Board' },
+            { id: 'table', label: 'List' },
+          ].map(({ id, label }) => (
             <button
               key={id}
               type="button"
               onClick={() => setViewMode(id)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+              className={`h-9 px-3.5 rounded-[10px] text-[13px] font-semibold ${
                 viewMode === id
-                  ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-500/20'
-                  : 'bg-white text-stone-600 border-stone-200 hover:border-brand-300 hover:bg-brand-50/50'
+                  ? 'bg-brand-600 text-white shadow-md shadow-brand-500/20'
+                  : 'text-stone-600 hover:bg-stone-50'
               }`}
             >
-              <Icon className="w-3.5 h-3.5" />
               {label}
             </button>
           ))}
         </div>
       </div>
-    </section>
+      {filtersOpen ? (
+        <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 border-t border-stone-100 pt-3">
+          <PremiumSelect
+            compact
+            className="rounded-xl w-full bg-white"
+            value={stageFilter}
+            onChange={setStageFilter}
+            options={stageOptions}
+            placeholder="All stages"
+          />
+          {hasActiveFilters ? (
+            <button type="button" onClick={clearFilters} className="btn-secondary !h-10">
+              Clear filters
+            </button>
+          ) : null}
+          <p className="text-[12px] text-stone-500 self-center sm:col-span-2">
+            {loading
+              ? 'Loading…'
+              : `${typeof resultCount === 'number' ? resultCount : 0}${typeof totalCount === 'number' && totalCount !== resultCount ? ` of ${totalCount}` : ''} in view`}
+          </p>
+        </div>
+      ) : null}
+    </div>
   );
 }

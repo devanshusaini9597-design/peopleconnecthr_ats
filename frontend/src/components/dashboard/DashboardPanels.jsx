@@ -472,7 +472,7 @@ export function DashboardMainGrid({ d, navigate, isFreelancer }) {
             <QuickAction icon={Briefcase} label="Open Mandates" desc="Jobs you can submit against" onClick={() => navigate('/mandates')} tone="bg-indigo-50 text-indigo-600" />
           ) : (
             <>
-              <QuickAction icon={Kanban} label="Pipeline Board" desc="Manage stages and applications" onClick={() => navigate('/recruitment')} tone="bg-violet-50 text-violet-600" />
+              <QuickAction icon={Kanban} label="Pipeline" desc="Company hiring board" onClick={() => navigate('/applications')} tone="bg-violet-50 text-violet-600" />
               <QuickAction icon={FileText} label="Resume Parsing" desc="Upload and parse resumes" onClick={() => navigate('/resume-parsing')} tone="bg-amber-50 text-amber-600" />
               <QuickAction icon={Mail} label="Email Templates" desc="Manage outreach templates" onClick={() => navigate('/email-templates')} tone="bg-emerald-50 text-emerald-600" />
               <QuickAction icon={BarChart3} label="Analytics" desc="Reports & insights" onClick={() => navigate(employeeId ? `/analytics?employee=${encodeURIComponent(employeeId)}` : '/analytics')} tone="bg-fuchsia-50 text-fuchsia-600" />
@@ -500,7 +500,7 @@ export function DashboardLowerGrid({ d, navigate, isFreelancer }) {
           </div>
           <button
             type="button"
-            onClick={() => navigate(isFreelancer ? '/ats' : '/recruitment')}
+            onClick={() => navigate(isFreelancer ? '/ats' : '/applications')}
             className="text-xs font-semibold text-brand-600 hover:text-brand-700 flex items-center gap-1 transition-all hover:gap-1.5"
           >
             Open {isFreelancer ? 'ATS' : 'board'} <ArrowRight size={12} />
@@ -558,7 +558,7 @@ export function DashboardLowerGrid({ d, navigate, isFreelancer }) {
             message="No pipeline data yet"
             subMessage="Add candidates to populate your hiring stages."
             action={
-              <button type="button" onClick={() => navigate(isFreelancer ? '/ats?add=1' : '/recruitment')} className="btn-secondary !text-xs">
+              <button type="button" onClick={() => navigate(isFreelancer ? '/ats?add=1' : '/applications')} className="btn-secondary !text-xs">
                 {isFreelancer ? 'Add Candidate' : 'Open Pipeline Board'}
               </button>
             }

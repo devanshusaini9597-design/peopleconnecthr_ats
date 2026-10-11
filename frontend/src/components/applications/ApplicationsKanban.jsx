@@ -1,5 +1,5 @@
 import React from 'react';
-import { Star, Clock, Briefcase, GripVertical, Inbox } from 'lucide-react';
+import { Star, Clock, Briefcase, GripVertical, Inbox, Mail } from 'lucide-react';
 import { STAGES, classNames, formatDate, jobTitle } from './constants';
 import MoveToButton from './MoveToButton';
 
@@ -125,6 +125,12 @@ export default function ApplicationsKanban({
                             <h4 className="font-semibold text-stone-900 text-[13px] truncate group-hover/card:text-brand-700 transition-colors">
                               {name}
                             </h4>
+                            {app.candidate?.email ? (
+                              <p className="text-[11px] text-stone-400 truncate mt-0.5 flex items-center gap-1">
+                                <Mail className="w-3 h-3 shrink-0" />
+                                <span className="truncate">{app.candidate.email}</span>
+                              </p>
+                            ) : null}
                             <p className="text-[11px] text-stone-500 truncate mt-0.5 flex items-center gap-1">
                               <Briefcase className="w-3 h-3 text-brand-600 shrink-0" strokeWidth={2.25} />
                               <span className="truncate">{mandate}</span>

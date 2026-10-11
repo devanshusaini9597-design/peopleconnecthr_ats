@@ -23,6 +23,11 @@ const supportTicketSchema = new mongoose.Schema({
     default: 'open',
     index: true,
   },
+  starred: { type: Boolean, default: false, index: true },
+  companyReadAt: { type: Date, default: null },
+  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+  lastPreview: { type: String, default: '', trim: true, maxlength: 180 },
+  lastAuthorType: { type: String, enum: ['freelancer', 'support'], default: 'freelancer' },
   replies: [{
     body: { type: String, required: true, trim: true, maxlength: 4000 },
     authorType: { type: String, enum: ['freelancer', 'support'], required: true },

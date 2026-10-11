@@ -53,7 +53,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
         items: section.items.filter(
           (item) => {
             if (item.hidden) return false;
-            const gatedByModule = usePermissionPack && item.module;
+            const gatedByModule = usePermissionPack && (item.module || item.altModule);
             if (!gatedByModule && item.onlyRoles && !item.onlyRoles.includes(userRole)) return false;
             if (item.platformOnly && !authUser?.isPlatformOperator) return false;
             if (item.internalPreview) {
@@ -68,7 +68,9 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
                 item.onlyRoles?.includes('freelancer') || item.freelancerAlways
               );
               if (!freelancerBypass) {
-                if (item.module && !permissionSet.has(item.module)) return false;
+                const hasModule = (item.module && permissionSet.has(item.module))
+                  || (item.altModule && permissionSet.has(item.altModule));
+                if ((item.module || item.altModule) && !hasModule) return false;
               }
             } else if (!item.roles.includes(userRole)) {
               return false;
@@ -201,7 +203,10 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
     }
     if (newAnnouncementsCount > 0) badges['/announcements'] = newAnnouncementsCount;
     if (newReportSharesCount > 0) badges['/analytics'] = newReportSharesCount;
-    if (newSupportCount > 0) badges['/feedback'] = newSupportCount;
+    if (newSupportCount > 0) {
+      badges['/feedback'] = newSupportCount;
+      badges['/support-desk'] = newSupportCount;
+    }
     if (inboxUnreadCount > 0) badges['/inbox'] = inboxUnreadCount;
     if (newPartnerCount > 0) badges['/freelancer-applications'] = newPartnerCount;
     return badges;

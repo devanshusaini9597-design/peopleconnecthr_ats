@@ -1,15 +1,13 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Briefcase } from 'lucide-react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { planHasFeature } from '../../config/planFeatures';
 import usePageTour from '../../hooks/usePageTour';
 import { useToast } from '../Toast';
 import {
-  APPS_TOUR_KEY,
   PIPELINE_TOUR_KEY,
-  APPS_TOUR_STEPS,
   PIPELINE_TOUR_STEPS,
   emptyAddForm,
   jobTitle,
@@ -22,15 +20,11 @@ import { useApplicationsDrag } from './useApplicationsDrag';
 
 export default function useApplications() {
   const { t } = useTranslation();
-  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const isApplicationsRoute = location.pathname.startsWith('/applications');
-  const pageTitle = isApplicationsRoute
-    ? t('pages.applications.title')
-    : t('pages.applications.pipelineTitle');
+  const pageTitle = t('pages.applications.pipelineTitle') || 'Pipeline';
   const pageSubtitle = t('pages.applications.subtitle');
-  const tourKey = isApplicationsRoute ? APPS_TOUR_KEY : PIPELINE_TOUR_KEY;
-  const tourSteps = isApplicationsRoute ? APPS_TOUR_STEPS : PIPELINE_TOUR_STEPS;
+  const tourKey = PIPELINE_TOUR_KEY;
+  const tourSteps = PIPELINE_TOUR_STEPS;
 
   const { organization } = useAuth();
   const toast = useToast();
@@ -74,11 +68,19 @@ export default function useApplications() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
-  const [viewMode, setViewMode] = useState(isApplicationsRoute ? 'table' : 'kanban');
+  const [viewMode, setViewMode] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem('skillnix.companyPipeline.view');
+      return stored === 'table' || stored === 'kanban' ? stored : 'kanban';
+    } catch {
+      return 'kanban';
+    }
+  });
 
-  useEffect(() => {
-    setViewMode(isApplicationsRoute ? 'table' : 'kanban');
-  }, [isApplicationsRoute]);
+  const setPersistedViewMode = useCallback((next) => {
+    setViewMode(next);
+    try { sessionStorage.setItem('skillnix.companyPipeline.view', next); } catch { /* ignore */ }
+  }, []);
 
   const [selectedApp, setSelectedApp] = useState(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
@@ -282,7 +284,6 @@ export default function useApplications() {
   }, [boardStages, stageFilter]);
 
   return {
-    isApplicationsRoute,
     pageTitle,
     pageSubtitle,
     tourKey,
@@ -303,7 +304,7 @@ export default function useApplications() {
     stageFilter,
     setStageFilter,
     viewMode,
-    setViewMode,
+    setViewMode: setPersistedViewMode,
     selectedApp,
     isPanelOpen,
     noteDraft,

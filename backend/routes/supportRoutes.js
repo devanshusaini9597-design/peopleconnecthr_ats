@@ -61,6 +61,24 @@ router.patch('/org/tickets/:id/status', requireCompanyDesk, async (req, res) => 
   }
 });
 
+router.patch('/org/tickets/:id', requireCompanyDesk, async (req, res) => {
+  try {
+    const data = await svc.patchOrgTicket(req.user, req.params.id, req.body);
+    res.json({ success: true, data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
+router.get('/org/unread-count', requireCompanyDesk, async (req, res) => {
+  try {
+    const count = await svc.orgUnreadCount(req.user);
+    res.json({ success: true, count });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
 /** Freelancer self-service tickets */
 router.get('/unread-count', requireFreelancer, async (req, res) => {
   try {
@@ -80,19 +98,33 @@ router.post('/mark-seen', requireFreelancer, async (req, res) => {
   }
 });
 
-router.get('/tickets', requireFreelancer, async (req, res) => {
+router.get('/tickets', async (req, res) => {
   try {
-    const data = await svc.listMyTickets(req.user, req.query);
-    res.json({ success: true, data });
+    if (isFreelancer(req.user)) {
+      const data = await svc.listMyTickets(req.user, req.query);
+      return res.json({ success: true, data });
+    }
+    if (svc.canAccessCompanyDesk(req.user)) {
+      const data = await svc.listOrgTickets(req.user, req.query);
+      return res.json({ success: true, data });
+    }
+    return res.status(403).json({ success: false, message: 'Support desk access denied' });
   } catch (error) {
     handle(res, error);
   }
 });
 
-router.get('/tickets/:id', requireFreelancer, async (req, res) => {
+router.get('/tickets/:id', async (req, res) => {
   try {
-    const data = await svc.getMyTicket(req.user, req.params.id);
-    res.json({ success: true, data });
+    if (isFreelancer(req.user)) {
+      const data = await svc.getMyTicket(req.user, req.params.id);
+      return res.json({ success: true, data });
+    }
+    if (svc.canAccessCompanyDesk(req.user)) {
+      const data = await svc.getOrgTicket(req.user, req.params.id);
+      return res.json({ success: true, data });
+    }
+    return res.status(403).json({ success: false, message: 'Support desk access denied' });
   } catch (error) {
     handle(res, error);
   }

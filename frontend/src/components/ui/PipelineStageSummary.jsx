@@ -10,6 +10,7 @@ function useDragScroll() {
   const drag = useRef({ active: false, startX: 0, scrollLeft: 0, moved: false });
 
   const onPointerDown = (e) => {
+    if (e.pointerType && e.pointerType !== 'mouse') return;
     if (e.button !== 0) return;
     if (e.target.closest('a, input, textarea, select, [data-no-drag]')) return;
     const el = ref.current;
@@ -71,6 +72,8 @@ export default function PipelineStageSummary({
   showHint = true,
   tourAttr = 'apps-stage-summary',
   countLabel = 'candidates',
+  variant = 'cards',
+  toggleOff = true,
 }) {
   const scroll = useDragScroll();
 
@@ -88,11 +91,89 @@ export default function PipelineStageSummary({
     ? (stages.find((s) => String(s.id).toLowerCase() === String(stageFilter).toLowerCase())?.label || stageFilter)
     : null;
 
+  if (variant === 'strip') {
+    return (
+      <section data-tour={tourAttr} className="card-ats-bordered mb-4 overflow-hidden">
+        <div className="h-[3px] bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+        <div
+          ref={scroll.ref}
+          className="p-3.5 overflow-x-auto overscroll-x-contain cursor-grab active:cursor-grabbing select-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          onPointerDown={scroll.onPointerDown}
+          onPointerMove={scroll.onPointerMove}
+          onPointerUp={scroll.onPointerUp}
+          onPointerCancel={scroll.onPointerUp}
+          onClickCapture={scroll.guardClick}
+        >
+          <div className="flex w-max min-w-full items-center gap-2">
+            <button
+              type="button"
+              data-no-drag
+              onClick={() => setStageFilter?.('all')}
+              className={cx(
+                'h-9 inline-flex items-center gap-2 px-3 rounded-full text-[13px] font-semibold border shrink-0',
+                stageFilter === 'all'
+                  ? 'bg-gradient-to-r from-brand-600 to-teal-600 text-white border-transparent shadow-sm shadow-brand-500/20'
+                  : 'bg-white text-stone-700 border-stone-200 hover:border-brand-300'
+              )}
+            >
+              All
+              <span className={cx(
+                'min-w-[1.25rem] h-5 px-1.5 rounded-full text-[11px] font-bold tabular-nums inline-flex items-center justify-center',
+                stageFilter === 'all' ? 'bg-white/20 text-white' : 'bg-brand-50 text-brand-800'
+              )}
+              >
+                {Number(total) || 0}
+              </span>
+            </button>
+            {stages.map((stage) => {
+              const id = stage.id || stage.key;
+              const label = stage.label || id;
+              const count = resolveCount(stage);
+              const active = String(stageFilter).toLowerCase() === String(id).toLowerCase();
+              const Icon = stage.icon;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  data-no-drag
+                  onClick={() => {
+                    setStageFilter?.(toggleOff && active ? 'all' : id);
+                    window.requestAnimationFrame(() => {
+                      document
+                        .querySelector('[data-tour="freelance-review-boards"], [data-tour="freelancer-pipeline-boards"], [data-tour="apps-workspace"]')
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    });
+                  }}
+                  className={cx(
+                    'h-9 inline-flex items-center gap-1.5 px-3 rounded-full text-[13px] font-semibold border shrink-0',
+                    active
+                      ? 'bg-gradient-to-r from-brand-600 to-teal-600 text-white border-transparent shadow-sm shadow-brand-500/20'
+                      : 'bg-white text-stone-700 border-stone-200 hover:border-brand-300'
+                  )}
+                >
+                  {Icon ? <Icon size={13} strokeWidth={2.25} className={active ? 'text-white' : 'text-brand-700'} /> : null}
+                  <span>{label}</span>
+                  <span className={cx(
+                    'min-w-[1.25rem] h-5 px-1.5 rounded-full text-[11px] font-bold tabular-nums inline-flex items-center justify-center',
+                    active ? 'bg-white/20 text-white' : 'bg-stone-100 text-stone-700'
+                  )}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section data-tour={tourAttr} className="space-y-2 mb-3">
       <div className="flex flex-wrap items-center justify-between gap-2 px-0.5">
         <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-stone-500">Pipeline</p>
+          <p className="text-[12px] font-medium text-stone-500">Pipeline</p>
           {showHint ? (
             <p className="text-[12px] text-stone-500 mt-0.5 break-words">
               {activeLabel
@@ -124,7 +205,7 @@ export default function PipelineStageSummary({
 
       <div
         ref={scroll.ref}
-        className="overflow-x-auto overscroll-x-contain touch-pan-y select-none cursor-grab active:cursor-grabbing py-2 px-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="overflow-x-auto overscroll-x-contain [touch-action:pan-x_pan-y] select-none cursor-grab active:cursor-grabbing py-2 px-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         onPointerDown={scroll.onPointerDown}
         onPointerMove={scroll.onPointerMove}
         onPointerUp={scroll.onPointerUp}
@@ -147,9 +228,10 @@ export default function PipelineStageSummary({
                 key={id}
                 type="button"
                 role="listitem"
+                data-no-drag
                 onClick={(e) => {
                   e.stopPropagation();
-                  setStageFilter?.(active ? 'all' : id);
+                  setStageFilter?.(toggleOff && active ? 'all' : id);
                   window.requestAnimationFrame(() => {
                     document
                       .querySelector('[data-tour="freelance-review-boards"], [data-tour="freelancer-pipeline-boards"]')

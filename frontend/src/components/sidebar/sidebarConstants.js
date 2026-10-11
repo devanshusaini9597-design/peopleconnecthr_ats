@@ -2,7 +2,6 @@ import {
   LayoutDashboard,
   BarChart3,
   Briefcase,
-  GitPullRequest,
   Users,
   Kanban,
   FileText,
@@ -117,9 +116,8 @@ export const SECTIONS = [
     items: [
       { labelKey: 'nav.items.jobs', label: 'Jobs', path: '/jobs', icon: Briefcase, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer'], module: 'modules.jobs' },
       { labelKey: 'nav.items.careersPage', label: 'Careers page', path: '/careers', icon: Globe2, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer'], module: 'modules.jobs', externalCareers: true },
-      { labelKey: 'nav.items.applications', label: 'Applications', path: '/applications', icon: GitPullRequest, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer'], module: 'modules.applications' },
+      { labelKey: 'nav.items.pipelineBoard', label: 'Pipeline', path: '/applications', icon: Kanban, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer'], module: 'modules.applications', altModule: 'modules.pipeline' },
       { labelKey: 'nav.items.candidates', label: 'Candidates', path: '/ats', icon: Users, roles: ['owner', 'admin', 'hr_recruiter', 'hr_manager', 'sales', 'recruiter', 'freelancer'], module: 'modules.candidates', freelancerAlways: true },
-      { labelKey: 'nav.items.pipelineBoard', label: 'Pipeline Board', path: '/recruitment', icon: Kanban, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer'], module: 'modules.pipeline' },
       { labelKey: 'nav.items.resumeParsing', label: 'Resume Parsing', path: '/resume-parsing', icon: FileText, roles: ['owner', 'admin', 'recruiter'], module: 'modules.resumeParsing' },
       { labelKey: 'nav.items.talentPools', label: 'Talent Pools', path: '/talent-pools', icon: Layers, roles: ['owner', 'admin', 'recruiter'], feature: 'candidates.talentPools', module: 'modules.talentPools' },
       { labelKey: 'nav.items.skills', label: 'Skills', path: '/skills', icon: Tags, roles: ['owner', 'admin', 'recruiter'], feature: 'candidates.skillsTaxonomy', module: 'modules.skills' },

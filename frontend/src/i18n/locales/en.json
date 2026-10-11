@@ -109,6 +109,7 @@
       "pushNotifications": "Push Notifications",
       "profile": "Profile",
       "trialRequests": "Trial requests",
+      "platform": "Platform",
       "billing": "Billing"
     },
     "header": {
@@ -150,7 +151,9 @@
     "mfaOrgRequired": "Your organization requires MFA before you can sign in.",
     "mfaVerify": "Verify & sign in",
     "otpTitle": "Check your email",
+    "otpTitleFailed": "Enter your sign-in code",
     "otpEnterCode": "We sent a 6-digit sign-in code to {{email}}.",
+    "otpEnterCodeFailed": "We could not deliver email to {{email}}. Check spam and tap Resend.",
     "otpLabel": "Sign-in code",
     "otpResend": "Resend code",
     "otpSending": "Sending a new code…",
@@ -238,7 +241,7 @@
   },
     "applications": {
       "title": "Applications",
-      "pipelineTitle": "Pipeline Board",
+      "pipelineTitle": "Pipeline",
       "subtitle": "Track candidates through your hiring stages.",
       "add": "Add Application",
       "emptyJobs": "No open jobs yet",
@@ -247,7 +250,7 @@
     },
     "team": {
       "title": "Team Directory",
-      "subtitle": "People with Skillnix access, plus stakeholders you CC on candidate mail.",
+      "subtitle": "People with workspace access, plus stakeholders you CC on candidate mail.",
       "addMember": "Add Member",
       "pending": "Pending invitations",
       "removeConfirm": "Remove Team Member",
@@ -349,8 +352,8 @@
       "subtitle": "Route offers and sensitive actions through approvers."
     },
     "emailSettings": {
-      "title": "Email Settings",
-      "subtitle": "Configure outbound email providers for your organization."
+      "title": "Email settings",
+      "subtitle": "Sender identity, domain, and delivery for this organization."
     },
     "emailTemplates": {
       "title": "Email Templates",

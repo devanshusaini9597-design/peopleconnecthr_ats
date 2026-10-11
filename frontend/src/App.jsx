@@ -188,7 +188,7 @@ const router = createBrowserRouter([
       { path: '/freelancers', element: withPage(FreelancerOnboardingPage) },
       { path: '/freelancer-applications', element: <ProtectedRoute requiredRoles={['owner', 'admin']}>{withPage(FreelancerApplicationsPage)}</ProtectedRoute> },
       { path: '/applications', element: withPage(ApplicationsPage) },
-      { path: '/recruitment', element: withPage(ApplicationsPage) },
+      { path: '/recruitment', element: <Navigate to="/applications" replace /> },
       { path: '/ats', element: withPage(ATSPage) },
       { path: '/mis', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales']} allowPermission="modules.mis">{withPage(MisPage)}</ProtectedRoute> },
       { path: '/mis-reports', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales']} allowPermission="modules.mis">{withPage(MisReportsPage)}</ProtectedRoute> },

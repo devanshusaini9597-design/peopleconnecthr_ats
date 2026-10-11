@@ -32,8 +32,8 @@ export const APPS_TOUR_STEPS = [
 
 export const PIPELINE_TOUR_STEPS = [
   {
-    title: 'Pipeline Board',
-    body: 'Live kanban of every active application. Drag cards to move stage — it saves immediately.',
+    title: 'Pipeline',
+    body: 'Company hiring board — same desk as Freelance Review, for internal applications. Drag cards between stages; it saves immediately.',
   },
   {
     target: '[data-tour="apps-tip"]',

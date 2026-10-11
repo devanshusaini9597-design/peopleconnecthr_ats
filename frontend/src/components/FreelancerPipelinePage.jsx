@@ -276,7 +276,7 @@ export default function FreelancerPipelinePage() {
   };
 
   if (user?.role && user.role !== 'freelancer') {
-    return <Navigate to="/recruitment" replace />;
+    return <Navigate to="/applications" replace />;
   }
 
   return (

@@ -74,7 +74,46 @@ function makeTicketRef() {
 
 function canAccessCompanyDesk(user) {
   if (!user || isFreelancer(user) || !user.organizationId) return false;
+  if (user.role === 'owner') return true;
+  if (Array.isArray(user.permissions) && user.permissions.includes('modules.applications')) return true;
   return COMPANY_DESK_ROLES.has(String(user.role || ''));
+}
+
+function previewText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+}
+
+function isUnreadForCompany(row) {
+  if (!row) return false;
+  if (!row.companyReadAt) return true;
+  return new Date(row.updatedAt || 0) > new Date(row.companyReadAt);
+}
+
+function presentOrgTicket(row, { includeReplies = false } = {}) {
+  if (!row) return row;
+  const replies = Array.isArray(row.replies) ? row.replies : [];
+  const last = replies[replies.length - 1];
+  return {
+    _id: row._id,
+    ticketRef: row.ticketRef,
+    category: row.category,
+    subject: row.subject,
+    message: includeReplies ? row.message : undefined,
+    status: row.status,
+    starred: Boolean(row.starred),
+    assignedTo: row.assignedTo || null,
+    userName: row.userName,
+    userEmail: row.userEmail,
+    userRole: row.userRole,
+    pageUrl: includeReplies ? row.pageUrl : undefined,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    lastPreview: row.lastPreview || previewText(last?.body || row.message),
+    lastAuthorType: row.lastAuthorType || (last?.authorType || 'freelancer'),
+    unread: isUnreadForCompany(row),
+    replyCount: replies.length,
+    replies: includeReplies ? replies : undefined,
+  };
 }
 
 function orgFilter(organizationId) {
@@ -127,6 +166,9 @@ async function createTicket(user, body = {}) {
     userRole: user.role || '',
     orgName,
     status: 'open',
+    lastPreview: previewText(message),
+    lastAuthorType: 'freelancer',
+    companyReadAt: null,
   });
 
   let teamEmailSent = false;
@@ -200,6 +242,8 @@ async function addFreelancerReply(user, ticketId, body = {}) {
     authorEmail: user.email || '',
   });
   if (ticket.status === 'resolved') ticket.status = 'open';
+  ticket.lastPreview = previewText(message);
+  ticket.lastAuthorType = 'freelancer';
   await ticket.save();
   const reply = ticket.replies[ticket.replies.length - 1];
   notifyTeamFreelancerFollowUp(ticket, reply).catch((err) => {
@@ -208,44 +252,104 @@ async function addFreelancerReply(user, ticketId, body = {}) {
   return ticket.toObject();
 }
 
+function orgSearchFilter(q) {
+  const text = String(q || '').trim();
+  if (!text) return {};
+  const rx = new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  return {
+    $or: [{ ticketRef: rx }, { subject: rx }, { userName: rx }, { userEmail: rx }, { lastPreview: rx }],
+  };
+}
+
+function unreadMatch() {
+  return {
+    $or: [
+      { companyReadAt: { $exists: false } },
+      { companyReadAt: null },
+      { $expr: { $gt: ['$updatedAt', '$companyReadAt'] } },
+    ],
+  };
+}
+
 async function listOrgTickets(user, query = {}) {
   if (!canAccessCompanyDesk(user)) throw httpError('Support desk access denied', 403);
-  const filter = { ...orgFilter(user.organizationId) };
-  const status = String(query.status || 'active').trim().toLowerCase();
-  if (status === 'active') filter.status = { $in: ['open', 'in_progress'] };
-  if (status === 'resolved') filter.status = 'resolved';
-  if (status === 'open' || status === 'in_progress') filter.status = status;
-  const q = String(query.q || '').trim();
-  if (q) {
-    filter.$or = [
-      { ticketRef: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
-      { subject: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
-      { userName: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
-      { userEmail: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
-    ];
-  }
+  const base = { ...orgFilter(user.organizationId) };
+  const folder = String(query.folder || query.status || 'inbox').trim().toLowerCase();
+  const filter = { ...base, ...orgSearchFilter(query.q) };
+  if (folder === 'inbox' || folder === 'active') filter.status = { $in: ['open', 'in_progress'] };
+  else if (folder === 'resolved') filter.status = 'resolved';
+  else if (folder === 'open' || folder === 'in_progress') filter.status = folder;
+  else if (folder === 'starred') filter.starred = true;
+  else if (folder === 'unread') Object.assign(filter, unreadMatch());
   const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
-  const limit = Math.min(50, Math.max(5, Number.parseInt(query.limit, 10) || 15));
-  const [items, total] = await Promise.all([
+  const limit = Math.min(80, Math.max(5, Number.parseInt(query.limit, 10) || 40));
+  const [items, total, stats] = await Promise.all([
     SupportTicket.find(filter)
-      .select('ticketRef category subject message status userName userEmail replies createdAt updatedAt')
+      .select('ticketRef category subject status starred assignedTo userName userEmail lastPreview lastAuthorType companyReadAt createdAt updatedAt replies')
       .sort({ updatedAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
       .lean(),
     SupportTicket.countDocuments(filter),
+    orgTicketStats(user.organizationId),
   ]);
-  return { items, total, page, limit, pages: Math.max(1, Math.ceil(total / limit)) };
+  return {
+    items: items.map((row) => presentOrgTicket(row)),
+    total,
+    page,
+    limit,
+    pages: Math.max(1, Math.ceil(total / limit)),
+    folders: stats,
+  };
+}
+
+async function orgTicketStats(organizationId) {
+  const base = { ...orgFilter(organizationId) };
+  const [inbox, unread, starred, resolved, all] = await Promise.all([
+    SupportTicket.countDocuments({ ...base, status: { $in: ['open', 'in_progress'] } }),
+    SupportTicket.countDocuments({ ...base, ...unreadMatch() }),
+    SupportTicket.countDocuments({ ...base, starred: true }),
+    SupportTicket.countDocuments({ ...base, status: 'resolved' }),
+    SupportTicket.countDocuments(base),
+  ]);
+  return { inbox, unread, starred, resolved, all };
+}
+
+async function orgUnreadCount(user) {
+  if (!canAccessCompanyDesk(user)) return 0;
+  return SupportTicket.countDocuments({
+    ...orgFilter(user.organizationId),
+    status: { $in: ['open', 'in_progress'] },
+    ...unreadMatch(),
+  });
 }
 
 async function getOrgTicket(user, ticketId) {
   if (!canAccessCompanyDesk(user)) throw httpError('Support desk access denied', 403);
+  const ticket = await SupportTicket.findOneAndUpdate(
+    { _id: ticketId, ...orgFilter(user.organizationId) },
+    { $set: { companyReadAt: new Date() } },
+    { new: true }
+  ).lean();
+  if (!ticket) throw httpError('Ticket not found', 404);
+  return presentOrgTicket(ticket, { includeReplies: true });
+}
+
+async function patchOrgTicket(user, ticketId, body = {}) {
+  if (!canAccessCompanyDesk(user)) throw httpError('Support desk access denied', 403);
   const ticket = await SupportTicket.findOne({
     _id: ticketId,
     ...orgFilter(user.organizationId),
-  }).lean();
+  });
   if (!ticket) throw httpError('Ticket not found', 404);
-  return ticket;
+  if (body.starred !== undefined) ticket.starred = Boolean(body.starred);
+  if (body.unread === true) ticket.companyReadAt = null;
+  if (body.unread === false) ticket.companyReadAt = new Date();
+  if (body.assignedTo !== undefined) {
+    ticket.assignedTo = body.assignedTo || null;
+  }
+  await ticket.save();
+  return presentOrgTicket(ticket.toObject(), { includeReplies: true });
 }
 
 async function addSupportReply(user, ticketId, body = {}) {
@@ -271,6 +375,9 @@ async function addSupportReply(user, ticketId, body = {}) {
   } else if (ticket.status === 'open') {
     ticket.status = 'in_progress';
   }
+  ticket.lastPreview = previewText(message);
+  ticket.lastAuthorType = 'support';
+  ticket.companyReadAt = new Date();
   await ticket.save();
 
   const reply = ticket.replies[ticket.replies.length - 1];
@@ -284,7 +391,7 @@ async function addSupportReply(user, ticketId, body = {}) {
     senderName: user.name || 'Support',
   }).catch((err) => logger.warn({ err: err.message }, 'Support in-app notify failed'));
 
-  return ticket.toObject();
+  return presentOrgTicket(ticket.toObject(), { includeReplies: true });
 }
 
 async function updateOrgTicketStatus(user, ticketId, body = {}) {
@@ -313,7 +420,7 @@ async function updateOrgTicketStatus(user, ticketId, body = {}) {
     senderName: user.name || 'Support',
   }).catch((err) => logger.warn({ err: err.message }, 'Support status in-app notify failed'));
 
-  return ticket.toObject();
+  return presentOrgTicket(ticket.toObject(), { includeReplies: true });
 }
 
 async function sendSupportMail(to, subject, html, text, options = {}) {
@@ -366,6 +473,10 @@ async function notifyTeamNewTicket(ticket) {
     logoUrl: brand.logoUrl,
     brandColor: brand.brandColor,
     wordmark: brand.wordmark,
+    companyAddress: brand.companyAddress || '',
+    websiteUrl: brand.websiteUrl || '',
+    supportEmail: brand.supportEmail || '',
+    socialLinks: brand.socialLinks || {},
     bodyHtml: `
       <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;line-height:1.6;">
         A freelance recruiter submitted a new <strong>${escapeHtml(categoryLabel.toLowerCase())}</strong> that requires attention.
@@ -426,6 +537,10 @@ async function notifySubmitterConfirmation(ticket) {
     logoUrl: brand.logoUrl,
     brandColor: brand.brandColor,
     wordmark: brand.wordmark,
+    companyAddress: brand.companyAddress || '',
+    websiteUrl: brand.websiteUrl || '',
+    supportEmail: brand.supportEmail || '',
+    socialLinks: brand.socialLinks || {},
     bodyHtml: `
       <p style="margin:0 0 14px 0;font-size:16px;color:#0f172a;">Dear ${escapeHtml(ticket.userName || 'Colleague')},</p>
       <p style="margin:0 0 14px 0;color:#475569;line-height:1.75;">
@@ -489,6 +604,10 @@ async function notifyTeamFreelancerFollowUp(ticket, reply) {
     logoUrl: brand.logoUrl,
     brandColor: brand.brandColor,
     wordmark: brand.wordmark,
+    companyAddress: brand.companyAddress || '',
+    websiteUrl: brand.websiteUrl || '',
+    supportEmail: brand.supportEmail || '',
+    socialLinks: brand.socialLinks || {},
     bodyHtml: `
       <p style="margin:0 0 14px 0;font-size:16px;color:#0f172a;line-height:1.6;">
         The freelancer added a follow-up on an existing support ticket.
@@ -532,6 +651,10 @@ async function notifyFreelancerSupportReply(ticket, reply, actor) {
     logoUrl: brand.logoUrl,
     brandColor: brand.brandColor,
     wordmark: brand.wordmark,
+    companyAddress: brand.companyAddress || '',
+    websiteUrl: brand.websiteUrl || '',
+    supportEmail: brand.supportEmail || '',
+    socialLinks: brand.socialLinks || {},
     bodyHtml: `
       <p style="margin:0 0 14px 0;font-size:16px;color:#0f172a;">Dear ${escapeHtml(ticket.userName || 'Colleague')},</p>
       <p style="margin:0 0 14px 0;color:#475569;line-height:1.75;">
@@ -589,6 +712,10 @@ async function notifyFreelancerStatusChange(ticket, previousStatus, actor) {
     logoUrl: brand.logoUrl,
     brandColor: brand.brandColor,
     wordmark: brand.wordmark,
+    companyAddress: brand.companyAddress || '',
+    websiteUrl: brand.websiteUrl || '',
+    supportEmail: brand.supportEmail || '',
+    socialLinks: brand.socialLinks || {},
     bodyHtml: `
       <p style="margin:0 0 14px 0;font-size:16px;color:#0f172a;">Dear ${escapeHtml(ticket.userName || 'Colleague')},</p>
       <p style="margin:0 0 14px 0;color:#475569;line-height:1.75;">
@@ -638,7 +765,7 @@ async function unreadSupportCount(user) {
     isRead: false,
     isDismissed: { $ne: true },
   });
-  return Math.max(0, Math.min(9, Number(count) || 0));
+  return Math.max(0, Number(count) || 0);
 }
 
 async function markSupportSeen(user) {
@@ -671,6 +798,8 @@ module.exports = {
   getOrgTicket,
   addSupportReply,
   updateOrgTicketStatus,
+  patchOrgTicket,
+  orgUnreadCount,
   unreadSupportCount,
   markSupportSeen,
 };
