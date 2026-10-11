@@ -59,16 +59,16 @@ export const InviteModal = ({ assessment, open, onClose, onSent }) => {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        toast?.error?.(data.message || 'Failed to send invite');
+        toast?.error?.(data.message || 'Unable to send the invitation');
         return;
       }
       toast?.success?.(data.data?.emailSent
         ? `Assessment sent to ${candidate.name}.`
-        : `Invite saved for ${candidate.name}. The email could not be delivered.`);
+        : `Invitation created for ${candidate.name}. The email could not be delivered.`);
       onSent();
       onClose();
     } catch {
-      toast?.error?.('Failed to send invite');
+      toast?.error?.('Unable to send the invitation');
     } finally {
       setSending(false);
     }
@@ -87,7 +87,7 @@ export const InviteModal = ({ assessment, open, onClose, onSent }) => {
         toast?.error?.(data.message || 'Bulk invite failed');
         return;
       }
-      toast?.success?.(`Invited ${data.data.invited} candidates (${data.data.skipped} skipped).`);
+      toast?.success?.(`${data.data.invited} invitations sent (${data.data.skipped} skipped).`);
       onSent();
       onClose();
     } catch {

@@ -1125,13 +1125,13 @@ async function seedQuestionBank(organizationId, userId, body = {}) {
   let source = Array.isArray(body.items) ? body.items : null;
   if (!source?.length && body.packId) {
     const pack = getPack(body.packId);
-    if (!pack) throw httpError('Unknown starter pack', 404);
+    if (!pack) throw httpError('Question set not found', 404);
     source = pack.questions.map((q) => ({ ...q, tags: [pack.skill, pack.domain].filter(Boolean) }));
   }
-  if (!source?.length && (body.skill || body.domain)) {
-    source = questionsForSkill(body.domain, body.skill, body.type && normalizeQuestionType(body.type), 8);
+  if (!source?.length && (body.skill || body.domain || body.topic)) {
+    source = questionsForSkill(body.domain, body.skill || body.topic, body.type && normalizeQuestionType(body.type), 8);
   }
-  if (!source?.length) throw httpError('Choose a starter pack or provide questions');
+  if (!source?.length) throw httpError('Provide questions to add to the library');
   const normalized = normalizeQuestions(source);
   const existing = await AssessmentQuestion.find({ organizationId, archivedAt: null }).select('prompt').lean();
   const have = new Set(existing.map((row) => String(row.prompt || '').trim().toLowerCase()));
@@ -1147,12 +1147,16 @@ async function seedQuestionBank(organizationId, userId, body = {}) {
 }
 
 async function generateQuestionBank(organizationId, body = {}) {
-  const { questionsForSkill } = require('../config/assessmentQuestionCatalog');
+  const { questionsForSkill, synthesizeTopicQuestions } = require('../config/assessmentQuestionCatalog');
   const domain = String(body.domain || '').trim();
-  const skill = String(body.skill || domain || 'general').trim();
+  const skill = String(body.skill || body.topic || domain || '').trim();
+  if (!skill) throw httpError('Enter a topic, for example Logical reasoning or React.js', 400);
   const type = body.type ? normalizeQuestionType(body.type) : '';
   const count = Math.min(8, Math.max(3, Number(body.count) || 5));
-  const catalog = questionsForSkill(domain, skill, type || undefined, count).map((q) => ({
+  const catalog = (questionsForSkill(domain, skill, type || undefined, count).length
+    ? questionsForSkill(domain, skill, type || undefined, count)
+    : synthesizeTopicQuestions(skill, type, count)
+  ).map((q) => ({
     ...q,
     skillTag: q.skillTag || skill,
   }));
@@ -1163,7 +1167,7 @@ async function generateQuestionBank(organizationId, body = {}) {
     const { getAdapter } = require('../adapters');
     const adapter = await getAdapter(organizationId, 'ai');
     if (adapter?.generateText) {
-      const prompt = `You write hiring assessment questions. Generate ${count} questions for skill "${skill}"${domain ? ` in the ${domain} domain` : ''}.
+      const prompt = `You write professional hiring assessment questions. Generate ${count} questions on the topic "${skill}".
 Allowed types: multiple_choice, text, code, communication.${type ? ` Prefer type ${type}.` : ''}
 Return JSON only: {"items":[{"type":"multiple_choice","prompt":"...","options":["A","B","C","D"],"correctOptionIndex":0,"points":10,"skillTag":"${skill}","rubric":"","language":""}]}
 Rules: MCQ needs exactly 4 options and one correct index. Code items set language (javascript, python, or sql). Keep prompts under 400 characters. No markdown.`;

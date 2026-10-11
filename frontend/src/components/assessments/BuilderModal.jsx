@@ -87,7 +87,7 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
     <Modal
       open={open}
       onClose={onClose}
-      title={editing ? 'Edit assessment' : 'New Assessment'}
+      title={editing ? 'Edit assessment' : 'Create assessment'}
       description={editing
         ? 'Working copy only. In-progress attempts keep the published snapshot. Publish again to freeze a new version.'
         : 'Build a reusable test. Publish a version before assigning it, or invite to auto-publish.'}

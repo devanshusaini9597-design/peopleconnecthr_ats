@@ -115,7 +115,7 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
         toast?.error?.(data.message || 'Could not publish');
         return;
       }
-      toast?.success?.(`Published version ${data.data.version}. New attempts use this freeze.`);
+      toast?.success?.(`Published version ${data.data.version}. New attempts will use this version.`);
       onUpdated?.(data.data);
     } catch (err) {
       toast?.error?.(err?.message || 'Could not publish');
@@ -290,8 +290,8 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
           <EmptyState
             icon={ClipboardList}
             tone="sky"
-            message={invites.length === 0 ? 'No invites sent yet' : 'Nothing in this stage'}
-            subMessage={invites.length === 0 ? 'Invite a candidate to take this assessment.' : 'Pick another stage, or invite someone new.'}
+            message={invites.length === 0 ? 'No invitations sent' : 'No candidates in this stage'}
+            subMessage={invites.length === 0 ? 'Invite a candidate to complete this assessment.' : 'Select another stage, or invite an additional candidate.'}
             action={invites.length === 0 ? (
               <button type="button" onClick={() => setShowInvite(true)} className="btn-primary" disabled={archived}>
                 <Send className="w-4 h-4" /> Invite Candidate

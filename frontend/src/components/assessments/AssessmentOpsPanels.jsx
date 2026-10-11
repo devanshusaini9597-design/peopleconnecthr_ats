@@ -59,7 +59,7 @@ export function EvaluationQueuePanel({ onGrade, canGrade = true, searchQuery = '
 
   if (error) {
     return (
-      <EmptyState icon={Inbox} tone="amber" message="Couldn’t load the queue" subMessage={error} action={(
+      <EmptyState icon={Inbox} tone="amber" message="Unable to load the evaluation queue" subMessage={error} action={(
         <button type="button" className="btn-secondary" onClick={load}>Retry</button>
       )} />
     );
@@ -70,8 +70,8 @@ export function EvaluationQueuePanel({ onGrade, canGrade = true, searchQuery = '
       <EmptyState
         icon={FileEdit}
         tone="sky"
-        message="Nothing waiting for review"
-        subMessage="Written and coding answers land here after a candidate submits. Objective questions are scored automatically."
+        message="No submissions awaiting review"
+        subMessage="Written and coding answers appear here after a candidate submits. Multiple-choice items are scored automatically."
       />
     );
   }
@@ -81,11 +81,11 @@ export function EvaluationQueuePanel({ onGrade, canGrade = true, searchQuery = '
       {!embedded ? (
         <div className="relative max-w-md">
           <Search className="w-4 h-4 text-brand-600 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input value={localQuery} onChange={(e) => setLocalQuery(e.target.value)} placeholder="Search candidate or test…" className="input-ats input-ats-icon" />
+          <input value={localQuery} onChange={(e) => setLocalQuery(e.target.value)} placeholder="Search candidate or assessment" className="input-ats input-ats-icon" />
         </div>
       ) : null}
       {filtered.length === 0 ? (
-        <EmptyState compact icon={Search} tone="amber" message="No matching submissions" subMessage="Try another name or assessment title." />
+        <EmptyState compact icon={Search} tone="amber" message="No matching submissions" subMessage="Try another candidate name or assessment title." />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-stretch stagger-children">
           {filtered.map((row) => (
@@ -142,7 +142,7 @@ export function AssessmentSettingsPanel() {
       const res = await authenticatedFetch('/api/assessments/settings', { method: 'PUT', body: JSON.stringify(form) });
       const data = await readApiJson(res);
       if (!res.ok) return toast?.error?.(data.message || 'Could not save');
-      toast?.success?.('Assessment policies saved');
+      toast?.success?.('Settings saved');
       setForm(data.data);
     } finally {
       setSaving(false);
@@ -158,8 +158,8 @@ export function AssessmentSettingsPanel() {
           <div className="flex items-start gap-3">
             <div className="icon-box-ats !w-10 !h-10 !rounded-xl"><Clock strokeWidth={2.25} /></div>
             <div className="min-w-0 flex-1">
-              <h3 className="text-sm font-bold text-stone-900 tracking-tight">Invite window</h3>
-              <p className="text-xs text-stone-500 mt-0.5">How long a new invite stays valid.</p>
+              <h3 className="text-sm font-bold text-stone-900 tracking-tight">Invitation validity</h3>
+              <p className="text-xs text-stone-500 mt-0.5">Default period a new invitation remains valid.</p>
               <div className="mt-3">
                 <label className="label-ats">Hours</label>
                 <input type="number" min="1" max="720" className="input-ats" value={form.defaultInviteHours || 72} onChange={(e) => setForm((f) => ({ ...f, defaultInviteHours: Number(e.target.value) }))} />
@@ -172,8 +172,8 @@ export function AssessmentSettingsPanel() {
           <div className="flex items-start gap-3">
             <div className="icon-box-ats !w-10 !h-10 !rounded-xl"><Archive strokeWidth={2.25} /></div>
             <div className="min-w-0 flex-1">
-              <h3 className="text-sm font-bold text-stone-900 tracking-tight">Retention</h3>
-              <p className="text-xs text-stone-500 mt-0.5">How long attempts are kept for audit.</p>
+              <h3 className="text-sm font-bold text-stone-900 tracking-tight">Record retention</h3>
+              <p className="text-xs text-stone-500 mt-0.5">How long completed attempts are retained for audit.</p>
               <div className="mt-3">
                 <label className="label-ats">Days</label>
                 <input type="number" min="30" max="3650" className="input-ats" value={form.retentionDays || 730} onChange={(e) => setForm((f) => ({ ...f, retentionDays: Number(e.target.value) }))} />
@@ -187,7 +187,7 @@ export function AssessmentSettingsPanel() {
             <div className="icon-box-ats !w-10 !h-10 !rounded-xl"><EyeOff strokeWidth={2.25} /></div>
             <div className="min-w-0 flex-1">
               <h3 className="text-sm font-bold text-stone-900 tracking-tight">Result visibility</h3>
-              <p className="text-xs text-stone-500 mt-0.5">Default for new assessments. Each test can override this.</p>
+              <p className="text-xs text-stone-500 mt-0.5">Default for new assessments. Individual assessments may override this setting.</p>
               <div className="mt-3">
                 <PremiumSelect
                   variant="list"
@@ -207,7 +207,7 @@ export function AssessmentSettingsPanel() {
             <div className="icon-box-ats !w-10 !h-10 !rounded-xl"><RefreshCw strokeWidth={2.25} /></div>
             <span className="min-w-0 flex-1">
               <span className="flex items-center justify-between gap-3">
-                <span className="text-sm font-bold text-stone-900 tracking-tight">Candidate retakes</span>
+                <span className="text-sm font-bold text-stone-900 tracking-tight">Allow retakes</span>
                 <input
                   type="checkbox"
                   className="rounded border-stone-300 text-brand-600"
@@ -215,7 +215,7 @@ export function AssessmentSettingsPanel() {
                   onChange={(e) => setForm((f) => ({ ...f, allowCandidateRetakes: e.target.checked }))}
                 />
               </span>
-              <span className="block text-xs text-stone-500 mt-1">When on, you can send a new invite after someone already completed a test.</span>
+              <span className="block text-xs text-stone-500 mt-1">When enabled, a new invitation may be issued after a candidate has already completed the assessment.</span>
             </span>
           </label>
         </article>
@@ -226,15 +226,15 @@ export function AssessmentSettingsPanel() {
           <div className="icon-box-ats !w-10 !h-10 !rounded-xl"><FileText strokeWidth={2.25} /></div>
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-bold text-stone-900 tracking-tight">Privacy notice</h3>
-            <p className="text-xs text-stone-500 mt-0.5">Shown on the candidate instructions screen before they start.</p>
-            <textarea className="textarea-ats mt-3" rows={4} value={form.privacyNotice || ''} onChange={(e) => setForm((f) => ({ ...f, privacyNotice: e.target.value }))} placeholder="How you use assessment data, recording, and retention." />
+            <p className="text-xs text-stone-500 mt-0.5">Displayed on the candidate instructions screen before the assessment begins.</p>
+            <textarea className="textarea-ats mt-3" rows={4} value={form.privacyNotice || ''} onChange={(e) => setForm((f) => ({ ...f, privacyNotice: e.target.value }))} placeholder="Describe how assessment data, recordings, and retention are handled." />
           </div>
         </div>
       </article>
       <div className="flex items-center justify-between gap-3 rounded-2xl border border-stone-200/90 bg-stone-50/80 px-4 py-3">
-        <p className="text-xs text-stone-500">Applies to new invites. Published tests keep their own freeze.</p>
+        <p className="text-xs text-stone-500">Applies to new invitations. Assessments already issued to candidates retain their published version.</p>
         <button type="button" className="btn-primary" onClick={save} disabled={saving}>
-          {saving ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : 'Save policies'}
+          {saving ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : 'Save settings'}
         </button>
       </div>
     </div>
@@ -244,6 +244,6 @@ export function AssessmentSettingsPanel() {
 export const LIBRARY_TABS = [
   { id: 'library', label: 'Assessments', icon: ClipboardList },
   { id: 'queue', label: 'Evaluation queue', icon: FileEdit },
-  { id: 'bank', label: 'Question bank', icon: Inbox },
+  { id: 'bank', label: 'Question library', icon: Inbox },
   { id: 'settings', label: 'Policies', icon: Shield },
 ];

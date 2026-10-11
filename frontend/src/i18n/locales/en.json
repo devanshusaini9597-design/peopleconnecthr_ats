@@ -293,7 +293,7 @@
     },
     "assessments": {
       "title": "Assessments",
-      "subtitle": "Build skills tests and invite candidates to complete them. Code answers are graded by your team.",
+      "subtitle": "Create assessments, invite candidates, and evaluate submissions from one workspace.",
       "tourTitle": "Take a tour of Assessments",
       "deleteConfirm": "Delete assessment?"
     },

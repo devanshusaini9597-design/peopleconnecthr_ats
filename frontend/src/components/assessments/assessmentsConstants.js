@@ -15,28 +15,28 @@ export const emptyQuestion = () => ({
   visibleTests: [{ name: 'Sample', input: '', expected: '' }],
 });
 
-export const ASSESS_TOUR_KEY = 'skillnix_tour_assessments_v1';
+export const ASSESS_TOUR_KEY = 'skillnix_tour_assessments_v2';
 export const ASSESS_TOUR_STEPS = [
   {
     title: 'Assessments',
-    body: 'Build skills tests, invite candidates, and grade submissions — all from one place.',
+    body: 'Create assessments, invite candidates, and evaluate submissions from this workspace.',
   },
   {
     target: '[data-tour="assess-tip"]',
-    title: 'How it works',
-    body: 'Create an assessment, open it to invite candidates, then review and grade submissions when they come in.',
+    title: 'Invitations',
+    body: 'Inviting a candidate does not lock the assessment. Candidates who have already started retain the version they received.',
     placement: 'bottom',
   },
   {
     target: '[data-tour="assess-filters"]',
-    title: 'Find assessments',
-    body: 'Search by title or description and sort by name, question count, or duration.',
+    title: 'Workspace views',
+    body: 'Switch between assessments, the evaluation queue, the question library, and policies. Search and sort the list as needed.',
     placement: 'bottom',
   },
   {
     target: '[data-tour="assess-grid"]',
-    title: 'Open & manage',
-    body: 'Click a card to manage invites. Use the delete control on each card to remove an assessment.',
+    title: 'Manage assessments',
+    body: 'Open an assessment to send invitations and review results. Duplicate, edit, or delete from the card or table.',
     placement: 'top',
   },
 ];

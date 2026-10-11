@@ -16,6 +16,7 @@ import TourHelpFab from './ui/TourHelpFab';
 import usePageTour from '../hooks/usePageTour';
 import { useAuth } from '../context/AuthContext';
 import { planHasFeature } from '../config/planFeatures';
+import { StatCard } from './dashboard/DashboardWidgets';
 import {
   ASSESS_TOUR_KEY, ASSESS_TOUR_STEPS, SORT_OPTIONS,
 } from './assessments/assessmentsConstants';
@@ -158,7 +159,7 @@ const AssessmentsPage = () => {
         toast?.error?.(data.message || 'Could not duplicate');
         return;
       }
-      toast?.success?.('Copy created as a draft. You can edit it fully, including after invites on the original.');
+      toast?.success?.('A draft copy was created. You can edit it independently of the original assessment.');
       setActive(data.data);
       load();
     } catch (err) {
@@ -179,7 +180,7 @@ const AssessmentsPage = () => {
         toast?.error?.(data.message || (isEdit ? 'Failed to update assessment' : 'Failed to create assessment'));
         return;
       }
-      toast?.success?.(isEdit ? 'Assessment updated' : 'Assessment created. Invite a candidate next.');
+      toast?.success?.(isEdit ? 'Assessment updated' : 'Assessment created. Invite candidates when you are ready.');
       setShowBuilder(false);
       setEditing(null);
       setActive(data.data);
@@ -246,7 +247,7 @@ const AssessmentsPage = () => {
             </div>
             <h2 className="text-xl font-bold text-stone-900 tracking-tight">Assessments is a Professional feature</h2>
             <p className="text-stone-500 mt-2 text-sm leading-relaxed">
-              Upgrade to Professional to build skills tests and invite candidates to complete them.
+              Upgrade to Professional to create assessments, invite candidates, and review submissions.
             </p>
             <a href="/billing" className="btn-primary inline-flex mt-6">View Plans</a>
           </div>
@@ -277,7 +278,7 @@ const AssessmentsPage = () => {
           >
             {canCreate ? (
             <button type="button" onClick={openCreate} className="btn-primary flex-1 sm:flex-none">
-              <Plus className="w-4 h-4" /> New Assessment
+              <Plus className="w-4 h-4" /> Create assessment
             </button>
             ) : null}
           </PageHeader>
@@ -287,41 +288,32 @@ const AssessmentsPage = () => {
             className="rounded-xl border border-stone-200 bg-white px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-[13px] text-stone-600 leading-relaxed flex flex-wrap items-center gap-x-3 gap-y-1.5"
           >
             <span className="inline-flex items-center gap-1.5 text-brand-700 font-semibold">
-              <Info size={14} /> Tip
+              <Info size={14} /> Note
             </span>
             <span>
-              Sending an invite never locks the test. You can still edit, duplicate, invite more people, or delete. Candidates who already started keep their frozen version.
-              Press <span className="font-semibold text-stone-800">?</span> for a tour.
+              Sending an invitation does not lock the assessment. You may continue to edit, duplicate, invite additional candidates, or delete. Candidates who have already started retain the version they received.
+              Press <span className="font-semibold text-stone-800">?</span> for a product tour.
             </span>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="grid gap-4 sm:gap-5 min-w-0 w-full grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
             {[
-              { label: 'Assigned', value: totals.assigned, icon: Send, tab: 'library' },
-              { label: 'Open / in progress', value: totals.open, icon: Clock, tab: 'library' },
-              { label: 'Need evaluation', value: totals.review, icon: FileEdit, tab: 'queue' },
-              { label: 'Integrity flags', value: totals.flagged, icon: Flag, tab: 'library' },
-              { label: 'Graded', value: totals.graded, icon: CheckCircle2, tab: 'library' },
+              { label: 'Invitations', value: totals.assigned, icon: Send, caption: 'Sent to candidates', gradient: 'from-indigo-500 to-sky-400', tab: 'library' },
+              { label: 'In progress', value: totals.open, icon: Clock, caption: 'Not yet submitted', gradient: 'from-teal-500 to-emerald-400', tab: 'library' },
+              { label: 'Pending review', value: totals.review, icon: FileEdit, caption: 'Awaiting evaluation', gradient: 'from-amber-500 to-orange-400', tab: 'queue' },
+              { label: 'Integrity flags', value: totals.flagged, icon: Flag, caption: 'Proctoring alerts', gradient: 'from-rose-500 to-pink-400', tab: 'library' },
+              { label: 'Graded', value: totals.graded, icon: CheckCircle2, caption: 'Scoring complete', gradient: 'from-emerald-500 to-teal-400', tab: 'library' },
             ].map((card) => (
-              <button
+              <StatCard
                 key={card.label}
-                type="button"
+                icon={card.icon}
+                label={card.label}
+                value={card.value}
+                caption={card.caption}
+                gradient={card.gradient}
+                aligned
                 onClick={() => setTab(card.tab)}
-                className={`relative overflow-hidden rounded-2xl border bg-white px-3.5 py-3.5 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:shadow-md hover:border-brand-200 ${
-                  tab === card.tab && card.tab === 'queue' ? 'border-brand-300' : 'border-stone-200/90'
-                }`}
-              >
-                <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-                <div className="flex items-center gap-2.5 pt-0.5">
-                  <span className="icon-box-ats !w-9 !h-9 !rounded-xl">
-                    <card.icon className="!w-4 !h-4" strokeWidth={2.25} />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 leading-tight">{card.label}</p>
-                    <p className="text-lg font-bold tabular-nums text-stone-900">{card.value}</p>
-                  </div>
-                </div>
-              </button>
+              />
             ))}
           </div>
 
@@ -334,7 +326,7 @@ const AssessmentsPage = () => {
               <div className="flex items-center gap-2">
                 <Filter size={15} className="text-brand-600 flex-shrink-0" />
                 <p className="text-sm font-bold text-stone-900 tracking-tight">
-                  {tab === 'library' ? 'Find assessments' : tab === 'queue' ? 'Evaluation queue' : tab === 'bank' ? 'Question bank' : 'Company policies'}
+                  {tab === 'library' ? 'Assessments' : tab === 'queue' ? 'Evaluation queue' : tab === 'bank' ? 'Question library' : 'Policies'}
                 </p>
               </div>
               <div className="flex overflow-x-auto scrollbar-hide gap-1">
@@ -364,7 +356,7 @@ const AssessmentsPage = () => {
                     type="search"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder={tab === 'queue' ? 'Find by candidate, email, or test' : 'Find by title or description'}
+                    placeholder={tab === 'queue' ? 'Search by candidate, email, or assessment' : 'Search by title or description'}
                     className="input-ats input-ats-icon !pr-9 !h-10 rounded-xl w-full"
                     aria-label="Find"
                   />
@@ -449,7 +441,7 @@ const AssessmentsPage = () => {
                   <EmptyState
                     icon={AlertCircle}
                     tone="amber"
-                    message="Couldn’t load assessments"
+                    message="Unable to load assessments"
                     subMessage={loadError}
                     action={(
                       <div className="flex flex-wrap items-center justify-center gap-2">
@@ -458,7 +450,7 @@ const AssessmentsPage = () => {
                         </button>
                         {canCreate ? (
                           <button type="button" onClick={openCreate} className="btn-primary">
-                            <Plus className="w-4 h-4" /> New Assessment
+                            <Plus className="w-4 h-4" /> Create assessment
                           </button>
                         ) : null}
                       </div>
@@ -469,10 +461,10 @@ const AssessmentsPage = () => {
                     icon={ClipboardList}
                     tone="violet"
                     message="No assessments yet"
-                    subMessage="Create a skills test and invite candidates to take it."
+                    subMessage="Create an assessment, then invite candidates to complete it."
                     action={canCreate ? (
                       <button type="button" onClick={openCreate} className="btn-primary">
-                        <Plus className="w-4 h-4" /> New Assessment
+                        <Plus className="w-4 h-4" /> Create assessment
                       </button>
                     ) : null}
                   />
@@ -480,8 +472,8 @@ const AssessmentsPage = () => {
                   <EmptyState
                     icon={Search}
                     tone="amber"
-                    message="No assessments match your search"
-                    subMessage="Try a different title or reset the filters."
+                    message="No assessments match these criteria"
+                    subMessage="Adjust the search or restore the default filters."
                     action={(
                       <button type="button" className="btn-secondary" onClick={() => { setQuery(''); setLibrary('active'); }}>
                         Reset criteria
@@ -551,7 +543,7 @@ const AssessmentsPage = () => {
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
         title="Delete assessment?"
-        message={`Delete “${deleteTarget?.title}”? Unstarted invite links will be revoked. Candidates who already started or submitted keep their attempt.`}
+        message={`Delete “${deleteTarget?.title}”? Outstanding invitations that have not been started will be revoked. Candidates who have already started or submitted retain their attempt.`}
         confirmText="Delete"
         type="delete"
         isLoading={deleting}

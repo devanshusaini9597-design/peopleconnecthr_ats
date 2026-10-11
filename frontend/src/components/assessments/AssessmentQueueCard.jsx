@@ -29,7 +29,7 @@ export default function AssessmentQueueCard({ row, onGrade, canGrade = true }) {
       <div className="flex min-w-0 flex-1 flex-col px-4 pt-4 pb-3">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
           <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
-            <FileEdit size={11} strokeWidth={2.25} /> Needs review
+            <FileEdit size={11} strokeWidth={2.25} /> Pending review
           </span>
         </div>
 

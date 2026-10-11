@@ -388,10 +388,151 @@ function questionsForSkill(domain, skill, type, count) {
       return { pack, hits };
     })
     .sort((a, b) => b.hits - a.hits);
-  const best = (scored[0]?.hits ? scored[0].pack : PACKS[0]).questions;
+  if (!scored[0]?.hits) return synthesizeTopicQuestions(skill || domain, type, count);
+  const best = scored[0].pack.questions;
   const filtered = type ? best.filter((q) => q.type === type) : best;
   const pool = filtered.length ? filtered : best;
   return pool.slice(0, count);
 }
 
-module.exports = { PACKS, listCatalog, getPack, questionsForSkill };
+function synthesizeTopicQuestions(skill, type, count = 5) {
+  const topic = String(skill || 'this subject').trim() || 'this subject';
+  const n = Math.min(8, Math.max(3, Number(count) || 5));
+  if (/reason/i.test(topic)) {
+    const reasoning = [
+      {
+        type: 'multiple_choice',
+        skillTag: topic,
+        points: 10,
+        prompt: 'All recruiters are employees. Some employees are managers. Which conclusion follows?',
+        options: [
+          'All managers are recruiters',
+          'Some recruiters may be managers — it is not certain',
+          'No recruiter is a manager',
+          'Every employee is a recruiter',
+        ],
+        correctOptionIndex: 1,
+      },
+      {
+        type: 'multiple_choice',
+        skillTag: topic,
+        points: 10,
+        prompt: 'If no shortlisted candidate is ineligible, and Ravi is ineligible, which is true?',
+        options: [
+          'Ravi is shortlisted',
+          'Ravi is not shortlisted',
+          'Ravi may still be shortlisted',
+          'All ineligible people are shortlisted',
+        ],
+        correctOptionIndex: 1,
+      },
+      {
+        type: 'multiple_choice',
+        skillTag: topic,
+        points: 10,
+        prompt: 'Series: 2, 6, 12, 20, 30, ?',
+        options: ['40', '42', '36', '48'],
+        correctOptionIndex: 1,
+      },
+      {
+        type: 'multiple_choice',
+        skillTag: topic,
+        points: 10,
+        prompt: 'A is taller than B. C is shorter than B. D is taller than A. Who is shortest?',
+        options: ['A', 'B', 'C', 'D'],
+        correctOptionIndex: 2,
+      },
+      {
+        type: 'text',
+        skillTag: topic,
+        points: 15,
+        prompt: 'A hiring manager says: “Every high performer went to a top college, so this candidate will not perform.” What is the flaw, and how would you reply?',
+        rubric: 'Identifies converse / selection bias; professional, evidence-based reply.',
+      },
+    ];
+    const filtered = type ? reasoning.filter((q) => q.type === type) : reasoning;
+    if ((filtered.length ? filtered : reasoning).length) {
+      return (filtered.length ? filtered : reasoning).slice(0, n);
+    }
+  }
+  const bank = [
+    {
+      type: 'multiple_choice',
+      skillTag: topic,
+      points: 10,
+      prompt: `Which approach is most reliable when evaluating ${topic} in a timed assessment?`,
+      options: [
+        'Guess from familiarity and skip verification',
+        'Clarify the requirement, apply the core method, then check the result',
+        'Copy an unrelated example without adapting it',
+        'Avoid stating assumptions',
+      ],
+      correctOptionIndex: 1,
+    },
+    {
+      type: 'multiple_choice',
+      skillTag: topic,
+      points: 10,
+      prompt: `A candidate reports strong ${topic} experience. Which evidence is strongest?`,
+      options: [
+        'Years in the title only',
+        'A relevant work sample or structured answer with a clear method',
+        'A generic compliment from a colleague',
+        'Social media activity',
+      ],
+      correctOptionIndex: 1,
+    },
+    {
+      type: 'multiple_choice',
+      skillTag: topic,
+      points: 10,
+      prompt: `Which practice should be avoided when scoring ${topic}?`,
+      options: [
+        'Using a written rubric',
+        'Comparing answers to the same standard',
+        'Changing the bar after seeing who applied',
+        'Recording a brief rationale',
+      ],
+      correctOptionIndex: 2,
+    },
+    {
+      type: 'multiple_choice',
+      skillTag: topic,
+      points: 10,
+      prompt: `In a ${topic} exercise, the candidate is stuck. What is the most professional next step?`,
+      options: [
+        'End the session immediately',
+        'Offer a structured hint and observe how they recover',
+        'Complete the task for them',
+        'Switch to unrelated personal questions',
+      ],
+      correctOptionIndex: 1,
+    },
+    {
+      type: 'text',
+      skillTag: topic,
+      points: 15,
+      prompt: `Describe how you would apply ${topic} to a realistic hiring-related problem. Outline your steps and how you would verify the outcome.`,
+      rubric: 'Clear method, relevant example, verification step.',
+    },
+    {
+      type: 'communication',
+      skillTag: topic,
+      points: 10,
+      prompt: `A hiring manager disagrees with your ${topic} recommendation. Write a concise reply that states the evidence and a proposed next step.`,
+      rubric: 'Calm, specific, proposes a decision path.',
+    },
+    {
+      type: 'code',
+      skillTag: topic,
+      language: /sql/i.test(topic) ? 'sql' : /python/i.test(topic) ? 'python' : 'javascript',
+      points: 20,
+      prompt: `Write a short solution that demonstrates ${topic}. Include a brief comment on complexity or an edge case.`,
+      rubric: 'Correct approach, readable, mentions an edge case.',
+    },
+  ];
+  const filtered = type ? bank.filter((q) => q.type === type) : bank;
+  return (filtered.length ? filtered : bank).slice(0, n);
+}
+
+module.exports = { PACKS, listCatalog, getPack, questionsForSkill, synthesizeTopicQuestions };
