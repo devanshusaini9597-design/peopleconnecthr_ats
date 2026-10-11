@@ -139,7 +139,10 @@ async function takeAssessment(token) {
   }
 
   const assessment = invite.assessmentId;
-  const snapshot = activeSnapshot(assessment);
+  const snapshot = invite.snapshot?.questions?.length
+    ? invite.snapshot
+    : (assessment ? activeSnapshot(assessment) : null);
+  if (!snapshot) throw httpError('This assessment is no longer available.', 410);
   const rules = engine.normalizeRules(snapshot.rules, snapshot.durationMinutes);
 
   if (invite.status === 'pending') {
@@ -645,14 +648,43 @@ async function publishAssessment(organizationId, userId, id) {
   return assessment;
 }
 
+async function getAssessment(organizationId, id) {
+  const row = await Assessment.findOne({ _id: id, organizationId });
+  if (!row) throw httpError('Assessment not found', 404);
+  return row;
+}
+
+async function duplicateAssessment(organizationId, userId, id) {
+  const source = await Assessment.findOne({ _id: id, organizationId });
+  if (!source) throw httpError('Assessment not found', 404);
+  const plain = typeof source.toObject === 'function' ? source.toObject() : { ...source };
+  delete plain._id;
+  delete plain.createdAt;
+  delete plain.updatedAt;
+  delete plain.__v;
+  return Assessment.create({
+    ...plain,
+    title: `${source.title} (copy)`.slice(0, 180),
+    status: 'draft',
+    isActive: true,
+    version: 1,
+    publishedAt: null,
+    publishedSnapshot: null,
+    createdBy: userId,
+  });
+}
+
 async function deleteAssessment(organizationId, id) {
-  const existing = await AssessmentInvite.countDocuments({ assessmentId: id, organizationId });
-  if (existing > 0) {
-    throw httpError('Archive this assessment instead. Attempt history must be kept for audit.', 409);
-  }
-  const assessment = await Assessment.findOneAndDelete({ _id: id, organizationId });
+  const assessment = await Assessment.findOne({ _id: id, organizationId });
   if (!assessment) throw httpError('Assessment not found', 404);
-  return { message: 'Assessment deleted' };
+  await AssessmentInvite.updateMany(
+    { assessmentId: id, organizationId, status: 'pending' },
+    { $set: { status: 'revoked', revokedAt: new Date() } }
+  );
+  await Assessment.deleteOne({ _id: id, organizationId });
+  return {
+    message: 'Assessment deleted. Unstarted invites were revoked. Started and submitted attempts were kept.',
+  };
 }
 
 async function searchInternalCandidates(organizationId, query) {
@@ -1221,9 +1253,11 @@ module.exports = {
   overview,
   redactAnswerKeys,
   searchInternalCandidates,
+  getAssessment,
   createAssessment,
   updateAssessment,
   publishAssessment,
+  duplicateAssessment,
   deleteAssessment,
   inviteCandidate,
   listInvites,

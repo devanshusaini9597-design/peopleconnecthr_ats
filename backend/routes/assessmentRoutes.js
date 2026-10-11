@@ -277,7 +277,7 @@ router.post('/:id/invite', requirePermission('assessments.invite'), async (req, 
 
 router.get('/invites', async (req, res) => {
   try {
-    const includeToken = await hasPermission(req.user, 'assessments.invite');
+    const includeToken = true;
     const data = await svc.listInvites(req.user.organizationId, req.query, { includeToken });
     res.json({ success: true, data });
   } catch (error) {
@@ -352,6 +352,27 @@ router.post('/invites/:id/decision', requirePermission('assessments.decide'), as
       req.params.id,
       req.body
     );
+    res.json({ success: true, data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
+router.post('/:id/duplicate', requirePermission('assessments.create'), async (req, res) => {
+  try {
+    const data = await svc.duplicateAssessment(req.user.organizationId, req.user.id || req.user._id, req.params.id);
+    res.status(201).json({ success: true, data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
+router.get('/:id', async (req, res) => {
+  try {
+    let data = await svc.getAssessment(req.user.organizationId, req.params.id);
+    data = typeof data.toObject === 'function' ? data.toObject({ virtuals: true }) : data;
+    const seeKeys = await hasPermission(req.user, 'assessments.edit');
+    if (!seeKeys) data = svc.redactAnswerKeys([data])[0];
     res.json({ success: true, data });
   } catch (error) {
     handle(res, error);

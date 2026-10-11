@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ClipboardList, Plus, Trash2, Lock, Loader2, Search, AlertCircle, RefreshCw,
-  Clock, Filter, Info, Shield,
+  Clock, Filter, Info, Shield, Pencil, Copy, Send,
 } from 'lucide-react';
 import { authenticatedFetch, handleUnauthorized, readApiJson } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -111,9 +111,31 @@ const AssessmentsPage = () => {
     setShowBuilder(true);
   };
 
-  const openEdit = (assessment) => {
-    setEditing(assessment);
+  const openEdit = async (assessment) => {
+    try {
+      const res = await authenticatedFetch(`/api/assessments/${assessment._id}`);
+      const data = await readApiJson(res);
+      setEditing(data.success ? data.data : assessment);
+    } catch {
+      setEditing(assessment);
+    }
     setShowBuilder(true);
+  };
+
+  const duplicate = async (assessment) => {
+    try {
+      const res = await authenticatedFetch(`/api/assessments/${assessment._id}/duplicate`, { method: 'POST' });
+      const data = await readApiJson(res);
+      if (!res.ok || !data.success) {
+        toast?.error?.(data.message || 'Could not duplicate');
+        return;
+      }
+      toast?.success?.('Copy created as a draft. You can edit it fully, including after invites on the original.');
+      setActive(data.data);
+      load();
+    } catch (err) {
+      toast?.error?.(err?.message || 'Could not duplicate');
+    }
   };
 
   const handleSave = async (form) => {
@@ -192,14 +214,16 @@ const AssessmentsPage = () => {
   }
 
   return (
-    <div className="page-shell-ats">
+    <div className="page-shell-ats animate-page-enter">
       {active ? (
         <AssessmentDetail
           assessment={active}
           onBack={() => { setActive(null); load(); }}
           onEdit={canEdit ? openEdit : null}
           onUpdated={(next) => { setActive(next); load(); }}
-          access={{ edit: canEdit, invite: canInvite, grade: canGrade, archive: canEdit, publish: canPublish, decide: canDecide }}
+          access={{ edit: canEdit, invite: canInvite, grade: canGrade, archive: canEdit, publish: canPublish, decide: canDecide, create: canCreate, remove: canDelete }}
+          onDelete={canDelete ? setDeleteTarget : null}
+          onDuplicate={canCreate ? duplicate : null}
         />
       ) : (
         <>
@@ -216,7 +240,7 @@ const AssessmentsPage = () => {
             ) : null}
           </PageHeader>
 
-          <div className="flex flex-wrap gap-1 rounded-lg border border-stone-200 p-0.5 bg-white w-fit">
+          <div className="flex overflow-x-auto scrollbar-hide gap-1 rounded-xl border border-stone-200/90 bg-white p-1 shadow-sm w-full sm:w-fit">
             {[
               ['library', 'Assessments'],
               ['queue', 'Evaluation queue'],
@@ -227,7 +251,7 @@ const AssessmentsPage = () => {
                 key={key}
                 type="button"
                 onClick={() => setTab(key)}
-                className={`px-3 py-1.5 rounded-md text-xs font-bold ${tab === key ? 'bg-stone-900 text-white' : 'text-stone-600'}`}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${tab === key ? 'bg-stone-900 text-white shadow-sm' : 'text-stone-600 hover:bg-stone-50'}`}
               >
                 {label}
               </button>
@@ -279,7 +303,7 @@ const AssessmentsPage = () => {
               <Info size={14} /> Tip
             </span>
             <span>
-              Create a test, invite someone on the company desk, then grade the submission when it arrives. Freelance recruiter records are not included.
+              Sending an invite never locks the test. You can still edit, duplicate, invite more people, or delete. Candidates who already started keep their frozen version.
               Press <span className="font-semibold text-stone-800">?</span> for a tour.
             </span>
           </div>
@@ -386,54 +410,67 @@ const AssessmentsPage = () => {
                   {filtered.map((a) => (
                     <div
                       key={a._id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setActive(a)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActive(a); }}
-                      className="card-ats p-5 cursor-pointer group hover:border-brand-200/80 relative overflow-hidden"
+                      className="card-ats p-5 flex flex-col hover:border-brand-200/80 relative group"
                     >
-                      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-brand-100 to-teal-100 border border-brand-200/60 flex items-center justify-center group-hover:scale-105 transition-transform">
-                          {a.proctoring?.enabled
-                            ? <Shield className="w-5 h-5 text-brand-600" />
-                            : <ClipboardList className="w-5 h-5 text-brand-600" />}
-                        </div>
-                        {canDelete ? (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setDeleteTarget(a); }}
-                          className={`${actionBtn} text-stone-400 hover:text-red-600 hover:border-red-200 opacity-100 sm:opacity-0 sm:group-hover:opacity-100`}
-                          aria-label="Delete assessment"
-                          title="Delete assessment"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                        ) : null}
-                      </div>
-                      <h3 className="font-bold text-stone-900 mt-3.5 tracking-tight line-clamp-2 break-words">{a.title}</h3>
-                      {a.description && (
-                        <p className="text-sm text-stone-500 mt-1 line-clamp-2 leading-relaxed">{a.description}</p>
-                      )}
-                      <div className="flex flex-wrap items-center gap-3 mt-4 pt-3 border-t border-stone-100 text-xs font-semibold text-stone-500">
-                        <span className="inline-flex items-center gap-1"><ClipboardList className="w-3.5 h-3.5" /> {a.questions?.length || 0} questions</span>
-                        <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {a.durationMinutes} min</span>
-                        {a.isActive === false || a.status === 'archived' ? <span className="badge-neutral">Archived</span> : (
-                          <span className="badge-neutral">{a.status || 'draft'}{a.unpublishedChanges ? ' · unpublished edits' : ''}</span>
-                        )}
-                      </div>
-                      <div className="mt-3 grid grid-cols-4 gap-1.5 text-center">
-                        {[
-                          ['Sent', a.inviteStats?.total || 0],
-                          ['Open', (a.inviteStats?.pending || 0) + (a.inviteStats?.in_progress || 0)],
-                          ['In', a.inviteStats?.submitted || 0],
-                          ['Graded', a.inviteStats?.graded || 0],
-                        ].map(([label, value]) => (
-                          <div key={label} className="rounded-lg bg-stone-50 px-1 py-1.5">
-                            <p className="text-[10px] uppercase tracking-wide text-stone-400">{label}</p>
-                            <p className="text-sm font-bold text-stone-800 tabular-nums">{value}</p>
+                      <div className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 opacity-80 pointer-events-none" />
+                      <button
+                        type="button"
+                        onClick={() => setActive(a)}
+                        className="text-left min-w-0 flex-1"
+                      >
+                        <div className="flex items-start justify-between gap-2 pt-1">
+                          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-brand-100 to-teal-100 text-brand-700 flex items-center justify-center ring-1 ring-brand-200/60 flex-shrink-0">
+                            {a.proctoring?.enabled
+                              ? <Shield className="w-5 h-5" />
+                              : <ClipboardList className="w-5 h-5" />}
                           </div>
-                        ))}
+                          <span className="badge-neutral flex-shrink-0">
+                            {a.isActive === false || a.status === 'archived' ? 'archived' : (a.status || 'draft')}
+                          </span>
+                        </div>
+                        <h3 className="font-bold text-stone-900 mt-3.5 tracking-tight line-clamp-2 break-words">{a.title}</h3>
+                        {a.description && (
+                          <p className="text-sm text-stone-500 mt-1 line-clamp-2 leading-relaxed">{a.description}</p>
+                        )}
+                        <div className="flex flex-wrap items-center gap-3 mt-4 text-xs font-semibold text-stone-500">
+                          <span className="inline-flex items-center gap-1"><ClipboardList className="w-3.5 h-3.5" /> {a.questions?.length || 0} questions</span>
+                          <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {a.durationMinutes} min</span>
+                        </div>
+                        <div className="mt-3 grid grid-cols-4 gap-1.5 text-center">
+                          {[
+                            ['Sent', a.inviteStats?.total || 0],
+                            ['Open', (a.inviteStats?.pending || 0) + (a.inviteStats?.in_progress || 0)],
+                            ['Done', a.inviteStats?.submitted || 0],
+                            ['Graded', a.inviteStats?.graded || 0],
+                          ].map(([label, value]) => (
+                            <div key={label} className="rounded-xl bg-stone-50/80 border border-stone-100 px-1 py-1.5">
+                              <p className="text-[10px] uppercase tracking-wide text-stone-400">{label}</p>
+                              <p className="text-sm font-bold text-stone-800 tabular-nums">{value}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </button>
+                      <div className="mt-4 pt-3 border-t border-stone-100 flex flex-wrap items-center gap-1.5">
+                        {canEdit ? (
+                          <button type="button" onClick={() => openEdit(a)} className={`${actionBtn} text-stone-500 hover:text-brand-600 hover:border-brand-300`} title="Edit" aria-label="Edit">
+                            <Pencil size={14} />
+                          </button>
+                        ) : null}
+                        {canCreate ? (
+                          <button type="button" onClick={() => duplicate(a)} className={`${actionBtn} text-stone-500 hover:text-brand-600 hover:border-brand-300`} title="Duplicate" aria-label="Duplicate">
+                            <Copy size={14} />
+                          </button>
+                        ) : null}
+                        {canInvite ? (
+                          <button type="button" onClick={() => setActive(a)} className={`${actionBtn} text-stone-500 hover:text-brand-600 hover:border-brand-300`} title="Open & invite" aria-label="Invite">
+                            <Send size={14} />
+                          </button>
+                        ) : null}
+                        {canDelete ? (
+                          <button type="button" onClick={() => setDeleteTarget(a)} className={`${actionBtn} ml-auto text-stone-400 hover:text-red-600 hover:border-red-200`} title="Delete" aria-label="Delete">
+                            <Trash2 size={14} />
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   ))}
@@ -459,7 +496,7 @@ const AssessmentsPage = () => {
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
         title="Delete assessment?"
-        message={`Delete “${deleteTarget?.title}”? All invites for it will be removed too.`}
+        message={`Delete “${deleteTarget?.title}”? Unstarted invite links will be revoked. Candidates who already started or submitted keep their attempt.`}
         confirmText="Delete"
         type="delete"
         isLoading={deleting}

@@ -42,5 +42,7 @@ describe('assessmentService contracts', () => {
     expect(typeof svc.rankInvites).toBe('function');
     expect(typeof svc.inviteJobApplicants).toBe('function');
     expect(typeof svc.suggestEvaluation).toBe('function');
+    expect(typeof svc.getAssessment).toBe('function');
+    expect(typeof svc.duplicateAssessment).toBe('function');
   });
 });

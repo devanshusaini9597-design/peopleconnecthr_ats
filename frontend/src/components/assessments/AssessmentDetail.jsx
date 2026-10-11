@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  ClipboardList, Loader2, Send, ArrowLeft, Clock, FileEdit, Link2, RefreshCw, Archive, Pencil,
+  ClipboardList, Loader2, Send, ArrowLeft, Clock, FileEdit, Link2, RefreshCw, Archive, Pencil, Copy, Trash2,
 } from 'lucide-react';
 import { authenticatedFetch } from '../../utils/fetchUtils';
 import { useToast } from '../Toast';
@@ -18,7 +18,7 @@ const PIPELINE = [
   { key: 'expired', label: 'Expired' },
 ];
 
-export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access }) => {
+export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access, onDelete, onDuplicate }) => {
   const toast = useToast();
   const [invites, setInvites] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -178,6 +178,8 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
   const canArchive = access?.archive !== false;
   const canPublish = access?.publish !== false;
   const canDecide = access?.decide === true;
+  const canDuplicate = typeof onDuplicate === 'function';
+  const canRemove = typeof onDelete === 'function';
 
   return (
     <div className="space-y-6 animate-page-enter">
@@ -217,14 +219,24 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
             <Pencil className="w-4 h-4" /> Edit
           </button>
           ) : null}
+          {canDuplicate ? (
+          <button type="button" onClick={() => onDuplicate(assessment)} className="btn-secondary">
+            <Copy className="w-4 h-4" /> Duplicate
+          </button>
+          ) : null}
+          {canRemove ? (
+          <button type="button" onClick={() => onDelete(assessment)} className="btn-secondary text-red-600 hover:border-red-200">
+            <Trash2 className="w-4 h-4" /> Delete
+          </button>
+          ) : null}
           {canArchive ? (
           <button type="button" onClick={toggleArchive} className="btn-secondary" disabled={archiving}>
             <Archive className="w-4 h-4" /> {archived ? 'Restore' : 'Archive'}
           </button>
           ) : null}
           {canInvite ? (
-          <button type="button" onClick={() => setShowInvite(true)} className="btn-primary" disabled={archived}>
-            <Send className="w-4 h-4" /> Invite Candidate
+          <button type="button" onClick={() => setShowInvite(true)} className="btn-primary" disabled={archived} title={archived ? 'Restore to send more invites' : 'Send another invite anytime'}>
+            <Send className="w-4 h-4" /> Invite
           </button>
           ) : null}
         </div>

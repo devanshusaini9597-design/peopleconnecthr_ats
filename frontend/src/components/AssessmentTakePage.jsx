@@ -1,9 +1,38 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import {
   ClipboardList, Clock, CheckCircle, AlertCircle, Loader2, Shield, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import API_URL from '../config';
+
+const staffLoggedIn = () => {
+  try { return localStorage.getItem('isLoggedIn') === 'true'; } catch { return false; }
+};
+
+const ExamChrome = ({ children, extra }) => (
+  <div className="min-h-dvh bg-stone-50 font-sans flex flex-col">
+    <header className="bg-white border-b border-stone-200/90 sticky top-0 z-20">
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3">
+        <Link to="/" className="flex items-center gap-2.5 text-stone-900 font-semibold min-w-0">
+          <img src="/app-icon.png?v=5" alt="" className="w-8 h-8 rounded-lg flex-shrink-0 bg-white object-contain" />
+          <span className="text-sm sm:text-base truncate">People Connect HR</span>
+        </Link>
+        {extra}
+      </div>
+    </header>
+    {staffLoggedIn() ? (
+      <div className="bg-brand-50 border-b border-brand-100 text-brand-900 text-xs sm:text-sm px-4 py-2 text-center">
+        Hiring team: this is the candidate test link.
+        {' '}
+        <Link to="/assessments" className="font-bold underline underline-offset-2">Open Assessments to edit, invite, or grade</Link>
+      </div>
+    ) : null}
+    <div className="flex-1 py-6 sm:py-10 px-3 sm:px-4">{children}</div>
+    <footer className="border-t border-stone-200 bg-white py-5 mt-auto">
+      <p className="text-center text-xs text-stone-400">Secure assessment · People Connect HR</p>
+    </footer>
+  </div>
+);
 
 const AssessmentTakePage = () => {
   const { token } = useParams();
@@ -253,9 +282,11 @@ const AssessmentTakePage = () => {
 
   if (state === 'loading') {
     return (
-      <div className="min-h-dvh flex items-center justify-center bg-stone-50">
-        <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
-      </div>
+      <ExamChrome>
+        <div className="min-h-[50vh] flex items-center justify-center">
+          <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
+        </div>
+      </ExamChrome>
     );
   }
 
@@ -274,10 +305,10 @@ const AssessmentTakePage = () => {
     const m = map[state];
     const Icon = m.icon;
     return (
-      <div className="min-h-dvh flex items-center justify-center bg-stone-50 p-4">
-        <div className="max-w-md w-full text-center bg-white border border-stone-200 rounded-2xl p-8 sm:p-10 shadow-sm">
+      <ExamChrome>
+        <div className="max-w-md mx-auto w-full text-center card-ats-bordered p-8 sm:p-10">
           <Icon className={`w-10 h-10 ${m.color} mx-auto mb-4`} />
-          <h2 className="text-xl font-bold text-stone-900">{m.title}</h2>
+          <h2 className="text-xl font-bold text-stone-900 tracking-tight">{m.title}</h2>
           <p className="text-stone-500 mt-2 text-sm leading-relaxed">{m.body}</p>
           {state === 'submitted' && result && !result.pending && result.totalScore != null && (
             <p className="mt-4 text-sm font-semibold text-stone-800">
@@ -286,14 +317,14 @@ const AssessmentTakePage = () => {
             </p>
           )}
         </div>
-      </div>
+      </ExamChrome>
     );
   }
 
   if (state === 'instructions') {
     return (
-      <div className="min-h-dvh bg-stone-50 font-sans py-6 sm:py-10 px-3 sm:px-4">
-        <div className="max-w-2xl mx-auto bg-white border border-stone-200 rounded-2xl p-6 sm:p-8 shadow-sm">
+      <ExamChrome>
+        <div className="max-w-2xl mx-auto card-ats-bordered p-6 sm:p-8">
           <div className="flex items-center gap-2 text-brand-600 mb-2">
             <ClipboardList className="w-5 h-5" />
             <span className="text-sm font-medium">Skills Assessment</span>
@@ -327,12 +358,12 @@ const AssessmentTakePage = () => {
             type="button"
             onClick={startTest}
             disabled={starting || assessment.windowOpen === false}
-            className="mt-6 w-full py-3 bg-brand-600 text-white rounded-xl font-medium hover:bg-brand-700 disabled:opacity-50"
+            className="btn-primary mt-6 w-full py-3 disabled:opacity-50"
           >
             {starting ? 'Starting…' : 'Start assessment'}
           </button>
         </div>
-      </div>
+      </ExamChrome>
     );
   }
 
@@ -345,26 +376,31 @@ const AssessmentTakePage = () => {
   });
   const warnExpiry = remaining != null && remaining <= 60 && remaining > 0;
 
+  const answeredCount = questions.filter((item) => String(answers[item._id] || '').trim()).length;
+
   return (
-    <div className="min-h-dvh bg-stone-50 font-sans py-6 sm:py-10 px-3 sm:px-4">
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-white border border-stone-200 rounded-2xl p-5 sm:p-6 mb-4 shadow-sm sticky top-2 z-10">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h1 className="text-lg sm:text-xl font-bold text-stone-900">{assessment.title}</h1>
-              <p className="text-xs text-stone-500 mt-1">
-                {saveState === 'saving' ? 'Saving…' : saveState === 'unsaved' ? 'Unsaved changes' : 'Answers saved'}
-              </p>
-            </div>
-            <div className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-bold tabular-nums ${warnExpiry ? 'bg-red-50 text-red-700' : 'bg-stone-100 text-stone-800'}`}>
-              <Clock className="w-4 h-4" /> {formatTime(remaining)}
-            </div>
+    <ExamChrome
+      extra={(
+        <div className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-bold tabular-nums ${warnExpiry ? 'bg-red-50 text-red-700' : 'bg-stone-100 text-stone-800'}`}>
+          <Clock className="w-4 h-4" /> {formatTime(remaining)}
+        </div>
+      )}
+    >
+      <div className="max-w-2xl mx-auto space-y-4">
+        <div className="card-ats-bordered p-5 sm:p-6">
+          <h1 className="text-lg sm:text-xl font-bold text-stone-900 tracking-tight">{assessment.title}</h1>
+          <p className="text-xs text-stone-500 mt-1">
+            {saveState === 'saving' ? 'Saving…' : saveState === 'unsaved' ? 'Unsaved changes' : 'Answers saved'}
+            {' · '}{answeredCount}/{questions.length} answered
+          </p>
+          <div className="mt-3 h-1.5 rounded-full bg-stone-100 overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-brand-500 to-teal-500 transition-all" style={{ width: `${questions.length ? (answeredCount / questions.length) * 100 : 0}%` }} />
           </div>
           {warnExpiry && <p className="mt-2 text-xs font-semibold text-red-700">Time is almost up. Your answers will submit automatically.</p>}
         </div>
 
         {q && (
-          <div className="bg-white border border-stone-200 rounded-2xl p-4 sm:p-6 shadow-sm">
+          <div className="card-ats-bordered p-4 sm:p-6">
             <p className="text-xs font-semibold text-stone-400 mb-2">Question {current + 1} of {questions.length}{q.section ? ` · ${q.section}` : ''}</p>
             <p className="text-sm font-semibold text-stone-900 mb-3">
               {q.prompt}{' '}
@@ -442,7 +478,7 @@ const AssessmentTakePage = () => {
         )}
 
         {confirmSubmit && (
-          <div className="mt-4 bg-white border border-stone-200 rounded-2xl p-4">
+          <div className="card-ats-bordered p-4">
             <p className="text-sm font-semibold text-stone-900">Submit this assessment?</p>
             <p className="text-xs text-stone-500 mt-1">You will not be able to change answers after this.</p>
             <div className="mt-3 flex gap-2">
@@ -454,7 +490,7 @@ const AssessmentTakePage = () => {
           </div>
         )}
       </div>
-    </div>
+    </ExamChrome>
   );
 };
 
