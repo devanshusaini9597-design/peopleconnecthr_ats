@@ -1,6 +1,19 @@
 import { Type, Code2, ListChecks, Shield } from 'lucide-react';
 
-export const emptyQuestion = () => ({ type: 'text', prompt: '', options: ['', ''], correctOptionIndex: 0, points: 10, language: '' });
+export const emptyQuestion = () => ({
+  type: 'text',
+  prompt: '',
+  options: ['', ''],
+  correctOptionIndex: 0,
+  points: 10,
+  language: '',
+  required: true,
+  skillTag: '',
+  section: '',
+  rubric: '',
+  hiddenTests: [{ name: '', input: '', expected: '' }],
+  visibleTests: [{ name: 'Sample', input: '', expected: '' }],
+});
 
 export const ASSESS_TOUR_KEY = 'skillnix_tour_assessments_v1';
 export const ASSESS_TOUR_STEPS = [
@@ -29,9 +42,10 @@ export const ASSESS_TOUR_STEPS = [
 ];
 
 export const QUESTION_TYPE_OPTIONS = [
-  { value: 'text', label: 'Free text', description: 'Open written answer', icon: Type },
-  { value: 'code', label: 'Code', description: 'Code snippet answer', icon: Code2 },
-  { value: 'multiple_choice', label: 'Multiple choice', description: 'Pick one correct option', icon: ListChecks },
+  { value: 'multiple_choice', label: 'Multiple choice', description: 'Auto-scored aptitude or technical MCQ', icon: ListChecks },
+  { value: 'text', label: 'Written', description: 'Descriptive answer, manual review', icon: Type },
+  { value: 'code', label: 'Coding', description: 'Code answer reviewed against a rubric', icon: Code2 },
+  { value: 'communication', label: 'Communication', description: 'Role-specific written response', icon: Type },
 ];
 
 export const STRICTNESS_OPTIONS = [
@@ -51,7 +65,22 @@ export const STATUS_BADGE = {
   in_progress: 'badge-brand',
   submitted: 'badge-warning',
   graded: 'badge-success',
-  expired: 'badge-danger'
+  expired: 'badge-danger',
+  revoked: 'badge-danger',
+  draft: 'badge-neutral',
+  published: 'badge-success',
+  archived: 'badge-warning',
 };
+
+export const defaultRules = (initial) => ({
+  passingScorePercent: initial?.rules?.passingScorePercent ?? 0,
+  negativeMarkPercent: initial?.rules?.negativeMarkPercent ?? 0,
+  maxAttempts: initial?.rules?.maxAttempts ?? 1,
+  randomizeQuestions: !!initial?.rules?.randomizeQuestions,
+  allowBack: initial?.rules?.allowBack !== false,
+  requireAll: initial?.rules?.requireAll !== false,
+  resultVisibility: initial?.rules?.resultVisibility || 'hidden',
+  autoSubmit: initial?.rules?.autoSubmit !== false,
+});
 
 export const actionBtn = 'h-8 w-8 inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white transition-colors';

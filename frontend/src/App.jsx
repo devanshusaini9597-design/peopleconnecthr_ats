@@ -228,7 +228,7 @@ const router = createBrowserRouter([
       { path: '/dei', element: <Navigate to="/dashboard" replace /> },
       { path: '/form-builder', element: <Navigate to="/dashboard" replace /> },
       { path: '/organization/chatbot', element: <Navigate to="/dashboard" replace /> },
-      { path: '/assessments', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales']} allowPermission="modules.assessments">{withPage(AssessmentsPage)}</ProtectedRoute> },
+      { path: '/assessments', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales', 'interviewer']} allowPermission="modules.assessments">{withPage(AssessmentsPage)}</ProtectedRoute> },
       { path: '/ai-tools', element: withPage(AiToolsPage) },
       { path: '/search', element: <ProtectedRoute requiredRoles={['owner', 'admin', 'hr_manager', 'hr_recruiter', 'recruiter', 'sales', 'interviewer', 'readonly']}>{withPage(GlobalSearchPage)}</ProtectedRoute> },
       { path: '/collaboration', element: <Navigate to="/dashboard" replace /> },

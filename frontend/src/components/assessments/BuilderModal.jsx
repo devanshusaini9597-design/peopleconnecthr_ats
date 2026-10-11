@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Type, Code2, ListChecks, Shield, Loader2, ClipboardList } from 'lucide-react';
 import Modal from '../ui/Modal';
 import PremiumSelect from '../ui/PremiumSelect';
+import { authenticatedFetch } from '../../utils/fetchUtils';
 import {
-  emptyQuestion, QUESTION_TYPE_OPTIONS, STRICTNESS_OPTIONS, actionBtn,
+  emptyQuestion, QUESTION_TYPE_OPTIONS, STRICTNESS_OPTIONS, actionBtn, defaultRules,
 } from './assessmentsConstants';
 
 export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initial }) => {
@@ -13,13 +14,21 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
   const [questions, setQuestions] = useState([emptyQuestion()]);
   const [proctoringEnabled, setProctoringEnabled] = useState(false);
   const [strictness, setStrictness] = useState('standard');
+  const [instructions, setInstructions] = useState('');
+  const [rules, setRules] = useState(defaultRules());
+  const [jobId, setJobId] = useState('');
+  const [pipelineStage, setPipelineStage] = useState('');
+  const [advanceStage, setAdvanceStage] = useState('Interview');
+  const [jobs, setJobs] = useState([]);
   const editing = Boolean(initial?._id);
 
   useEffect(() => {
     if (!open) return;
     setTitle(initial?.title || '');
     setDescription(initial?.description || '');
+    setInstructions(initial?.candidateInstructions || '');
     setDurationMinutes(initial?.durationMinutes || 45);
+    setRules(defaultRules(initial));
     const loaded = (initial?.questions || []).map((question) => ({
       _id: question._id,
       type: question.type || 'text',
@@ -28,10 +37,23 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
       correctOptionIndex: question.correctOptionIndex || 0,
       points: question.points ?? 10,
       language: question.language || '',
+      required: question.required !== false,
+      skillTag: question.skillTag || '',
+      section: question.section || '',
+      rubric: question.rubric || '',
+      hiddenTests: question.hiddenTests?.length ? question.hiddenTests : [{ name: '', input: '', expected: '' }],
+      visibleTests: question.visibleTests?.length ? question.visibleTests : [{ name: 'Sample', input: '', expected: '' }],
     }));
     setQuestions(loaded.length ? loaded : [emptyQuestion()]);
     setProctoringEnabled(Boolean(initial?.proctoring?.enabled));
     setStrictness(initial?.proctoring?.strictness || 'standard');
+    setJobId(initial?.jobId?._id || initial?.jobId || '');
+    setPipelineStage(initial?.pipelineStage || '');
+    setAdvanceStage(initial?.advanceStage || 'Interview');
+    authenticatedFetch('/api/assessments/jobs')
+      .then((res) => res.json())
+      .then((data) => { if (data.success) setJobs(data.data || []); })
+      .catch(() => {});
   }, [open, initial]);
 
   const updateQuestion = (idx, patch) => {
@@ -67,8 +89,8 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
       onClose={onClose}
       title={editing ? 'Edit assessment' : 'New Assessment'}
       description={editing
-        ? 'Update the test. Invites already sent keep their answers tied to the same questions.'
-        : 'Build a skills test — code answers are graded by your team.'}
+        ? 'Working copy only. In-progress attempts keep the published snapshot. Publish again to freeze a new version.'
+        : 'Build a reusable test. Publish a version before assigning it, or invite to auto-publish.'}
       size="xl"
       footer={
         <>
@@ -78,8 +100,13 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
             onClick={() => onSave({
               title,
               description,
+              candidateInstructions: instructions,
               durationMinutes,
               questions,
+              rules,
+              jobId: jobId || null,
+              pipelineStage,
+              advanceStage,
               proctoring: canProctor ? { enabled: proctoringEnabled, strictness } : { enabled: false }
             })}
             disabled={saving || !valid}
@@ -121,6 +148,25 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
                 rows={2}
               />
             </div>
+            <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="label-ats">Attach to job</label>
+                <select value={jobId} onChange={(e) => setJobId(e.target.value)} className="input-ats">
+                  <option value="">Any job / talent pool</option>
+                  {jobs.map((job) => (
+                    <option key={job._id} value={job._id}>{job.title || job.role} {job.jobCode ? `(${job.jobCode})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label-ats">Invite from stage</label>
+                <input value={pipelineStage} onChange={(e) => setPipelineStage(e.target.value)} className="input-ats" placeholder="e.g. Technical Test" />
+              </div>
+              <div>
+                <label className="label-ats">Advance winners to</label>
+                <input value={advanceStage} onChange={(e) => setAdvanceStage(e.target.value)} className="input-ats" placeholder="Interview" />
+              </div>
+            </div>
             <div className="sm:max-w-xs">
               <label className="label-ats">Duration (minutes)</label>
               <input
@@ -131,6 +177,55 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
                 className="input-ats"
               />
             </div>
+            <div className="sm:col-span-2">
+              <label className="label-ats">Candidate instructions</label>
+              <textarea
+                value={instructions}
+                onChange={(e) => setInstructions(e.target.value)}
+                className="textarea-ats !min-h-[72px]"
+                placeholder="What they should know before starting — permitted resources, ID checks, honour code"
+                rows={2}
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="section-title-ats !mb-0">Test rules</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="label-ats">Passing score %</label>
+              <input type="number" min="0" max="100" value={rules.passingScorePercent} onChange={(e) => setRules((r) => ({ ...r, passingScorePercent: Number(e.target.value) }))} className="input-ats" />
+            </div>
+            <div>
+              <label className="label-ats">Negative mark %</label>
+              <input type="number" min="0" max="100" value={rules.negativeMarkPercent} onChange={(e) => setRules((r) => ({ ...r, negativeMarkPercent: Number(e.target.value) }))} className="input-ats" />
+            </div>
+            <div>
+              <label className="label-ats">Max attempts</label>
+              <input type="number" min="1" max="5" value={rules.maxAttempts} onChange={(e) => setRules((r) => ({ ...r, maxAttempts: Number(e.target.value) }))} className="input-ats" />
+            </div>
+            <div>
+              <label className="label-ats">Candidate results</label>
+              <select value={rules.resultVisibility} onChange={(e) => setRules((r) => ({ ...r, resultVisibility: e.target.value }))} className="input-ats">
+                <option value="hidden">Hidden until you share</option>
+                <option value="score">Score only</option>
+                <option value="detailed">Score and feedback</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-stone-700">
+            {[
+              ['randomizeQuestions', 'Randomize question order per attempt'],
+              ['allowBack', 'Allow going back to previous questions'],
+              ['requireAll', 'Require all mandatory questions'],
+              ['autoSubmit', 'Auto-submit when time expires'],
+            ].map(([key, label]) => (
+              <label key={key} className="flex items-center gap-2">
+                <input type="checkbox" checked={!!rules[key]} onChange={(e) => setRules((r) => ({ ...r, [key]: e.target.checked }))} />
+                {label}
+              </label>
+            ))}
           </div>
         </section>
 
@@ -263,6 +358,46 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
                       className="textarea-ats !min-h-[72px]"
                     />
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="label-ats">Section</label>
+                      <input value={q.section} onChange={(e) => updateQuestion(idx, { section: e.target.value })} className="input-ats" placeholder="e.g. Aptitude" />
+                    </div>
+                    <div>
+                      <label className="label-ats">Skill tag</label>
+                      <input value={q.skillTag} onChange={(e) => updateQuestion(idx, { skillTag: e.target.value })} className="input-ats" placeholder="e.g. React" />
+                    </div>
+                    <label className="flex items-center gap-2 text-sm text-stone-700 sm:pt-6">
+                      <input type="checkbox" checked={q.required !== false} onChange={(e) => updateQuestion(idx, { required: e.target.checked })} />
+                      Required
+                    </label>
+                  </div>
+                  {q.type !== 'multiple_choice' && (
+                    <div>
+                      <label className="label-ats">Evaluator rubric</label>
+                      <textarea value={q.rubric} onChange={(e) => updateQuestion(idx, { rubric: e.target.value })} rows={2} className="textarea-ats !min-h-[56px]" placeholder="Scoring criteria for reviewers only — never shown to candidates" />
+                    </div>
+                  )}
+                  {q.type === 'code' && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-stone-500">Visible sample tests (input only is shown to the candidate)</p>
+                      {(q.visibleTests || []).map((t, tIdx) => (
+                        <div key={`v-${tIdx}`} className="grid grid-cols-3 gap-2">
+                          <input className="input-ats" placeholder="Name" value={t.name} onChange={(e) => updateQuestion(idx, { visibleTests: q.visibleTests.map((row, i) => i === tIdx ? { ...row, name: e.target.value } : row) })} />
+                          <input className="input-ats" placeholder="Input" value={t.input} onChange={(e) => updateQuestion(idx, { visibleTests: q.visibleTests.map((row, i) => i === tIdx ? { ...row, input: e.target.value } : row) })} />
+                          <input className="input-ats" placeholder="Expected (hidden from take page)" value={t.expected} onChange={(e) => updateQuestion(idx, { visibleTests: q.visibleTests.map((row, i) => i === tIdx ? { ...row, expected: e.target.value } : row) })} />
+                        </div>
+                      ))}
+                      <p className="text-xs font-semibold text-stone-500">Hidden tests (never sent to the browser)</p>
+                      {(q.hiddenTests || []).map((t, tIdx) => (
+                        <div key={`h-${tIdx}`} className="grid grid-cols-3 gap-2">
+                          <input className="input-ats" placeholder="Name" value={t.name} onChange={(e) => updateQuestion(idx, { hiddenTests: q.hiddenTests.map((row, i) => i === tIdx ? { ...row, name: e.target.value } : row) })} />
+                          <input className="input-ats" placeholder="Input" value={t.input} onChange={(e) => updateQuestion(idx, { hiddenTests: q.hiddenTests.map((row, i) => i === tIdx ? { ...row, input: e.target.value } : row) })} />
+                          <input className="input-ats" placeholder="Expected" value={t.expected} onChange={(e) => updateQuestion(idx, { hiddenTests: q.hiddenTests.map((row, i) => i === tIdx ? { ...row, expected: e.target.value } : row) })} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {q.type === 'multiple_choice' && (
                     <div className="space-y-2">

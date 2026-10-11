@@ -32,8 +32,15 @@ describe('assessmentService contracts', () => {
   it('exports assessment helpers', () => {
     const svc = require('../services/assessmentService');
     expect(typeof svc.takeAssessment).toBe('function');
+    expect(typeof svc.startAttempt).toBe('function');
+    expect(typeof svc.saveAnswers).toBe('function');
     expect(typeof svc.createAssessment).toBe('function');
+    expect(typeof svc.publishAssessment).toBe('function');
     expect(typeof svc.inviteCandidate).toBe('function');
     expect(typeof svc.gradeInvite).toBe('function');
+    expect(typeof svc.recordDecision).toBe('function');
+    expect(typeof svc.rankInvites).toBe('function');
+    expect(typeof svc.inviteJobApplicants).toBe('function');
+    expect(typeof svc.suggestEvaluation).toBe('function');
   });
 });

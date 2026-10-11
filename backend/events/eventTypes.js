@@ -43,4 +43,11 @@ module.exports = {
   ORG_CREATED: 'organization.created',
   ORG_PLAN_CHANGED: 'organization.plan_changed',
   ORG_PLAN_LIMIT_REACHED: 'organization.plan_limit_reached',
+
+  ASSESSMENT_PUBLISHED: 'assessment.published',
+  ASSESSMENT_INVITED: 'assessment.invited',
+  ASSESSMENT_SUBMITTED: 'assessment.submitted',
+  ASSESSMENT_GRADED: 'assessment.graded',
+  ASSESSMENT_DECISION: 'assessment.decision',
+  ASSESSMENT_REVOKED: 'assessment.revoked',
 };

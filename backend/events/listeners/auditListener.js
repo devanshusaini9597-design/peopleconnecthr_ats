@@ -1,42 +1,56 @@
 const logger = require('../../utils/logger');
 /**
  * Audit Listener
- * Listens for all events and creates AuditLog entries.
+ * Listens for domain events and writes compact AuditLog rows.
  */
 
 const { on } = require('../eventBus');
 const eventTypes = require('../eventTypes');
 const mongoose = require('mongoose');
 
+function resourceFromAction(action) {
+  const prefix = String(action || '').split('.')[0];
+  if (prefix === 'user') return 'auth';
+  return prefix || 'unknown';
+}
+
+function compactDetails(data = {}) {
+  const keep = [
+    'title', 'name', 'email', 'jobId', 'candidateId', 'applicationId',
+    'source', 'stage', 'previousPlan', 'newPlan', 'message', 'reason',
+  ];
+  const out = {};
+  for (const key of keep) {
+    if (data[key] != null && data[key] !== '') out[key] = data[key];
+  }
+  return out;
+}
+
+async function persistAudit(eventType, data = {}) {
+  const organizationId = data.organizationId;
+  if (!organizationId) return;
+
+  const AuditLog = mongoose.model('AuditLog');
+  const userId = data.userId || data.changedById || data.actorId || null;
+  const resourceId = data.resourceId || data.id || data.jobId || data.candidateId || data.applicationId || null;
+
+  await AuditLog.create({
+    organizationId,
+    userId: userId || undefined,
+    action: eventType,
+    resource: data.resourceType || resourceFromAction(eventType),
+    resourceId: resourceId || undefined,
+    details: compactDetails(data),
+    ipAddress: data.ipAddress || '',
+    userAgent: data.userAgent || '',
+  });
+}
+
 const initAuditListeners = () => {
-  // We can loop over all event types to listen for them
-  Object.values(eventTypes).forEach(eventType => {
+  Object.values(eventTypes).forEach((eventType) => {
     on(eventType, async (data) => {
       try {
-        // Extract basic data that should be present
-        const organizationId = data.organizationId;
-        const userId = data.userId || data.changedById || data.actorId;
-        
-        if (!organizationId) {
-          // If no organization context, we can't properly isolate this audit log
-          return;
-        }
-
-        const AuditLog = mongoose.model('AuditLog');
-        
-        // Remove massive payload details if necessary, but we'll stringify it
-        const metadata = { ...data };
-        
-        await AuditLog.create({
-          organizationId,
-          userId, // Can be null if system action
-          action: eventType,
-          resource: metadata.resourceType || 'unknown',
-          resourceId: metadata.resourceId || metadata.id || null,
-          details: metadata,
-          ipAddress: metadata.ipAddress || null,
-          userAgent: metadata.userAgent || null
-        });
+        await persistAudit(eventType, data || {});
       } catch (error) {
         logger.error(`Failed to create audit log for event ${eventType}`, error);
       }
@@ -44,4 +58,4 @@ const initAuditListeners = () => {
   });
 };
 
-module.exports = { initAuditListeners };
+module.exports = { initAuditListeners, persistAudit, compactDetails, resourceFromAction };

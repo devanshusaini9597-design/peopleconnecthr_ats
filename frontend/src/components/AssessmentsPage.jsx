@@ -20,6 +20,7 @@ import {
 } from './assessments/assessmentsConstants';
 import { BuilderModal } from './assessments/BuilderModal';
 import { AssessmentDetail } from './assessments/AssessmentDetail';
+import { EvaluationQueuePanel, QuestionBankPanel, AssessmentSettingsPanel } from './assessments/AssessmentOpsPanels';
 
 const AssessmentsPage = () => {
   const { t } = useTranslation();
@@ -35,7 +36,11 @@ const AssessmentsPage = () => {
   const canInvite = allow('assessments.invite');
   const canGrade = allow('assessments.grade');
   const canDelete = allow('assessments.delete');
+  const canPublish = allow('assessments.publish');
+  const canDecide = allow('assessments.decide');
+  const canSettings = allow('assessments.settings');
   const canProctor = planHasFeature(organization?.plan, 'assessments.proctoring');
+  const [tab, setTab] = useState('library');
   const [tourOpen, setTourOpen] = usePageTour(ASSESS_TOUR_KEY);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -194,7 +199,7 @@ const AssessmentsPage = () => {
           onBack={() => { setActive(null); load(); }}
           onEdit={canEdit ? openEdit : null}
           onUpdated={(next) => { setActive(next); load(); }}
-          access={{ edit: canEdit, invite: canInvite, grade: canGrade, archive: canEdit }}
+          access={{ edit: canEdit, invite: canInvite, grade: canGrade, archive: canEdit, publish: canPublish, decide: canDecide }}
         />
       ) : (
         <>
@@ -211,6 +216,61 @@ const AssessmentsPage = () => {
             ) : null}
           </PageHeader>
 
+          <div className="flex flex-wrap gap-1 rounded-lg border border-stone-200 p-0.5 bg-white w-fit">
+            {[
+              ['library', 'Assessments'],
+              ['queue', 'Evaluation queue'],
+              ...(canEdit ? [['bank', 'Question bank']] : []),
+              ...(canSettings ? [['settings', 'Policies']] : []),
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTab(key)}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold ${tab === key ? 'bg-stone-900 text-white' : 'text-stone-600'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {tab === 'queue' ? (
+            <EvaluationQueuePanel
+              onOpen={(row) => {
+                const match = assessments.find((a) => String(a._id) === String(row.assessmentId?._id || row.assessmentId));
+                if (match) setActive(match);
+              }}
+            />
+          ) : null}
+          {tab === 'bank' && canEdit ? <QuestionBankPanel /> : null}
+          {tab === 'settings' && canSettings ? <AssessmentSettingsPanel /> : null}
+
+          {tab === 'library' ? (
+          <>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            {(() => {
+              const totals = assessments.reduce((acc, row) => {
+                acc.assigned += row.inviteStats?.total || 0;
+                acc.open += (row.inviteStats?.pending || 0) + (row.inviteStats?.in_progress || 0);
+                acc.review += row.inviteStats?.pendingReview || 0;
+                acc.flagged += row.inviteStats?.flagged || 0;
+                acc.graded += row.inviteStats?.graded || 0;
+                return acc;
+              }, { assigned: 0, open: 0, review: 0, flagged: 0, graded: 0 });
+              return [
+                ['Assigned', totals.assigned],
+                ['Open / in progress', totals.open],
+                ['Need evaluation', totals.review],
+                ['Integrity flags', totals.flagged],
+                ['Graded', totals.graded],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl border border-stone-200 bg-white px-3 py-2.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">{label}</p>
+                  <p className="text-lg font-bold tabular-nums text-stone-900">{value}</p>
+                </div>
+              ));
+            })()}
+          </div>
           <div
             data-tour="assess-tip"
             className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed flex flex-wrap items-center gap-x-3 gap-y-1.5"
@@ -358,7 +418,9 @@ const AssessmentsPage = () => {
                       <div className="flex flex-wrap items-center gap-3 mt-4 pt-3 border-t border-stone-100 text-xs font-semibold text-stone-500">
                         <span className="inline-flex items-center gap-1"><ClipboardList className="w-3.5 h-3.5" /> {a.questions?.length || 0} questions</span>
                         <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {a.durationMinutes} min</span>
-                        {a.isActive === false ? <span className="badge-neutral">Archived</span> : null}
+                        {a.isActive === false || a.status === 'archived' ? <span className="badge-neutral">Archived</span> : (
+                          <span className="badge-neutral">{a.status || 'draft'}{a.unpublishedChanges ? ' · unpublished edits' : ''}</span>
+                        )}
                       </div>
                       <div className="mt-3 grid grid-cols-4 gap-1.5 text-center">
                         {[
@@ -379,6 +441,8 @@ const AssessmentsPage = () => {
               )}
             </div>
           )}
+          </>
+          ) : null}
         </>
       )}
 

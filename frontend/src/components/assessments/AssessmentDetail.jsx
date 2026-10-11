@@ -27,6 +27,9 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
   const [statusFilter, setStatusFilter] = useState('all');
   const [resendingId, setResendingId] = useState('');
   const [archiving, setArchiving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [ranking, setRanking] = useState([]);
+  const [audit, setAudit] = useState([]);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -39,11 +42,21 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
     }
   }, [assessment._id]);
 
+  const loadRanking = useCallback(async () => {
+    const res = await authenticatedFetch(`/api/assessments/results?assessmentId=${assessment._id}`);
+    const data = await res.json();
+    if (data.success) setRanking(data.data || []);
+    const auditRes = await authenticatedFetch(`/api/assessments/${assessment._id}/audit`);
+    const auditData = await auditRes.json();
+    if (auditData.success) setAudit(auditData.data || []);
+  }, [assessment._id]);
+
   useEffect(() => {
     load();
+    loadRanking();
     const timer = setInterval(() => load(true), 20000);
     return () => clearInterval(timer);
-  }, [load]);
+  }, [load, loadRanking]);
 
   const copyLink = async (invite) => {
     if (!invite?.token) {
@@ -83,6 +96,55 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
     }
   };
 
+  const publish = async () => {
+    setPublishing(true);
+    try {
+      const res = await authenticatedFetch(`/api/assessments/${assessment._id}/publish`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast?.error?.(data.message || 'Could not publish');
+        return;
+      }
+      toast?.success?.(`Published version ${data.data.version}. New attempts use this freeze.`);
+      onUpdated?.(data.data);
+    } catch (err) {
+      toast?.error?.(err?.message || 'Could not publish');
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const decide = async (invite, decision) => {
+    const reason = window.prompt(decision === 'reject' ? 'Reason for rejection (required for audit)' : 'Optional reason') || '';
+    if (decision === 'reject' && !reason.trim()) {
+      toast?.error?.('A reason is required to reject');
+      return;
+    }
+    const res = await authenticatedFetch(`/api/assessments/invites/${invite._id}/decision`, {
+      method: 'POST',
+      body: JSON.stringify({ decision, reason }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      toast?.error?.(data.message || 'Could not record decision');
+      return;
+    }
+    toast?.success?.('Decision saved');
+    load(true);
+    loadRanking();
+  };
+
+  const revoke = async (invite) => {
+    const res = await authenticatedFetch(`/api/assessments/invites/${invite._id}/revoke`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      toast?.error?.(data.message || 'Could not revoke');
+      return;
+    }
+    toast?.success?.('Invitation revoked');
+    load(true);
+  };
+
   const toggleArchive = async () => {
     setArchiving(true);
     try {
@@ -114,6 +176,8 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
   const canInvite = access?.invite !== false;
   const canGrade = access?.grade !== false;
   const canArchive = access?.archive !== false;
+  const canPublish = access?.publish !== false;
+  const canDecide = access?.decide === true;
 
   return (
     <div className="space-y-6 animate-page-enter">
@@ -135,13 +199,19 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
               {assessment.title}
             </h2>
             <p className="text-sm text-stone-500 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="inline-flex items-center gap-1"><ClipboardList className="w-3.5 h-3.5" /> {assessment.questions.length} questions</span>
+              <span className="inline-flex items-center gap-1"><ClipboardList className="w-3.5 h-3.5" /> {assessment.questions?.length || 0} questions</span>
               <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {assessment.durationMinutes} min</span>
               <span className="badge-neutral">{assessment.maxScore} pts max</span>
+              <span className={STATUS_BADGE[assessment.status] || 'badge-neutral'}>{assessment.status || 'draft'}{assessment.version ? ` v${assessment.version}` : ''}</span>
             </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+          {canPublish && assessment.status !== 'archived' ? (
+            <button type="button" onClick={publish} className="btn-secondary" disabled={publishing}>
+              {publishing ? 'Publishing…' : 'Publish version'}
+            </button>
+          ) : null}
           {canEdit ? (
           <button type="button" onClick={() => onEdit(assessment)} className="btn-secondary">
             <Pencil className="w-4 h-4" /> Edit
@@ -249,6 +319,9 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
                       <RefreshCw size={14} className={resendingId === inv._id ? 'animate-spin' : ''} />
                     </button>
                   )}
+                  {canInvite && ['pending', 'expired'].includes(inv.status) && (
+                    <button type="button" onClick={() => revoke(inv)} className="text-xs font-semibold text-red-600">Revoke</button>
+                  )}
                   {canGrade && (inv.status === 'submitted' || inv.status === 'graded') && (
                     <button
                       type="button"
@@ -260,12 +333,56 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
                       <FileEdit size={14} />
                     </button>
                   )}
+                  {canDecide && (inv.status === 'submitted' || inv.status === 'graded') && inv.scoringStatus !== 'pending_review' && (
+                    <select
+                      className="text-xs border border-stone-200 rounded-lg px-2 py-1"
+                      value={inv.decision || 'none'}
+                      onChange={(e) => decide(inv, e.target.value)}
+                    >
+                      <option value="none">Decision</option>
+                      <option value="shortlist">Shortlist</option>
+                      <option value="advance">Advance</option>
+                      <option value="reject">Reject</option>
+                    </select>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {ranking[0]?.ranking?.length ? (
+        <div className="rounded-xl border border-stone-200 bg-white p-4">
+          <h3 className="text-sm font-bold text-stone-900 mb-2">Ranking (same published version)</h3>
+          <div className="space-y-1.5">
+            {ranking[0].ranking.slice(0, 20).map((row) => (
+              <div key={row._id} className="flex items-center justify-between text-sm">
+                <span className="text-stone-700">#{row.rank} {row.candidateId?.name}</span>
+                <span className="tabular-nums font-semibold">
+                  {row.totalScore}/{row.maxScore}
+                  {row.skillBreakdown?.length ? ` · ${row.skillBreakdown.map((s) => `${s.skill} ${s.percent}%`).join(', ')}` : ''}
+                  {row.passFail === 'pending' ? ' · review pending' : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {audit.length ? (
+        <div className="rounded-xl border border-stone-200 bg-white p-4">
+          <h3 className="text-sm font-bold text-stone-900 mb-2">Audit</h3>
+          <div className="space-y-1 text-xs text-stone-600">
+            {audit.slice(0, 15).map((row) => (
+              <p key={row._id}>
+                {new Date(row.timestamp).toLocaleString()} · {row.action} · {row.userId?.name || 'system'}
+                {row.details?.message ? ` · ${row.details.message}` : ''}
+              </p>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <InviteModal assessment={assessment} open={showInvite} onClose={() => setShowInvite(false)} onSent={load} />
       <GradeModal

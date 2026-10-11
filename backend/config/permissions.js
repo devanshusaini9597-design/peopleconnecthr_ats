@@ -67,7 +67,7 @@ const ACTION_PERMISSIONS = [
   'audit.view', 'audit.export',
   'billing.manage',
   'announcements.publish',
-  'assessments.create', 'assessments.edit', 'assessments.invite', 'assessments.grade', 'assessments.delete',
+  'assessments.create', 'assessments.edit', 'assessments.publish', 'assessments.invite', 'assessments.grade', 'assessments.decide', 'assessments.delete', 'assessments.settings',
   'mis.viewOrg', 'mis.editAny', 'mis.export',
 ];
 
@@ -121,9 +121,12 @@ const PERMISSION_CATALOG = [
       { key: 'modules.assessments', label: 'Assessments', kind: 'module' },
       { key: 'assessments.create', label: 'Create assessments', kind: 'action' },
       { key: 'assessments.edit', label: 'Edit assessments', kind: 'action' },
+      { key: 'assessments.publish', label: 'Publish assessments', kind: 'action' },
       { key: 'assessments.invite', label: 'Invite candidates', kind: 'action' },
-      { key: 'assessments.grade', label: 'Grade submissions', kind: 'action' },
+      { key: 'assessments.grade', label: 'Evaluate submissions', kind: 'action' },
+      { key: 'assessments.decide', label: 'Shortlist or reject from results', kind: 'action' },
       { key: 'assessments.delete', label: 'Delete assessments', kind: 'action' },
+      { key: 'assessments.settings', label: 'Assessment policies', kind: 'action' },
       { key: 'modules.aiTools', label: 'AI Tools', kind: 'module' },
     ],
   },
@@ -231,7 +234,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
     'applications.edit', 'applications.reject',
     'interviews.schedule', 'interviews.cancel', 'scorecards.submit',
     'freelance.scorecard',
-    'assessments.create', 'assessments.edit', 'assessments.invite', 'assessments.grade', 'assessments.delete',
+    'assessments.create', 'assessments.edit', 'assessments.publish', 'assessments.invite', 'assessments.grade', 'assessments.decide', 'assessments.delete',
   ],
   sales: [
     'modules.dashboard', 'modules.analytics', 'modules.search', 'modules.announcements', 'modules.mis',
@@ -262,8 +265,10 @@ const DEFAULT_ROLE_PERMISSIONS = {
   interviewer: [
     'modules.dashboard', 'modules.analytics', 'modules.search',
     'modules.interviews',
+    'modules.assessments',
     'modules.pushNotifications', 'modules.profile',
     'scorecards.submit',
+    'assessments.grade',
   ],
   readonly: [
     'modules.dashboard', 'modules.analytics', 'modules.search',

@@ -1,7 +1,7 @@
 /**
- * AssessmentInvite Model — one candidate's attempt at one Assessment.
- * Candidate access is token-based (magic link, no account/password),
- * matching the pattern already used for the candidate portal.
+ * AssessmentInvite — assignment + attempt for one candidate.
+ * Access is token-based. Attempt deadline, answers and scoring live here so
+ * the published assessment can change without rewriting an in-progress test.
  */
 
 const mongoose = require('mongoose');
@@ -9,9 +9,10 @@ const crypto = require('crypto');
 
 const answerSchema = new mongoose.Schema({
   questionId: { type: mongoose.Schema.Types.ObjectId, required: true },
-  response: { type: String, default: '' }, // selected option index (as string) for MCQ, free text otherwise
-  autoScore: { type: Number }, // set for multiple_choice on submit
-  manualScore: { type: Number } // set by recruiter for text/code
+  response: { type: String, default: '' },
+  autoScore: { type: Number },
+  manualScore: { type: Number },
+  evaluatorComment: { type: String, default: '' },
 }, { _id: false });
 
 const assessmentInviteSchema = new mongoose.Schema({
@@ -19,20 +20,37 @@ const assessmentInviteSchema = new mongoose.Schema({
   assessmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Assessment', required: true, index: true },
   candidateId: { type: mongoose.Schema.Types.ObjectId, ref: 'Candidate', required: true, index: true },
   applicationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Application' },
+  jobId: { type: mongoose.Schema.Types.ObjectId, ref: 'Job' },
   token: { type: String, required: true, unique: true, index: true },
-  status: { type: String, enum: ['pending', 'in_progress', 'submitted', 'graded', 'expired'], default: 'pending' },
+  status: { type: String, enum: ['pending', 'in_progress', 'submitted', 'graded', 'expired', 'revoked'], default: 'pending' },
+  attemptNumber: { type: Number, default: 1, min: 1 },
   answers: [answerSchema],
   totalScore: { type: Number },
   maxScore: { type: Number },
+  percent: { type: Number },
+  skillBreakdown: { type: mongoose.Schema.Types.Mixed, default: [] },
+  aiSuggestion: { type: mongoose.Schema.Types.Mixed, default: null },
+  scoringStatus: { type: String, enum: ['pending', 'pending_review', 'scored'], default: 'pending' },
+  passFail: { type: String, enum: ['pending', 'pass', 'fail'], default: 'pending' },
+  decision: { type: String, enum: ['none', 'shortlist', 'reject', 'advance'], default: 'none' },
+  decisionReason: { type: String, default: '' },
+  decisionBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  decisionAt: { type: Date },
+  overrideReason: { type: String, default: '' },
   gradedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   gradedAt: { type: Date },
   feedback: { type: String, default: '' },
   sentBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   sentAt: { type: Date, default: Date.now },
+  openedAt: { type: Date },
   startedAt: { type: Date },
+  deadlineAt: { type: Date },
+  lastSavedAt: { type: Date },
   submittedAt: { type: Date },
   expiresAt: { type: Date, required: true },
-  // Integrity / proctoring session (assessments.proctoring)
+  revokedAt: { type: Date },
+  snapshot: { type: mongoose.Schema.Types.Mixed, default: null },
+  publishedVersion: { type: Number, default: 1 },
   proctoring: {
     events: [{
       type: { type: String },
@@ -50,6 +68,8 @@ const assessmentInviteSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 assessmentInviteSchema.index({ organizationId: 1, assessmentId: 1, createdAt: -1 });
+assessmentInviteSchema.index({ organizationId: 1, jobId: 1, status: 1 });
+assessmentInviteSchema.index({ organizationId: 1, candidateId: 1, assessmentId: 1, attemptNumber: 1 });
 
 assessmentInviteSchema.statics.generateToken = function () {
   return crypto.randomBytes(24).toString('hex');

@@ -1,20 +1,39 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { ClipboardList, Clock, CheckCircle, AlertCircle, Loader2, Shield } from 'lucide-react';
+import {
+  ClipboardList, Clock, CheckCircle, AlertCircle, Loader2, Shield, ChevronLeft, ChevronRight,
+} from 'lucide-react';
 import API_URL from '../config';
 
-/**
- * Candidate-facing assessment page — magic-link token, optional proctoring.
- */
 const AssessmentTakePage = () => {
   const { token } = useParams();
   const [state, setState] = useState('loading');
   const [assessment, setAssessment] = useState(null);
   const [answers, setAnswers] = useState({});
+  const [current, setCurrent] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
+  const [saveState, setSaveState] = useState('saved');
+  const [remaining, setRemaining] = useState(null);
+  const [result, setResult] = useState(null);
+  const [confirmSubmit, setConfirmSubmit] = useState(false);
   const eventQueue = useRef([]);
   const flushTimer = useRef(null);
+  const saveTimer = useRef(null);
+  const answersRef = useRef({});
+
+  const applySession = (data) => {
+    setAssessment(data);
+    const next = {};
+    (data.answers || []).forEach((row) => {
+      next[row.questionId] = row.response;
+    });
+    answersRef.current = next;
+    setAnswers(next);
+    setRemaining(data.remainingSeconds ?? null);
+    setState('ready');
+  };
 
   const flushEvents = useCallback(async () => {
     if (!eventQueue.current.length || !token) return;
@@ -39,6 +58,30 @@ const AssessmentTakePage = () => {
     }
   }, [assessment?.proctoring?.enabled, flushEvents]);
 
+  const persistAnswers = useCallback(async (payload) => {
+    setSaveState('saving');
+    try {
+      const res = await fetch(`${API_URL}/api/assessments/take/${token}/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          answers: Object.entries(payload).map(([questionId, response]) => ({ questionId, response })),
+        }),
+      });
+      const data = await res.json();
+      if (data?.data?.submitted) {
+        setState('submitted');
+        setResult(data.data.result);
+        return;
+      }
+      if (!res.ok || !data.success) throw new Error(data.message || 'Could not save');
+      if (typeof data.data?.remainingSeconds === 'number') setRemaining(data.data.remainingSeconds);
+      setSaveState('saved');
+    } catch {
+      setSaveState('unsaved');
+    }
+  }, [token]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -46,9 +89,17 @@ const AssessmentTakePage = () => {
         const data = await res.json();
         if (res.status === 410) { setState('expired'); return; }
         if (!res.ok || !data.success) { setState('error'); setError(data.message || 'Failed to load assessment'); return; }
-        if (data.data.submitted) { setState('submitted'); return; }
-        setAssessment(data.data);
-        setState('ready');
+        if (data.data.submitted) {
+          setResult(data.data.result);
+          setState('submitted');
+          return;
+        }
+        if (data.data.phase === 'instructions') {
+          setAssessment(data.data);
+          setState('instructions');
+          return;
+        }
+        applySession(data.data);
       } catch {
         setState('error');
         setError('Failed to load assessment');
@@ -57,11 +108,28 @@ const AssessmentTakePage = () => {
   }, [token]);
 
   useEffect(() => {
+    if (state !== 'ready' || remaining == null) return undefined;
+    const timer = setInterval(() => {
+      setRemaining((secs) => {
+        if (secs == null) return secs;
+        if (secs <= 1) return 0;
+        return secs - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [state, remaining != null]);
+
+  useEffect(() => {
+    if (state !== 'ready' || remaining !== 0 || !assessment?.rules?.autoSubmit) return;
+    handleSubmit(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remaining, state]);
+
+  useEffect(() => {
     if (state !== 'ready' || !assessment?.proctoring?.enabled) return undefined;
     const p = assessment.proctoring;
     track('start');
 
-    // Optional identity snapshot (webcam) — best-effort, never blocks the exam
     let stream;
     (async () => {
       try {
@@ -79,10 +147,15 @@ const AssessmentTakePage = () => {
         ctx.drawImage(video, 0, 0, 320, 240);
         const image = canvas.toDataURL('image/jpeg', 0.45);
         track('snapshot', { image, w: 320, h: 240 });
+        const pulse = setInterval(async () => {
+          try {
+            ctx.drawImage(video, 0, 0, 320, 240);
+            track('snapshot', { image: canvas.toDataURL('image/jpeg', 0.4), w: 320, h: 240, periodic: true });
+          } catch { /* ignore */ }
+        }, 90000);
+        stream._pulse = pulse;
       } catch {
         track('snapshot', { skipped: true, reason: 'camera_denied_or_unavailable' });
-      } finally {
-        try { stream?.getTracks()?.forEach((t) => t.stop()); } catch { /* ignore */ }
       }
     })();
 
@@ -109,20 +182,51 @@ const AssessmentTakePage = () => {
       document.removeEventListener('paste', onPaste);
       document.removeEventListener('fullscreenchange', onFs);
       if (flushTimer.current) clearTimeout(flushTimer.current);
+      try { if (stream?._pulse) clearInterval(stream._pulse); } catch { /* ignore */ }
+      try { stream?.getTracks?.()?.forEach((t) => t.stop()); } catch { /* ignore */ }
       flushEvents();
     };
   }, [state, assessment, track, flushEvents]);
 
   const handleAnswer = (questionId, response) => {
-    setAnswers((prev) => ({ ...prev, [questionId]: response }));
+    setAnswers((prev) => {
+      const next = { ...prev, [questionId]: response };
+      answersRef.current = next;
+      return next;
+    });
+    setSaveState('unsaved');
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => persistAnswers(answersRef.current), 700);
   };
 
-  const handleSubmit = async () => {
+  const startTest = async () => {
+    setStarting(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_URL}/api/assessments/take/${token}/start`, { method: 'POST' });
+      const data = await res.json();
+      if (res.status === 410) { setState('expired'); return; }
+      if (!res.ok || !data.success) throw new Error(data.message || 'Could not start');
+      if (data.data.submitted) {
+        setResult(data.data.result);
+        setState('submitted');
+        return;
+      }
+      applySession(data.data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const handleSubmit = async (auto = false) => {
+    if (submitting) return;
     setSubmitting(true);
     track('submit');
     await flushEvents();
     try {
-      const payload = { answers: Object.entries(answers).map(([questionId, response]) => ({ questionId, response })) };
+      const payload = { answers: Object.entries(answersRef.current).map(([questionId, response]) => ({ questionId, response })), auto };
       const res = await fetch(`${API_URL}/api/assessments/take/${token}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -130,12 +234,21 @@ const AssessmentTakePage = () => {
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message || 'Failed to submit');
+      setResult(data.result || data.data?.result);
       setState('submitted');
     } catch (err) {
       setError(err.message);
+      setConfirmSubmit(false);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const formatTime = (secs) => {
+    if (secs == null) return '';
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
   };
 
   if (state === 'loading') {
@@ -150,7 +263,13 @@ const AssessmentTakePage = () => {
     const map = {
       expired: { icon: Clock, color: 'text-amber-500', title: 'This link has expired', body: 'Contact the hiring team to request a new assessment link.' },
       error: { icon: AlertCircle, color: 'text-red-500', title: 'Something went wrong', body: error },
-      submitted: { icon: CheckCircle, color: 'text-emerald-500', title: 'Assessment submitted', body: 'Thanks — the hiring team will review your answers and follow up.' }
+      submitted: {
+        icon: CheckCircle,
+        color: 'text-emerald-500',
+        title: 'Assessment submitted',
+        body: result?.message
+          || (result?.pending ? 'Submitted. Some answers still need review before a result is ready.' : 'Thanks — the hiring team will review your answers and follow up.'),
+      }
     };
     const m = map[state];
     const Icon = m.icon;
@@ -160,71 +279,161 @@ const AssessmentTakePage = () => {
           <Icon className={`w-10 h-10 ${m.color} mx-auto mb-4`} />
           <h2 className="text-xl font-bold text-stone-900">{m.title}</h2>
           <p className="text-stone-500 mt-2 text-sm leading-relaxed">{m.body}</p>
+          {state === 'submitted' && result && !result.pending && result.totalScore != null && (
+            <p className="mt-4 text-sm font-semibold text-stone-800">
+              Score: {result.totalScore}/{result.maxScore}
+              {result.passFail && result.passFail !== 'pending' ? ` · ${result.passFail}` : ''}
+            </p>
+          )}
         </div>
       </div>
     );
   }
 
-  const allAnswered = assessment.questions.every((q) => (answers[q._id] || '').toString().trim().length > 0);
-
-  return (
-    <div className="min-h-dvh bg-stone-50 font-sans py-6 sm:py-10 px-3 sm:px-4">
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-white border border-stone-200 rounded-2xl p-5 sm:p-6 mb-4 sm:mb-6 shadow-sm">
+  if (state === 'instructions') {
+    return (
+      <div className="min-h-dvh bg-stone-50 font-sans py-6 sm:py-10 px-3 sm:px-4">
+        <div className="max-w-2xl mx-auto bg-white border border-stone-200 rounded-2xl p-6 sm:p-8 shadow-sm">
           <div className="flex items-center gap-2 text-brand-600 mb-2">
             <ClipboardList className="w-5 h-5" />
             <span className="text-sm font-medium">Skills Assessment</span>
           </div>
-          <h1 className="text-xl sm:text-2xl font-bold text-stone-900 tracking-tight">{assessment.title}</h1>
-          {assessment.description && <p className="text-stone-600 mt-2 text-sm sm:text-base">{assessment.description}</p>}
-          <p className="text-sm text-stone-400 mt-3 flex items-center gap-1">
-            <Clock className="w-4 h-4" /> Estimated time: {assessment.durationMinutes} minutes
-          </p>
-          {assessment.proctoring?.enabled && (
-            <div className="mt-3 flex items-start gap-2 rounded-xl bg-brand-50 border border-brand-100 px-3 py-2 text-xs text-brand-800">
-              <Shield className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <span>Integrity monitoring is on. A quick webcam snapshot may be taken at start; tab switches, copy/paste, and leaving the window may be recorded.</span>
+          <h1 className="text-2xl font-bold text-stone-900">{assessment.title}</h1>
+          {assessment.description && <p className="text-stone-600 mt-2">{assessment.description}</p>}
+          <ul className="mt-4 space-y-1.5 text-sm text-stone-600">
+            <li>Duration: {assessment.durationMinutes} minutes (server-timed once you start)</li>
+            <li>Questions: {assessment.questionCount}</li>
+            <li>{assessment.rules?.allowBack === false ? 'You cannot go back after leaving a question.' : 'You can move between questions.'}</li>
+            <li>{assessment.rules?.requireAll !== false ? 'Required questions must be answered.' : 'Some questions may be optional.'}</li>
+            <li>Refreshing the page will not reset the timer or start a new attempt.</li>
+          </ul>
+          {(assessment.candidateInstructions || assessment.privacyNotice) && (
+            <div className="mt-4 rounded-xl bg-stone-50 border border-stone-200 p-4 text-sm text-stone-600 space-y-2">
+              {assessment.candidateInstructions ? <p>{assessment.candidateInstructions}</p> : null}
+              {assessment.privacyNotice ? <p>{assessment.privacyNotice}</p> : null}
             </div>
           )}
+          {assessment.proctoring?.enabled && (
+            <div className="mt-4 flex items-start gap-2 rounded-xl bg-brand-50 border border-brand-100 px-3 py-2 text-xs text-brand-800">
+              <Shield className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              Integrity monitoring is on. A webcam snapshot may be taken; tab switches and copy/paste may be recorded.
+            </div>
+          )}
+          {!assessment.windowOpen && (
+            <p className="mt-4 text-sm text-amber-700">This assessment is outside its availability window.</p>
+          )}
+          {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+          <button
+            type="button"
+            onClick={startTest}
+            disabled={starting || assessment.windowOpen === false}
+            className="mt-6 w-full py-3 bg-brand-600 text-white rounded-xl font-medium hover:bg-brand-700 disabled:opacity-50"
+          >
+            {starting ? 'Starting…' : 'Start assessment'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const questions = assessment.questions || [];
+  const allowBack = assessment.rules?.allowBack !== false;
+  const q = questions[current] || questions[0];
+  const allRequiredAnswered = questions.every((item) => {
+    if (item.required === false) return true;
+    return String(answers[item._id] || '').trim().length > 0;
+  });
+  const warnExpiry = remaining != null && remaining <= 60 && remaining > 0;
+
+  return (
+    <div className="min-h-dvh bg-stone-50 font-sans py-6 sm:py-10 px-3 sm:px-4">
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white border border-stone-200 rounded-2xl p-5 sm:p-6 mb-4 shadow-sm sticky top-2 z-10">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h1 className="text-lg sm:text-xl font-bold text-stone-900">{assessment.title}</h1>
+              <p className="text-xs text-stone-500 mt-1">
+                {saveState === 'saving' ? 'Saving…' : saveState === 'unsaved' ? 'Unsaved changes' : 'Answers saved'}
+              </p>
+            </div>
+            <div className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-bold tabular-nums ${warnExpiry ? 'bg-red-50 text-red-700' : 'bg-stone-100 text-stone-800'}`}>
+              <Clock className="w-4 h-4" /> {formatTime(remaining)}
+            </div>
+          </div>
+          {warnExpiry && <p className="mt-2 text-xs font-semibold text-red-700">Time is almost up. Your answers will submit automatically.</p>}
         </div>
 
-        <div className="space-y-3 sm:space-y-4">
-          {assessment.questions.map((q, idx) => (
-            <div key={q._id} className="bg-white border border-stone-200 rounded-2xl p-4 sm:p-6 shadow-sm">
-              <p className="text-sm font-semibold text-stone-900 mb-3">
-                Q{idx + 1}. {q.prompt}{' '}
-                <span className="text-xs text-stone-400 font-normal">({q.points} pts)</span>
-              </p>
-
-              {q.type === 'multiple_choice' ? (
-                <div className="space-y-2">
-                  {(q.options || []).map((opt, oIdx) => (
-                    <label key={oIdx} className="flex items-center gap-2 text-sm text-stone-700 cursor-pointer p-2 rounded-lg hover:bg-stone-50">
-                      <input
-                        type="radio"
-                        name={q._id}
-                        checked={answers[q._id] === String(oIdx)}
-                        onChange={() => handleAnswer(q._id, String(oIdx))}
-                        className="text-brand-600 focus:ring-brand-500"
-                      />
-                      {opt}
-                    </label>
-                  ))}
-                </div>
+        {q && (
+          <div className="bg-white border border-stone-200 rounded-2xl p-4 sm:p-6 shadow-sm">
+            <p className="text-xs font-semibold text-stone-400 mb-2">Question {current + 1} of {questions.length}{q.section ? ` · ${q.section}` : ''}</p>
+            <p className="text-sm font-semibold text-stone-900 mb-3">
+              {q.prompt}{' '}
+              <span className="text-xs text-stone-400 font-normal">({q.points} pts{q.required === false ? ', optional' : ''})</span>
+            </p>
+            {q.type === 'code' && q.visibleTests?.length ? (
+              <div className="mb-3 rounded-xl bg-stone-50 border border-stone-200 p-3 text-xs text-stone-600">
+                <p className="font-semibold text-stone-700 mb-1">Sample inputs</p>
+                {q.visibleTests.map((t, i) => (
+                  <p key={i} className="font-mono">{t.name || `Case ${i + 1}`}: {t.input || '(empty)'}</p>
+                ))}
+              </div>
+            ) : null}
+            {q.type === 'multiple_choice' ? (
+              <div className="space-y-2">
+                {(q.options || []).map((opt, oIdx) => (
+                  <label key={oIdx} className="flex items-center gap-2 text-sm text-stone-700 cursor-pointer p-2 rounded-lg hover:bg-stone-50">
+                    <input
+                      type="radio"
+                      name={q._id}
+                      checked={answers[q._id] === String(oIdx)}
+                      onChange={() => handleAnswer(q._id, String(oIdx))}
+                      className="text-brand-600 focus:ring-brand-500"
+                    />
+                    {opt}
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <textarea
+                value={answers[q._id] || ''}
+                onChange={(e) => handleAnswer(q._id, e.target.value)}
+                rows={q.type === 'code' ? 10 : 5}
+                placeholder={q.type === 'code' ? `Write your ${q.language || 'code'} solution here…` : 'Type your answer here…'}
+                className={`w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30 ${
+                  q.type === 'code' ? 'font-mono bg-stone-900 text-stone-100 border-stone-700' : ''
+                }`}
+              />
+            )}
+            <div className="mt-4 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                disabled={!allowBack || current === 0}
+                onClick={() => setCurrent((i) => Math.max(0, i - 1))}
+                className="btn-secondary !text-xs disabled:opacity-40"
+              >
+                <ChevronLeft size={14} /> Previous
+              </button>
+              {current < questions.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setCurrent((i) => Math.min(questions.length - 1, i + 1))}
+                  className="btn-primary !text-xs"
+                >
+                  Next <ChevronRight size={14} />
+                </button>
               ) : (
-                <textarea
-                  value={answers[q._id] || ''}
-                  onChange={(e) => handleAnswer(q._id, e.target.value)}
-                  rows={q.type === 'code' ? 8 : 4}
-                  placeholder={q.type === 'code' ? `Write your ${q.language || 'code'} solution here…` : 'Type your answer here…'}
-                  className={`w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30 ${
-                    q.type === 'code' ? 'font-mono bg-stone-900 text-stone-100 border-stone-700' : ''
-                  }`}
-                />
+                <button
+                  type="button"
+                  onClick={() => setConfirmSubmit(true)}
+                  disabled={submitting || (assessment.rules?.requireAll !== false && !allRequiredAnswered)}
+                  className="btn-primary !text-xs disabled:opacity-50"
+                >
+                  Review & submit
+                </button>
               )}
             </div>
-          ))}
-        </div>
+          </div>
+        )}
 
         {error && (
           <div className="mt-4 text-sm text-red-600 bg-red-50 p-3 rounded-xl flex items-center gap-2">
@@ -232,14 +441,18 @@ const AssessmentTakePage = () => {
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={submitting || !allAnswered}
-          className="mt-6 w-full py-3 bg-brand-600 text-white rounded-xl font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors"
-        >
-          {submitting ? 'Submitting…' : allAnswered ? 'Submit Assessment' : 'Answer all questions to submit'}
-        </button>
+        {confirmSubmit && (
+          <div className="mt-4 bg-white border border-stone-200 rounded-2xl p-4">
+            <p className="text-sm font-semibold text-stone-900">Submit this assessment?</p>
+            <p className="text-xs text-stone-500 mt-1">You will not be able to change answers after this.</p>
+            <div className="mt-3 flex gap-2">
+              <button type="button" className="btn-secondary" onClick={() => setConfirmSubmit(false)}>Cancel</button>
+              <button type="button" className="btn-primary" disabled={submitting} onClick={() => handleSubmit(false)}>
+                {submitting ? 'Submitting…' : 'Submit'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

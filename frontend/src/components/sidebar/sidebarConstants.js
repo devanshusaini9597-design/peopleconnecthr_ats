@@ -125,7 +125,7 @@ export const SECTIONS = [
       { labelKey: 'nav.items.collaboration', label: 'Collaboration', path: '/collaboration', icon: MessageSquare, roles: ['owner', 'admin', 'recruiter'], feature: 'candidates.collaboration', module: 'modules.collaboration', internalPreview: true, hidden: true },
       { labelKey: 'nav.items.myTeam', label: 'My Team', path: '/my-team', icon: UserPlus, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer'] },
       { labelKey: 'nav.items.formBuilder', label: 'Form Builder', path: '/form-builder', icon: FormInput, roles: ['owner', 'admin', 'recruiter'], feature: 'careers.formBuilder', module: 'modules.formBuilder', internalPreview: true, hidden: true },
-      { labelKey: 'nav.items.assessments', label: 'Assessments', path: '/assessments', icon: ClipboardList, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], onlyRoles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter'], hideForRoles: ['freelancer', 'interviewer', 'readonly', 'other'], feature: 'assessments', module: 'modules.assessments' },
+      { labelKey: 'nav.items.assessments', label: 'Assessments', path: '/assessments', icon: ClipboardList, roles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter', 'interviewer'], onlyRoles: ['owner', 'admin', 'hr_manager', 'hr_recruiter', 'sales', 'recruiter', 'interviewer'], hideForRoles: ['freelancer', 'readonly', 'other'], feature: 'assessments', module: 'modules.assessments' },
       { labelKey: 'nav.items.aiTools', label: 'AI Tools', path: '/ai-tools', icon: Sparkles, roles: ['owner', 'admin', 'recruiter'], anyAi: true, module: 'modules.aiTools' },
     ]
   },

@@ -17,6 +17,11 @@ const organizationSchema = new mongoose.Schema({
     default: 'free_trial'
   },
   planExpiresAt: { type: Date },
+  billingStatus: {
+    type: String,
+    enum: ['none', 'trialing', 'active', 'past_due', 'cancelled', 'expired'],
+    default: 'none',
+  },
   /** Isolated sales workspace. Never a customer tenant. */
   isDemo: { type: Boolean, default: false, index: true },
   /** Hidden from the live operator directory. Data is kept. */
@@ -42,6 +47,13 @@ const organizationSchema = new mongoose.Schema({
     dateFormat: { type: String, default: 'DD/MM/YYYY' },
     /** One-time clear of auto-inferred MIS→Candidates marks (email-match false positives). */
     misFalseMoveResetV1: { type: Date, default: null },
+    assessments: {
+      defaultInviteHours: { type: Number, default: 72 },
+      defaultResultVisibility: { type: String, default: 'hidden' },
+      retentionDays: { type: Number, default: 730 },
+      privacyNotice: { type: String, default: '' },
+      allowCandidateRetakes: { type: Boolean, default: false },
+    },
   },
   /**
    * Org-level editable system role packs (enterprise).
