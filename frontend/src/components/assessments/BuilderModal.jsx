@@ -1,14 +1,34 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, ListChecks, Shield, Loader2, ClipboardList, Briefcase } from 'lucide-react';
+import { Plus, Trash2, ListChecks, Shield, Loader2, ClipboardList, Briefcase, Sparkles, Library, LayoutTemplate, PenLine } from 'lucide-react';
 import Modal from '../ui/Modal';
 import PremiumSelect from '../ui/PremiumSelect';
-import { authenticatedFetch } from '../../utils/fetchUtils';
+import { authenticatedFetch, readApiJson } from '../../utils/fetchUtils';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../Toast';
 import {
   emptyQuestion, QUESTION_TYPE_OPTIONS, STRICTNESS_OPTIONS, actionBtn, defaultRules,
 } from './assessmentsConstants';
+import { SUGGESTED_TOPICS, synthesizeQuestions } from './questionTemplates';
+import { ASSESSMENT_TEMPLATES } from './assessmentTemplates';
 
 const FALLBACK_STAGES = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'];
+
+function toBuilderQuestion(question) {
+  return {
+    type: question.type || 'text',
+    prompt: question.prompt || '',
+    options: question.options?.length ? question.options : ['', ''],
+    correctOptionIndex: question.correctOptionIndex || 0,
+    points: question.points ?? 10,
+    language: question.language || '',
+    required: question.required !== false,
+    skillTag: question.skillTag || '',
+    section: question.section || '',
+    rubric: question.rubric || '',
+    hiddenTests: question.hiddenTests?.length ? question.hiddenTests : [{ name: '', input: '', expected: '' }],
+    visibleTests: question.visibleTests?.length ? question.visibleTests : [{ name: 'Sample', input: '', expected: '' }],
+  };
+}
 
 function parseJobsPayload(payload) {
   if (Array.isArray(payload)) return { jobs: payload, pipelineStages: [] };
@@ -37,6 +57,15 @@ function pickAdvanceStage(stages, from, preferred) {
 
 export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initial }) => {
   const { organization } = useAuth();
+  const toast = useToast();
+  const [step, setStep] = useState('start');
+  const [brief, setBrief] = useState('');
+  const [genType, setGenType] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [sourcePanel, setSourcePanel] = useState('');
+  const [bankRows, setBankRows] = useState([]);
+  const [bankQuery, setBankQuery] = useState('');
+  const [bankLoading, setBankLoading] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [durationMinutes, setDurationMinutes] = useState(45);
@@ -55,6 +84,10 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
 
   useEffect(() => {
     if (!open) return;
+    setStep(initial?._id ? 'build' : 'start');
+    setBrief('');
+    setGenType('');
+    setSourcePanel('');
     setTitle(initial?.title || '');
     setDescription(initial?.description || '');
     setInstructions(initial?.candidateInstructions || '');
@@ -62,18 +95,7 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
     setRules(defaultRules(initial));
     const loaded = (initial?.questions || []).map((question) => ({
       _id: question._id,
-      type: question.type || 'text',
-      prompt: question.prompt || '',
-      options: question.options?.length ? question.options : ['', ''],
-      correctOptionIndex: question.correctOptionIndex || 0,
-      points: question.points ?? 10,
-      language: question.language || '',
-      required: question.required !== false,
-      skillTag: question.skillTag || '',
-      section: question.section || '',
-      rubric: question.rubric || '',
-      hiddenTests: question.hiddenTests?.length ? question.hiddenTests : [{ name: '', input: '', expected: '' }],
-      visibleTests: question.visibleTests?.length ? question.visibleTests : [{ name: 'Sample', input: '', expected: '' }],
+      ...toBuilderQuestion(question),
     }));
     setQuestions(loaded.length ? loaded : [emptyQuestion()]);
     setProctoringEnabled(Boolean(initial?.proctoring?.enabled));
@@ -140,6 +162,99 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
     setAdvanceStage(pickAdvanceStage(list, from, ''));
   };
 
+  const applyTemplate = (template) => {
+    const built = template.build();
+    setTitle(template.title);
+    setDescription(built.description || template.summary);
+    setInstructions(template.instructions || '');
+    setDurationMinutes(template.durationMinutes);
+    setQuestions(built.questions.length ? built.questions.map(toBuilderQuestion) : [emptyQuestion()]);
+    setStep('build');
+    toast?.success?.(`Loaded “${template.title}”. Review the questions, then save.`);
+  };
+
+  const applyGeneratedQuestions = (items, { replace, heading } = {}) => {
+    const list = (Array.isArray(items) ? items : []).filter((q) => q?.prompt).map(toBuilderQuestion);
+    if (!list.length) {
+      toast?.error?.('No questions were generated. Try a more specific brief.');
+      return false;
+    }
+    if (replace) setQuestions(list);
+    else setQuestions((qs) => {
+      const usable = qs.filter((q) => String(q.prompt || '').trim());
+      return [...usable, ...list];
+    });
+    toast?.success?.(heading || `${list.length} questions added. Review them before saving.`);
+    return true;
+  };
+
+  const generateFromBrief = async ({ replace = true } = {}) => {
+    const skill = brief.trim();
+    if (!skill) {
+      toast?.error?.('Describe the skill or role this assessment should cover.');
+      return;
+    }
+    setGenerating(true);
+    try {
+      const res = await authenticatedFetch('/api/assessments/bank/ai-generate', {
+        method: 'POST',
+        body: JSON.stringify({ skill, topic: skill, brief: skill, type: genType || undefined, count: 8 }),
+      });
+      const data = await readApiJson(res);
+      const items = data.data?.items?.length ? data.data.items : synthesizeQuestions(skill, genType, 8);
+      const ok = applyGeneratedQuestions(items, { replace, heading: replace ? 'Draft assessment ready for review.' : 'Questions added from your brief.' });
+      if (!ok) return;
+      if (replace || !title.trim()) {
+        setTitle(`${skill} assessment`);
+        setDescription(`Hiring assessment covering ${skill}. Review each item before inviting candidates.`);
+        setInstructions('Complete this session independently. Do not share the link or use unauthorised assistance.');
+        setDurationMinutes(Math.min(60, Math.max(25, items.length * 5)));
+      }
+      setStep('build');
+      setSourcePanel('');
+    } catch {
+      const items = synthesizeQuestions(skill, genType, 8);
+      applyGeneratedQuestions(items, { replace });
+      if (replace || !title.trim()) {
+        setTitle(`${skill} assessment`);
+        setDescription(`Hiring assessment covering ${skill}.`);
+        setDurationMinutes(40);
+      }
+      setStep('build');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const loadBank = async (q = bankQuery) => {
+    setBankLoading(true);
+    try {
+      const res = await authenticatedFetch(`/api/assessments/bank${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`);
+      const data = await res.json();
+      setBankRows(data.data || []);
+    } catch {
+      setBankRows([]);
+    } finally {
+      setBankLoading(false);
+    }
+  };
+
+  const addFromLibrary = (row) => {
+    setQuestions((qs) => {
+      const usable = qs.filter((item) => String(item.prompt || '').trim());
+      return [...usable, toBuilderQuestion(row)];
+    });
+    toast?.success?.('Question added from the library.');
+  };
+
+  const startBlank = () => {
+    setTitle('');
+    setDescription('');
+    setInstructions('');
+    setQuestions([emptyQuestion()]);
+    setStep('build');
+  };
+
   const updateQuestion = (idx, patch) => {
     setQuestions((qs) => qs.map((q, i) => (i === idx ? { ...q, ...patch } : q)));
   };
@@ -171,10 +286,12 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
     <Modal
       open={open}
       onClose={onClose}
-      title={editing ? 'Edit assessment' : 'Create assessment'}
+      title={editing ? 'Edit assessment' : step === 'start' ? 'Create assessment' : 'Assessment details'}
       description={editing
         ? 'Changes apply to the working copy. Candidates who have already started keep the version they received.'
-        : 'Create an assessment, attach it to a requisition, then invite candidates from the selected pipeline stage.'}
+        : step === 'start'
+          ? 'Start from a prebuilt assessment, generate from a hiring brief, use your question library, or write questions yourself.'
+          : 'Review the questions, attach a requisition if needed, then save. You can still edit before inviting candidates.'}
       size="xl"
       icon={ClipboardList}
       closeOnBackdrop={false}
@@ -183,6 +300,12 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
       footer={
         <>
           <button type="button" onClick={onClose} className="btn-secondary" disabled={saving}>Cancel</button>
+          {!editing && step === 'build' ? (
+            <button type="button" className="btn-secondary" onClick={() => setStep('start')} disabled={saving}>
+              Change starting point
+            </button>
+          ) : null}
+          {step === 'build' || editing ? (
           <button
             type="button"
             onClick={() => onSave({
@@ -206,10 +329,108 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
                 ? 'Save changes'
                 : <><Plus size={16} /> Create assessment</>}
           </button>
+          ) : null}
         </>
       }
     >
       <div className="space-y-6">
+        {!editing && step === 'start' ? (
+          <div className="space-y-6">
+            <section className="rounded-2xl border border-stone-200/90 bg-white overflow-hidden">
+              <div className="h-[3px] bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+              <div className="p-4 sm:p-5 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="icon-box-ats !w-10 !h-10 !rounded-xl"><Sparkles strokeWidth={2.25} /></div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-bold text-stone-900 tracking-tight">Generate from a hiring brief</h3>
+                    <p className="text-xs text-stone-500 mt-0.5">Describe the role, skill, or topic. Suggested questions are added for your review — nothing is published until you save.</p>
+                  </div>
+                </div>
+                <textarea
+                  className="textarea-ats !min-h-[72px]"
+                  rows={2}
+                  value={brief}
+                  onChange={(e) => setBrief(e.target.value)}
+                  placeholder="Example: 40-minute screen for junior React engineers covering hooks, JavaScript, and problem solving"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <div className="w-full sm:w-48">
+                    <PremiumSelect
+                      variant="list"
+                      compact
+                      allowClear
+                      value={genType}
+                      onChange={(v) => setGenType(v || '')}
+                      options={QUESTION_TYPE_OPTIONS}
+                      placeholder="All question types"
+                      className="w-full"
+                    />
+                  </div>
+                  <button type="button" className="btn-primary" onClick={() => generateFromBrief({ replace: true })} disabled={generating}>
+                    {generating ? <><Loader2 size={16} className="animate-spin" /> Generating…</> : <><Sparkles size={16} /> Generate assessment</>}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {SUGGESTED_TOPICS.map((label) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => setBrief(label)}
+                      className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md border ${brief === label ? 'border-brand-200 bg-brand-50 text-brand-800' : 'border-stone-200 bg-stone-50 text-stone-600 hover:border-brand-200'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <div className="flex items-center gap-2 mb-3">
+                <LayoutTemplate className="w-4 h-4 text-brand-600" />
+                <h3 className="text-sm font-bold text-stone-900 tracking-tight">Prebuilt assessments</h3>
+              </div>
+              <p className="text-xs text-stone-500 mb-3">Ready-made screens you can edit. Each template loads a full question set.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {ASSESSMENT_TEMPLATES.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => applyTemplate(template)}
+                    className="text-left rounded-xl border border-stone-200/90 bg-white p-4 hover:border-brand-300 hover:shadow-sm transition-all"
+                  >
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-brand-700">{template.category}</p>
+                    <p className="text-sm font-bold text-stone-900 mt-1">{template.title}</p>
+                    <p className="text-xs text-stone-500 mt-1 leading-relaxed">{template.summary}</p>
+                    <p className="text-[11px] font-semibold text-stone-400 mt-2">{template.durationMinutes} minutes</p>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => { startBlank(); setSourcePanel('library'); loadBank(''); }}
+                className="text-left rounded-xl border border-stone-200/90 bg-stone-50/70 p-4 hover:border-brand-300"
+              >
+                <Library className="w-4 h-4 text-brand-600 mb-2" />
+                <p className="text-sm font-bold text-stone-900">From question library</p>
+                <p className="text-xs text-stone-500 mt-1">Add saved questions, then adjust scoring and duration.</p>
+              </button>
+              <button
+                type="button"
+                onClick={startBlank}
+                className="text-left rounded-xl border border-stone-200/90 bg-stone-50/70 p-4 hover:border-brand-300"
+              >
+                <PenLine className="w-4 h-4 text-brand-600 mb-2" />
+                <p className="text-sm font-bold text-stone-900">Start blank</p>
+                <p className="text-xs text-stone-500 mt-1">Write every question yourself. You can still generate or import later.</p>
+              </button>
+            </div>
+          </div>
+        ) : (
+        <>
         <section className="space-y-4">
           <h3 className="section-title-ats !mb-0">
             <ClipboardList className="w-4 h-4 text-brand-600" />
@@ -416,14 +637,93 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
                 {questions.length}
               </span>
             </h3>
-            <button
-              type="button"
-              onClick={() => setQuestions((qs) => [...qs, emptyQuestion()])}
-              className="btn-secondary !text-xs !px-3 !py-2"
-            >
-              <Plus size={14} /> Add question
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSourcePanel((p) => (p === 'generate' ? '' : 'generate'))}
+                className="btn-secondary !text-xs !px-3 !py-2"
+              >
+                <Sparkles size={14} /> Generate
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSourcePanel((p) => (p === 'library' ? '' : 'library'));
+                  if (sourcePanel !== 'library') loadBank(bankQuery);
+                }}
+                className="btn-secondary !text-xs !px-3 !py-2"
+              >
+                <Library size={14} /> From library
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuestions((qs) => [...qs, emptyQuestion()])}
+                className="btn-secondary !text-xs !px-3 !py-2"
+              >
+                <Plus size={14} /> Add question
+              </button>
+            </div>
           </div>
+
+          {sourcePanel === 'generate' ? (
+            <div className="rounded-xl border border-brand-200/80 bg-brand-50/30 p-3.5 space-y-2.5">
+              <p className="text-xs font-semibold text-stone-700">Generate additional questions</p>
+              <input
+                className="input-ats !h-10"
+                value={brief}
+                onChange={(e) => setBrief(e.target.value)}
+                placeholder="Topic or brief — React.js, SQL, logical reasoning…"
+              />
+              <div className="flex flex-wrap gap-2">
+                <div className="w-full sm:w-44">
+                  <PremiumSelect
+                    variant="list"
+                    compact
+                    allowClear
+                    value={genType}
+                    onChange={(v) => setGenType(v || '')}
+                    options={QUESTION_TYPE_OPTIONS}
+                    placeholder="All types"
+                    className="w-full"
+                  />
+                </div>
+                <button type="button" className="btn-primary !text-xs !h-10" onClick={() => generateFromBrief({ replace: false })} disabled={generating}>
+                  {generating ? 'Generating…' : 'Add generated questions'}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {sourcePanel === 'library' ? (
+            <div className="rounded-xl border border-stone-200 bg-stone-50/60 p-3.5 space-y-2.5">
+              <p className="text-xs font-semibold text-stone-700">Question library</p>
+              <div className="flex gap-2">
+                <input
+                  className="input-ats !h-10 flex-1"
+                  value={bankQuery}
+                  onChange={(e) => setBankQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); loadBank(bankQuery); } }}
+                  placeholder="Search saved questions"
+                />
+                <button type="button" className="btn-secondary !h-10" onClick={() => loadBank(bankQuery)} disabled={bankLoading}>
+                  {bankLoading ? <Loader2 size={14} className="animate-spin" /> : 'Search'}
+                </button>
+              </div>
+              <div className="max-h-48 overflow-y-auto space-y-1">
+                {bankRows.length === 0 && !bankLoading ? (
+                  <p className="text-xs text-stone-500 px-1 py-2">No saved questions yet. Generate some here, or add them in the Question library tab.</p>
+                ) : bankRows.map((row) => (
+                  <div key={row._id} className="flex items-start justify-between gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-stone-800 line-clamp-2">{row.prompt}</p>
+                      <p className="text-[10px] text-stone-400 mt-0.5">{row.type?.replace('_', ' ')}{row.skillTag ? ` · ${row.skillTag}` : ''}</p>
+                    </div>
+                    <button type="button" className="btn-secondary !text-[11px] !py-1 !px-2 shrink-0" onClick={() => addFromLibrary(row)}>Add</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="space-y-3">
             {questions.map((q, idx) => (
@@ -591,6 +891,8 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
             ))}
           </div>
         </section>
+        </>
+        )}
       </div>
     </Modal>
   );

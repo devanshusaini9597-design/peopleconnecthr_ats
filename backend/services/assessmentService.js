@@ -1366,7 +1366,8 @@ async function generateQuestionBank(organizationId, body = {}) {
   const skill = String(body.skill || body.topic || domain || '').trim();
   if (!skill) throw httpError('Enter a topic, for example Logical reasoning or React.js', 400);
   const type = body.type ? normalizeQuestionType(body.type) : '';
-  const count = Math.min(8, Math.max(3, Number(body.count) || 5));
+  const count = Math.min(10, Math.max(3, Number(body.count) || 5));
+  const brief = String(body.brief || '').trim();
   const catalog = (questionsForSkill(domain, skill, type || undefined, count).length
     ? questionsForSkill(domain, skill, type || undefined, count)
     : synthesizeTopicQuestions(skill, type, count)
@@ -1381,10 +1382,11 @@ async function generateQuestionBank(organizationId, body = {}) {
     const { getAdapter } = require('../adapters');
     const adapter = await getAdapter(organizationId, 'ai');
     if (adapter?.generateText) {
-      const prompt = `You write professional hiring assessment questions. Generate ${count} questions on the topic "${skill}".
+      const prompt = `You write professional hiring assessment questions for an applicant tracking system.
+Generate ${count} questions on the topic "${skill}".${brief ? ` Hiring brief from the company: ${brief.slice(0, 600)}` : ''}
 Allowed types: multiple_choice, text, code, communication.${type ? ` Prefer type ${type}.` : ''}
 Return JSON only: {"items":[{"type":"multiple_choice","prompt":"...","options":["A","B","C","D"],"correctOptionIndex":0,"points":10,"skillTag":"${skill}","rubric":"","language":""}]}
-Rules: MCQ needs exactly 4 options and one correct index. Code items set language (javascript, python, or sql). Keep prompts under 400 characters. No markdown.`;
+Rules: MCQ needs exactly 4 options and one correct index. Code items set language (javascript, python, or sql). Keep prompts under 400 characters. No slang. No markdown.`;
       const raw = await adapter.generateText({ prompt, maxTokens: 1800 });
       const parsed = JSON.parse(String(raw).replace(/```json|```/g, '').trim());
       const generated = normalizeQuestions((parsed.items || []).slice(0, count)).map((q) => ({
