@@ -143,6 +143,33 @@ router.post('/bank', requirePermission('assessments.edit'), async (req, res) => 
   }
 });
 
+router.get('/bank/catalog', requirePermission('assessments.edit'), async (req, res) => {
+  try {
+    const data = svc.listQuestionCatalog();
+    res.json({ success: true, data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
+router.post('/bank/seed', requirePermission('assessments.edit'), async (req, res) => {
+  try {
+    const data = await svc.seedQuestionBank(req.user.organizationId, req.user.id || req.user._id, req.body);
+    res.json({ success: true, data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
+router.post('/bank/ai-generate', requirePermission('assessments.edit'), async (req, res) => {
+  try {
+    const data = await svc.generateQuestionBank(req.user.organizationId, req.body);
+    res.json({ success: true, data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
 router.delete('/bank/:id', requirePermission('assessments.edit'), async (req, res) => {
   try {
     const data = await svc.archiveQuestionBank(req.user.organizationId, req.params.id);

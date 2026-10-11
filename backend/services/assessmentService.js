@@ -1115,6 +1115,77 @@ async function upsertQuestionBank(organizationId, userId, body) {
   return AssessmentQuestion.create(payload);
 }
 
+function listQuestionCatalog() {
+  const { listCatalog } = require('../config/assessmentQuestionCatalog');
+  return listCatalog();
+}
+
+async function seedQuestionBank(organizationId, userId, body = {}) {
+  const { getPack, questionsForSkill } = require('../config/assessmentQuestionCatalog');
+  let source = Array.isArray(body.items) ? body.items : null;
+  if (!source?.length && body.packId) {
+    const pack = getPack(body.packId);
+    if (!pack) throw httpError('Unknown starter pack', 404);
+    source = pack.questions.map((q) => ({ ...q, tags: [pack.skill, pack.domain].filter(Boolean) }));
+  }
+  if (!source?.length && (body.skill || body.domain)) {
+    source = questionsForSkill(body.domain, body.skill, body.type && normalizeQuestionType(body.type), 8);
+  }
+  if (!source?.length) throw httpError('Choose a starter pack or provide questions');
+  const normalized = normalizeQuestions(source);
+  const existing = await AssessmentQuestion.find({ organizationId, archivedAt: null }).select('prompt').lean();
+  const have = new Set(existing.map((row) => String(row.prompt || '').trim().toLowerCase()));
+  const fresh = normalized.filter((q) => !have.has(q.prompt.trim().toLowerCase()));
+  if (!fresh.length) return { inserted: 0, skipped: normalized.length };
+  await AssessmentQuestion.insertMany(fresh.map((q) => ({
+    ...q,
+    organizationId,
+    createdBy: userId,
+    tags: Array.isArray(q.tags) ? q.tags : [q.skillTag].filter(Boolean),
+  })));
+  return { inserted: fresh.length, skipped: normalized.length - fresh.length };
+}
+
+async function generateQuestionBank(organizationId, body = {}) {
+  const { questionsForSkill } = require('../config/assessmentQuestionCatalog');
+  const domain = String(body.domain || '').trim();
+  const skill = String(body.skill || domain || 'general').trim();
+  const type = body.type ? normalizeQuestionType(body.type) : '';
+  const count = Math.min(8, Math.max(3, Number(body.count) || 5));
+  const catalog = questionsForSkill(domain, skill, type || undefined, count).map((q) => ({
+    ...q,
+    skillTag: q.skillTag || skill,
+  }));
+
+  let items = catalog;
+  let source = 'catalog';
+  try {
+    const { getAdapter } = require('../adapters');
+    const adapter = await getAdapter(organizationId, 'ai');
+    if (adapter?.generateText) {
+      const prompt = `You write hiring assessment questions. Generate ${count} questions for skill "${skill}"${domain ? ` in the ${domain} domain` : ''}.
+Allowed types: multiple_choice, text, code, communication.${type ? ` Prefer type ${type}.` : ''}
+Return JSON only: {"items":[{"type":"multiple_choice","prompt":"...","options":["A","B","C","D"],"correctOptionIndex":0,"points":10,"skillTag":"${skill}","rubric":"","language":""}]}
+Rules: MCQ needs exactly 4 options and one correct index. Code items set language (javascript, python, or sql). Keep prompts under 400 characters. No markdown.`;
+      const raw = await adapter.generateText({ prompt, maxTokens: 1800 });
+      const parsed = JSON.parse(String(raw).replace(/```json|```/g, '').trim());
+      const generated = normalizeQuestions((parsed.items || []).slice(0, count)).map((q) => ({
+        ...q,
+        skillTag: q.skillTag || skill,
+        section: q.section || domain || skill,
+      }));
+      if (generated.length) {
+        items = generated;
+        source = 'ai';
+      }
+    }
+  } catch {
+    items = catalog;
+    source = 'catalog';
+  }
+  return { items, source, pendingHuman: true, skill, domain };
+}
+
 async function archiveQuestionBank(organizationId, id) {
   const row = await AssessmentQuestion.findOneAndUpdate(
     { _id: id, organizationId },
@@ -1271,6 +1342,9 @@ module.exports = {
   evaluationQueue,
   listQuestionBank,
   upsertQuestionBank,
+  listQuestionCatalog,
+  seedQuestionBank,
+  generateQuestionBank,
   archiveQuestionBank,
   getSettings,
   updateSettings,
