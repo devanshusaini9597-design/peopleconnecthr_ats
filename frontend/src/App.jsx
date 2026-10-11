@@ -96,6 +96,13 @@ const FreelanceReviewPage = React.lazy(() => import('./components/FreelanceRevie
 const FreelancerOnboardingPage = React.lazy(() => import('./components/FreelancerOnboardingPage'));
 const FreelancerApplicationsPage = React.lazy(() => import('./components/FreelancerApplicationsPage'));
 const TrialRequestsPage = React.lazy(() => import('./components/TrialRequestsPage'));
+const PlatformOpsPage = React.lazy(() => import('./components/PlatformOpsPage'));
+const PlatformOverview = React.lazy(() => import('./components/platformOps/PlatformOverview'));
+const PlatformWorkspaces = React.lazy(() => import('./components/platformOps/PlatformWorkspaces'));
+const PlatformTenantDetail = React.lazy(() => import('./components/platformOps/PlatformTenantDetail'));
+const PlatformModules = React.lazy(() => import('./components/platformOps/PlatformModules'));
+const PlatformDemo = React.lazy(() => import('./components/platformOps/PlatformDemo'));
+const PlatformTrials = React.lazy(() => import('./components/platformOps/PlatformTrials'));
 
 const LoadingFallback = () => (
   <AppLoadingScreen
@@ -170,6 +177,23 @@ const router = createBrowserRouter([
   { path: '/onboarding/create-org', element: <ProtectedRoute>{withPage(OnboardingPage)}</ProtectedRoute> },
   { path: '/onboarding/invite', element: <ProtectedRoute>{withPage(OnboardingPage)}</ProtectedRoute> },
   { path: '/sso/callback', element: withPage(SSOCallbackPage) },
+
+  {
+    path: '/pchr-ops',
+    element: (
+      <Suspense fallback={<LoadingFallback />}>
+        <PlatformOpsPage />
+      </Suspense>
+    ),
+    children: [
+      { index: true, element: withPage(PlatformOverview) },
+      { path: 'workspaces', element: withPage(PlatformWorkspaces) },
+      { path: 'workspaces/:id', element: withPage(PlatformTenantDetail) },
+      { path: 'modules', element: withPage(PlatformModules) },
+      { path: 'demo', element: withPage(PlatformDemo) },
+      { path: 'trials', element: withPage(PlatformTrials) },
+    ],
+  },
 
   // ── Authenticated app shell (content-only navigation) ──────────────
   {

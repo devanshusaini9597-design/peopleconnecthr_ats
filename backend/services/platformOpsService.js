@@ -117,6 +117,7 @@ function serializeTenant(org, extras = {}) {
     isVendorProtected: isVendorProtectedOrg(org),
     kind,
     archived: Boolean(org.archivedAt),
+    isActive: org.isActive !== false,
     internalPreview: Boolean(org.atsSettings?.internalPreview) || enabledModules(org).length === INTERNAL_PREVIEW_FEATURES.length,
     previewModules: enabledModules(org),
     userCount,
@@ -255,7 +256,7 @@ async function getSummary(actor) {
   });
 
   const liveOrgs = await Organization.find({ archivedAt: null })
-    .select('name slug domain plan isDemo archivedAt ownerId atsSettings.internalPreview atsSettings.previewModules createdAt')
+    .select('name slug domain plan isDemo isActive archivedAt ownerId atsSettings.internalPreview atsSettings.previewModules createdAt')
     .lean();
   const liveRows = await hydrateTenants(liveOrgs);
   const liveClients = liveRows.filter((row) => row.kind === 'client' && !row.isEmptyShell).length;
@@ -299,7 +300,7 @@ async function listTenants(actor, query = {}) {
   else if (view !== 'all') mongo.archivedAt = null;
 
   const orgs = await Organization.find(mongo)
-    .select('name slug domain logo plan planExpiresAt isDemo archivedAt ownerId atsSettings.internalPreview atsSettings.previewModules createdAt')
+    .select('name slug domain logo plan planExpiresAt isDemo isActive archivedAt ownerId atsSettings.internalPreview atsSettings.previewModules createdAt')
     .sort({ isDemo: -1, createdAt: -1 })
     .limit(100)
     .lean();
@@ -406,6 +407,20 @@ async function updateTenant(actor, orgId, body = {}) {
     applyModuleList(org, [...current]);
   }
 
+  if (typeof body.isActive === 'boolean') {
+    if (isCanonicalDemo(org) && body.isActive === false) {
+      throw httpError('The presentation demo cannot be suspended', 400, { code: 'demo_protected' });
+    }
+    if (isVendorProtectedOrg(org) && body.isActive === false) {
+      throw httpError('The vendor workspace cannot be suspended', 400, { code: 'vendor_protected' });
+    }
+    org.isActive = body.isActive;
+  }
+
+  if (body.planExpiresAt !== undefined) {
+    org.planExpiresAt = body.planExpiresAt ? new Date(body.planExpiresAt) : null;
+  }
+
   if (typeof body.archived === 'boolean') {
     if (isCanonicalDemo(org) && body.archived) {
       throw httpError('The client-presentation demo cannot be archived', 400, { code: 'demo_protected' });
@@ -429,7 +444,7 @@ async function archiveEmptyShells(actor) {
     slug: { $ne: DEMO_ORG_SLUG },
     domain: { $ne: PLATFORM_DOMAIN },
   })
-    .select('name slug domain logo plan planExpiresAt isDemo archivedAt ownerId atsSettings.internalPreview atsSettings.previewModules createdAt')
+    .select('name slug domain logo plan planExpiresAt isDemo isActive archivedAt ownerId atsSettings.internalPreview atsSettings.previewModules createdAt')
     .lean();
   const rows = await hydrateTenants(orgs);
   const ids = rows.filter((row) => row.isEmptyShell).map((row) => row.id);
@@ -446,7 +461,7 @@ async function getTenant(actor, orgId) {
   assertPlatformOperator(actor);
   if (!mongoose.isValidObjectId(orgId)) throw httpError('Organization not found', 404);
   const org = await Organization.findById(orgId)
-    .select('name slug domain logo plan planExpiresAt isDemo archivedAt ownerId atsSettings.internalPreview atsSettings.previewModules billingCustomerId billingSubscriptionId createdAt usageCurrent usageLimits')
+    .select('name slug domain logo plan planExpiresAt isDemo isActive archivedAt ownerId atsSettings.internalPreview atsSettings.previewModules billingCustomerId billingSubscriptionId createdAt usageCurrent usageLimits')
     .lean();
   if (!org) throw httpError('Organization not found', 404);
   const [workspace] = await hydrateTenants([org]);
@@ -502,6 +517,31 @@ async function getTenant(actor, orgId) {
   };
 }
 
+async function getHealth(actor) {
+  assertPlatformOperator(actor);
+  const started = Date.now();
+  let db = 'ok';
+  try {
+    await Organization.findOne().select('_id').lean();
+  } catch {
+    db = 'error';
+  }
+  const [clients, suspended, pendingTrials] = await Promise.all([
+    Organization.countDocuments(clientFilter()),
+    Organization.countDocuments({ ...clientFilter(), isActive: false }),
+    User.countDocuments({ signupStatus: 'pending_approval' }),
+  ]);
+  return {
+    ok: db === 'ok',
+    db,
+    latencyMs: Date.now() - started,
+    generatedAt: new Date().toISOString(),
+    clients,
+    suspended,
+    pendingTrials,
+  };
+}
+
 async function inspectTenant(actor, orgId, req) {
   assertPlatformOperator(actor);
   if (!mongoose.isValidObjectId(orgId)) throw httpError('Organization not found', 404);
@@ -539,4 +579,5 @@ module.exports = {
   archiveEmptyShells,
   getTenant,
   inspectTenant,
+  getHealth,
 };

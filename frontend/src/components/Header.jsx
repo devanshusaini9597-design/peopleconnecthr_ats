@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Menu, Search, ChevronDown, User, LogOut, Building2, CreditCard, Settings, Plug, Command, ChevronRight, Sparkles } from 'lucide-react';
+import { Menu, Search, ChevronDown, User, LogOut, Building2, CreditCard, Settings, Plug, Command, ChevronRight, Sparkles, Shield } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import NotificationBell from './NotificationBell';
@@ -216,6 +216,7 @@ const Header = ({ setSidebarOpen, sidebarOpen }) => {
     { label: t('nav.header.organization'), desc: t('nav.header.organizationDesc'), path: '/organization', icon: Settings, tone: 'bg-sky-50 text-sky-600', show: isAdmin },
     { label: t('nav.header.integrations'), desc: t('nav.header.integrationsDesc'), path: '/organization/integrations', icon: Plug, tone: 'bg-violet-50 text-violet-600', show: isAdmin },
     { label: t('nav.header.billing'), desc: t('nav.header.billingDesc'), path: '/billing', icon: CreditCard, tone: 'bg-amber-50 text-amber-600', show: userRole === 'owner' },
+    { label: 'Platform operator', desc: 'Private SaaS control plane', path: '/pchr-ops', icon: Shield, tone: 'bg-stone-900 text-teal-300', show: Boolean(user?.isPlatformOperator) },
   ].filter((i) => i.show);
 
   return (

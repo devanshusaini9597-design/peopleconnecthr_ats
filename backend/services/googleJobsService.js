@@ -212,6 +212,8 @@ function getRobotsTxt() {
     'Allow: /careers/',
     'Allow: /api/careers/',
     'Disallow: /api/',
+    'Disallow: /pchr-ops',
+    'Disallow: /pchr-ops/',
     '',
     `Sitemap: ${base}/sitemap.xml`,
     `Sitemap: ${base}/api/careers/sitemap.xml`,

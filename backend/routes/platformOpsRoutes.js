@@ -25,6 +25,15 @@ router.get('/', async (req, res) => {
   }
 });
 
+router.get('/health', async (req, res) => {
+  try {
+    const data = await platformOps.getHealth(req.user);
+    res.json({ success: true, data });
+  } catch (err) {
+    handle(res, err, 'platform ops health');
+  }
+});
+
 router.get('/summary', async (req, res) => {
   try {
     const data = await platformOps.getSummary(req.user);
