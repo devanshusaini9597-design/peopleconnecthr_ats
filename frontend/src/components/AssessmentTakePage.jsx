@@ -9,30 +9,39 @@ const staffLoggedIn = () => {
   try { return localStorage.getItem('isLoggedIn') === 'true'; } catch { return false; }
 };
 
-const ExamChrome = ({ children, extra }) => (
-  <div className="min-h-dvh bg-stone-50 font-sans flex flex-col">
-    <header className="bg-white border-b border-stone-200/90 sticky top-0 z-20">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3">
-        <Link to="/" className="flex items-center gap-2.5 text-stone-900 font-semibold min-w-0">
-          <img src="/app-icon.png?v=5" alt="" className="w-8 h-8 rounded-lg flex-shrink-0 bg-white object-contain" />
-          <span className="text-sm sm:text-base truncate">People Connect HR</span>
-        </Link>
-        {extra}
-      </div>
-    </header>
-    {staffLoggedIn() ? (
-      <div className="bg-brand-50 border-b border-brand-100 text-brand-900 text-xs sm:text-sm px-4 py-2 text-center">
-        Hiring team: this is the candidate test link.
-        {' '}
-        <Link to="/assessments" className="font-bold underline underline-offset-2">Open Assessments to edit, invite, or grade</Link>
-      </div>
-    ) : null}
-    <div className="flex-1 py-6 sm:py-10 px-3 sm:px-4">{children}</div>
-    <footer className="border-t border-stone-200 bg-white py-5 mt-auto">
-      <p className="text-center text-xs text-stone-400">Secure assessment · People Connect HR</p>
-    </footer>
-  </div>
-);
+const ExamChrome = ({ children, extra, brand }) => {
+  const orgName = brand?.name || 'People Connect HR';
+  const logo = brand?.logoUrl || '/app-icon.png';
+  const site = brand?.websiteUrl || '/';
+  return (
+    <div className="min-h-dvh relative overflow-hidden bg-stone-100 font-sans flex flex-col">
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(13,148,136,0.12),_transparent_55%),linear-gradient(180deg,#f5f5f4_0%,#ffffff_45%,#f0fdfa_100%)]"
+        aria-hidden="true"
+      />
+      <header className="relative z-20 bg-white/90 backdrop-blur-md border-b border-stone-200/90 sticky top-0">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3">
+          <a href={site} className="flex items-center gap-2.5 text-stone-900 font-semibold min-w-0">
+            <img src={logo} alt="" className="w-9 h-9 rounded-xl flex-shrink-0 bg-white object-contain ring-1 ring-stone-200/80" />
+            <span className="text-sm sm:text-base truncate">{orgName}</span>
+          </a>
+          {extra}
+        </div>
+      </header>
+      {staffLoggedIn() ? (
+        <div className="relative z-10 bg-brand-50 border-b border-brand-100 text-brand-900 text-xs sm:text-sm px-4 py-2 text-center">
+          Hiring team: this is the candidate test link.
+          {' '}
+          <Link to="/assessments" className="font-bold underline underline-offset-2">Open Assessments to edit, invite, or grade</Link>
+        </div>
+      ) : null}
+      <div className="relative z-10 flex-1 py-8 sm:py-12 px-3 sm:px-4">{children}</div>
+      <footer className="relative z-10 border-t border-stone-200 bg-white/80 py-5 mt-auto">
+        <p className="text-center text-xs text-stone-400">Secure assessment · {orgName}</p>
+      </footer>
+    </div>
+  );
+};
 
 const AssessmentTakePage = () => {
   const { token } = useParams();
@@ -305,9 +314,11 @@ const AssessmentTakePage = () => {
     return `${m}:${String(s).padStart(2, '0')}`;
   };
 
+  const brand = assessment?.brand;
+
   if (state === 'loading') {
     return (
-      <ExamChrome>
+      <ExamChrome brand={brand}>
         <div className="min-h-[50vh] flex items-center justify-center">
           <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
         </div>
@@ -330,8 +341,10 @@ const AssessmentTakePage = () => {
     const m = map[state];
     const Icon = m.icon;
     return (
-      <ExamChrome>
-        <div className="max-w-md mx-auto w-full text-center card-ats-bordered p-8 sm:p-10">
+      <ExamChrome brand={brand}>
+        <div className="max-w-md mx-auto w-full text-center rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-900/10 overflow-hidden">
+          <div className="h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+          <div className="p-8 sm:p-10">
           <Icon className={`w-10 h-10 ${m.color} mx-auto mb-4`} />
           <h2 className="text-xl font-bold text-stone-900 tracking-tight">{m.title}</h2>
           <p className="text-stone-500 mt-2 text-sm leading-relaxed">{m.body}</p>
@@ -341,20 +354,30 @@ const AssessmentTakePage = () => {
               {result.passFail && result.passFail !== 'pending' ? ` · ${result.passFail}` : ''}
             </p>
           )}
+          </div>
         </div>
       </ExamChrome>
     );
   }
 
   if (state === 'instructions') {
+    const orgName = assessment.brand?.name;
     return (
-      <ExamChrome>
-        <div className="max-w-2xl mx-auto card-ats-bordered p-6 sm:p-8">
+      <ExamChrome brand={brand}>
+        <div className="max-w-xl mx-auto rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-900/10 overflow-hidden">
+          <div className="h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+          <div className="px-5 sm:px-7 py-3.5 border-b border-stone-100 bg-gradient-to-r from-stone-50/90 via-white to-teal-50/25">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-stone-400">Secure assessment</p>
+            <p className="text-xs text-stone-500 mt-0.5">
+              {orgName ? `You are joining ${orgName}` : 'Complete this assessment for the hiring team.'}
+            </p>
+          </div>
+          <div className="p-6 sm:p-8">
           <div className="flex items-center gap-2 text-brand-600 mb-2">
             <ClipboardList className="w-5 h-5" />
-            <span className="text-sm font-medium">Skills Assessment</span>
+            <span className="text-sm font-medium">Assessment</span>
           </div>
-          <h1 className="text-2xl font-bold text-stone-900">{assessment.title}</h1>
+          <h1 className="text-2xl font-bold text-stone-900 tracking-tight">{assessment.title}</h1>
           {assessment.description && <p className="text-stone-600 mt-2">{assessment.description}</p>}
           <ul className="mt-4 space-y-1.5 text-sm text-stone-600">
             <li>Duration: {assessment.durationMinutes} minutes (server-timed once you start)</li>
@@ -387,6 +410,7 @@ const AssessmentTakePage = () => {
           >
             {starting ? 'Starting…' : 'Start assessment'}
           </button>
+          </div>
         </div>
       </ExamChrome>
     );
@@ -411,7 +435,8 @@ const AssessmentTakePage = () => {
 
   return (
     <ExamChrome
-      extra={(
+      brand={brand}
+      extra={(}
         <div className="flex items-center gap-2">
           {assessment.proctoring?.enabled ? (
             <span className={`hidden sm:inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${

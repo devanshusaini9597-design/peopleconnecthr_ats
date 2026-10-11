@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   ClipboardList, Loader2, Send, ArrowLeft, Clock, FileEdit, Link2, RefreshCw, Archive, Pencil, Copy, Trash2,
+  Inbox, BadgeCheck, Layers, UserCheck, Flag,
 } from 'lucide-react';
 import { authenticatedFetch } from '../../utils/fetchUtils';
 import { useToast } from '../Toast';
 import EmptyState from '../ui/EmptyState';
 import PremiumSelect from '../ui/PremiumSelect';
 import PresenceAvatar from '../ui/PresenceAvatar';
+import PipelineStageSummary from '../ui/PipelineStageSummary';
 import useTableDragScroll from '../../hooks/useTableDragScroll';
 import { guardTableCopy } from '../../utils/tableCopyGuard';
 import { STATUS_BADGE, actionBtn } from './assessmentsConstants';
@@ -14,13 +16,25 @@ import { InviteModal } from './InviteModal';
 import { GradeModal } from './GradeModal';
 
 const PIPELINE = [
-  { key: 'all', label: 'All' },
-  { key: 'pending', label: 'Not started' },
-  { key: 'in_progress', label: 'In progress' },
-  { key: 'submitted', label: 'To grade' },
-  { key: 'graded', label: 'Graded' },
-  { key: 'expired', label: 'Expired' },
+  { id: 'all', label: 'All invitations', icon: Layers },
+  { id: 'pending', label: 'Not started', icon: Inbox },
+  { id: 'joined', label: 'Joined', icon: BadgeCheck },
+  { id: 'in_progress', label: 'In progress', icon: Clock },
+  { id: 'submitted', label: 'Pending review', icon: FileEdit },
+  { id: 'graded', label: 'Graded', icon: UserCheck },
+  { id: 'expired', label: 'Expired', icon: Flag },
 ];
+
+function inviteStage(row) {
+  if (row.status === 'pending' && row.openedAt) return 'joined';
+  return row.status || 'pending';
+}
+
+function statusLabel(row) {
+  const stage = inviteStage(row);
+  if (stage === 'joined') return 'joined';
+  return String(row.status || '').replace('_', ' ');
+}
 
 export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access, onDelete, onDuplicate }) => {
   const toast = useToast();
@@ -64,7 +78,10 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
   useEffect(() => {
     load();
     loadRanking();
-    const timer = setInterval(() => load(true), 20000);
+    const timer = setInterval(() => {
+      load(true);
+      loadRanking();
+    }, 4000);
     return () => clearInterval(timer);
   }, [load, loadRanking]);
 
@@ -177,10 +194,10 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
   };
 
   const counts = PIPELINE.reduce((acc, item) => {
-    acc[item.key] = item.key === 'all' ? invites.length : invites.filter((row) => row.status === item.key).length;
+    acc[item.id] = item.id === 'all' ? invites.length : invites.filter((row) => inviteStage(row) === item.id).length;
     return acc;
   }, {});
-  const visible = statusFilter === 'all' ? invites : invites.filter((row) => row.status === statusFilter);
+  const visible = statusFilter === 'all' ? invites : invites.filter((row) => inviteStage(row) === statusFilter);
   const archived = assessment.isActive === false;
   const canEdit = access?.edit !== false && typeof onEdit === 'function';
   const canInvite = access?.invite !== false;
@@ -201,7 +218,9 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
         <ArrowLeft className="w-4 h-4" /> Back to assessments
       </button>
 
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+      <div className="rounded-2xl border border-stone-200/90 bg-white overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="h-[3px] bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+        <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div className="flex items-start gap-3 sm:gap-4 min-w-0">
           <div className="icon-box-ats !w-12 !h-12">
             <ClipboardList strokeWidth={2.5} />
@@ -250,6 +269,7 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
           </button>
           ) : null}
         </div>
+        </div>
       </div>
 
       {archived ? (
@@ -258,27 +278,16 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
         </p>
       ) : null}
 
-      <section className="rounded-xl border border-stone-200/90 bg-white shadow-sm relative">
-        <div className="absolute inset-x-0 top-0 h-1 rounded-t-xl bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 pointer-events-none" />
-        <div className="p-3 sm:p-5 space-y-3">
-          <div className="flex overflow-x-auto scrollbar-hide gap-1">
-            {PIPELINE.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => setStatusFilter(item.key)}
-                className={`flex items-center gap-2 px-3.5 py-2 text-sm font-semibold rounded-xl transition-all whitespace-nowrap
-                  ${statusFilter === item.key
-                    ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200/70'
-                    : 'text-stone-500 hover:text-stone-700 hover:bg-stone-50'}`}
-              >
-                {item.label}
-                <span className="text-[11px] font-bold tabular-nums text-stone-400">{counts[item.key] || 0}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
+      <PipelineStageSummary
+        stages={PIPELINE}
+        getCount={(stage) => counts[stage.id] || 0}
+        stageFilter={statusFilter}
+        setStageFilter={setStatusFilter}
+        total={invites.length}
+        hint="Live invitation pipeline — updates when a candidate opens the link"
+        countLabel="invitations"
+        toggleOff={false}
+      />
 
       <div className="rounded-2xl border border-stone-200/90 bg-white shadow-[var(--shadow-card)] overflow-hidden">
         {loading ? (
@@ -313,7 +322,7 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
             <table className="cand-table-drag w-full text-left border-collapse min-w-[880px] select-none border border-stone-200">
               <thead>
                 <tr className="bg-stone-100">
-                  {['Candidate', 'Score', 'Risk', 'Status', 'Actions'].map((label) => (
+                  {['Candidate', 'Score', 'Risk', 'Status', 'Activity', 'Actions'].map((label) => (
                     <th
                       key={label}
                       className={`px-3.5 py-3.5 text-[10px] font-bold text-stone-600 uppercase tracking-wider whitespace-nowrap border border-stone-200 bg-stone-100 ${label === 'Actions' ? 'text-right' : ''}`}
@@ -351,9 +360,18 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
                       ) : '—'}
                     </td>
                     <td className="px-3.5 py-3 text-sm border border-stone-200 align-middle whitespace-nowrap">
-                      <span className={STATUS_BADGE[inv.status] || 'badge-neutral'}>
-                        {String(inv.status || '').replace('_', ' ')}
+                      <span className={inviteStage(inv) === 'joined' ? 'badge-brand' : (STATUS_BADGE[inv.status] || 'badge-neutral')}>
+                        {statusLabel(inv)}
                       </span>
+                    </td>
+                    <td className="px-3.5 py-3 text-xs text-stone-500 border border-stone-200 align-middle whitespace-nowrap">
+                      {inv.submittedAt
+                        ? `Submitted ${new Date(inv.submittedAt).toLocaleString()}`
+                        : inv.startedAt
+                          ? `Started ${new Date(inv.startedAt).toLocaleString()}`
+                          : inv.openedAt
+                            ? `Joined ${new Date(inv.openedAt).toLocaleString()}`
+                            : 'Waiting'}
                     </td>
                     <td className="px-3.5 py-3 text-sm border border-stone-200 align-middle whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1">

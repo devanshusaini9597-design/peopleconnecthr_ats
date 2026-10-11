@@ -130,7 +130,7 @@ async function takeAssessment(token) {
   const invite = await loadInviteByToken(token);
   if (invite.status === 'expired') throw httpError('This assessment link has expired.', 410);
   if (invite.status === 'submitted' || invite.status === 'graded') {
-    return publicClosedResult(invite);
+    return withTakeBrand(invite.organizationId, publicClosedResult(invite));
   }
 
   if (!invite.openedAt) {
@@ -146,7 +146,7 @@ async function takeAssessment(token) {
   const rules = engine.normalizeRules(snapshot.rules, snapshot.durationMinutes);
 
   if (invite.status === 'pending') {
-    return {
+    return withTakeBrand(invite.organizationId, {
       submitted: false,
       phase: 'instructions',
       title: snapshot.title,
@@ -169,7 +169,7 @@ async function takeAssessment(token) {
         enabled: !!snapshot.proctoring?.enabled,
         strictness: snapshot.proctoring?.strictness || 'standard',
       },
-    };
+    });
   }
 
   if (expireInProgressIfTimedOut(invite) && rules.autoSubmit) {
@@ -181,22 +181,42 @@ async function takeAssessment(token) {
     throw httpError('The assessment time has ended.', 410);
   }
 
-  return candidatePayload(invite, snapshot);
+  return withTakeBrand(invite.organizationId, candidatePayload(invite, snapshot));
 }
 
 function extraPrivacy() {
   return 'This session may record integrity events such as leaving the tab, copy/paste, or exiting fullscreen when proctoring is enabled. Results are stored with your application and visible to authorized hiring staff of this company only.';
 }
 
+async function takeBrand(organizationId) {
+  try {
+    const brand = await loadOrgEmailBrand(organizationId);
+    return {
+      name: brand.name || 'People Connect HR',
+      logoUrl: brand.logoUrl || '/app-icon.png',
+      brandColor: brand.brandColor || '',
+      websiteUrl: brand.websiteUrl || '',
+    };
+  } catch {
+    return { name: 'People Connect HR', logoUrl: '/app-icon.png', brandColor: '', websiteUrl: '' };
+  }
+}
+
+async function withTakeBrand(organizationId, payload) {
+  return { ...payload, brand: await takeBrand(organizationId) };
+}
+
 async function startAttempt(token) {
   const invite = await loadInviteByToken(token);
   if (invite.status === 'expired') throw httpError('This assessment link has expired.', 410);
-  if (invite.status === 'submitted' || invite.status === 'graded') return publicClosedResult(invite);
+  if (invite.status === 'submitted' || invite.status === 'graded') {
+    return withTakeBrand(invite.organizationId, publicClosedResult(invite));
+  }
   if (invite.status === 'in_progress') {
     if (expireInProgressIfTimedOut(invite)) {
       return submitAssessment(token, { answers: invite.answers, auto: true });
     }
-    return candidatePayload(invite);
+    return withTakeBrand(invite.organizationId, candidatePayload(invite));
   }
 
   const assessment = invite.assessmentId;
@@ -234,10 +254,12 @@ async function startAttempt(token) {
   );
   if (!started) {
     const raced = await AssessmentInvite.findOne({ token });
-    if (raced?.status === 'in_progress') return candidatePayload(raced);
+    if (raced?.status === 'in_progress') {
+      return withTakeBrand(raced.organizationId, candidatePayload(raced));
+    }
     throw httpError('Could not start this assessment.', 409);
   }
-  return candidatePayload(started);
+  return withTakeBrand(started.organizationId, candidatePayload(started));
 }
 
 async function saveAnswers(token, body) {
