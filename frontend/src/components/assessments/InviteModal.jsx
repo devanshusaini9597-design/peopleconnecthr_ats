@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Send, Loader2, Search } from 'lucide-react';
+import { Send, Loader2, Search, Briefcase } from 'lucide-react';
 import { authenticatedFetch } from '../../utils/fetchUtils';
 import { useToast } from '../Toast';
 import Modal from '../ui/Modal';
 import EmptyState from '../ui/EmptyState';
+import PremiumSelect from '../ui/PremiumSelect';
 
 export const InviteModal = ({ assessment, open, onClose, onSent }) => {
   const toast = useToast();
@@ -24,7 +25,11 @@ export const InviteModal = ({ assessment, open, onClose, onSent }) => {
     setJobId(assessment?.jobId?._id || assessment?.jobId || '');
     authenticatedFetch('/api/assessments/jobs')
       .then((res) => res.json())
-      .then((data) => { if (data.success) setJobs(data.data || []); })
+      .then((data) => {
+        if (!data.success) return;
+        const payload = data.data;
+        setJobs(Array.isArray(payload) ? payload : (payload?.jobs || []));
+      })
       .catch(() => {});
   }, [open, assessment]);
 
@@ -102,16 +107,33 @@ export const InviteModal = ({ assessment, open, onClose, onSent }) => {
       open={open}
       onClose={onClose}
       title="Invite candidates"
-      description={`Send “${assessment.title}” with a time-limited link. Linked applications keep ranking job-specific.`}
+      description={`Send “${assessment.title}” with a time-limited invitation. Applications remain linked to the selected job.`}
       size="md"
+      icon={Send}
+      closeOnBackdrop={false}
+      disableFocusLock
     >
       <label className="label-ats">Job</label>
-      <select value={jobId} onChange={(e) => setJobId(e.target.value)} className="input-ats mb-3">
-        <option value="">Search any internal candidate</option>
-        {jobs.map((job) => (
-          <option key={job._id} value={job._id}>{job.title || job.role}</option>
-        ))}
-      </select>
+      <div className="mb-3">
+        <PremiumSelect
+          variant="list"
+          compact
+          searchable
+          allowClear
+          value={jobId}
+          onChange={(v) => setJobId(v || '')}
+          placeholder="Search any candidate, or select a job"
+          searchPlaceholder="Search jobs"
+          emptyLabel="No requisitions available"
+          className="w-full"
+          icon={Briefcase}
+          options={jobs.map((job) => ({
+            value: job._id,
+            label: job.title || job.role || 'Untitled job',
+            description: job.jobCode || job.status || '',
+          }))}
+        />
+      </div>
 
       {jobId ? (
         <div className="mb-4">

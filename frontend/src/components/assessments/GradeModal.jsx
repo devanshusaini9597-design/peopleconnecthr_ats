@@ -81,6 +81,7 @@ export const GradeModal = ({ invite, open, onClose, onGraded }) => {
       title={`${invite.candidateId?.name}'s submission`}
       description={assessment?.title}
       size="xl"
+      closeOnBackdrop={false}
       footer={
         <>
           <button type="button" onClick={askAi} className="btn-secondary" disabled={suggesting}>

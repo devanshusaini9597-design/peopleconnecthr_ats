@@ -1,13 +1,42 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Type, Code2, ListChecks, Shield, Loader2, ClipboardList } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Plus, Trash2, ListChecks, Shield, Loader2, ClipboardList, Briefcase } from 'lucide-react';
 import Modal from '../ui/Modal';
 import PremiumSelect from '../ui/PremiumSelect';
 import { authenticatedFetch } from '../../utils/fetchUtils';
+import { useAuth } from '../../context/AuthContext';
 import {
   emptyQuestion, QUESTION_TYPE_OPTIONS, STRICTNESS_OPTIONS, actionBtn, defaultRules,
 } from './assessmentsConstants';
 
+const FALLBACK_STAGES = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'];
+
+function parseJobsPayload(payload) {
+  if (Array.isArray(payload)) return { jobs: payload, pipelineStages: [] };
+  if (payload && Array.isArray(payload.jobs)) {
+    return { jobs: payload.jobs, pipelineStages: payload.pipelineStages || [] };
+  }
+  return { jobs: [], pipelineStages: [] };
+}
+
+function pickInviteStage(stages, preferred) {
+  const list = stages.filter(Boolean);
+  if (preferred && list.includes(preferred)) return preferred;
+  const match = list.find((stage) => /assess|test|screen|technical|shortlist/i.test(stage));
+  return match || list[0] || preferred || '';
+}
+
+function pickAdvanceStage(stages, from, preferred) {
+  const list = stages.filter(Boolean);
+  if (preferred && preferred !== from && (list.includes(preferred) || !list.length)) return preferred;
+  const skip = /reject|hired|joined|dropped|withdraw/i;
+  const idx = list.findIndex((stage) => stage === from);
+  const next = list.slice(Math.max(idx, 0) + 1).find((stage) => !skip.test(stage));
+  const interview = list.find((stage) => /interview/i.test(stage) && stage !== from);
+  return next || interview || list.find((stage) => !skip.test(stage) && stage !== from) || preferred || '';
+}
+
 export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initial }) => {
+  const { organization } = useAuth();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [durationMinutes, setDurationMinutes] = useState(45);
@@ -18,8 +47,10 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
   const [rules, setRules] = useState(defaultRules());
   const [jobId, setJobId] = useState('');
   const [pipelineStage, setPipelineStage] = useState('');
-  const [advanceStage, setAdvanceStage] = useState('Interview');
+  const [advanceStage, setAdvanceStage] = useState('');
   const [jobs, setJobs] = useState([]);
+  const [orgStages, setOrgStages] = useState(FALLBACK_STAGES);
+  const [jobsLoading, setJobsLoading] = useState(false);
   const editing = Boolean(initial?._id);
 
   useEffect(() => {
@@ -49,12 +80,65 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
     setStrictness(initial?.proctoring?.strictness || 'standard');
     setJobId(initial?.jobId?._id || initial?.jobId || '');
     setPipelineStage(initial?.pipelineStage || '');
-    setAdvanceStage(initial?.advanceStage || 'Interview');
+    setAdvanceStage(initial?.advanceStage || '');
+    setJobsLoading(true);
     authenticatedFetch('/api/assessments/jobs')
       .then((res) => res.json())
-      .then((data) => { if (data.success) setJobs(data.data || []); })
-      .catch(() => {});
-  }, [open, initial]);
+      .then((data) => {
+        const parsed = parseJobsPayload(data.success ? data.data : null);
+        setJobs(parsed.jobs);
+        const fromOrg = organization?.atsSettings?.pipelineStages;
+        const stages = parsed.pipelineStages.length
+          ? parsed.pipelineStages
+          : (Array.isArray(fromOrg) && fromOrg.length ? fromOrg : FALLBACK_STAGES);
+        setOrgStages(stages);
+      })
+      .catch(() => {
+        const fromOrg = organization?.atsSettings?.pipelineStages;
+        setOrgStages(Array.isArray(fromOrg) && fromOrg.length ? fromOrg : FALLBACK_STAGES);
+      })
+      .finally(() => setJobsLoading(false));
+  }, [open, initial, organization?.atsSettings?.pipelineStages]);
+
+  const selectedJob = useMemo(
+    () => jobs.find((job) => String(job._id) === String(jobId)),
+    [jobs, jobId]
+  );
+
+  const stages = useMemo(() => {
+    const jobStages = selectedJob?.pipelineStages;
+    const list = Array.isArray(jobStages) && jobStages.length ? jobStages : orgStages;
+    return list.map((stage) => String(stage || '').trim()).filter(Boolean);
+  }, [selectedJob, orgStages]);
+
+  const stageSelectOptions = useMemo(() => {
+    const values = [...stages];
+    [pipelineStage, advanceStage].forEach((stage) => {
+      if (stage && !values.includes(stage)) values.push(stage);
+    });
+    return values.map((stage) => ({ value: stage, label: stage }));
+  }, [stages, pipelineStage, advanceStage]);
+
+  useEffect(() => {
+    if (!open || !stages.length) return;
+    setPipelineStage((current) => {
+      const from = pickInviteStage(stages, current);
+      setAdvanceStage((adv) => pickAdvanceStage(stages, from, adv));
+      return from;
+    });
+  }, [open, stages, jobId]);
+
+  const applyJob = (nextId) => {
+    const id = nextId || '';
+    setJobId(id);
+    const job = jobs.find((row) => String(row._id) === String(id));
+    const list = (Array.isArray(job?.pipelineStages) && job.pipelineStages.length ? job.pipelineStages : orgStages)
+      .map((stage) => String(stage || '').trim())
+      .filter(Boolean);
+    const from = pickInviteStage(list, '');
+    setPipelineStage(from);
+    setAdvanceStage(pickAdvanceStage(list, from, ''));
+  };
 
   const updateQuestion = (idx, patch) => {
     setQuestions((qs) => qs.map((q, i) => (i === idx ? { ...q, ...patch } : q)));
@@ -89,9 +173,13 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
       onClose={onClose}
       title={editing ? 'Edit assessment' : 'Create assessment'}
       description={editing
-        ? 'Working copy only. In-progress attempts keep the published snapshot. Publish again to freeze a new version.'
-        : 'Build a reusable test. Publish a version before assigning it, or invite to auto-publish.'}
+        ? 'Changes apply to the working copy. Candidates who have already started keep the version they received.'
+        : 'Create an assessment, attach it to a requisition, then invite candidates from the selected pipeline stage.'}
       size="xl"
+      icon={ClipboardList}
+      closeOnBackdrop={false}
+      fillHeight
+      disableFocusLock
       footer={
         <>
           <button type="button" onClick={onClose} className="btn-secondary" disabled={saving}>Cancel</button>
@@ -116,7 +204,7 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
               ? <><Loader2 size={16} className="animate-spin" /> Saving…</>
               : editing
                 ? 'Save changes'
-                : <><Plus size={16} /> Create Assessment</>}
+                : <><Plus size={16} /> Create assessment</>}
           </button>
         </>
       }
@@ -125,7 +213,7 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
         <section className="space-y-4">
           <h3 className="section-title-ats !mb-0">
             <ClipboardList className="w-4 h-4 text-brand-600" />
-            Basics
+            Details
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
@@ -134,7 +222,7 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className="input-ats"
-                placeholder="e.g. React Fundamentals"
+                placeholder="Assessment title"
                 autoFocus
               />
             </div>
@@ -144,35 +232,74 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="textarea-ats !min-h-[72px]"
-                placeholder="Optional — what this test covers"
+                placeholder="Optional summary of what this assessment evaluates"
                 rows={2}
               />
             </div>
-            <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="label-ats">Attach to job</label>
-                <PremiumSelect
-                  variant="list"
-                  compact
-                  allowClear
-                  value={jobId}
-                  onChange={(v) => setJobId(v || '')}
-                  placeholder="Any job / talent pool"
-                  className="w-full"
-                  options={jobs.map((job) => ({
-                    value: job._id,
-                    label: `${job.title || job.role}${job.jobCode ? ` (${job.jobCode})` : ''}`,
-                  }))}
-                />
+            <div className="sm:col-span-2 rounded-xl border border-stone-200/90 bg-stone-50/50 p-3.5 sm:p-4 space-y-3">
+              <p className="text-xs font-semibold text-stone-600">Pipeline</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="label-ats">Attach to job</label>
+                  <PremiumSelect
+                    variant="list"
+                    compact
+                    searchable
+                    allowClear
+                    loading={jobsLoading}
+                    value={jobId}
+                    onChange={(v) => applyJob(v)}
+                    placeholder="Select a requisition"
+                    emptyLabel="No requisitions available"
+                    searchPlaceholder="Search jobs"
+                    className="w-full"
+                    icon={Briefcase}
+                    options={jobs.map((job) => ({
+                      value: job._id,
+                      label: job.title || job.role || 'Untitled job',
+                      description: [job.jobCode, job.status].filter(Boolean).join(' · '),
+                    }))}
+                  />
+                </div>
+                <div>
+                  <label className="label-ats">Invite from stage</label>
+                  <PremiumSelect
+                    variant="list"
+                    compact
+                    searchable
+                    value={pipelineStage}
+                    onChange={(v) => {
+                      const from = v || '';
+                      setPipelineStage(from);
+                      setAdvanceStage((current) => pickAdvanceStage(stages, from, current));
+                    }}
+                    placeholder="Select stage"
+                    emptyLabel="No pipeline stages"
+                    searchPlaceholder="Search stages"
+                    className="w-full"
+                    options={stageSelectOptions}
+                  />
+                </div>
+                <div>
+                  <label className="label-ats">Advance qualified to</label>
+                  <PremiumSelect
+                    variant="list"
+                    compact
+                    searchable
+                    allowClear
+                    value={advanceStage}
+                    onChange={(v) => setAdvanceStage(v || '')}
+                    placeholder="Select stage"
+                    emptyLabel="No pipeline stages"
+                    searchPlaceholder="Search stages"
+                    className="w-full"
+                    options={stageSelectOptions.filter((opt) => opt.value !== pipelineStage)}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="label-ats">Invite from stage</label>
-                <input value={pipelineStage} onChange={(e) => setPipelineStage(e.target.value)} className="input-ats" placeholder="e.g. Technical Test" />
-              </div>
-              <div>
-                <label className="label-ats">Advance winners to</label>
-                <input value={advanceStage} onChange={(e) => setAdvanceStage(e.target.value)} className="input-ats" placeholder="Interview" />
-              </div>
+              <p className="text-[11px] text-stone-500 leading-relaxed">
+                Stages are loaded from the selected job, or from your organization pipeline when no job is attached.
+              </p>
             </div>
             <div className="sm:max-w-xs">
               <label className="label-ats">Duration (minutes)</label>
@@ -198,7 +325,7 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
         </section>
 
         <section className="space-y-3">
-          <h3 className="section-title-ats !mb-0">Test rules</h3>
+          <h3 className="section-title-ats !mb-0">Scoring and attempt rules</h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="label-ats">Passing score %</label>

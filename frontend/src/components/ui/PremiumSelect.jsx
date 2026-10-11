@@ -184,7 +184,10 @@ export default function PremiumSelect({
     };
 
     const onKey = (e) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      e.preventDefault();
+      setOpen(false);
     };
 
     document.addEventListener('pointerdown', onPointerDown, true);

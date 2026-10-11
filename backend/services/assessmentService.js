@@ -1227,11 +1227,24 @@ async function updateSettings(organizationId, body) {
 
 async function listJobsLite(organizationId) {
   const Job = require('../models/Job');
-  return Job.find({ organizationId, isTemplate: { $ne: true } })
-    .select('title role jobCode status pipeline')
+  const org = await Organization.findById(organizationId).select('atsSettings.pipelineStages').lean();
+  const pipelineStages = Array.isArray(org?.atsSettings?.pipelineStages) && org.atsSettings.pipelineStages.length
+    ? org.atsSettings.pipelineStages.map((stage) => String(stage || '').trim()).filter(Boolean)
+    : ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'];
+  const jobs = await Job.find({ organizationId, isTemplate: { $ne: true }, status: { $ne: 'Cancelled' } })
+    .select('title role jobCode status pipelineStages')
     .sort({ createdAt: -1 })
     .limit(200)
     .lean();
+  return {
+    pipelineStages,
+    jobs: jobs.map((job) => ({
+      ...job,
+      pipelineStages: Array.isArray(job.pipelineStages) && job.pipelineStages.length
+        ? job.pipelineStages.map((stage) => String(stage || '').trim()).filter(Boolean)
+        : pipelineStages,
+    })),
+  };
 }
 
 async function listJobApplicants(organizationId, { jobId, stage }) {
