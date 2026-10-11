@@ -110,7 +110,7 @@ export const GradeModal = ({ invite, open, onClose, onGraded }) => {
         {questions.map((q) => {
           const answer = invite.answers?.find((a) => String(a.questionId) === String(q._id));
           return (
-            <div key={q._id} className="rounded-2xl border border-stone-200 p-4 bg-stone-50/40">
+            <div key={q._id} className="rounded-xl border border-stone-200/90 bg-white p-4 shadow-sm">
               <p className="text-sm font-semibold text-stone-900">
                 {q.prompt}{' '}
                 <span className="text-xs font-medium text-stone-400">({q.points} pts{q.skillTag ? ` · ${q.skillTag}` : ''})</span>

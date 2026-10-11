@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ClipboardList, Plus, Trash2, Lock, Loader2, Search, AlertCircle, RefreshCw,
-  Clock, Filter, Info, Shield, Pencil, Copy, Send,
+  Clock, Filter, Info, Shield, Pencil, Copy, Send, FileEdit, Flag, CheckCircle2,
 } from 'lucide-react';
 import { authenticatedFetch, handleUnauthorized, readApiJson } from '../utils/fetchUtils';
 import { useToast } from './Toast';
@@ -20,7 +20,8 @@ import {
 } from './assessments/assessmentsConstants';
 import { BuilderModal } from './assessments/BuilderModal';
 import { AssessmentDetail } from './assessments/AssessmentDetail';
-import { EvaluationQueuePanel, QuestionBankPanel, AssessmentSettingsPanel } from './assessments/AssessmentOpsPanels';
+import { EvaluationQueuePanel, QuestionBankPanel, AssessmentSettingsPanel, LIBRARY_TABS } from './assessments/AssessmentOpsPanels';
+import { GradeModal } from './assessments/GradeModal';
 
 const AssessmentsPage = () => {
   const { t } = useTranslation();
@@ -55,6 +56,7 @@ const AssessmentsPage = () => {
   const [active, setActive] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [gradingInvite, setGradingInvite] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -163,6 +165,20 @@ const AssessmentsPage = () => {
     }
   };
 
+  const openQueueGrade = async (row) => {
+    try {
+      const res = await authenticatedFetch(`/api/assessments/invites/${row._id}`);
+      const data = await readApiJson(res);
+      if (!res.ok || !data.success) {
+        toast?.error?.(data.message || 'Could not open this submission');
+        return;
+      }
+      setGradingInvite(data.data);
+    } catch (err) {
+      toast?.error?.(err?.message || 'Could not open this submission');
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -240,64 +256,50 @@ const AssessmentsPage = () => {
             ) : null}
           </PageHeader>
 
-          <div className="flex overflow-x-auto scrollbar-hide gap-1 rounded-xl border border-stone-200/90 bg-white p-1 shadow-sm w-full sm:w-fit">
-            {[
-              ['library', 'Assessments'],
-              ['queue', 'Evaluation queue'],
-              ...(canEdit ? [['bank', 'Question bank']] : []),
-              ...(canSettings ? [['settings', 'Policies']] : []),
-            ].map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setTab(key)}
-                className={`px-3.5 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${tab === key ? 'bg-stone-900 text-white shadow-sm' : 'text-stone-600 hover:bg-stone-50'}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          {(() => {
+            const totals = assessments.reduce((acc, row) => {
+              acc.assigned += row.inviteStats?.total || 0;
+              acc.open += (row.inviteStats?.pending || 0) + (row.inviteStats?.in_progress || 0);
+              acc.review += row.inviteStats?.pendingReview || 0;
+              acc.flagged += row.inviteStats?.flagged || 0;
+              acc.graded += row.inviteStats?.graded || 0;
+              return acc;
+            }, { assigned: 0, open: 0, review: 0, flagged: 0, graded: 0 });
+            const cards = [
+              { label: 'Assigned', value: totals.assigned, icon: Send, tab: 'library' },
+              { label: 'Open / in progress', value: totals.open, icon: Clock, tab: 'library' },
+              { label: 'Need evaluation', value: totals.review, icon: FileEdit, tab: 'queue' },
+              { label: 'Integrity flags', value: totals.flagged, icon: Flag, tab: 'library' },
+              { label: 'Graded', value: totals.graded, icon: CheckCircle2, tab: 'library' },
+            ];
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {cards.map((card) => (
+                  <button
+                    key={card.label}
+                    type="button"
+                    onClick={() => setTab(card.tab)}
+                    className={`card-ats p-3.5 text-left relative hover:border-brand-200/80 ${tab === card.tab && card.tab === 'queue' ? 'border-brand-200' : ''}`}
+                  >
+                    <div className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 opacity-70 pointer-events-none" />
+                    <div className="flex items-center gap-2.5 pt-0.5">
+                      <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-50 to-teal-50 text-brand-700 ring-1 ring-brand-200/60 flex items-center justify-center flex-shrink-0">
+                        <card.icon className="w-4 h-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 leading-tight">{card.label}</p>
+                        <p className="text-lg font-bold tabular-nums text-stone-900">{card.value}</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
 
-          {tab === 'queue' ? (
-            <EvaluationQueuePanel
-              onOpen={(row) => {
-                const match = assessments.find((a) => String(a._id) === String(row.assessmentId?._id || row.assessmentId));
-                if (match) setActive(match);
-              }}
-            />
-          ) : null}
-          {tab === 'bank' && canEdit ? <QuestionBankPanel /> : null}
-          {tab === 'settings' && canSettings ? <AssessmentSettingsPanel /> : null}
-
-          {tab === 'library' ? (
-          <>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-            {(() => {
-              const totals = assessments.reduce((acc, row) => {
-                acc.assigned += row.inviteStats?.total || 0;
-                acc.open += (row.inviteStats?.pending || 0) + (row.inviteStats?.in_progress || 0);
-                acc.review += row.inviteStats?.pendingReview || 0;
-                acc.flagged += row.inviteStats?.flagged || 0;
-                acc.graded += row.inviteStats?.graded || 0;
-                return acc;
-              }, { assigned: 0, open: 0, review: 0, flagged: 0, graded: 0 });
-              return [
-                ['Assigned', totals.assigned],
-                ['Open / in progress', totals.open],
-                ['Need evaluation', totals.review],
-                ['Integrity flags', totals.flagged],
-                ['Graded', totals.graded],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-xl border border-stone-200 bg-white px-3 py-2.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">{label}</p>
-                  <p className="text-lg font-bold tabular-nums text-stone-900">{value}</p>
-                </div>
-              ));
-            })()}
-          </div>
           <div
             data-tour="assess-tip"
-            className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-[13px] text-stone-600 leading-relaxed flex flex-wrap items-center gap-x-3 gap-y-1.5"
+            className="rounded-xl border border-stone-200 bg-white px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-[13px] text-stone-600 leading-relaxed flex flex-wrap items-center gap-x-3 gap-y-1.5"
           >
             <span className="inline-flex items-center gap-1.5 text-brand-700 font-semibold">
               <Info size={14} /> Tip
@@ -307,6 +309,93 @@ const AssessmentsPage = () => {
               Press <span className="font-semibold text-stone-800">?</span> for a tour.
             </span>
           </div>
+
+          <section
+            data-tour="assess-filters"
+            className="rounded-xl border border-stone-200/90 bg-white shadow-sm relative"
+          >
+            <div className="absolute inset-x-0 top-0 h-1 rounded-t-xl bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 pointer-events-none" />
+            <div className="p-3 sm:p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <Filter size={15} className="text-brand-600 flex-shrink-0" />
+                <p className="text-sm font-bold text-stone-900 tracking-tight">
+                  {tab === 'library' ? 'Find assessments' : tab === 'queue' ? 'Evaluation queue' : tab === 'bank' ? 'Question bank' : 'Company policies'}
+                </p>
+              </div>
+              <div className="flex overflow-x-auto scrollbar-hide gap-1 -mx-1 px-1">
+                {LIBRARY_TABS.filter((item) => {
+                  if (item.id === 'bank') return canEdit;
+                  if (item.id === 'settings') return canSettings;
+                  if (item.id === 'queue') return true;
+                  return true;
+                }).map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setTab(id)}
+                    className={`flex items-center gap-2 px-3.5 py-2 text-sm font-semibold rounded-xl transition-all whitespace-nowrap
+                      ${tab === id
+                        ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200/70'
+                        : 'text-stone-500 hover:text-stone-700 hover:bg-stone-50'}`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {tab === 'library' ? (
+                <div className="flex flex-col lg:flex-row lg:items-end gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="Search assessments…"
+                        className="input-ats input-ats-icon"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex rounded-xl bg-stone-50 p-1 gap-0.5">
+                    {[
+                      ['active', 'Live'],
+                      ['archived', 'Archived'],
+                      ['all', 'All'],
+                    ].map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setLibrary(key)}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold ${library === key ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200/70' : 'text-stone-500 hover:text-stone-700'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="w-full sm:w-52">
+                    <PremiumSelect
+                      value={sortBy}
+                      onChange={setSortBy}
+                      options={SORT_OPTIONS}
+                      placeholder="Sort by"
+                    />
+                  </div>
+                  <p className="text-sm font-medium text-stone-500 lg:pb-2.5 lg:ml-auto whitespace-nowrap">
+                    {filtered.length} assessment{filtered.length === 1 ? '' : 's'}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          {tab === 'queue' ? (
+            <EvaluationQueuePanel onGrade={openQueueGrade} canGrade={canGrade} />
+          ) : null}
+          {tab === 'bank' && canEdit ? <QuestionBankPanel /> : null}
+          {tab === 'settings' && canSettings ? <AssessmentSettingsPanel /> : null}
+
+          {tab === 'library' ? (
+          <>
 
           {loadError ? (
             <div className="card-ats-bordered border-red-200/80 bg-red-50/30">
@@ -345,57 +434,6 @@ const AssessmentsPage = () => {
             </div>
           ) : (
             <div className="space-y-4">
-              <section
-                data-tour="assess-filters"
-                className="rounded-xl border border-stone-200/90 bg-white shadow-sm overflow-hidden"
-              >
-                <div className="h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-                <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-end gap-3">
-                  <div className="flex-1 min-w-0">
-                    <label className="label-ats flex items-center gap-1.5">
-                      <Filter size={12} className="text-stone-400" /> Search
-                    </label>
-                    <div className="relative">
-                      <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      <input
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Search assessments…"
-                        className="input-ats input-ats-icon"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex rounded-lg border border-stone-200 p-0.5 bg-stone-50">
-                    {[
-                      ['active', 'Live'],
-                      ['archived', 'Archived'],
-                      ['all', 'All'],
-                    ].map(([key, label]) => (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setLibrary(key)}
-                        className={`px-3 py-1.5 rounded-md text-xs font-bold ${library === key ? 'bg-stone-900 text-white' : 'text-stone-600'}`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="w-full sm:w-52">
-                    <label className="label-ats">Sort</label>
-                    <PremiumSelect
-                      value={sortBy}
-                      onChange={setSortBy}
-                      options={SORT_OPTIONS}
-                      placeholder="Sort by"
-                    />
-                  </div>
-                  <p className="text-sm font-medium text-stone-500 lg:pb-2.5 lg:ml-auto whitespace-nowrap">
-                    {filtered.length} assessment{filtered.length === 1 ? '' : 's'}
-                  </p>
-                </div>
-              </section>
-
               {filtered.length === 0 ? (
                 <div className="card-ats-bordered">
                   <EmptyState
@@ -490,6 +528,12 @@ const AssessmentsPage = () => {
         onSave={handleSave}
         saving={saving}
         canProctor={canProctor}
+      />
+      <GradeModal
+        invite={gradingInvite}
+        open={!!gradingInvite}
+        onClose={() => setGradingInvite(null)}
+        onGraded={() => { setGradingInvite(null); load(); }}
       />
       <ConfirmationModal
         isOpen={!!deleteTarget}

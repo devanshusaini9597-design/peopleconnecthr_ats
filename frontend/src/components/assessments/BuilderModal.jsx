@@ -151,12 +151,19 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
             <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="label-ats">Attach to job</label>
-                <select value={jobId} onChange={(e) => setJobId(e.target.value)} className="input-ats">
-                  <option value="">Any job / talent pool</option>
-                  {jobs.map((job) => (
-                    <option key={job._id} value={job._id}>{job.title || job.role} {job.jobCode ? `(${job.jobCode})` : ''}</option>
-                  ))}
-                </select>
+                <PremiumSelect
+                  variant="list"
+                  compact
+                  allowClear
+                  value={jobId}
+                  onChange={(v) => setJobId(v || '')}
+                  placeholder="Any job / talent pool"
+                  className="w-full"
+                  options={jobs.map((job) => ({
+                    value: job._id,
+                    label: `${job.title || job.role}${job.jobCode ? ` (${job.jobCode})` : ''}`,
+                  }))}
+                />
               </div>
               <div>
                 <label className="label-ats">Invite from stage</label>
@@ -207,11 +214,18 @@ export const BuilderModal = ({ open, onClose, onSave, saving, canProctor, initia
             </div>
             <div>
               <label className="label-ats">Candidate results</label>
-              <select value={rules.resultVisibility} onChange={(e) => setRules((r) => ({ ...r, resultVisibility: e.target.value }))} className="input-ats">
-                <option value="hidden">Hidden until you share</option>
-                <option value="score">Score only</option>
-                <option value="detailed">Score and feedback</option>
-              </select>
+              <PremiumSelect
+                variant="list"
+                compact
+                value={rules.resultVisibility}
+                onChange={(v) => setRules((r) => ({ ...r, resultVisibility: v || 'hidden' }))}
+                className="w-full"
+                options={[
+                  { value: 'hidden', label: 'Hidden until you share' },
+                  { value: 'score', label: 'Score only' },
+                  { value: 'detailed', label: 'Score and feedback' },
+                ]}
+              />
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-stone-700">

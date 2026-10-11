@@ -5,6 +5,7 @@ import {
 import { authenticatedFetch } from '../../utils/fetchUtils';
 import { useToast } from '../Toast';
 import EmptyState from '../ui/EmptyState';
+import PremiumSelect from '../ui/PremiumSelect';
 import { STATUS_BADGE, actionBtn } from './assessmentsConstants';
 import { InviteModal } from './InviteModal';
 import { GradeModal } from './GradeModal';
@@ -248,19 +249,27 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
         </p>
       ) : null}
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-        {PIPELINE.filter((item) => item.key !== 'all').map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => setStatusFilter(item.key)}
-            className={`rounded-xl border px-3 py-2.5 text-left ${statusFilter === item.key ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white'}`}
-          >
-            <p className={`text-[10px] font-bold uppercase tracking-wider ${statusFilter === item.key ? 'text-white/70' : 'text-stone-400'}`}>{item.label}</p>
-            <p className="text-lg font-bold tabular-nums">{counts[item.key] || 0}</p>
-          </button>
-        ))}
-      </div>
+      <section className="rounded-xl border border-stone-200/90 bg-white shadow-sm relative">
+        <div className="absolute inset-x-0 top-0 h-1 rounded-t-xl bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 pointer-events-none" />
+        <div className="p-3 sm:p-5 space-y-3">
+          <div className="flex overflow-x-auto scrollbar-hide gap-1">
+            {PIPELINE.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setStatusFilter(item.key)}
+                className={`flex items-center gap-2 px-3.5 py-2 text-sm font-semibold rounded-xl transition-all whitespace-nowrap
+                  ${statusFilter === item.key
+                    ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200/70'
+                    : 'text-stone-500 hover:text-stone-700 hover:bg-stone-50'}`}
+              >
+                {item.label}
+                <span className="text-[11px] font-bold tabular-nums text-stone-400">{counts[item.key] || 0}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
 
       <div className="table-shell-ats">
         {loading ? (
@@ -346,16 +355,21 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
                     </button>
                   )}
                   {canDecide && (inv.status === 'submitted' || inv.status === 'graded') && inv.scoringStatus !== 'pending_review' && (
-                    <select
-                      className="text-xs border border-stone-200 rounded-lg px-2 py-1"
-                      value={inv.decision || 'none'}
-                      onChange={(e) => decide(inv, e.target.value)}
-                    >
-                      <option value="none">Decision</option>
-                      <option value="shortlist">Shortlist</option>
-                      <option value="advance">Advance</option>
-                      <option value="reject">Reject</option>
-                    </select>
+                    <div className="w-36">
+                      <PremiumSelect
+                        compact
+                        variant="list"
+                        value={inv.decision || 'none'}
+                        onChange={(v) => { if (v && v !== 'none') decide(inv, v); }}
+                        options={[
+                          { value: 'none', label: 'Decision' },
+                          { value: 'shortlist', label: 'Shortlist' },
+                          { value: 'advance', label: 'Advance' },
+                          { value: 'reject', label: 'Reject' },
+                        ]}
+                        placeholder="Decision"
+                      />
+                    </div>
                   )}
                 </div>
               </div>
@@ -365,35 +379,41 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
       </div>
 
       {ranking[0]?.ranking?.length ? (
-        <div className="rounded-xl border border-stone-200 bg-white p-4">
-          <h3 className="text-sm font-bold text-stone-900 mb-2">Ranking (same published version)</h3>
-          <div className="space-y-1.5">
-            {ranking[0].ranking.slice(0, 20).map((row) => (
-              <div key={row._id} className="flex items-center justify-between text-sm">
-                <span className="text-stone-700">#{row.rank} {row.candidateId?.name}</span>
-                <span className="tabular-nums font-semibold">
-                  {row.totalScore}/{row.maxScore}
-                  {row.skillBreakdown?.length ? ` · ${row.skillBreakdown.map((s) => `${s.skill} ${s.percent}%`).join(', ')}` : ''}
-                  {row.passFail === 'pending' ? ' · review pending' : ''}
-                </span>
-              </div>
-            ))}
+        <section className="rounded-xl border border-stone-200/90 bg-white shadow-sm relative overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 pointer-events-none" />
+          <div className="p-4 sm:p-5">
+            <h3 className="section-title-ats">Ranking (same published version)</h3>
+            <div className="space-y-2">
+              {ranking[0].ranking.slice(0, 20).map((row) => (
+                <div key={row._id} className="flex items-center justify-between text-sm rounded-xl border border-stone-100 bg-stone-50/70 px-3 py-2">
+                  <span className="font-semibold text-stone-800">#{row.rank} {row.candidateId?.name}</span>
+                  <span className="tabular-nums text-stone-600">
+                    {row.totalScore}/{row.maxScore}
+                    {row.skillBreakdown?.length ? ` · ${row.skillBreakdown.map((s) => `${s.skill} ${s.percent}%`).join(', ')}` : ''}
+                    {row.passFail === 'pending' ? ' · review pending' : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        </section>
       ) : null}
 
       {audit.length ? (
-        <div className="rounded-xl border border-stone-200 bg-white p-4">
-          <h3 className="text-sm font-bold text-stone-900 mb-2">Audit</h3>
-          <div className="space-y-1 text-xs text-stone-600">
-            {audit.slice(0, 15).map((row) => (
-              <p key={row._id}>
-                {new Date(row.timestamp).toLocaleString()} · {row.action} · {row.userId?.name || 'system'}
-                {row.details?.message ? ` · ${row.details.message}` : ''}
-              </p>
-            ))}
+        <section className="rounded-xl border border-stone-200/90 bg-white shadow-sm relative overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 pointer-events-none" />
+          <div className="p-4 sm:p-5">
+            <h3 className="section-title-ats">Audit</h3>
+            <div className="space-y-1.5 text-xs text-stone-600">
+              {audit.slice(0, 15).map((row) => (
+                <p key={row._id} className="rounded-lg bg-stone-50/80 px-3 py-1.5">
+                  {new Date(row.timestamp).toLocaleString()} · {row.action} · {row.userId?.name || 'system'}
+                  {row.details?.message ? ` · ${row.details.message}` : ''}
+                </p>
+              ))}
+            </div>
           </div>
-        </div>
+        </section>
       ) : null}
 
       <InviteModal assessment={assessment} open={showInvite} onClose={() => setShowInvite(false)} onSent={load} />
