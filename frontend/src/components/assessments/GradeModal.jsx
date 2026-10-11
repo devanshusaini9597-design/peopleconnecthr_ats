@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import { authenticatedFetch, readApiJson } from '../../utils/fetchUtils';
 import { useToast } from '../Toast';
 import Modal from '../ui/Modal';
+import IntegrityPanel from './IntegrityPanel';
 
 export const GradeModal = ({ invite, open, onClose, onGraded }) => {
   const toast = useToast();
@@ -95,6 +96,7 @@ export const GradeModal = ({ invite, open, onClose, onGraded }) => {
       }
     >
       <div className="space-y-4">
+        <IntegrityPanel inviteId={invite._id} />
         {Array.isArray(invite?.skillBreakdown) && invite.skillBreakdown.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {invite.skillBreakdown.map((row) => (

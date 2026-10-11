@@ -282,7 +282,7 @@ async function recordProctoringEvents(token, body) {
 
   const events = Array.isArray(body.events) ? body.events : [body];
   const allowed = new Set([
-    'tab_switch', 'window_blur', 'copy', 'paste', 'fullscreen_exit', 'start', 'submit', 'snapshot',
+    'tab_switch', 'window_blur', 'copy', 'paste', 'fullscreen_exit', 'start', 'submit', 'snapshot', 'camera_denied',
   ]);
   const toAdd = events
     .filter((e) => e && allowed.has(e.type))
@@ -832,6 +832,20 @@ function serializeInvite(invite, { includeToken = true } = {}) {
   if (row.snapshot?.questions) {
     row.snapshot = { ...row.snapshot, questions: row.snapshot.questions };
   }
+  if (row.proctoring) {
+    const events = row.proctoring.events || [];
+    row.proctoring = {
+      tabSwitchCount: row.proctoring.tabSwitchCount || 0,
+      copyPasteCount: row.proctoring.copyPasteCount || 0,
+      blurCount: row.proctoring.blurCount || 0,
+      fullscreenExits: row.proctoring.fullscreenExits || 0,
+      snapshotCount: row.proctoring.snapshotCount || events.filter((e) => e.type === 'snapshot' && e.meta?.image && !e.meta?.skipped).length,
+      cameraDenied: !!row.proctoring.cameraDenied,
+      riskScore: row.proctoring.riskScore || 0,
+      flagged: !!row.proctoring.flagged,
+      eventCount: events.length,
+    };
+  }
   return row;
 }
 
@@ -935,17 +949,37 @@ async function getInviteIntegrity(organizationId, id) {
     .populate('assessmentId', 'title proctoring')
     .lean();
   if (!invite) throw httpError('Invite not found', 404);
-  const events = (invite.proctoring?.events || []).map((event) => {
-    if (event.type !== 'snapshot') return event;
-    return { ...event, meta: { ...(event.meta || {}), image: event.meta?.image ? '[stored]' : undefined } };
-  });
+  const rawEvents = invite.proctoring?.events || [];
+  const snapshots = rawEvents
+    .filter((event) => event.type === 'snapshot' && event.meta?.image && !event.meta?.skipped)
+    .slice(-12)
+    .map((event) => ({
+      at: event.at,
+      image: event.meta.image,
+      periodic: !!event.meta.periodic,
+    }));
+  const timeline = rawEvents.map((event) => ({
+    type: event.type,
+    at: event.at,
+    questionId: event.questionId || '',
+    skipped: !!event.meta?.skipped,
+    reason: event.meta?.reason || '',
+    hasImage: event.type === 'snapshot' && !!event.meta?.image && !event.meta?.skipped,
+  }));
+  const counts = summarizeEvents(rawEvents);
   return {
     candidate: invite.candidateId,
     assessment: invite.assessmentId,
     status: invite.status,
     scoringStatus: invite.scoringStatus,
     passFail: invite.passFail,
-    proctoring: { ...(invite.proctoring || {}), events },
+    snapshots,
+    timeline,
+    proctoring: {
+      ...(invite.proctoring || {}),
+      ...counts,
+      events: undefined,
+    },
   };
 }
 
@@ -1087,7 +1121,7 @@ async function evaluationQueue(organizationId) {
     .populate('assessmentId', 'title')
     .sort({ submittedAt: 1 })
     .lean();
-  return rows;
+  return rows.map((row) => serializeInvite(row, { includeToken: false }));
 }
 
 async function listQuestionBank(organizationId, query = {}) {

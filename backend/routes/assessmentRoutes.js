@@ -339,7 +339,7 @@ router.get('/invites/:id', requirePermission('assessments.grade'), async (req, r
   }
 });
 
-router.get('/invites/:id/integrity', requireFeature('assessments.proctoring'), async (req, res) => {
+router.get('/invites/:id/integrity', requirePermission('assessments.grade'), async (req, res) => {
   try {
     const data = await svc.getInviteIntegrity(req.user.organizationId, req.params.id);
     res.json({ success: true, data });

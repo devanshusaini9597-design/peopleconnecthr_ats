@@ -1,5 +1,5 @@
 import React from 'react';
-import { ClipboardList, Clock, FileEdit, Mail } from 'lucide-react';
+import { ClipboardList, Clock, FileEdit, Flag, Mail } from 'lucide-react';
 import PresenceAvatar from '../ui/PresenceAvatar';
 
 const chip = 'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md border whitespace-nowrap';
@@ -55,6 +55,12 @@ export default function AssessmentQueueCard({ row, onGrade, canGrade = true }) {
             <Clock size={11} className="text-stone-400" strokeWidth={2.25} />
             {submittedLabel(row.submittedAt)}
           </span>
+          {row.proctoring?.flagged || row.proctoring?.tabSwitchCount ? (
+            <span className={`${chip} ${row.proctoring?.flagged ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+              <Flag size={11} strokeWidth={2.25} />
+              {row.proctoring?.flagged ? `Risk ${row.proctoring.riskScore || 0}` : `${row.proctoring.tabSwitchCount} tab switch${row.proctoring.tabSwitchCount === 1 ? '' : 'es'}`}
+            </span>
+          ) : null}
         </div>
       </div>
 

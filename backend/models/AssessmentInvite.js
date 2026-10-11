@@ -62,6 +62,8 @@ const assessmentInviteSchema = new mongoose.Schema({
     copyPasteCount: { type: Number, default: 0 },
     blurCount: { type: Number, default: 0 },
     fullscreenExits: { type: Number, default: 0 },
+    snapshotCount: { type: Number, default: 0 },
+    cameraDenied: { type: Boolean, default: false },
     riskScore: { type: Number, default: 0 },
     flagged: { type: Boolean, default: false }
   }

@@ -7,6 +7,7 @@ function computeRiskScore({
   copyPasteCount = 0,
   blurCount = 0,
   fullscreenExits = 0,
+  cameraDenied = false,
   plagiarismScore = null,
   strictness = 'standard'
 } = {}) {
@@ -16,6 +17,7 @@ function computeRiskScore({
   risk += Math.min(25, copyPasteCount * 5);
   risk += Math.min(20, blurCount * 4);
   risk += Math.min(15, fullscreenExits * 5);
+  if (cameraDenied) risk += 20;
   if (plagiarismScore != null) {
     risk += Math.min(30, Math.round(plagiarismScore * 30));
   }
@@ -29,13 +31,20 @@ function summarizeEvents(events = []) {
   let copyPasteCount = 0;
   let blurCount = 0;
   let fullscreenExits = 0;
+  let snapshotCount = 0;
+  let cameraDenied = false;
   for (const e of events) {
     if (e.type === 'tab_switch') tabSwitchCount++;
     else if (e.type === 'copy' || e.type === 'paste') copyPasteCount++;
     else if (e.type === 'window_blur') blurCount++;
     else if (e.type === 'fullscreen_exit') fullscreenExits++;
+    else if (e.type === 'camera_denied') cameraDenied = true;
+    else if (e.type === 'snapshot') {
+      if (e.meta?.skipped || e.meta?.reason === 'camera_denied_or_unavailable') cameraDenied = true;
+      else if (e.meta?.image) snapshotCount++;
+    }
   }
-  return { tabSwitchCount, copyPasteCount, blurCount, fullscreenExits };
+  return { tabSwitchCount, copyPasteCount, blurCount, fullscreenExits, snapshotCount, cameraDenied };
 }
 
 module.exports = { computeRiskScore, summarizeEvents };

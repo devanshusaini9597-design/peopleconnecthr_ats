@@ -341,10 +341,13 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
                         : '—'}
                     </td>
                     <td className="px-3.5 py-3 text-sm border border-stone-200 align-middle whitespace-nowrap">
-                      {inv.proctoring?.flagged ? (
-                        <span className="badge-warning text-[10px]">Risk {inv.proctoring.riskScore}</span>
-                      ) : inv.proctoring?.riskScore > 0 ? (
-                        <span className="badge-neutral text-[10px]">Risk {inv.proctoring.riskScore}</span>
+                      {inv.proctoring?.flagged || inv.proctoring?.riskScore > 0 || inv.proctoring?.tabSwitchCount ? (
+                        <span className={`${inv.proctoring?.flagged ? 'badge-danger' : 'badge-warning'} text-[10px]`}>
+                          Risk {inv.proctoring.riskScore || 0}
+                          {inv.proctoring?.tabSwitchCount ? ` · ${inv.proctoring.tabSwitchCount} tab` : ''}
+                        </span>
+                      ) : inv.proctoring?.snapshotCount ? (
+                        <span className="badge-neutral text-[10px]">{inv.proctoring.snapshotCount} webcam</span>
                       ) : '—'}
                     </td>
                     <td className="px-3.5 py-3 text-sm border border-stone-200 align-middle whitespace-nowrap">

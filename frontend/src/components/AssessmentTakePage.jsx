@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
-  ClipboardList, Clock, CheckCircle, AlertCircle, Loader2, Shield, ChevronLeft, ChevronRight,
+  ClipboardList, Clock, CheckCircle, AlertCircle, Loader2, Shield, ChevronLeft, ChevronRight, Camera, Check,
 } from 'lucide-react';
 import API_URL from '../config';
 
@@ -51,6 +51,9 @@ const AssessmentTakePage = () => {
   const flushTimer = useRef(null);
   const saveTimer = useRef(null);
   const answersRef = useRef({});
+  const videoRef = useRef(null);
+  const currentRef = useRef(0);
+  const [cameraStatus, setCameraStatus] = useState('off');
 
   const applySession = (data) => {
     setAssessment(data);
@@ -78,7 +81,12 @@ const AssessmentTakePage = () => {
 
   const track = useCallback((type, meta = {}) => {
     if (!assessment?.proctoring?.enabled) return;
-    eventQueue.current.push({ type, at: new Date().toISOString(), meta });
+    eventQueue.current.push({
+      type,
+      at: new Date().toISOString(),
+      questionId: currentRef.current,
+      meta,
+    });
     if (!flushTimer.current) {
       flushTimer.current = setTimeout(() => {
         flushTimer.current = null;
@@ -155,35 +163,50 @@ const AssessmentTakePage = () => {
   }, [remaining, state]);
 
   useEffect(() => {
+    currentRef.current = current;
+  }, [current]);
+
+  useEffect(() => {
     if (state !== 'ready' || !assessment?.proctoring?.enabled) return undefined;
     const p = assessment.proctoring;
     track('start');
+    setCameraStatus('requesting');
 
     let stream;
     (async () => {
       try {
-        if (!navigator.mediaDevices?.getUserMedia) return;
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 320, height: 240 }, audio: false });
-        const video = document.createElement('video');
-        video.srcObject = stream;
-        video.muted = true;
-        await video.play();
+        if (!navigator.mediaDevices?.getUserMedia) {
+          setCameraStatus('unavailable');
+          track('camera_denied', { reason: 'no_media_devices' });
+          return;
+        }
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 }, audio: false });
+        const video = videoRef.current;
+        if (video) {
+          video.srcObject = stream;
+          video.muted = true;
+          await video.play();
+        }
+        setCameraStatus('live');
         await new Promise((r) => setTimeout(r, 400));
         const canvas = document.createElement('canvas');
         canvas.width = 320;
         canvas.height = 240;
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, 320, 240);
-        const image = canvas.toDataURL('image/jpeg', 0.45);
-        track('snapshot', { image, w: 320, h: 240 });
-        const pulse = setInterval(async () => {
-          try {
-            ctx.drawImage(video, 0, 0, 320, 240);
-            track('snapshot', { image: canvas.toDataURL('image/jpeg', 0.4), w: 320, h: 240, periodic: true });
-          } catch { /* ignore */ }
-        }, 90000);
+        const grab = (periodic = false) => {
+          const source = videoRef.current;
+          if (!source) return;
+          ctx.drawImage(source, 0, 0, 320, 240);
+          track('snapshot', { image: canvas.toDataURL('image/jpeg', 0.45), w: 320, h: 240, periodic });
+        };
+        grab(false);
+        const pulse = setInterval(() => {
+          try { grab(true); } catch { /* ignore */ }
+        }, 30000);
         stream._pulse = pulse;
       } catch {
+        setCameraStatus('denied');
+        track('camera_denied', { reason: 'camera_denied_or_unavailable' });
         track('snapshot', { skipped: true, reason: 'camera_denied_or_unavailable' });
       }
     })();
@@ -213,6 +236,8 @@ const AssessmentTakePage = () => {
       if (flushTimer.current) clearTimeout(flushTimer.current);
       try { if (stream?._pulse) clearInterval(stream._pulse); } catch { /* ignore */ }
       try { stream?.getTracks?.()?.forEach((t) => t.stop()); } catch { /* ignore */ }
+      try { if (videoRef.current) videoRef.current.srcObject = null; } catch { /* ignore */ }
+      setCameraStatus('off');
       flushEvents();
     };
   }, [state, assessment, track, flushEvents]);
@@ -377,26 +402,71 @@ const AssessmentTakePage = () => {
   const warnExpiry = remaining != null && remaining <= 60 && remaining > 0;
 
   const answeredCount = questions.filter((item) => String(answers[item._id] || '').trim()).length;
+  const remainingCount = questions.length - answeredCount;
+  const goTo = (index) => {
+    if (index === current) return;
+    if (index < current && !allowBack) return;
+    setCurrent(index);
+  };
 
   return (
     <ExamChrome
       extra={(
-        <div className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-bold tabular-nums ${warnExpiry ? 'bg-red-50 text-red-700' : 'bg-stone-100 text-stone-800'}`}>
-          <Clock className="w-4 h-4" /> {formatTime(remaining)}
+        <div className="flex items-center gap-2">
+          {assessment.proctoring?.enabled ? (
+            <span className={`hidden sm:inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+              cameraStatus === 'live' ? 'bg-emerald-50 text-emerald-800' : cameraStatus === 'denied' ? 'bg-amber-50 text-amber-800' : 'bg-stone-100 text-stone-600'
+            }`}>
+              <Camera size={12} /> {cameraStatus === 'live' ? 'Webcam on' : cameraStatus === 'denied' ? 'Camera blocked' : 'Webcam'}
+            </span>
+          ) : null}
+          <div className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-bold tabular-nums ${warnExpiry ? 'bg-red-50 text-red-700' : 'bg-stone-100 text-stone-800'}`}>
+            <Clock className="w-4 h-4" /> {formatTime(remaining)}
+          </div>
         </div>
       )}
     >
-      <div className="max-w-2xl mx-auto space-y-4">
+      <div className="max-w-3xl mx-auto space-y-4">
         <div className="card-ats-bordered p-5 sm:p-6">
-          <h1 className="text-lg sm:text-xl font-bold text-stone-900 tracking-tight">{assessment.title}</h1>
-          <p className="text-xs text-stone-500 mt-1">
-            {saveState === 'saving' ? 'Saving…' : saveState === 'unsaved' ? 'Unsaved changes' : 'Answers saved'}
-            {' · '}{answeredCount}/{questions.length} answered
-          </p>
-          <div className="mt-3 h-1.5 rounded-full bg-stone-100 overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-brand-500 to-teal-500 transition-all" style={{ width: `${questions.length ? (answeredCount / questions.length) * 100 : 0}%` }} />
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-xl font-bold text-stone-900 tracking-tight">{assessment.title}</h1>
+              <p className="text-xs text-stone-500 mt-1">
+                {saveState === 'saving' ? 'Saving…' : saveState === 'unsaved' ? 'Unsaved changes' : 'Answers saved'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] font-bold">
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-100 px-2 py-0.5">{answeredCount} done</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 text-brand-800 border border-brand-100 px-2 py-0.5">{Math.max(0, remainingCount)} remaining</span>
+            </div>
           </div>
-          {warnExpiry && <p className="mt-2 text-xs font-semibold text-red-700">Time is almost up. Your answers will submit automatically.</p>}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {questions.map((item, index) => {
+              const done = String(answers[item._id] || '').trim().length > 0;
+              const active = index === current;
+              const lockedBack = index < current && !allowBack;
+              return (
+                <button
+                  key={item._id || index}
+                  type="button"
+                  disabled={lockedBack}
+                  onClick={() => goTo(index)}
+                  className={`h-9 w-9 rounded-full text-[12px] font-bold tabular-nums border transition-all disabled:opacity-40 ${
+                    active
+                      ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-600/25'
+                      : done
+                        ? 'bg-emerald-500 text-white border-emerald-500'
+                        : 'bg-white text-stone-500 border-stone-200 hover:border-brand-300'
+                  }`}
+                  title={done ? `Question ${index + 1} answered` : `Question ${index + 1} remaining`}
+                  aria-label={`Question ${index + 1}${done ? ', answered' : ', remaining'}${active ? ', current' : ''}`}
+                >
+                  {done && !active ? <Check size={14} className="mx-auto" strokeWidth={2.75} /> : index + 1}
+                </button>
+              );
+            })}
+          </div>
+          {warnExpiry && <p className="mt-3 text-xs font-semibold text-red-700">Time is almost up. Your answers will submit automatically.</p>}
         </div>
 
         {q && (
@@ -488,6 +558,25 @@ const AssessmentTakePage = () => {
               </button>
             </div>
           </div>
+        )}
+
+        {assessment.proctoring?.enabled ? (
+          <aside className="fixed bottom-4 right-4 z-30 w-36 sm:w-44 rounded-2xl overflow-hidden border border-white/80 shadow-xl bg-stone-900">
+            <video ref={videoRef} playsInline muted autoPlay className={`w-full h-24 sm:h-28 object-cover ${cameraStatus === 'live' ? '' : 'hidden'}`} />
+            {cameraStatus !== 'live' ? (
+              <div className="h-24 sm:h-28 flex flex-col items-center justify-center text-center px-2">
+                <Camera size={16} className="text-white/70 mb-1" />
+                <p className="text-[10px] font-semibold text-white/80">
+                  {cameraStatus === 'denied' ? 'Camera blocked' : 'Starting camera…'}
+                </p>
+              </div>
+            ) : null}
+            <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white bg-black/50">
+              {cameraStatus === 'live' ? 'Live webcam' : 'Integrity monitor'}
+            </p>
+          </aside>
+        ) : (
+          <video ref={videoRef} className="hidden" muted playsInline />
         )}
       </div>
     </ExamChrome>
