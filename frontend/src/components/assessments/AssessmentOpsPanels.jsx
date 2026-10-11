@@ -1,18 +1,20 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Loader2, Search, FileEdit, ClipboardList, Plus, Trash2, Shield, Inbox, SlidersHorizontal,
+  Loader2, Search, FileEdit, ClipboardList, Plus, Trash2, Shield, Inbox, SlidersHorizontal, Clock,
 } from 'lucide-react';
 import { authenticatedFetch, readApiJson } from '../../utils/fetchUtils';
 import { useToast } from '../Toast';
 import EmptyState from '../ui/EmptyState';
 import PremiumSelect from '../ui/PremiumSelect';
+import PresenceAvatar from '../ui/PresenceAvatar';
 import { emptyQuestion, QUESTION_TYPE_OPTIONS, actionBtn } from './assessmentsConstants';
 
-export function EvaluationQueuePanel({ onGrade, canGrade = true }) {
+export function EvaluationQueuePanel({ onGrade, canGrade = true, searchQuery = '', embedded = false }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState('');
+  const [localQuery, setLocalQuery] = useState('');
   const [error, setError] = useState('');
+  const query = embedded ? searchQuery : localQuery;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,7 +50,7 @@ export function EvaluationQueuePanel({ onGrade, canGrade = true }) {
 
   if (loading) {
     return (
-      <div className="card-ats-bordered min-h-[40vh] flex flex-col items-center justify-center gap-3">
+      <div className="min-h-[36vh] flex flex-col items-center justify-center gap-3">
         <Loader2 className="w-8 h-8 text-brand-600 animate-spin" />
         <p className="text-sm font-medium text-stone-500">Loading evaluations…</p>
       </div>
@@ -57,68 +59,69 @@ export function EvaluationQueuePanel({ onGrade, canGrade = true }) {
 
   if (error) {
     return (
-      <div className="card-ats-bordered border-red-200/80 bg-red-50/30">
-        <EmptyState icon={Inbox} tone="amber" message="Couldn’t load the queue" subMessage={error} action={(
-          <button type="button" className="btn-secondary" onClick={load}>Retry</button>
-        )} />
-      </div>
+      <EmptyState icon={Inbox} tone="amber" message="Couldn’t load the queue" subMessage={error} action={(
+        <button type="button" className="btn-secondary" onClick={load}>Retry</button>
+      )} />
     );
   }
 
   if (!rows.length) {
     return (
-      <div className="card-ats-bordered">
-        <EmptyState
-          icon={FileEdit}
-          tone="sky"
-          message="Nothing waiting for review"
-          subMessage="Written and coding answers land here after a candidate submits. Objective questions are scored automatically."
-        />
-      </div>
+      <EmptyState
+        icon={FileEdit}
+        tone="sky"
+        message="Nothing waiting for review"
+        subMessage="Written and coding answers land here after a candidate submits. Objective questions are scored automatically."
+      />
     );
   }
 
   return (
     <div className="space-y-4">
-      <section className="rounded-xl border border-stone-200/90 bg-white shadow-sm relative">
-        <div className="absolute inset-x-0 top-0 h-1 rounded-t-xl bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 pointer-events-none" />
-        <div className="p-4 sm:p-5">
-          <div className="relative max-w-md">
-            <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search candidate or test…" className="input-ats input-ats-icon" />
-          </div>
+      {!embedded ? (
+        <div className="relative max-w-md">
+          <Search className="w-4 h-4 text-brand-600 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input value={localQuery} onChange={(e) => setLocalQuery(e.target.value)} placeholder="Search candidate or test…" className="input-ats input-ats-icon" />
         </div>
-      </section>
+      ) : null}
       {filtered.length === 0 ? (
-        <div className="card-ats-bordered">
-          <EmptyState compact icon={Search} tone="amber" message="No matching submissions" subMessage="Try another name or assessment title." />
-        </div>
+        <EmptyState compact icon={Search} tone="amber" message="No matching submissions" subMessage="Try another name or assessment title." />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 stagger-children">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-stretch stagger-children">
           {filtered.map((row) => (
-            <div key={row._id} className="card-ats p-5 relative hover:border-brand-200/80">
-              <div className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600 opacity-80 pointer-events-none" />
-              <div className="flex items-start gap-3 pt-1">
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-brand-100 to-teal-100 text-brand-700 flex items-center justify-center font-bold text-sm ring-1 ring-brand-200/60 flex-shrink-0">
-                  {(row.candidateId?.name || 'C').charAt(0).toUpperCase()}
+            <article key={row._id} className="relative flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/90 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-200 hover:shadow-md hover:border-brand-200">
+              <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+              <div className="flex min-w-0 flex-1 flex-col px-4 pt-4 pb-3">
+                <div className="flex items-start gap-3">
+                  <PresenceAvatar name={row.candidateId?.name} email={row.candidateId?.email} size={40} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <h4 className="font-semibold text-stone-900 tracking-tight truncate">{row.candidateId?.name || 'Candidate'}</h4>
+                      <span className="badge-warning flex-shrink-0">Review</span>
+                    </div>
+                    <p className="text-xs text-stone-500 truncate">{row.candidateId?.email || '—'}</p>
+                  </div>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <h4 className="font-bold text-stone-900 tracking-tight truncate">{row.candidateId?.name || 'Candidate'}</h4>
-                  <p className="text-xs text-stone-500 truncate">{row.candidateId?.email || '—'}</p>
+                <div className="mt-3 rounded-xl bg-stone-50/90 border border-stone-100 p-3.5 text-sm text-stone-600 space-y-1.5">
+                  <p className="inline-flex items-center gap-1.5 font-semibold text-stone-800">
+                    <ClipboardList className="w-3.5 h-3.5 text-brand-600" />
+                    {row.assessmentId?.title || 'Assessment'}
+                  </p>
+                  <p className="inline-flex items-center gap-1.5 text-xs">
+                    <Clock className="w-3.5 h-3.5 text-stone-400" />
+                    Submitted {row.submittedAt ? new Date(row.submittedAt).toLocaleString() : '—'}
+                  </p>
+                  <p className="text-xs text-stone-500">Pending human review — not marked as fail.</p>
                 </div>
-                <span className="badge-warning flex-shrink-0">Review</span>
-              </div>
-              <div className="mt-4 rounded-xl bg-stone-50/80 border border-stone-100 p-3.5 text-sm text-stone-600 space-y-1.5">
-                <p className="font-semibold text-stone-800">{row.assessmentId?.title || 'Assessment'}</p>
-                <p className="text-xs">Submitted {row.submittedAt ? new Date(row.submittedAt).toLocaleString() : '—'}</p>
-                <p className="text-xs text-stone-500">Pending human review — not marked as fail.</p>
               </div>
               {canGrade ? (
-                <button type="button" className="btn-primary mt-4 w-full" onClick={() => onGrade?.(row)}>
-                  <FileEdit className="w-4 h-4" /> Grade submission
-                </button>
+                <div className="border-t border-stone-100 bg-stone-50/70 px-4 py-3">
+                  <button type="button" className="btn-primary w-full" onClick={() => onGrade?.(row)}>
+                    <FileEdit className="w-4 h-4" /> Grade submission
+                  </button>
+                </div>
               ) : null}
-            </div>
+            </article>
           ))}
         </div>
       )}

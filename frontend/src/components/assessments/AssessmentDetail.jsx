@@ -6,6 +6,9 @@ import { authenticatedFetch } from '../../utils/fetchUtils';
 import { useToast } from '../Toast';
 import EmptyState from '../ui/EmptyState';
 import PremiumSelect from '../ui/PremiumSelect';
+import PresenceAvatar from '../ui/PresenceAvatar';
+import useTableDragScroll from '../../hooks/useTableDragScroll';
+import { guardTableCopy } from '../../utils/tableCopyGuard';
 import { STATUS_BADGE, actionBtn } from './assessmentsConstants';
 import { InviteModal } from './InviteModal';
 import { GradeModal } from './GradeModal';
@@ -31,6 +34,12 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
   const [publishing, setPublishing] = useState(false);
   const [ranking, setRanking] = useState([]);
   const [audit, setAudit] = useState([]);
+  const {
+    tableScrollRef,
+    onTableDragScrollStart,
+    onTableDragScrollMove,
+    onTableDragScrollEnd,
+  } = useTableDragScroll();
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -271,7 +280,7 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
         </div>
       </section>
 
-      <div className="table-shell-ats">
+      <div className="rounded-2xl border border-stone-200/90 bg-white shadow-[var(--shadow-card)] overflow-hidden">
         {loading ? (
           <div className="p-12 flex flex-col items-center gap-2">
             <Loader2 className="w-7 h-7 text-brand-600 animate-spin" />
@@ -292,88 +301,98 @@ export const AssessmentDetail = ({ assessment, onBack, onEdit, onUpdated, access
             )}
           />
         ) : (
-          <div className="divide-y divide-stone-100">
-            {visible.map((inv) => (
-              <div key={inv._id} className="p-4 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-brand-50/20 transition-colors">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-100 to-teal-100 text-brand-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                    {(inv.candidateId?.name || 'N')[0].toUpperCase()}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="font-semibold text-stone-900 truncate">{inv.candidateId?.name}</div>
-                    <div className="text-sm text-stone-500 truncate">{inv.candidateId?.email}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                  {inv.totalScore !== undefined && inv.totalScore !== null && (
-                    <span className="text-sm font-semibold text-stone-700 tabular-nums">
-                      {inv.totalScore}/{inv.maxScore || assessment.maxScore}
-                    </span>
-                  )}
-                  {inv.proctoring?.flagged && (
-                    <span className="badge-warning text-[10px]">Risk {inv.proctoring.riskScore}</span>
-                  )}
-                  {inv.proctoring?.riskScore > 0 && !inv.proctoring?.flagged && (
-                    <span className="badge-neutral text-[10px]">Risk {inv.proctoring.riskScore}</span>
-                  )}
-                  <span className={STATUS_BADGE[inv.status] || 'badge-neutral'}>
-                    {String(inv.status || '').replace('_', ' ')}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => copyLink(inv)}
-                    className={`${actionBtn} text-stone-500 hover:text-brand-600 hover:border-brand-300`}
-                    title="Copy assessment link"
-                    aria-label="Copy assessment link"
-                  >
-                    <Link2 size={14} />
-                  </button>
-                  {canInvite && inv.status !== 'submitted' && inv.status !== 'graded' && (
-                    <button
-                      type="button"
-                      onClick={() => resend(inv)}
-                      disabled={resendingId === inv._id}
-                      className={`${actionBtn} text-stone-500 hover:text-brand-600 hover:border-brand-300`}
-                      title="Send a fresh 72-hour link"
-                      aria-label="Resend assessment link"
+          <div
+            ref={tableScrollRef}
+            className="cand-table-scroll overflow-x-auto select-none"
+            onCopy={guardTableCopy}
+            onMouseDown={onTableDragScrollStart}
+            onMouseMove={onTableDragScrollMove}
+            onMouseUp={onTableDragScrollEnd}
+            onMouseLeave={onTableDragScrollEnd}
+          >
+            <table className="cand-table-drag w-full text-left border-collapse min-w-[880px] select-none border border-stone-200">
+              <thead>
+                <tr className="bg-stone-100">
+                  {['Candidate', 'Score', 'Risk', 'Status', 'Actions'].map((label) => (
+                    <th
+                      key={label}
+                      className={`px-3.5 py-3.5 text-[10px] font-bold text-stone-600 uppercase tracking-wider whitespace-nowrap border border-stone-200 bg-stone-100 ${label === 'Actions' ? 'text-right' : ''}`}
                     >
-                      <RefreshCw size={14} className={resendingId === inv._id ? 'animate-spin' : ''} />
-                    </button>
-                  )}
-                  {canInvite && ['pending', 'expired'].includes(inv.status) && (
-                    <button type="button" onClick={() => revoke(inv)} className="text-xs font-semibold text-red-600">Revoke</button>
-                  )}
-                  {canGrade && (inv.status === 'submitted' || inv.status === 'graded') && (
-                    <button
-                      type="button"
-                      onClick={() => openGrade(inv)}
-                      className={`${actionBtn} text-stone-500 hover:text-brand-600 hover:border-brand-300`}
-                      title="Review & grade"
-                      aria-label="Review and grade"
-                    >
-                      <FileEdit size={14} />
-                    </button>
-                  )}
-                  {canDecide && (inv.status === 'submitted' || inv.status === 'graded') && inv.scoringStatus !== 'pending_review' && (
-                    <div className="w-36">
-                      <PremiumSelect
-                        compact
-                        variant="list"
-                        value={inv.decision || 'none'}
-                        onChange={(v) => { if (v && v !== 'none') decide(inv, v); }}
-                        options={[
-                          { value: 'none', label: 'Decision' },
-                          { value: 'shortlist', label: 'Shortlist' },
-                          { value: 'advance', label: 'Advance' },
-                          { value: 'reject', label: 'Reject' },
-                        ]}
-                        placeholder="Decision"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((inv, rowIndex) => (
+                  <tr key={inv._id} className={`transition-colors ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-stone-50/40'} hover:bg-brand-50/50`}>
+                    <td className="px-3.5 py-3 text-sm border border-stone-200 align-middle min-w-[200px]">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <PresenceAvatar name={inv.candidateId?.name} email={inv.candidateId?.email} size={32} />
+                        <div className="min-w-0">
+                          <p className="font-semibold text-stone-900 truncate">{inv.candidateId?.name}</p>
+                          <p className="text-xs text-stone-500 truncate">{inv.candidateId?.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3.5 py-3 text-sm border border-stone-200 align-middle tabular-nums font-semibold text-stone-800 whitespace-nowrap">
+                      {inv.totalScore !== undefined && inv.totalScore !== null
+                        ? `${inv.totalScore}/${inv.maxScore || assessment.maxScore}`
+                        : '—'}
+                    </td>
+                    <td className="px-3.5 py-3 text-sm border border-stone-200 align-middle whitespace-nowrap">
+                      {inv.proctoring?.flagged ? (
+                        <span className="badge-warning text-[10px]">Risk {inv.proctoring.riskScore}</span>
+                      ) : inv.proctoring?.riskScore > 0 ? (
+                        <span className="badge-neutral text-[10px]">Risk {inv.proctoring.riskScore}</span>
+                      ) : '—'}
+                    </td>
+                    <td className="px-3.5 py-3 text-sm border border-stone-200 align-middle whitespace-nowrap">
+                      <span className={STATUS_BADGE[inv.status] || 'badge-neutral'}>
+                        {String(inv.status || '').replace('_', ' ')}
+                      </span>
+                    </td>
+                    <td className="px-3.5 py-3 text-sm border border-stone-200 align-middle whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1">
+                        <button type="button" onClick={() => copyLink(inv)} className={actionBtn} title="Copy assessment link" aria-label="Copy assessment link">
+                          <Link2 size={14} />
+                        </button>
+                        {canInvite && inv.status !== 'submitted' && inv.status !== 'graded' && (
+                          <button type="button" onClick={() => resend(inv)} disabled={resendingId === inv._id} className={actionBtn} title="Send a fresh 72-hour link">
+                            <RefreshCw size={14} className={resendingId === inv._id ? 'animate-spin' : ''} />
+                          </button>
+                        )}
+                        {canInvite && ['pending', 'expired'].includes(inv.status) && (
+                          <button type="button" onClick={() => revoke(inv)} className="text-xs font-semibold text-red-600 px-2">Revoke</button>
+                        )}
+                        {canGrade && (inv.status === 'submitted' || inv.status === 'graded') && (
+                          <button type="button" onClick={() => openGrade(inv)} className={actionBtn} title="Review & grade">
+                            <FileEdit size={14} />
+                          </button>
+                        )}
+                        {canDecide && (inv.status === 'submitted' || inv.status === 'graded') && inv.scoringStatus !== 'pending_review' && (
+                          <div className="w-32">
+                            <PremiumSelect
+                              compact
+                              variant="list"
+                              value={inv.decision || 'none'}
+                              onChange={(v) => { if (v && v !== 'none') decide(inv, v); }}
+                              options={[
+                                { value: 'none', label: 'Decision' },
+                                { value: 'shortlist', label: 'Shortlist' },
+                                { value: 'advance', label: 'Advance' },
+                                { value: 'reject', label: 'Reject' },
+                              ]}
+                              placeholder="Decision"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
