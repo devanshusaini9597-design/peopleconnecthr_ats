@@ -5,6 +5,7 @@ import { useToast } from '../Toast';
 import Modal from '../ui/Modal';
 import EmptyState from '../ui/EmptyState';
 import PremiumSelect from '../ui/PremiumSelect';
+import ConfirmationModal from '../ConfirmationModal';
 
 export const InviteModal = ({ assessment, open, onClose, onSent }) => {
   const toast = useToast();
@@ -15,11 +16,13 @@ export const InviteModal = ({ assessment, open, onClose, onSent }) => {
   const [jobId, setJobId] = useState(assessment?.jobId?._id || assessment?.jobId || '');
   const [applicants, setApplicants] = useState([]);
   const [bulkSending, setBulkSending] = useState(false);
+  const [pending, setPending] = useState(null);
 
   useEffect(() => {
     if (!open) {
       setQuery('');
       setResults([]);
+      setPending(null);
       return;
     }
     setJobId(assessment?.jobId?._id || assessment?.jobId || '');
@@ -76,6 +79,7 @@ export const InviteModal = ({ assessment, open, onClose, onSent }) => {
       toast?.error?.('Unable to send the invitation');
     } finally {
       setSending(false);
+      setPending(null);
     }
   };
 
@@ -89,20 +93,28 @@ export const InviteModal = ({ assessment, open, onClose, onSent }) => {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        toast?.error?.(data.message || 'Bulk invite failed');
+        toast?.error?.(data.message || 'Unable to send invitations');
         return;
       }
       toast?.success?.(`${data.data.invited} invitations sent (${data.data.skipped} skipped).`);
       onSent();
       onClose();
     } catch {
-      toast?.error?.('Bulk invite failed');
+      toast?.error?.('Unable to send invitations');
     } finally {
       setBulkSending(false);
+      setPending(null);
     }
   };
 
+  const confirmPending = () => {
+    if (!pending) return;
+    if (pending.kind === 'bulk') return bulkInvite();
+    return handleInvite(pending.candidate, pending.applicationId);
+  };
+
   return (
+    <>
     <Modal
       open={open}
       onClose={onClose}
@@ -141,7 +153,12 @@ export const InviteModal = ({ assessment, open, onClose, onSent }) => {
             <p className="text-xs font-semibold text-stone-500">
               {assessment.pipelineStage ? `Applicants in “${assessment.pipelineStage}”` : 'Active applicants'}
             </p>
-            <button type="button" className="btn-primary !text-xs !py-1.5" disabled={bulkSending || !applicants.length} onClick={bulkInvite}>
+            <button
+              type="button"
+              className="btn-primary !text-xs !py-1.5"
+              disabled={bulkSending || !applicants.length}
+              onClick={() => setPending({ kind: 'bulk' })}
+            >
               {bulkSending ? 'Sending…' : `Invite all (${applicants.length})`}
             </button>
           </div>
@@ -150,7 +167,7 @@ export const InviteModal = ({ assessment, open, onClose, onSent }) => {
               <button
                 key={app._id}
                 type="button"
-                onClick={() => handleInvite(app.candidateId, app._id)}
+                onClick={() => setPending({ kind: 'one', candidate: app.candidateId, applicationId: app._id })}
                 disabled={sending || !app.candidateId}
                 className="list-row-ats w-full text-left justify-between disabled:opacity-50"
               >
@@ -188,7 +205,7 @@ export const InviteModal = ({ assessment, open, onClose, onSent }) => {
           <button
             key={c._id}
             type="button"
-            onClick={() => handleInvite(c)}
+            onClick={() => setPending({ kind: 'one', candidate: c })}
             disabled={sending}
             className="list-row-ats w-full text-left justify-between disabled:opacity-50"
           >
@@ -206,5 +223,19 @@ export const InviteModal = ({ assessment, open, onClose, onSent }) => {
         ))}
       </div>
     </Modal>
+    <ConfirmationModal
+      isOpen={!!pending}
+      onClose={() => { if (!sending && !bulkSending) setPending(null); }}
+      onConfirm={confirmPending}
+      zClass="z-[240]"
+      type="share"
+      isLoading={sending || bulkSending}
+      title={pending?.kind === 'bulk' ? 'Send invitations to this stage?' : `Invite ${pending?.candidate?.name || 'this candidate'}?`}
+      message={pending?.kind === 'bulk'
+        ? `Send “${assessment.title}” to ${applicants.length} applicant${applicants.length === 1 ? '' : 's'}. Each person receives a time-limited link.`
+        : `Send “${assessment.title}” to ${pending?.candidate?.email || 'this candidate'}. They will receive a time-limited assessment link.`}
+      confirmText={pending?.kind === 'bulk' ? `Send ${applicants.length} invitations` : 'Send invitation'}
+    />
+    </>
   );
 };

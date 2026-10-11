@@ -53,6 +53,7 @@ const ConfirmationModal = ({
   type = 'warning',
   isLoading = false,
   showCancel = true,
+  showConfirm = true,
   zClass = 'z-[200]',
   children = null,
 }) => {
@@ -83,7 +84,6 @@ const ConfirmationModal = ({
   return createPortal(
     <div
       className={`fixed inset-0 ${zClass} flex items-center justify-center p-4 sm:p-6 animate-fade-in`}
-      onClick={!isLoading ? onClose : undefined}
       role="presentation"
     >
       <div className="absolute inset-0 bg-stone-900/55 backdrop-blur-sm" aria-hidden />
@@ -175,6 +175,7 @@ const ConfirmationModal = ({
               {cancelText}
             </button>
           )}
+          {showConfirm ? (
           <button
             type="button"
             onClick={onConfirm}
@@ -184,6 +185,7 @@ const ConfirmationModal = ({
             {isLoading ? <Loader2 size={16} className="animate-spin" /> : null}
             {confirmText}
           </button>
+          ) : null}
         </div>
       </div>
       </FocusLock>

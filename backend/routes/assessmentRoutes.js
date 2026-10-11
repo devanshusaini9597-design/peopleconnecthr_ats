@@ -46,7 +46,11 @@ router.get('/take/:token', takeLimiter, async (req, res) => {
 
 router.post('/take/:token/start', takeLimiter, async (req, res) => {
   try {
-    const data = await svc.startAttempt(req.params.token);
+    const data = await svc.startAttempt(req.params.token, {
+      ...(req.body || {}),
+      ip: req.ip || req.headers['x-forwarded-for'] || '',
+      userAgent: req.get('user-agent') || '',
+    });
     res.json({ success: true, data });
   } catch (error) {
     handle(res, error);
@@ -324,6 +328,15 @@ router.post('/invites/:id/resend', requirePermission('assessments.invite'), asyn
 router.post('/invites/:id/revoke', requirePermission('assessments.invite'), async (req, res) => {
   try {
     const data = await svc.revokeInvite(req.user.organizationId, req.user.id || req.user._id, req.params.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
+router.delete('/invites/:id', requirePermission('assessments.invite'), async (req, res) => {
+  try {
+    const data = await svc.removeInvite(req.user.organizationId, req.user.id || req.user._id, req.params.id);
     res.json({ success: true, data });
   } catch (error) {
     handle(res, error);

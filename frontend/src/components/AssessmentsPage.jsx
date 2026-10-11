@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ClipboardList, Plus, Lock, Loader2, Search, AlertCircle, RefreshCw,
@@ -61,6 +61,10 @@ const AssessmentsPage = () => {
   const [active, setActive] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [duplicateTarget, setDuplicateTarget] = useState(null);
+  const [duplicating, setDuplicating] = useState(false);
+  const kpiRef = useRef(null);
+  const kpiDrag = useRef({ active: false, startX: 0, scrollLeft: 0, moved: false });
   const [gradingInvite, setGradingInvite] = useState(null);
   const [viewMode, setViewMode] = useState('cards');
   const {
@@ -152,6 +156,7 @@ const AssessmentsPage = () => {
   };
 
   const duplicate = async (assessment) => {
+    setDuplicating(true);
     try {
       const res = await authenticatedFetch(`/api/assessments/${assessment._id}/duplicate`, { method: 'POST' });
       const data = await readApiJson(res);
@@ -160,10 +165,13 @@ const AssessmentsPage = () => {
         return;
       }
       toast?.success?.('A draft copy was created. You can edit it independently of the original assessment.');
+      setDuplicateTarget(null);
       setActive(data.data);
       load();
     } catch (err) {
       toast?.error?.(err?.message || 'Could not duplicate');
+    } finally {
+      setDuplicating(false);
     }
   };
 
@@ -266,7 +274,7 @@ const AssessmentsPage = () => {
           onUpdated={(next) => { setActive(next); load(); }}
           access={{ edit: canEdit, invite: canInvite, grade: canGrade, archive: canEdit, publish: canPublish, decide: canDecide, create: canCreate, remove: canDelete }}
           onDelete={canDelete ? setDeleteTarget : null}
-          onDuplicate={canCreate ? duplicate : null}
+          onDuplicate={canCreate ? setDuplicateTarget : null}
         />
       ) : (
         <>
@@ -296,25 +304,54 @@ const AssessmentsPage = () => {
             </span>
           </div>
 
-          <div className="grid gap-4 sm:gap-5 min-w-0 w-full grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
-            {[
-              { label: 'Invitations', value: totals.assigned, icon: Send, caption: 'Sent to candidates', gradient: 'from-indigo-500 to-sky-400', tab: 'library' },
-              { label: 'In progress', value: totals.open, icon: Clock, caption: 'Not yet submitted', gradient: 'from-teal-500 to-emerald-400', tab: 'library' },
-              { label: 'Pending review', value: totals.review, icon: FileEdit, caption: 'Awaiting evaluation', gradient: 'from-amber-500 to-orange-400', tab: 'queue' },
-              { label: 'Integrity flags', value: totals.flagged, icon: Flag, caption: 'Proctoring alerts', gradient: 'from-rose-500 to-pink-400', tab: 'library' },
-              { label: 'Graded', value: totals.graded, icon: CheckCircle2, caption: 'Scoring complete', gradient: 'from-emerald-500 to-teal-400', tab: 'library' },
-            ].map((card) => (
-              <StatCard
-                key={card.label}
-                icon={card.icon}
-                label={card.label}
-                value={card.value}
-                caption={card.caption}
-                gradient={card.gradient}
-                aligned
-                onClick={() => setTab(card.tab)}
-              />
-            ))}
+          <div
+            ref={kpiRef}
+            className="overflow-x-auto overscroll-x-contain [touch-action:pan-x_pan-y] cursor-grab active:cursor-grabbing pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            onPointerDown={(e) => {
+              const el = kpiRef.current;
+              if (!el || el.scrollWidth <= el.clientWidth + 2) return;
+              kpiDrag.current = { active: true, startX: e.clientX, scrollLeft: el.scrollLeft, moved: false };
+            }}
+            onPointerMove={(e) => {
+              if (!kpiDrag.current.active || !kpiRef.current) return;
+              const dx = e.clientX - kpiDrag.current.startX;
+              if (Math.abs(dx) > 6) kpiDrag.current.moved = true;
+              if (kpiDrag.current.moved) {
+                e.preventDefault();
+                kpiRef.current.scrollLeft = kpiDrag.current.scrollLeft - dx;
+              }
+            }}
+            onPointerUp={() => { kpiDrag.current.active = false; }}
+            onPointerCancel={() => { kpiDrag.current.active = false; }}
+            onClickCapture={(e) => {
+              if (kpiDrag.current.moved) {
+                e.preventDefault();
+                e.stopPropagation();
+                kpiDrag.current.moved = false;
+              }
+            }}
+          >
+            <div className="flex gap-4 w-max min-w-full">
+              {[
+                { label: 'Invitations', value: totals.assigned, icon: Send, caption: 'Sent to candidates', gradient: 'from-indigo-500 to-sky-400', tab: 'library' },
+                { label: 'In progress', value: totals.open, icon: Clock, caption: 'Not yet submitted', gradient: 'from-teal-500 to-emerald-400', tab: 'library' },
+                { label: 'Pending review', value: totals.review, icon: FileEdit, caption: 'Awaiting evaluation', gradient: 'from-amber-500 to-orange-400', tab: 'queue' },
+                { label: 'Integrity flags', value: totals.flagged, icon: Flag, caption: 'Proctoring alerts', gradient: 'from-rose-500 to-pink-400', tab: 'library' },
+                { label: 'Graded', value: totals.graded, icon: CheckCircle2, caption: 'Scoring complete', gradient: 'from-emerald-500 to-teal-400', tab: 'library' },
+              ].map((card) => (
+                <div key={card.label} className="w-[220px] sm:w-[240px] shrink-0">
+                  <StatCard
+                    icon={card.icon}
+                    label={card.label}
+                    value={card.value}
+                    caption={card.caption}
+                    gradient={card.gradient}
+                    aligned
+                    onClick={() => setTab(card.tab)}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
 
           <div
@@ -489,7 +526,7 @@ const AssessmentsPage = () => {
                     onTableDragScrollEnd={onTableDragScrollEnd}
                     onOpen={setActive}
                     onEdit={canEdit ? openEdit : null}
-                    onDuplicate={canCreate ? duplicate : null}
+                    onDuplicate={canCreate ? setDuplicateTarget : null}
                     onInvite={canInvite ? setActive : null}
                     onDelete={canDelete ? setDeleteTarget : null}
                   />
@@ -501,7 +538,7 @@ const AssessmentsPage = () => {
                         assessment={a}
                         onOpen={setActive}
                         onEdit={canEdit ? openEdit : null}
-                        onDuplicate={canCreate ? duplicate : null}
+                        onDuplicate={canCreate ? setDuplicateTarget : null}
                         onInvite={canInvite ? setActive : null}
                         onDelete={canDelete ? setDeleteTarget : null}
                       />
@@ -547,6 +584,16 @@ const AssessmentsPage = () => {
         confirmText="Delete"
         type="delete"
         isLoading={deleting}
+      />
+      <ConfirmationModal
+        isOpen={!!duplicateTarget}
+        onClose={() => { if (!duplicating) setDuplicateTarget(null); }}
+        onConfirm={() => duplicate(duplicateTarget)}
+        title="Duplicate this assessment?"
+        message={`Create a draft copy of “${duplicateTarget?.title}”? You can edit the copy independently of the original.`}
+        confirmText="Duplicate"
+        type="edit"
+        isLoading={duplicating}
       />
 
       {!active && (

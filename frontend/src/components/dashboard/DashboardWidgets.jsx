@@ -20,9 +20,9 @@ export const StatCard = ({
   <Tag
     type={onClick ? 'button' : undefined}
     onClick={onClick}
-    className={`relative card-ats-bordered px-5 py-5 sm:px-6 sm:py-6 min-w-0 flex flex-col justify-between overflow-hidden text-left w-full group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
+    className={`relative card-ats-bordered px-4 py-4 sm:px-6 sm:py-6 min-w-0 flex flex-col justify-between overflow-hidden text-left w-full group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
       aligned
-        ? 'min-h-[168px] h-full transition-shadow duration-300 ease-out hover:shadow-lg hover:shadow-stone-200/60 hover:border-transparent'
+        ? 'min-h-[148px] sm:min-h-[168px] h-full transition-shadow duration-300 ease-out hover:shadow-lg hover:shadow-stone-200/60 hover:border-transparent'
         : 'min-h-[120px] transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-lg hover:shadow-stone-200/60 hover:border-transparent active:scale-[0.995]'
     }`}
   >
@@ -34,7 +34,7 @@ export const StatCard = ({
     <div className="relative flex items-start justify-between gap-3 min-w-0 flex-1">
       <div className="flex-1 min-w-0 pr-1 flex flex-col">
         {/* Fixed 2-line label slot so value + caption align across every card */}
-        <p className="text-stone-500 text-sm font-medium leading-5 min-h-10 break-words whitespace-normal">
+        <p className={`text-stone-500 text-sm font-medium leading-5 ${aligned ? 'whitespace-nowrap overflow-hidden text-ellipsis min-h-5' : 'min-h-10 break-words whitespace-normal'}`}>
           {label}
         </p>
         <p className={`text-2xl sm:text-3xl font-bold text-stone-900 mt-1.5 tabular-nums tracking-tight ${aligned ? 'leading-none min-h-[2.25rem] flex items-center whitespace-nowrap' : ''}`}>
@@ -43,7 +43,7 @@ export const StatCard = ({
 
         <div className={`mt-2 ${aligned ? 'min-h-[2.75rem]' : 'min-h-[2rem]'}`}>
           {caption ? (
-            <p className="text-xs text-stone-400 font-medium leading-snug break-words whitespace-normal">
+            <p className={`text-xs text-stone-400 font-medium leading-snug ${aligned ? 'whitespace-nowrap overflow-hidden text-ellipsis' : 'break-words whitespace-normal'}`}>
               {caption}
             </p>
           ) : null}

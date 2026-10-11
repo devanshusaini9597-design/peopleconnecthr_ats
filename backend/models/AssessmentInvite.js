@@ -51,6 +51,13 @@ const assessmentInviteSchema = new mongoose.Schema({
   revokedAt: { type: Date },
   snapshot: { type: mongoose.Schema.Types.Mixed, default: null },
   publishedVersion: { type: Number, default: 1 },
+  consent: {
+    termsAcceptedAt: { type: Date },
+    identityConfirmedAt: { type: Date },
+    cameraAcknowledgedAt: { type: Date },
+    ip: { type: String, default: '' },
+    userAgent: { type: String, default: '' },
+  },
   proctoring: {
     events: [{
       type: { type: String },

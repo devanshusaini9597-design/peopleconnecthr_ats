@@ -50,4 +50,5 @@ module.exports = {
   ASSESSMENT_GRADED: 'assessment.graded',
   ASSESSMENT_DECISION: 'assessment.decision',
   ASSESSMENT_REVOKED: 'assessment.revoked',
+  ASSESSMENT_INVITE_REMOVED: 'assessment.invite_removed',
 };

@@ -16,6 +16,7 @@ const { computeRiskScore, summarizeEvents } = require('../utils/proctoring');
 const eventBus = require('../events/eventBus');
 const eventTypes = require('../events/eventTypes');
 const engine = require('../utils/assessmentEngine');
+const { saveWebcamCapture, readCaptureAsDataUrl } = require('./assessmentCaptureStore');
 
 function httpError(message, statusCode = 400, extra = {}) {
   const err = new Error(message);
@@ -83,6 +84,10 @@ function candidatePayload(invite, extra = {}) {
     startedAt: invite.startedAt,
     remainingSeconds: engine.remainingSeconds(invite.deadlineAt),
     lastSavedAt: invite.lastSavedAt,
+    candidate: {
+      name: invite.candidateId?.name || '',
+      email: invite.candidateId?.email || '',
+    },
     proctoring: {
       enabled: !!snapshot.proctoring?.enabled,
       strictness: snapshot.proctoring?.strictness || 'standard',
@@ -110,7 +115,9 @@ function publicClosedResult(invite) {
 }
 
 async function loadInviteByToken(token) {
-  const invite = await AssessmentInvite.findOne({ token }).populate('assessmentId');
+  const invite = await AssessmentInvite.findOne({ token })
+    .populate('assessmentId')
+    .populate('candidateId', 'name email');
   if (!invite) throw httpError('Invalid assessment link', 404);
   if (invite.status === 'revoked') throw httpError('This assessment invitation has been revoked.', 410);
   if (invite.expiresAt < new Date() && (invite.status === 'pending' || invite.status === 'in_progress')) {
@@ -154,6 +161,10 @@ async function takeAssessment(token) {
       candidateInstructions: snapshot.candidateInstructions || '',
       durationMinutes: rules.durationMinutes,
       questionCount: (snapshot.questions || []).length,
+      candidate: {
+        name: invite.candidateId?.name || '',
+        email: invite.candidateId?.email || '',
+      },
       rules: {
         allowBack: rules.allowBack,
         requireAll: rules.requireAll,
@@ -168,6 +179,9 @@ async function takeAssessment(token) {
       proctoring: {
         enabled: !!snapshot.proctoring?.enabled,
         strictness: snapshot.proctoring?.strictness || 'standard',
+        trackTabSwitch: snapshot.proctoring?.trackTabSwitch !== false,
+        trackCopyPaste: snapshot.proctoring?.trackCopyPaste !== false,
+        trackFullscreen: snapshot.proctoring?.trackFullscreen !== false,
       },
     });
   }
@@ -185,7 +199,40 @@ async function takeAssessment(token) {
 }
 
 function extraPrivacy() {
-  return 'This session may record integrity events such as leaving the tab, copy/paste, or exiting fullscreen when proctoring is enabled. Results are stored with your application and visible to authorized hiring staff of this company only.';
+  return 'This session is conducted under assessment integrity rules. Leaving the browser tab, copying or pasting content, exiting full screen, and similar activity may be recorded. Webcam images, where enabled, are stored with your application and are visible only to authorised hiring staff of this organisation.';
+}
+
+function assessmentInviteEmailHtml({ brand, candidateName, title, description, durationMinutes, hours, takeUrl, refreshed }) {
+  const safeTitle = escapeHtml(title);
+  const safeCandidateName = escapeHtml(candidateName || 'Candidate');
+  const intro = refreshed
+    ? 'A new secure link has been issued for your assessment. Please complete the session before the link expires.'
+    : 'As part of your application, you are invited to complete a timed, remotely proctored assessment.';
+  return wrapBrandedEmailHtml({
+    title: `Assessment invitation — ${title}`,
+    category: 'assessment',
+    orgName: brand.name,
+    logoUrl: brand.logoUrl,
+    brandColor: brand.brandColor,
+    wordmark: brand.wordmark,
+    companyAddress: brand.companyAddress || '',
+    websiteUrl: brand.websiteUrl || '',
+    supportEmail: brand.supportEmail || '',
+    socialLinks: brand.socialLinks || {},
+    bodyHtml: `
+      <p style="margin:0 0 16px 0;font-size:15px;color:#0f172a;font-weight:600;">Dear ${safeCandidateName},</p>
+      <p style="margin:0 0 12px 0;color:#334155;line-height:1.7;">${intro}</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border:1px solid #eef0f3;border-left:3px solid ${brand.brandColor};margin:4px 0 20px 0;">
+        <tr><td style="padding:16px 18px;">
+          <p style="margin:0 0 4px 0;font-size:15px;font-weight:700;color:#0f172a;">${safeTitle}</p>
+          ${description ? `<p style="margin:0 0 10px 0;font-size:13px;color:#64748b;line-height:1.55;">${escapeHtml(description)}</p>` : ''}
+          <p style="margin:0;font-size:12px;color:#94a3b8;">Duration ${durationMinutes} minutes &nbsp;&middot;&nbsp; Link valid for ${hours} hours</p>
+        </td></tr>
+      </table>
+      <p style="margin:0 0 16px 0;color:#334155;line-height:1.7;font-size:14px;">Use a quiet environment, a reliable internet connection, and a device with a working camera if monitoring is required. The link is unique to you. Do not share it.</p>
+      ${brandButtonHtml({ href: takeUrl, label: 'Open assessment', brandColor: brand.brandColor })}
+      <p style="margin:20px 0 0 0;color:#64748b;font-size:13px;line-height:1.6;">If you did not expect this invitation, you may disregard this message. For access issues, reply to this email or contact the hiring organisation.</p>`,
+  });
 }
 
 async function takeBrand(organizationId) {
@@ -206,7 +253,47 @@ async function withTakeBrand(organizationId, payload) {
   return { ...payload, brand: await takeBrand(organizationId) };
 }
 
-async function startAttempt(token) {
+async function sendAssessmentCandidateMail(invite, { subject, heading, paragraphs = [], buttonLabel, buttonHref }) {
+  try {
+    let candidate = invite.candidateId;
+    if (!candidate?.email) {
+      candidate = await Candidate.findById(invite.candidateId).select('name email').lean();
+    }
+    if (!candidate?.email) return false;
+    const brand = await loadOrgEmailBrand(invite.organizationId);
+    const bodyHtml = `
+      <p style="margin:0 0 16px 0;font-size:15px;color:#0f172a;font-weight:600;">Dear ${escapeHtml(candidate.name || 'Candidate')},</p>
+      ${(paragraphs || []).map((p) => `<p style="margin:0 0 12px 0;color:#334155;line-height:1.7;">${p}</p>`).join('')}
+      ${buttonHref ? brandButtonHtml({ href: buttonHref, label: buttonLabel || 'Open', brandColor: brand.brandColor }) : ''}
+      <p style="margin:20px 0 0 0;color:#64748b;font-size:13px;line-height:1.6;">This message was sent by ${escapeHtml(brand.name)} in connection with your application.</p>`;
+    const html = wrapBrandedEmailHtml({
+      title: heading,
+      category: 'assessment',
+      orgName: brand.name,
+      logoUrl: brand.logoUrl,
+      brandColor: brand.brandColor,
+      wordmark: brand.wordmark,
+      companyAddress: brand.companyAddress || '',
+      websiteUrl: brand.websiteUrl || '',
+      supportEmail: brand.supportEmail || '',
+      socialLinks: brand.socialLinks || {},
+      bodyHtml,
+    });
+    await sendEmailQueued(
+      candidate.email,
+      subject,
+      html,
+      paragraphs.join('\n'),
+      { organizationId: invite.organizationId, senderName: brand.name, directReply: true }
+    );
+    return true;
+  } catch (err) {
+    console.error('[assessments] candidate mail failed:', err.message);
+    return false;
+  }
+}
+
+async function startAttempt(token, body = {}) {
   const invite = await loadInviteByToken(token);
   if (invite.status === 'expired') throw httpError('This assessment link has expired.', 410);
   if (invite.status === 'submitted' || invite.status === 'graded') {
@@ -217,6 +304,10 @@ async function startAttempt(token) {
       return submitAssessment(token, { answers: invite.answers, auto: true });
     }
     return withTakeBrand(invite.organizationId, candidatePayload(invite));
+  }
+
+  if (!body.acceptedTerms || !body.confirmedIdentity) {
+    throw httpError('Please confirm your identity and accept the assessment terms before beginning.', 400);
   }
 
   const assessment = invite.assessmentId;
@@ -248,6 +339,13 @@ async function startAttempt(token) {
         snapshot,
         publishedVersion: snapshot.version || assessment.version || 1,
         openedAt: invite.openedAt || startedAt,
+        consent: {
+          termsAcceptedAt: new Date(),
+          identityConfirmedAt: new Date(),
+          cameraAcknowledgedAt: body.cameraReady ? new Date() : undefined,
+          ip: String(body.ip || '').slice(0, 80),
+          userAgent: String(body.userAgent || '').slice(0, 300),
+        },
       },
     },
     { new: true }
@@ -304,15 +402,26 @@ async function recordProctoringEvents(token, body) {
 
   const events = Array.isArray(body.events) ? body.events : [body];
   const allowed = new Set([
-    'tab_switch', 'window_blur', 'copy', 'paste', 'fullscreen_exit', 'start', 'submit', 'snapshot', 'camera_denied',
+    'tab_switch', 'window_blur', 'copy', 'paste', 'fullscreen_exit', 'start', 'submit',
+    'snapshot', 'camera_denied', 'context_menu', 'print', 'devtools',
   ]);
   const toAdd = events
     .filter((e) => e && allowed.has(e.type))
     .slice(0, 50)
     .map((e) => {
-      let meta = e.meta || undefined;
-      if (e.type === 'snapshot' && meta?.image && String(meta.image).length > 120000) {
-        meta = { ...meta, image: String(meta.image).slice(0, 120000), truncated: true };
+      let meta = e.meta ? { ...e.meta } : undefined;
+      if (e.type === 'snapshot' && meta?.image) {
+        const stored = saveWebcamCapture({
+          organizationId: invite.organizationId,
+          inviteId: invite._id,
+          dataUrl: meta.image,
+        });
+        if (stored?.rel) {
+          meta = { w: meta.w, h: meta.h, periodic: !!meta.periodic, imagePath: stored.rel };
+        } else {
+          const clipped = String(meta.image).slice(0, 80000);
+          meta = { ...meta, image: clipped, truncated: String(meta.image).length > 80000 };
+        }
       }
       return {
         type: e.type,
@@ -423,8 +532,19 @@ async function submitAssessment(token, body = {}) {
     resourceId: invite._id,
     candidateId: invite.candidateId,
     applicationId: invite.applicationId,
+    details: { message: 'Assessment submitted' },
   });
-  return { message: 'Assessment submitted. The hiring team will review your answers.', ...publicClosedResult(invite) };
+  const title = snapshot.title || invite.assessmentId?.title || 'your assessment';
+  const orgBrand = await takeBrand(invite.organizationId);
+  await sendAssessmentCandidateMail(invite, {
+    subject: `Assessment received — ${title}`,
+    heading: 'Assessment received',
+    paragraphs: [
+      `Thank you for completing “${escapeHtml(title)}” for ${escapeHtml(orgBrand.name)}.`,
+      'Your responses have been recorded. The hiring team will review this session and contact you if a further update is issued.',
+    ],
+  });
+  return { message: 'Your responses have been recorded. The hiring team will review this session.', ...publicClosedResult(invite) };
 }
 
 function redactAnswerKeys(rows) {
@@ -788,39 +908,22 @@ async function inviteCandidate(organizationId, userId, assessmentId, body) {
 
   const takeUrl = `${publicSiteBase().replace(/\/$/, '')}/assessment/${token}`;
   const brand = await loadOrgEmailBrand(organizationId);
-  const safeTitle = escapeHtml(assessment.title);
-  const safeCandidateName = escapeHtml(candidate.name || 'Candidate');
-  const html = wrapBrandedEmailHtml({
-    title: `Complete your assessment — ${assessment.title}`,
-    category: 'assessment',
-    orgName: brand.name,
-    logoUrl: brand.logoUrl,
-    brandColor: brand.brandColor,
-    wordmark: brand.wordmark,
-    companyAddress: brand.companyAddress || '',
-    websiteUrl: brand.websiteUrl || '',
-    supportEmail: brand.supportEmail || '',
-    socialLinks: brand.socialLinks || {},
-    bodyHtml: `
-      <p style="margin:0 0 16px 0;font-size:15px;color:#0f172a;font-weight:600;">Dear ${safeCandidateName},</p>
-      <p style="margin:0 0 12px 0;color:#334155;line-height:1.7;">As part of the selection process, you have been invited to complete the following assessment:</p>
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border:1px solid #eef0f3;border-left:3px solid ${brand.brandColor};margin:4px 0 20px 0;">
-        <tr><td style="padding:16px 18px;">
-          <p style="margin:0 0 4px 0;font-size:15px;font-weight:700;color:#0f172a;">${safeTitle}</p>
-          ${assessment.description ? `<p style="margin:0 0 10px 0;font-size:13px;color:#64748b;line-height:1.55;">${escapeHtml(assessment.description)}</p>` : ''}
-          <p style="margin:0;font-size:12px;color:#94a3b8;">${assessment.durationMinutes} minutes &nbsp;&middot;&nbsp; Link expires in ${hours} hours</p>
-        </td></tr>
-      </table>
-      ${brandButtonHtml({ href: takeUrl, label: 'Start assessment', brandColor: brand.brandColor })}
-      <p style="margin:20px 0 0 0;color:#64748b;font-size:13px;line-height:1.6;">Please attempt the assessment in a quiet environment without external assistance, unless stated otherwise. Contact us if you face any access issues.</p>`,
+  const html = assessmentInviteEmailHtml({
+    brand,
+    candidateName: candidate.name,
+    title: assessment.title,
+    description: assessment.description || '',
+    durationMinutes: assessment.durationMinutes,
+    hours,
+    takeUrl,
   });
   let emailSent = false;
   try {
     await sendEmailQueued(
       candidate.email,
-      `Complete your assessment — ${assessment.title}`,
+      `Assessment invitation — ${assessment.title}`,
       html,
-      `Start your assessment: ${takeUrl}`,
+      `Open your assessment: ${takeUrl}`,
       {
         userId,
         organizationId,
@@ -916,30 +1019,23 @@ async function resendInvite(organizationId, userId, inviteId) {
 
   const takeUrl = `${publicSiteBase().replace(/\/$/, '')}/assessment/${invite.token}`;
   const brand = await loadOrgEmailBrand(organizationId);
-  const html = wrapBrandedEmailHtml({
-    title: `Complete your assessment — ${assessment.title}`,
-    category: 'assessment',
-    orgName: brand.name,
-    logoUrl: brand.logoUrl,
-    brandColor: brand.brandColor,
-    wordmark: brand.wordmark,
-    companyAddress: brand.companyAddress || '',
-    websiteUrl: brand.websiteUrl || '',
-    supportEmail: brand.supportEmail || '',
-    socialLinks: brand.socialLinks || {},
-    bodyHtml: `
-      <p style="margin:0 0 16px 0;font-size:15px;color:#0f172a;font-weight:600;">Dear ${escapeHtml(candidate.name || 'Candidate')},</p>
-      <p style="margin:0 0 12px 0;color:#334155;line-height:1.7;">Your assessment link has been refreshed. Please complete it before it expires.</p>
-      <p style="margin:0 0 16px 0;font-size:15px;font-weight:700;color:#0f172a;">${escapeHtml(assessment.title)}</p>
-      ${brandButtonHtml({ href: takeUrl, label: 'Start assessment', brandColor: brand.brandColor })}`,
+  const html = assessmentInviteEmailHtml({
+    brand,
+    candidateName: candidate.name,
+    title: assessment.title,
+    description: assessment.description || '',
+    durationMinutes: assessment.durationMinutes,
+    hours: 72,
+    takeUrl,
+    refreshed: true,
   });
   let emailSent = false;
   try {
     await sendEmailQueued(
       candidate.email,
-      `Complete your assessment — ${assessment.title}`,
+      `Assessment invitation — ${assessment.title}`,
       html,
-      `Start your assessment: ${takeUrl}`,
+      `Open your assessment: ${takeUrl}`,
       { userId, organizationId, senderName: brand.name, directReply: true }
     );
     emailSent = true;
@@ -965,6 +1061,17 @@ async function revokeInvite(organizationId, userId, inviteId) {
   return { status: invite.status };
 }
 
+async function removeInvite(organizationId, userId, inviteId) {
+  const invite = await AssessmentInvite.findOne({ _id: inviteId, organizationId });
+  if (!invite) throw httpError('Invite not found', 404);
+  await AssessmentInvite.deleteOne({ _id: invite._id, organizationId });
+  audit(eventTypes.ASSESSMENT_INVITE_REMOVED, {
+    organizationId, userId, resourceId: invite._id, candidateId: invite.candidateId,
+    details: { message: `Removed invitation (${invite.status})` },
+  });
+  return { removed: true, status: invite.status };
+}
+
 async function getInviteIntegrity(organizationId, id) {
   const invite = await AssessmentInvite.findOne({ _id: id, organizationId })
     .populate('candidateId', 'name email')
@@ -973,20 +1080,25 @@ async function getInviteIntegrity(organizationId, id) {
   if (!invite) throw httpError('Invite not found', 404);
   const rawEvents = invite.proctoring?.events || [];
   const snapshots = rawEvents
-    .filter((event) => event.type === 'snapshot' && event.meta?.image && !event.meta?.skipped)
-    .slice(-12)
-    .map((event) => ({
-      at: event.at,
-      image: event.meta.image,
-      periodic: !!event.meta.periodic,
-    }));
+    .filter((event) => event.type === 'snapshot' && !event.meta?.skipped && (event.meta?.imagePath || event.meta?.image))
+    .slice(-16)
+    .map((event) => {
+      const fromDisk = event.meta?.imagePath ? readCaptureAsDataUrl(event.meta.imagePath) : null;
+      return {
+        at: event.at,
+        image: fromDisk || event.meta.image || '',
+        stored: !!event.meta?.imagePath,
+        periodic: !!event.meta.periodic,
+      };
+    })
+    .filter((row) => row.image);
   const timeline = rawEvents.map((event) => ({
     type: event.type,
     at: event.at,
     questionId: event.questionId || '',
     skipped: !!event.meta?.skipped,
     reason: event.meta?.reason || '',
-    hasImage: event.type === 'snapshot' && !!event.meta?.image && !event.meta?.skipped,
+    hasImage: event.type === 'snapshot' && !!(event.meta?.imagePath || event.meta?.image) && !event.meta?.skipped,
   }));
   const counts = summarizeEvents(rawEvents);
   return {
@@ -1055,7 +1167,28 @@ async function gradeInvite(organizationId, userId, id, body) {
   await invite.save();
   audit(eventTypes.ASSESSMENT_GRADED, {
     organizationId, userId, resourceId: invite._id, candidateId: invite.candidateId,
+    details: { message: stillPending ? 'Grade saved — review still pending' : 'Grade saved' },
   });
+  if (!stillPending) {
+    const title = snapshot.title || 'your assessment';
+    const visibility = snapshot.rules?.resultVisibility || 'hidden';
+    const paragraphs = visibility === 'hidden'
+      ? [
+        `Your assessment “${escapeHtml(title)}” has been reviewed.`,
+        'The hiring organisation will contact you regarding next steps. No score is shown in this message.',
+      ]
+      : [
+        `Your assessment “${escapeHtml(title)}” has been reviewed.`,
+        `Recorded score: ${invite.totalScore}/${invite.maxScore}${invite.percent != null ? ` (${invite.percent}%)` : ''}.`,
+        ...(visibility === 'detailed' && invite.feedback ? [escapeHtml(invite.feedback)] : []),
+        'The hiring organisation will contact you if a further update is issued.',
+      ];
+    await sendAssessmentCandidateMail(invite, {
+      subject: `Assessment reviewed — ${title}`,
+      heading: 'Assessment reviewed',
+      paragraphs,
+    });
+  }
   return invite;
 }
 
@@ -1101,8 +1234,33 @@ async function recordDecision(organizationId, userId, id, body) {
   }
 
   audit(eventTypes.ASSESSMENT_DECISION, {
-    organizationId, userId, resourceId: invite._id, candidateId: invite.candidateId, message: decision,
+    organizationId, userId, resourceId: invite._id, candidateId: invite.candidateId,
+    details: { message: decision },
   });
+  const title = (await Assessment.findById(invite.assessmentId).select('title').lean())?.title || 'the assessment';
+  const decisionCopy = {
+    shortlist: [
+      `Following your assessment “${escapeHtml(title)}”, you have been shortlisted.`,
+      'The hiring team will be in touch regarding the next step in the process.',
+    ],
+    advance: [
+      `Following your assessment “${escapeHtml(title)}”, you have been advanced to the next stage.`,
+      'The hiring team will contact you with scheduling or further instructions.',
+    ],
+    reject: [
+      `Thank you for completing “${escapeHtml(title)}”.`,
+      'After review, we will not be progressing your application at this time. We appreciate the time you invested in the process.',
+    ],
+  };
+  if (decisionCopy[decision]) {
+    await sendAssessmentCandidateMail(invite, {
+      subject: decision === 'reject'
+        ? `Update on your assessment — ${title}`
+        : `Next steps — ${title}`,
+      heading: decision === 'reject' ? 'Application update' : 'Next steps',
+      paragraphs: decisionCopy[decision],
+    });
+  }
   return invite;
 }
 
@@ -1408,6 +1566,7 @@ module.exports = {
   getInvite,
   resendInvite,
   revokeInvite,
+  removeInvite,
   getInviteIntegrity,
   gradeInvite,
   recordDecision,
