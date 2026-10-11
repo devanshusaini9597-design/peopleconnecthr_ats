@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Loader2, Search, FileEdit, ClipboardList, Plus, Trash2, Shield, Inbox, SlidersHorizontal, Clock,
+  Loader2, Search, FileEdit, ClipboardList, Plus, Trash2, Shield, Inbox, SlidersHorizontal,
 } from 'lucide-react';
 import { authenticatedFetch, readApiJson } from '../../utils/fetchUtils';
 import { useToast } from '../Toast';
 import EmptyState from '../ui/EmptyState';
 import PremiumSelect from '../ui/PremiumSelect';
-import PresenceAvatar from '../ui/PresenceAvatar';
 import { emptyQuestion, QUESTION_TYPE_OPTIONS, actionBtn } from './assessmentsConstants';
+import AssessmentQueueCard from './AssessmentQueueCard';
 
 export function EvaluationQueuePanel({ onGrade, canGrade = true, searchQuery = '', embedded = false }) {
   const [rows, setRows] = useState([]);
@@ -89,39 +89,7 @@ export function EvaluationQueuePanel({ onGrade, canGrade = true, searchQuery = '
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-stretch stagger-children">
           {filtered.map((row) => (
-            <article key={row._id} className="relative flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200/90 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-200 hover:shadow-md hover:border-brand-200">
-              <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-              <div className="flex min-w-0 flex-1 flex-col px-4 pt-4 pb-3">
-                <div className="flex items-start gap-3">
-                  <PresenceAvatar name={row.candidateId?.name} email={row.candidateId?.email} size={40} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <h4 className="font-semibold text-stone-900 tracking-tight truncate">{row.candidateId?.name || 'Candidate'}</h4>
-                      <span className="badge-warning flex-shrink-0">Review</span>
-                    </div>
-                    <p className="text-xs text-stone-500 truncate">{row.candidateId?.email || '—'}</p>
-                  </div>
-                </div>
-                <div className="mt-3 rounded-xl bg-stone-50/90 border border-stone-100 p-3.5 text-sm text-stone-600 space-y-1.5">
-                  <p className="inline-flex items-center gap-1.5 font-semibold text-stone-800">
-                    <ClipboardList className="w-3.5 h-3.5 text-brand-600" />
-                    {row.assessmentId?.title || 'Assessment'}
-                  </p>
-                  <p className="inline-flex items-center gap-1.5 text-xs">
-                    <Clock className="w-3.5 h-3.5 text-stone-400" />
-                    Submitted {row.submittedAt ? new Date(row.submittedAt).toLocaleString() : '—'}
-                  </p>
-                  <p className="text-xs text-stone-500">Pending human review — not marked as fail.</p>
-                </div>
-              </div>
-              {canGrade ? (
-                <div className="border-t border-stone-100 bg-stone-50/70 px-4 py-3">
-                  <button type="button" className="btn-primary w-full" onClick={() => onGrade?.(row)}>
-                    <FileEdit className="w-4 h-4" /> Grade submission
-                  </button>
-                </div>
-              ) : null}
-            </article>
+            <AssessmentQueueCard key={row._id} row={row} onGrade={onGrade} canGrade={canGrade} />
           ))}
         </div>
       )}
