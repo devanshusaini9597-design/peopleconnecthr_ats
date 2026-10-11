@@ -24,7 +24,7 @@ function OperatorSignIn({ onSignedIn }) {
       setStep('password');
       setOtpToken('');
       setOtpCode('');
-      setError('This console is only for the People Connect HR platform team.');
+      setError('This console is only for the platform owner account.');
       return false;
     }
     acceptSession(data);
@@ -83,7 +83,7 @@ function OperatorSignIn({ onSignedIn }) {
         <div className="mb-8">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-700">People Connect HR</p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-stone-900">Platform operator</h1>
-          <p className="mt-2 text-sm text-stone-500">Private SaaS control plane. Customers never see this URL in the product.</p>
+          <p className="mt-2 text-sm text-stone-500">Private SaaS control plane. Only the platform owner account can sign in here.</p>
         </div>
 
         <form

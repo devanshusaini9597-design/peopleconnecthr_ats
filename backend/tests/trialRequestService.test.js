@@ -71,14 +71,27 @@ describe('trialRequestService', () => {
   });
 });
 
-describe('platform operator domains', () => {
-  it('treats peopleconnecthr.com owners as operators', () => {
-    expect(isPlatformOperatorEmail('ada@peopleconnecthr.com')).toBe(true);
-    expect(isPlatformOperator({ email: 'ada@peopleconnecthr.com', role: 'owner' })).toBe(true);
-    expect(isPlatformOperator({ email: 'ada@peopleconnecthr.com', role: 'sales' })).toBe(true);
+describe('platform operator emails', () => {
+  const prev = process.env.PLATFORM_OPERATOR_EMAILS;
+
+  afterEach(() => {
+    if (prev === undefined) delete process.env.PLATFORM_OPERATOR_EMAILS;
+    else process.env.PLATFORM_OPERATOR_EMAILS = prev;
+    jest.resetModules();
   });
 
-  it('does not treat customer domains as operators', () => {
+  it('allows only the platform-owner email, not the whole company domain', () => {
+    delete process.env.PLATFORM_OPERATOR_EMAILS;
+    jest.resetModules();
+    const { isPlatformOperator, isPlatformOperatorEmail } = require('../utils/orgDomain');
+    expect(isPlatformOperatorEmail('owner@peopleconnecthr.com')).toBe(true);
+    expect(isPlatformOperator({ email: 'owner@peopleconnecthr.com', role: 'owner' })).toBe(true);
+    expect(isPlatformOperator({ email: 'owner@peopleconnecthr.com', role: 'sales' })).toBe(false);
+    expect(isPlatformOperatorEmail('ada@peopleconnecthr.com')).toBe(false);
+    expect(isPlatformOperator({ email: 'ada@peopleconnecthr.com', role: 'owner' })).toBe(false);
+  });
+
+  it('does not treat customer emails as operators', () => {
     expect(isPlatformOperatorEmail('buyer@acme-staffing.com')).toBe(false);
     expect(isPlatformOperator({ email: 'buyer@acme-staffing.com', role: 'owner' })).toBe(false);
   });

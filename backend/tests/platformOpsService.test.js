@@ -6,7 +6,8 @@ describe('platformOpsService', () => {
   });
 
   it('allows People Connect HR operators', () => {
-    expect(() => assertPlatformOperator({ email: 'ada@peopleconnecthr.com', role: 'owner' })).not.toThrow();
+    expect(() => assertPlatformOperator({ email: 'owner@peopleconnecthr.com', role: 'owner' })).not.toThrow();
+    expect(() => assertPlatformOperator({ email: 'ada@peopleconnecthr.com', role: 'owner' })).toThrow(/platform team/i);
   });
 
   it('exposes the plans the dashboard can assign', () => {

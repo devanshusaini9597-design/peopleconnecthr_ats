@@ -7,6 +7,7 @@ const { applyPlanLimits } = require('../config/planLimits');
 const {
   getEnterpriseOrgDomains,
   getPlatformOperatorDomains,
+  getPlatformOperatorEmails,
   hasInternalPreviewAccess,
 } = require('./vendorDomains');
 
@@ -16,17 +17,15 @@ function isEnterpriseOrgDomain(domain) {
 }
 
 function isPlatformOperatorEmail(email) {
-  const domain = getEmailDomain(email);
-  if (!domain) return false;
-  return getPlatformOperatorDomains().includes(domain);
+  const value = String(email || '').trim().toLowerCase();
+  if (!value) return false;
+  return getPlatformOperatorEmails().includes(value);
 }
-
-const PLATFORM_OPERATOR_ROLES = new Set(['owner', 'admin', 'sales', 'hr_manager']);
 
 function isPlatformOperator(user) {
   if (!user?.email) return false;
   if (!isPlatformOperatorEmail(user.email)) return false;
-  return PLATFORM_OPERATOR_ROLES.has(String(user.role || '').toLowerCase());
+  return String(user.role || '').toLowerCase() === 'owner';
 }
 
 function planForOrgDomain(domain, fallback = 'free_trial') {
@@ -120,6 +119,7 @@ module.exports = {
   getEnterpriseOrgDomains,
   isEnterpriseOrgDomain,
   getPlatformOperatorDomains,
+  getPlatformOperatorEmails,
   isPlatformOperatorEmail,
   isPlatformOperator,
   hasInternalPreviewAccess,
