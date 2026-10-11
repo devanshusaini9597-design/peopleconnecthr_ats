@@ -16,7 +16,7 @@ const ExamChrome = ({ children, extra, brand }) => {
   return (
     <div className="min-h-dvh relative overflow-hidden bg-stone-100 font-sans flex flex-col">
       <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(13,148,136,0.12),_transparent_55%),linear-gradient(180deg,#f5f5f4_0%,#ffffff_45%,#f0fdfa_100%)]"
+        className="pointer-events-none absolute inset-0 bg-stone-100"
         aria-hidden="true"
       />
       <header className="relative z-20 bg-white/90 backdrop-blur-md border-b border-stone-200/90 sticky top-0">
@@ -315,6 +315,35 @@ const AssessmentTakePage = () => {
   };
 
   const brand = assessment?.brand;
+  const questions = assessment?.questions || [];
+  const allowBack = assessment?.rules?.allowBack !== false;
+  const q = questions[current] || questions[0];
+  const allRequiredAnswered = questions.every((item) => {
+    if (item.required === false) return true;
+    return String(answers[item._id] || '').trim().length > 0;
+  });
+  const warnExpiry = remaining != null && remaining <= 60 && remaining > 0;
+  const answeredCount = questions.filter((item) => String(answers[item._id] || '').trim()).length;
+  const remainingCount = questions.length - answeredCount;
+  const goTo = (index) => {
+    if (index === current) return;
+    if (index < current && !allowBack) return;
+    setCurrent(index);
+  };
+  const timerExtra = (
+    <div className="flex items-center gap-2">
+      {assessment?.proctoring?.enabled ? (
+        <span className={`hidden sm:inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+          cameraStatus === 'live' ? 'bg-emerald-50 text-emerald-800' : cameraStatus === 'denied' ? 'bg-amber-50 text-amber-800' : 'bg-stone-100 text-stone-600'
+        }`}>
+          <Camera size={12} /> {cameraStatus === 'live' ? 'Webcam on' : cameraStatus === 'denied' ? 'Camera blocked' : 'Webcam'}
+        </span>
+      ) : null}
+      <div className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-bold tabular-nums ${warnExpiry ? 'bg-red-50 text-red-700' : 'bg-stone-100 text-stone-800'}`}>
+        <Clock className="w-4 h-4" /> {formatTime(remaining)}
+      </div>
+    </div>
+  );
 
   if (state === 'loading') {
     return (
@@ -416,41 +445,18 @@ const AssessmentTakePage = () => {
     );
   }
 
-  const questions = assessment.questions || [];
-  const allowBack = assessment.rules?.allowBack !== false;
-  const q = questions[current] || questions[0];
-  const allRequiredAnswered = questions.every((item) => {
-    if (item.required === false) return true;
-    return String(answers[item._id] || '').trim().length > 0;
-  });
-  const warnExpiry = remaining != null && remaining <= 60 && remaining > 0;
-
-  const answeredCount = questions.filter((item) => String(answers[item._id] || '').trim()).length;
-  const remainingCount = questions.length - answeredCount;
-  const goTo = (index) => {
-    if (index === current) return;
-    if (index < current && !allowBack) return;
-    setCurrent(index);
-  };
+  if (state !== 'ready' || !assessment) {
+    return (
+      <ExamChrome brand={brand}>
+        <div className="min-h-[50vh] flex items-center justify-center">
+          <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
+        </div>
+      </ExamChrome>
+    );
+  }
 
   return (
-    <ExamChrome
-      brand={brand}
-      extra={(}
-        <div className="flex items-center gap-2">
-          {assessment.proctoring?.enabled ? (
-            <span className={`hidden sm:inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
-              cameraStatus === 'live' ? 'bg-emerald-50 text-emerald-800' : cameraStatus === 'denied' ? 'bg-amber-50 text-amber-800' : 'bg-stone-100 text-stone-600'
-            }`}>
-              <Camera size={12} /> {cameraStatus === 'live' ? 'Webcam on' : cameraStatus === 'denied' ? 'Camera blocked' : 'Webcam'}
-            </span>
-          ) : null}
-          <div className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-bold tabular-nums ${warnExpiry ? 'bg-red-50 text-red-700' : 'bg-stone-100 text-stone-800'}`}>
-            <Clock className="w-4 h-4" /> {formatTime(remaining)}
-          </div>
-        </div>
-      )}
-    >
+    <ExamChrome brand={brand} extra={timerExtra}>
       <div className="max-w-3xl mx-auto space-y-4">
         <div className="card-ats-bordered p-5 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
