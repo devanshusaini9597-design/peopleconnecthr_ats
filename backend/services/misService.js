@@ -414,9 +414,79 @@ function misQueryHasExtraFilters(query = {}) {
   const keys = [
     'location', 'source', 'position', 'companyName', 'company', 'client', 'product', 'skills',
     'ctcMin', 'ctcMax', 'expectedCtcMin', 'expectedCtcMax', 'expMin', 'expMax',
-    'dateRange', 'period', 'datePeriod', 'from', 'dateFrom', 'to', 'dateTo',
+    'dateRange', 'period', 'datePeriod', 'from', 'dateFrom', 'to', 'dateTo', 'quality',
   ];
   return keys.some((k) => trimStr(query[k]));
+}
+
+const QUALITY_KIND_LABELS = {
+  dateAlignment: 'Date alignment',
+  sharedPhone: 'Shared phone numbers',
+  priorOnFile: 'Previously on file',
+  directoryOverlapEmail: 'Also in Candidates — email',
+  directoryOverlapPhone: 'Also in Candidates — phone',
+  recentUpdate: 'Updates to earlier records',
+};
+
+async function applyMisQualityFilter(user, filter, query, dateFilter) {
+  const kind = trimStr(query.quality || query.qualityKind);
+  if (!kind) return filter;
+  const periodStart = dateFilter?.$gte || null;
+  if (kind === 'dateAlignment' && periodStart && dateFilter) {
+    return andMisFilter(filter, { recordDate: dateFilter, createdAt: { $lt: periodStart } });
+  }
+  if (kind === 'recentUpdate' && periodStart && dateFilter) {
+    return andMisFilter(filter, { updatedAt: dateFilter, createdAt: { $lt: periodStart } });
+  }
+  if (kind === 'sharedPhone') {
+    const periodMatch = applyMisPeriodFilter(filter, dateFilter, 'tracker');
+    const groups = await MisContact.aggregate([
+      { $match: andMisFilter(periodMatch, { phoneKey: { $nin: [null, ''] } }) },
+      { $group: { _id: '$phoneKey', count: { $sum: 1 } } },
+      { $match: { count: { $gt: 1 } } },
+      { $limit: 400 },
+    ]).option({ maxTimeMS: 8000 }).catch(() => []);
+    const keys = (groups || []).map((g) => g._id).filter(Boolean);
+    return andMisFilter(filter, { phoneKey: { $in: keys.length ? keys : ['__none__'] } });
+  }
+  if (kind === 'priorOnFile' && periodStart) {
+    const MisIdentityRegistry = require('../models/MisIdentityRegistry');
+    const orgMatch = organizationIdMatch(user.organizationId) || { organizationId: user.organizationId };
+    const prior = await MisIdentityRegistry.find({
+      ...orgMatch,
+      firstSeenAt: { $lt: periodStart },
+    }).select('emailKey phoneKey').limit(4000).lean().catch(() => []);
+    const emailKeys = [...new Set((prior || []).map((p) => p.emailKey).filter(Boolean))];
+    const phoneKeys = [...new Set((prior || []).map((p) => p.phoneKey).filter(Boolean))];
+    const or = [];
+    if (emailKeys.length) or.push({ emailKey: { $in: emailKeys } });
+    if (phoneKeys.length) or.push({ phoneKey: { $in: phoneKeys } });
+    const createdMatch = applyMisPeriodFilter(filter, dateFilter, 'createdAt');
+    return or.length ? andMisFilter(createdMatch, { $or: or }) : andMisFilter(filter, { _id: { $in: [] } });
+  }
+  if (kind === 'directoryOverlapEmail' || kind === 'directoryOverlapPhone') {
+    const Candidate = require('../models/Candidate');
+    const orgMatch = organizationIdMatch(user.organizationId) || { organizationId: user.organizationId };
+    const periodMatch = applyMisPeriodFilter(filter, dateFilter, 'tracker');
+    const field = kind === 'directoryOverlapEmail' ? 'email' : 'phoneKey';
+    const candField = kind === 'directoryOverlapEmail' ? 'email' : 'phone';
+    const rows = await MisContact.aggregate([
+      { $match: andMisFilter(periodMatch, { [field]: { $nin: [null, ''] } }) },
+      { $group: { _id: `$${field}` } },
+      { $limit: 3000 },
+    ]).option({ maxTimeMS: 8000 }).catch(() => []);
+    const values = (rows || []).map((r) => r._id).filter(Boolean);
+    if (!values.length) return andMisFilter(filter, { _id: { $in: [] } });
+    const hits = await Candidate.find({ ...orgMatch, [candField]: { $in: values } })
+      .select(candField)
+      .limit(3000)
+      .lean()
+      .catch(() => []);
+    const set = new Set((hits || []).map((h) => h[candField]).filter(Boolean));
+    const matched = values.filter((v) => set.has(v));
+    return andMisFilter(filter, { [field]: { $in: matched.length ? matched : ['__none__'] } });
+  }
+  return filter;
 }
 
 async function listContacts(user, query = {}) {
@@ -426,7 +496,16 @@ async function listContacts(user, query = {}) {
   const page = Math.max(1, Number(query.page) || 1);
   const limit = Math.min(200, Math.max(1, Number(query.limit) || 50));
   const idsOnly = query.idsOnly === '1' || query.idsOnly === 'true' || query.idsOnly === true;
-  const filter = buildMisQueryFilter(user, query);
+  let filter = buildMisQueryFilter(user, query);
+  if (trimStr(query.quality || query.qualityKind)) {
+    let dateFilter = null;
+    try {
+      const { buildDateFilter } = require('../utils/analyticsTime');
+      const period = trimStr(query.dateRange || query.period || query.datePeriod);
+      dateFilter = buildDateFilter(period || 'all', query.from || query.dateFrom, query.to || query.dateTo);
+    } catch { /* ignore */ }
+    filter = await applyMisQualityFilter(user, filter, query, dateFilter);
+  }
   const desk = resolveMisDeskView(user, query.desk || query.deskScope || query.view);
   const resolveTotal = async () => {
     if (!misQueryHasExtraFilters(query)) {
@@ -556,8 +635,8 @@ function canViewMisOrgReports(user) {
 
 /**
  * Report data scope by role (never trust query identity for non-leaders):
- * - owner / admin → full organisation, or one employee when ?userId= is validated
- * - other employees → only contacts they added (ignore spoofed userId)
+ * - owner / admin / HR manager → full organisation, or one employee when ?userId= is validated
+ * - other employees → organisation directory + their own records (never other personal desks)
  *
  * Period metrics use the contact Date field (recordDate), falling back to upload
  * time (createdAt) only when Date was never set — same as the MIS list table.
@@ -603,13 +682,11 @@ async function resolveMisReportScope(user, query = {}) {
     };
   }
 
-  // recruiter / sales / hr_* — personal performance only (never company directory)
+  // Recruiter / sales / HR recruiter: shared organisation directory + own records only.
   return {
-    scope: 'self',
+    scope: 'desk',
     dateMode: 'tracker',
-    base: me.length
-      ? { ...orgMatch, createdBy: { $in: me } }
-      : { _id: { $in: [] } },
+    base: misListFilter(organizationId, user),
     me,
     scopedUserId: me.length ? String(me[0]) : null,
     scopedUserName: null,
@@ -876,6 +953,7 @@ async function getMisReports(user, query = {}) {
   const uploadedMatch = applyMisPeriodFilter(base, dateFilter, 'createdAt');
   const isOrgView = scope === 'organisation';
   const isSelfView = scope === 'self';
+  const isDeskView = scope === 'desk';
 
   // Integrity: tracker Date placed in this period on contacts that were uploaded earlier
   const periodStart = dateFilter?.$gte || null;
@@ -979,6 +1057,8 @@ async function getMisReports(user, query = {}) {
     phoneOverlap,
     recycledByUserAgg,
     recycledSamples,
+    priorOnFileCount,
+    similarNameCompany,
   ] = await Promise.all([
     periodFacetPromise,
     countMs(prevMatch, 6000),
@@ -987,8 +1067,8 @@ async function getMisReports(user, query = {}) {
     countMs(recycledMatch, 6000),
     countMs(touchedOldMatch, 6000),
     MisContact.aggregate([
-      { $match: andMisFilter(periodMatch, { phone: { $nin: [null, ''] } }) },
-      { $group: { _id: '$phone', count: { $sum: 1 } } },
+      { $match: andMisFilter(periodMatch, { phoneKey: { $nin: [null, ''] } }) },
+      { $group: { _id: '$phoneKey', count: { $sum: 1 } } },
       { $match: { count: { $gt: 1 } } },
       {
         $group: {
@@ -1053,6 +1133,37 @@ async function getMisReports(user, query = {}) {
         .lean()
         .catch(() => [])
       : Promise.resolve([]),
+    (async () => {
+      if (!periodStart) return 0;
+      try {
+        const MisIdentityRegistry = require('../models/MisIdentityRegistry');
+        const orgMatch = organizationIdMatch(user.organizationId) || { organizationId: user.organizationId };
+        const prior = await MisIdentityRegistry.find({
+          ...orgMatch,
+          firstSeenAt: { $lt: periodStart },
+        }).select('emailKey phoneKey').limit(5000).lean();
+        const emailKeys = [...new Set((prior || []).map((p) => p.emailKey).filter(Boolean))];
+        const phoneKeys = [...new Set((prior || []).map((p) => p.phoneKey).filter(Boolean))];
+        const or = [];
+        if (emailKeys.length) or.push({ emailKey: { $in: emailKeys } });
+        if (phoneKeys.length) or.push({ phoneKey: { $in: phoneKeys } });
+        if (!or.length) return 0;
+        return countMs(andMisFilter(uploadedMatch, { $or: or }), 6000);
+      } catch {
+        return 0;
+      }
+    })(),
+    MisContact.aggregate([
+      {
+        $match: andMisFilter(periodMatch, {
+          nameKey: { $nin: [null, ''] },
+          companyKey: { $nin: [null, ''] },
+        }),
+      },
+      { $group: { _id: { n: '$nameKey', c: '$companyKey' }, count: { $sum: 1 } } },
+      { $match: { count: { $gt: 1 } } },
+      { $group: { _id: null, groups: { $sum: 1 }, rows: { $sum: '$count' } } },
+    ]).option({ maxTimeMS: 6000 }).catch(() => []),
   ]);
 
   const facet = (periodFacetRows && periodFacetRows[0]) || {};
@@ -1072,6 +1183,9 @@ async function getMisReports(user, query = {}) {
   const uploadedN = Number(uploadedInPeriod) || 0;
   const recycledN = Number(recycledCount) || 0;
   const touchedN = Number(touchedOldCount) || 0;
+  const priorN = Number(priorOnFileCount) || 0;
+  const similarGroups = Number(similarNameCompany?.[0]?.groups) || 0;
+  const showQuality = isOrgView || scope === 'employee';
 
   // Fill trend buckets (day or week) so charts are continuous and accurate
   const trendMap = new Map();
@@ -1206,35 +1320,112 @@ async function getMisReports(user, query = {}) {
       : [],
     byContributor,
     duplicacy: {
-      phoneDuplicateGroups: Number(phoneDup.duplicateGroups) || 0,
-      phoneDuplicateRows: Number(phoneDup.duplicateRows) || 0,
-      emailOverlapWithCandidates: Number(emailOverlap) || 0,
-      phoneOverlapWithCandidates: Number(phoneOverlap) || 0,
-      recycledTrackerDates: recycledN,
-      touchedOldContacts: touchedN,
-      samples: (isOrgView || scope === 'employee') ? samples : [],
+      phoneDuplicateGroups: showQuality ? (Number(phoneDup.duplicateGroups) || 0) : 0,
+      phoneDuplicateRows: showQuality ? (Number(phoneDup.duplicateRows) || 0) : 0,
+      emailOverlapWithCandidates: showQuality ? (Number(emailOverlap) || 0) : 0,
+      phoneOverlapWithCandidates: showQuality ? (Number(phoneOverlap) || 0) : 0,
+      recycledTrackerDates: showQuality ? recycledN : 0,
+      touchedOldContacts: showQuality ? touchedN : 0,
+      samples: showQuality ? samples : [],
+    },
+    quality: {
+      visible: showQuality,
+      dateAlignment: showQuality ? recycledN : 0,
+      sharedPhoneGroups: showQuality ? (Number(phoneDup.duplicateGroups) || 0) : 0,
+      sharedPhoneRows: showQuality ? (Number(phoneDup.duplicateRows) || 0) : 0,
+      directoryOverlapEmail: showQuality ? (Number(emailOverlap) || 0) : 0,
+      directoryOverlapPhone: showQuality ? (Number(phoneOverlap) || 0) : 0,
+      priorOnFile: showQuality ? priorN : 0,
+      recentUpdates: showQuality ? touchedN : 0,
+      similarNameCompany: showQuality ? similarGroups : 0,
+      samples: showQuality ? samples : [],
     },
     integrity: {
       trulyNewInPeriod: uploadedN,
-      recycledTrackerDates: recycledN,
-      touchedOldContacts: touchedN,
-      riskLevel: recycledN >= 20 || (recycledN > 0 && recycledN >= Math.ceil(Math.max(inPeriod, 1) * 0.3))
-        ? 'high'
-        : recycledN > 0 || touchedN >= 50
-          ? 'watch'
-          : 'ok',
-      note: 'Metrics use each contact’s Date field. Upload time applies only when Date is blank. Integrity checks cover the selected period.',
+      recycledTrackerDates: showQuality ? recycledN : 0,
+      touchedOldContacts: showQuality ? touchedN : 0,
+      riskLevel: !showQuality
+        ? 'ok'
+        : (recycledN >= 20 || priorN >= 10 || (recycledN > 0 && recycledN >= Math.ceil(Math.max(inPeriod, 1) * 0.3))
+          ? 'high'
+          : recycledN > 0 || touchedN >= 50 || priorN > 0
+            ? 'watch'
+            : 'ok'),
+      note: 'Figures use each contact’s Date field. Import time is used only when Date is blank. Quality review covers the selected period.',
     },
     meta: {
       role: user.role,
       dateMode: dateMode || 'tracker',
-      selfOnly: isSelfView,
+      selfOnly: isSelfView || isDeskView,
       includesOthersPersonal: isOrgView,
       canSelectEmployee,
       scopedUserId,
       scopedUserName,
       actorId: me.length ? String(me[0]) : null,
     },
+  };
+}
+
+async function getMisQualityDetails(user, query = {}) {
+  await assertMisActor(user);
+  const kind = trimStr(query.kind || query.quality || query.qualityKind);
+  if (!QUALITY_KIND_LABELS[kind]) {
+    throw httpError('Unknown quality view', 400, { code: 'QUALITY_KIND' });
+  }
+  const safeQuery = { ...(query || {}) };
+  delete safeQuery.organizationId;
+  delete safeQuery.orgId;
+  delete safeQuery.createdBy;
+  const scopeInfo = await resolveMisReportScope(user, safeQuery);
+  if (scopeInfo.scope === 'self' || scopeInfo.scope === 'desk') {
+    return {
+      kind,
+      label: QUALITY_KIND_LABELS[kind],
+      rows: [],
+      total: 0,
+      scope: scopeInfo.scope,
+    };
+  }
+
+  let dateFilter = null;
+  try {
+    const { buildDateFilter } = require('../utils/analyticsTime');
+    const period = trimStr(safeQuery.dateRange || safeQuery.period || 'month');
+    dateFilter = buildDateFilter(period === 'all' ? 'all' : period, safeQuery.from, safeQuery.to);
+  } catch { /* ignore */ }
+
+  const filter = await applyMisQualityFilter(user, scopeInfo.base, { ...safeQuery, quality: kind }, dateFilter);
+  const page = Math.max(1, Number(safeQuery.page) || 1);
+  const limit = Math.min(50, Math.max(1, Number(safeQuery.limit) || 25));
+  const [total, rows] = await Promise.all([
+    MisContact.countDocuments(filter).maxTimeMS(8000).catch(() => 0),
+    MisContact.find(filter)
+      .select('name email phone recordDate createdAt updatedAt createdBy companyName')
+      .sort({ recordDate: -1, createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .maxTimeMS(8000)
+      .lean()
+      .catch(() => []),
+  ]);
+
+  return {
+    kind,
+    label: QUALITY_KIND_LABELS[kind],
+    total: Number(total) || 0,
+    page,
+    limit,
+    scope: scopeInfo.scope,
+    rows: (rows || []).map((row) => ({
+      id: String(row._id),
+      name: row.name || '',
+      email: row.email || '',
+      phone: row.phone || '',
+      companyName: row.companyName || '',
+      recordDate: row.recordDate ? new Date(row.recordDate).toISOString().slice(0, 10) : null,
+      createdAt: row.createdAt ? new Date(row.createdAt).toISOString().slice(0, 10) : null,
+      updatedAt: row.updatedAt ? new Date(row.updatedAt).toISOString().slice(0, 10) : null,
+    })),
   };
 }
 
@@ -1325,16 +1516,15 @@ async function createContact(user, body = {}) {
   const ctc = trimStr(body.ctc);
   if (!ctc) throw httpError('Current CTC is required');
 
-  const existing = await MisContact.findOne({ organizationId, email });
-  if (existing) throw httpError('This email already exists in MIS', 409, { code: 'DUPLICATE_EMAIL' });
+  const {
+    assertNewIdentity,
+    upsertRegistry,
+    applyIdentityFields,
+    evaluateRecordDate,
+    dateGuardError,
+  } = require('./misIdentityGuard');
 
-  const phoneClash = await MisContact.findOne({
-    organizationId,
-    $or: [{ phone }, { contact: phone }],
-  }).select('_id email').lean();
-  if (phoneClash) {
-    throw httpError('This phone number already exists in MIS', 409, { code: 'DUPLICATE_PHONE' });
-  }
+  await assertNewIdentity(user, { email, phone, name, companyName: body.companyName });
 
   const LocationService = require('./locationService');
   const location = normalizeText(trimStr(body.location));
@@ -1343,32 +1533,52 @@ async function createContact(user, body = {}) {
     state = LocationService.detectState(location) || '';
   }
 
+  const identity = applyIdentityFields({
+    name: normalizeText(name),
+    email,
+    phone,
+    companyName: normalizeText(trimStr(body.companyName)),
+  });
+
   const doc = new MisContact({
     organizationId,
     createdBy: user.id || user._id,
     deskScope: deskScopeForUser(user),
-    name: normalizeText(name),
-    email,
-    contact: phone,
-    phone,
+    name: identity.name,
+    email: identity.email,
+    contact: identity.contact,
+    phone: identity.phone,
+    emailKey: identity.emailKey,
+    phoneKey: identity.phoneKey,
+    nameKey: identity.nameKey,
+    companyKey: identity.companyKey,
     ctc: normalizeText(ctc),
     location,
     state: normalizeText(state),
+    companyName: identity.companyName || '',
     status: normalizeMisStatus(body.status) || 'NEW',
     marketingConsent: body.marketingConsent !== false,
     source: trimStr(body.source) || 'MIS Manual',
   });
   for (const key of TEXT_FIELDS) {
-    if (key === 'name' || key === 'source' || key === 'ctc' || key === 'location' || key === 'state' || key === 'status') continue;
+    if (key === 'name' || key === 'source' || key === 'ctc' || key === 'location' || key === 'state' || key === 'status' || key === 'companyName') continue;
     if (body[key] != null) doc[key] = normalizeText(trimStr(body[key]));
   }
   if (body.recordDate) {
     const { parseRecordDate } = require('../utils/candidateActivityDate');
     const parsed = parseRecordDate(body.recordDate);
-    if (parsed) doc.recordDate = parsed;
+    if (parsed) {
+      const dated = evaluateRecordDate({ recordDate: parsed, createdAt: new Date() });
+      const dateErr = dateGuardError(dated);
+      if (dateErr) throw dateErr;
+      doc.recordDate = dated.recordDate;
+    }
   }
   doc.ensureUnsubscribeSecret();
   await doc.save();
+  try { await upsertRegistry(user, doc); } catch (err) {
+    logger.warn({ err: err.message }, 'MIS identity registry write skipped');
+  }
   return doc;
 }
 
@@ -1382,11 +1592,7 @@ async function updateContact(user, id, body = {}) {
   if (body.email != null) {
     const email = normalizeEmail(body.email);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw httpError('Valid email is required');
-    if (email !== doc.email) {
-      const clash = await MisContact.findOne({ organizationId: user.organizationId, email, _id: { $ne: doc._id } });
-      if (clash) throw httpError('This email already exists in MIS', 409, { code: 'DUPLICATE_EMAIL' });
-      doc.email = email;
-    }
+    doc.email = email;
   }
   if (body.phone != null || body.contact != null) {
     const phone = phoneDigits(body.phone || body.contact);
@@ -1410,16 +1616,52 @@ async function updateContact(user, id, body = {}) {
       doc.unsubscribedAt = null;
     }
   }
+  const {
+    assertNewIdentity,
+    upsertRegistry,
+    evaluateRecordDate,
+    dateGuardError,
+    leadersMayRestore,
+  } = require('./misIdentityGuard');
+
+  const identityTouched = body.email != null || body.phone != null || body.contact != null
+    || body.name != null || body.companyName != null;
+  if (identityTouched) {
+    await assertNewIdentity(user, {
+      email: doc.email,
+      phone: doc.phone || doc.contact,
+      name: doc.name,
+      companyName: doc.companyName,
+    }, { excludeId: doc._id });
+  }
+
+  if (body.recordDate != null && leadersMayRestore(user) && !doc.recordDate) {
+    const { parseRecordDate } = require('../utils/candidateActivityDate');
+    const parsed = parseRecordDate(body.recordDate);
+    if (parsed) {
+      const dated = evaluateRecordDate({ recordDate: parsed, createdAt: doc.createdAt });
+      const dateErr = dateGuardError(dated);
+      if (dateErr) throw dateErr;
+      doc.recordDate = dated.recordDate;
+    }
+  }
+
   doc.ensureUnsubscribeSecret();
   await doc.save();
+  try { await upsertRegistry(user, doc); } catch (err) {
+    logger.warn({ err: err.message }, 'MIS identity registry write skipped');
+  }
   return doc;
 }
 
 async function deleteContact(user, id) {
   await assertMisCompany(user);
   const filter = misWriteFilter(user.organizationId, user, { _id: id });
-  const doc = await MisContact.findOneAndDelete(filter);
+  const doc = await MisContact.findOne(filter);
   if (!doc) throw httpError('Contact not found', 404);
+  const { recordRemovedIdentities } = require('./misIdentityGuard');
+  await recordRemovedIdentities(user, [doc]);
+  await MisContact.deleteOne({ _id: doc._id });
   return { deleted: true };
 }
 
@@ -1428,6 +1670,9 @@ async function bulkDelete(user, ids = []) {
   const idList = (ids || []).map(String).filter(Boolean);
   if (!idList.length) throw httpError('No contacts selected');
   const filter = misWriteFilter(user.organizationId, user, { _id: { $in: idList } });
+  const rows = await MisContact.find(filter).select('email phone contact name companyName createdBy createdAt organizationId emailKey phoneKey nameKey companyKey').lean();
+  const { recordRemovedIdentities } = require('./misIdentityGuard');
+  await recordRemovedIdentities(user, rows);
   const result = await MisContact.deleteMany(filter);
   return { deleted: result.deletedCount || 0 };
 }
@@ -1914,6 +2159,7 @@ module.exports = {
   listContacts,
   getMisStats,
   getMisReports,
+  getMisQualityDetails,
   getContact,
   createContact,
   updateContact,

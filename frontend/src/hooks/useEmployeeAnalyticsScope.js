@@ -5,10 +5,10 @@ import { authenticatedFetch, isUnauthorized, handleUnauthorized } from '../utils
 import { canViewOrgAnalytics } from '../utils/analyticsScope';
 import BASE_API_URL from '../config';
 
-export default function useEmployeeAnalyticsScope() {
+export default function useEmployeeAnalyticsScope({ enabled } = {}) {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const canSelect = canViewOrgAnalytics(user?.role);
+  const canSelect = enabled ?? canViewOrgAnalytics(user?.role);
   const employeeParam = canSelect ? (searchParams.get('employee') || 'all') : 'all';
   const userId = canSelect && employeeParam !== 'all' ? employeeParam : '';
 

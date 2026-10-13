@@ -34,6 +34,11 @@ const MisContactSchema = new mongoose.Schema({
   email: { type: String, required: true, lowercase: true, trim: true },
   contact: { type: String, default: '', trim: true },
   phone: { type: String, default: '', trim: true },
+  /** Collapsed mailbox / number keys for directory uniqueness (aliases, formatting). */
+  emailKey: { type: String, default: '', index: true },
+  phoneKey: { type: String, default: '', index: true },
+  nameKey: { type: String, default: '', index: true },
+  companyKey: { type: String, default: '', index: true },
   position: { type: String, default: '', trim: true },
   location: { type: String, default: '', trim: true },
   state: { type: String, default: '', trim: true },
@@ -92,6 +97,9 @@ const MisContactSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 MisContactSchema.index({ organizationId: 1, email: 1 }, { unique: true });
+MisContactSchema.index({ organizationId: 1, emailKey: 1 });
+MisContactSchema.index({ organizationId: 1, phoneKey: 1 });
+MisContactSchema.index({ organizationId: 1, nameKey: 1, companyKey: 1 });
 MisContactSchema.index({ organizationId: 1, createdBy: 1, createdAt: -1 });
 MisContactSchema.index({ organizationId: 1, deskScope: 1, createdAt: -1 });
 MisContactSchema.index({ organizationId: 1, status: 1, createdAt: -1 });
@@ -99,6 +107,29 @@ MisContactSchema.index({ organizationId: 1, recordDate: -1, createdAt: -1 });
 MisContactSchema.index({ organizationId: 1, updatedAt: -1 });
 MisContactSchema.index({ organizationId: 1, name: 1 });
 MisContactSchema.index({ organizationId: 1, movedToCandidateAt: 1 });
+
+MisContactSchema.pre('save', function misIdentityKeys(next) {
+  try {
+    const { applyIdentityFields } = require('../utils/misIdentity');
+    const keys = applyIdentityFields({
+      email: this.email,
+      phone: this.phone || this.contact,
+      name: this.name,
+      companyName: this.companyName,
+    });
+    this.emailKey = keys.emailKey || '';
+    this.phoneKey = keys.phoneKey || '';
+    this.nameKey = keys.nameKey || '';
+    this.companyKey = keys.companyKey || '';
+    if (keys.phone) {
+      this.phone = keys.phone;
+      this.contact = keys.phone;
+    }
+  } catch {
+    /* keep save path available */
+  }
+  next();
+});
 
 MisContactSchema.methods.ensureUnsubscribeSecret = function ensureUnsubscribeSecret() {
   if (!this.unsubscribeSecret) {

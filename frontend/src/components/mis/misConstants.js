@@ -14,13 +14,13 @@ export const MIS_TOUR_STEPS = [
   {
     target: '[data-tour="mis-desk-tabs"]',
     title: 'Desk switcher',
-    body: 'All (owner/admin), My records, or Organisation. Desks sit with the table so results update in place.',
+    body: 'Owner: All or Organisation. Admin/employees also get My records. Desks sit with the table so results update in place.',
     placement: 'bottom',
   },
   {
     target: '[data-tour="mis-actions"]',
     title: 'Add, import, and export',
-    body: 'Add a contact or import Excel and CSV. Each row needs Name and Email. Duplicate emails are skipped. Owners can export the directory.',
+    body: 'Add a contact or import Excel and CSV. Each row needs Name and Email. Contacts already in the directory are skipped. Owners can export the directory.',
     placement: 'bottom',
   },
   {

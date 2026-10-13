@@ -58,6 +58,7 @@ const EMPTY_MIS_FILTERS = {
   datePeriod: '',
   dateFrom: '',
   dateTo: '',
+  quality: '',
 };
 
 const TEXT_FILTER_KEYS = [
@@ -242,6 +243,7 @@ function appendMisFilters(params, filters = {}) {
   if (String(filters.datePeriod || '').trim()) {
     params.set('dateRange', String(filters.datePeriod).trim());
   }
+  if (String(filters.quality || '').trim()) params.set('quality', String(filters.quality).trim());
   if (String(filters.dateFrom || '').trim()) params.set('from', String(filters.dateFrom).trim());
   if (String(filters.dateTo || '').trim()) params.set('to', String(filters.dateTo).trim());
 }
@@ -256,6 +258,7 @@ function countActiveMisFilters(filters = {}) {
     if (String(filters[key] || '').trim()) n += 1;
   });
   if (String(filters.datePeriod || '').trim()) n += 1;
+  if (String(filters.quality || '').trim()) n += 1;
   return n;
 }
 
@@ -359,43 +362,57 @@ export default function MisPage() {
   const [appliedFilters, setAppliedFilters] = useState(() => ({ ...EMPTY_MIS_FILTERS }));
   const showingMovedOnly = appliedFilters.moved === '1';
 
-  const openDeskCard = useCallback((desk) => {
-    setDraftFilters((prev) => ({ ...prev, moved: 'all', datePeriod: prev.datePeriod === 'month' && desk !== 'mine' ? '' : prev.datePeriod }));
-    setAppliedFilters((prev) => ({ ...prev, moved: 'all' }));
-    setDeskView(desk);
-  }, [setDeskView]);
+  useEffect(() => {
+    const quality = String(searchParams.get('quality') || '').trim();
+    const datePeriod = String(searchParams.get('dateRange') || searchParams.get('datePeriod') || '').trim();
+    if (!quality && !datePeriod) return undefined;
+    setDraftFilters((prev) => ({
+      ...prev,
+      ...(quality ? { quality } : {}),
+      ...(datePeriod ? { datePeriod } : {}),
+    }));
+    setAppliedFilters((prev) => ({
+      ...prev,
+      ...(quality ? { quality } : {}),
+      ...(datePeriod ? { datePeriod } : {}),
+    }));
+    return undefined;
+    // Apply deep-link once when the directory opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const showMovedToCandidates = useCallback(() => {
+  const applyDirectoryView = useCallback((desk, extra = {}) => {
     announceLoadRef.current = false;
-    const next = { ...EMPTY_MIS_FILTERS, moved: '1' };
+    const next = { ...EMPTY_MIS_FILTERS, ...extra };
     setDraftFilters(next);
     setAppliedFilters(next);
     setDraft('');
     setQ('');
     setPage(1);
-    if (orgWide) setDeskView('all');
+    setDeskView(desk);
+  }, [setDeskView]);
+
+  const openDeskCard = useCallback((desk) => {
+    applyDirectoryView(desk);
+  }, [applyDirectoryView]);
+
+  const showMovedToCandidates = useCallback(() => {
+    applyDirectoryView(orgWide ? 'all' : deskView, { moved: '1' });
     toast.info(
       orgWide ? 'Showing contacts moved to Candidates' : 'Showing contacts you moved to Candidates',
       2800,
       { key: 'mis-moved-view' }
     );
-  }, [toast, orgWide, setDeskView]);
+  }, [toast, orgWide, applyDirectoryView, deskView]);
 
   const showMovedThisMonth = useCallback(() => {
-    announceLoadRef.current = false;
-    const next = { ...EMPTY_MIS_FILTERS, moved: '1', datePeriod: 'month' };
-    setDraftFilters(next);
-    setAppliedFilters(next);
-    setDraft('');
-    setQ('');
-    setPage(1);
-    if (orgWide) setDeskView('all');
+    applyDirectoryView(orgWide ? 'all' : deskView, { moved: '1', datePeriod: 'month' });
     toast.info(
       orgWide ? 'Showing moves to Candidates this month' : 'Showing your moves to Candidates this month',
       2800,
       { key: 'mis-moved-month' }
     );
-  }, [toast, orgWide, setDeskView]);
+  }, [toast, orgWide, applyDirectoryView, deskView]);
 
   const [loading, setLoading] = useState(true);
   const [listRefreshing, setListRefreshing] = useState(false);
@@ -1625,6 +1642,17 @@ export default function MisPage() {
         value: formatMisStatusLabel(appliedFilters.status),
       });
     }
+    if (appliedFilters.quality) {
+      const qualityLabel = ({
+        dateAlignment: 'Date alignment',
+        sharedPhone: 'Shared phone numbers',
+        priorOnFile: 'Previously on file',
+        directoryOverlapEmail: 'Also in Candidates — email',
+        directoryOverlapPhone: 'Also in Candidates — phone',
+        recentUpdate: 'Updates to earlier records',
+      })[appliedFilters.quality] || appliedFilters.quality;
+      chips.push({ key: 'quality', label: 'Quality review', value: qualityLabel });
+    }
     if (appliedFilters.datePeriod) {
       const periodLabel = ({
         today: 'Today',
@@ -1803,10 +1831,10 @@ export default function MisPage() {
             loading={statsLoading}
             aligned
             onClick={() => {
-              setDraftFilters({ ...EMPTY_MIS_FILTERS, datePeriod: 'month' });
-              setAppliedFilters({ ...EMPTY_MIS_FILTERS, datePeriod: 'month' });
-              setDeskView(orgWide ? 'all' : (canSeeMyRecords ? 'mine' : 'company'));
-              setPage(1);
+              applyDirectoryView(
+                orgWide ? 'all' : (canSeeMyRecords ? 'mine' : 'company'),
+                { datePeriod: 'month' }
+              );
             }}
           />
           <StatCard

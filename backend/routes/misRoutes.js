@@ -118,6 +118,15 @@ router.get('/reports', async (req, res) => {
   }
 });
 
+router.get('/reports/quality', async (req, res) => {
+  try {
+    const data = await svc.getMisQualityDetails(req.user, req.query);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    handle(res, error);
+  }
+});
+
 router.get('/', async (req, res) => {
   try {
     const data = await svc.listContacts(req.user, req.query);

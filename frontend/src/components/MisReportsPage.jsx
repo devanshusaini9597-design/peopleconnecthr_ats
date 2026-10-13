@@ -1,25 +1,61 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import {
-  FileBarChart, RefreshCw, Inbox, Building2, UserRound, Copy, MailWarning, Phone,
-  BarChart3, TrendingUp,
+  FileBarChart, RefreshCw, Inbox, Building2, UserRound, MailWarning, Phone,
+  TrendingUp, ShieldAlert, Users, AlertTriangle, CheckCircle2,
 } from 'lucide-react';
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  PieChart, Pie, Cell,
+  Bar, ComposedChart, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell,
 } from 'recharts';
 import { authenticatedFetch } from '../utils/fetchUtils';
 import { useToast } from './Toast';
 import { useAuth } from '../context/AuthContext';
 import PageHeader from './ui/PageHeader';
 import AnalyticsPeriodSelect from './analytics/AnalyticsPeriodSelect';
+import EmployeeScopeSelect from './analytics/EmployeeScopeSelect';
+import useEmployeeAnalyticsScope from '../hooks/useEmployeeAnalyticsScope';
 import { StatCard } from './dashboard/DashboardWidgets';
-import { CategoryBarChart, CategoryRankList } from './analytics/AnalyticsCharts';
+import { CategoryBarChart } from './analytics/AnalyticsCharts';
 import { DATE_RANGE_LABELS, PIE_COLORS } from './analytics/constants';
 import { CHART_TOOLTIP_STYLE, CHART_GRID_STROKE } from './analytics/chartUtils';
-import { canAccessMis } from '../utils/misAccess';
+import { canAccessMis, canViewMisOrgReports } from '../utils/misAccess';
+import { useTableDragScroll } from './ats/hooks/useTableDragScroll';
 
-const DESK_COLORS = ['#4f46e5', '#0d9488'];
+const RISK_TONE = {
+  ok: 'border-emerald-200 bg-emerald-50/80 text-emerald-800',
+  watch: 'border-amber-200 bg-amber-50/80 text-amber-900',
+  high: 'border-rose-200 bg-rose-50/80 text-rose-900',
+};
+const HOUR_MS = 60 * 60 * 1000;
+
+function outOf(part, whole) {
+  const a = Number(part) || 0;
+  const b = Number(whole) || 0;
+  return `${a.toLocaleString()} of ${b.toLocaleString()}`;
+}
+
+/** Horizontal drag-scroll for wide report tables (same pattern as Candidates). */
+function DragPane({ className = '', children }) {
+  const {
+    tableScrollRef,
+    onTableDragScrollStart,
+    onTableDragScrollMove,
+    onTableDragScrollEnd,
+  } = useTableDragScroll();
+  return (
+    <div
+      ref={tableScrollRef}
+      className={`cand-table-scroll overflow-x-auto overscroll-x-contain select-none min-w-0 max-sm:[-ms-overflow-style:none] max-sm:[scrollbar-width:none] max-sm:[&::-webkit-scrollbar]:hidden ${className}`}
+      onPointerDown={onTableDragScrollStart}
+      onPointerMove={onTableDragScrollMove}
+      onPointerUp={onTableDragScrollEnd}
+      onPointerCancel={onTableDragScrollEnd}
+    >
+      {children}
+    </div>
+  );
+}
 
 function formatLabel(status) {
   const raw = String(status || '').trim();
@@ -33,9 +69,9 @@ function formatLabel(status) {
 
 function MetricSection({ title, timeLabel, hint, children }) {
   return (
-    <section className="mb-8 min-w-0">
+    <section className="mb-8 min-w-0 w-full overflow-x-hidden">
       <div className="mb-3 min-w-0">
-        <h2 className="text-sm font-bold tracking-tight text-stone-900 break-words">{title}</h2>
+        <h2 className="text-sm font-bold tracking-tight text-stone-900">{title}</h2>
         <p className="text-xs text-stone-500 mt-0.5 break-words">
           {timeLabel ? <span className="font-semibold text-stone-700">{timeLabel}</span> : null}
           {timeLabel && hint ? ' · ' : null}
@@ -47,21 +83,81 @@ function MetricSection({ title, timeLabel, hint, children }) {
   );
 }
 
-function formatTrendTick(dateStr) {
+function formatTrendTick(dateStr, label) {
+  if (label) return label;
   if (!dateStr) return '';
   const d = new Date(`${dateStr}T12:00:00`);
   if (Number.isNaN(d.getTime())) return String(dateStr).slice(5);
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
+function RiskBadge({ level }) {
+  const tone = RISK_TONE[level] || RISK_TONE.ok;
+  const Icon = level === 'high' ? ShieldAlert : level === 'watch' ? AlertTriangle : CheckCircle2;
+  const text = level === 'high' ? 'Needs attention' : level === 'watch' ? 'Needs review' : 'In order';
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${tone}`}>
+      <Icon size={12} />
+      {text}
+    </span>
+  );
+}
+
+function ReportTable({ columns, rows, emptyLabel = 'No rows for this period.' }) {
+  if (!rows.length) {
+    return (
+      <div className="px-4 py-10 text-center text-sm text-stone-500">{emptyLabel}</div>
+    );
+  }
+  return (
+    <DragPane>
+      <table className="cand-table-drag w-max min-w-full text-left border-collapse select-none border border-stone-200">
+        <thead>
+          <tr className="bg-stone-100">
+            {columns.map((col) => (
+              <th
+                key={col.key}
+                scope="col"
+                className={`px-3.5 py-3 text-[11px] font-semibold uppercase tracking-wider text-stone-500 border border-stone-200 whitespace-nowrap ${
+                  col.align === 'right' ? 'text-right' : 'text-left'
+                }`}
+              >
+                {col.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id} className="border-t border-stone-100 bg-white hover:bg-stone-50/80">
+              {columns.map((col) => (
+                <td
+                  key={col.key}
+                  className={`px-3.5 py-2.5 text-sm border border-stone-100 ${
+                    col.align === 'right' ? 'text-right tabular-nums' : 'text-left'
+                  } ${col.className || 'text-stone-800'}`}
+                >
+                  {typeof col.render === 'function' ? col.render(row) : row[col.key]}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </DragPane>
+  );
+}
+
 /**
- * MIS reporting — KPIs, charts, and duplicacy.
- * Owner/admin: organisation-wide. Other employees: only contacts they added.
+ * MIS Reports — role-scoped metrics matching Analytics page layout.
  */
 export default function MisReportsPage() {
   const { user } = useAuth();
   const toast = useToast();
+  const navigate = useNavigate();
   const isAllowed = canAccessMis(user);
+  const canSelectEmployee = canViewMisOrgReports(user);
+  const employeeScope = useEmployeeAnalyticsScope({ enabled: canSelectEmployee });
 
   const [dateRange, setDateRange] = useState('month');
   const [customFrom, setCustomFrom] = useState('');
@@ -70,21 +166,25 @@ export default function MisReportsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [report, setReport] = useState(null);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const [qualityKind, setQualityKind] = useState('');
+  const [qualityDetail, setQualityDetail] = useState(null);
+  const [qualityLoading, setQualityLoading] = useState(false);
   const requestSeq = React.useRef(0);
+  const qualitySeq = React.useRef(0);
 
-  const isSelfScope = report?.scope === 'self'
-    || (user && !['owner', 'admin'].includes(user.role));
-  const isVisibleScope = report?.scope === 'visible';
-  const scopeSubtitle = report?.scope === 'organisation'
-    ? 'Organisation-wide MIS metrics for the company owner'
-    : isVisibleScope
-      ? 'Metrics for the shared directory and your own records'
-      : 'Metrics for contacts you added';
-  const scopeHint = report?.scope === 'organisation'
-    ? 'Period totals use the tracker date when available, otherwise the import timestamp. Charts follow the selected period.'
-    : isVisibleScope
-      ? 'Totals cover the shared directory and your own records within authorised access.'
-      : 'Period totals use the date you added each contact. Charts and duplicacy cover your MIS records.';
+  const scopedUserId = canSelectEmployee ? employeeScope.userId : '';
+  const isEmployeeScope = report?.scope === 'employee';
+  const isOrgScope = report?.scope === 'organisation';
+  const isDeskScope = report?.scope === 'desk'
+    || report?.scope === 'self'
+    || (!report && !canSelectEmployee);
+  const isSelfScope = report?.scope === 'self';
+
+  const scopeSubtitle = isOrgScope
+    ? 'Organisation MIS performance for the selected period.'
+    : isEmployeeScope
+      ? `MIS activity for ${report?.meta?.scopedUserName || employeeScope.selectedEmployee?.name || 'the selected employee'}.`
+      : 'Organisation directory and your records for the selected period.';
 
   const periodLabel = report?.periodLabel
     || (dateRange === 'custom' && customFrom && customTo
@@ -102,7 +202,7 @@ export default function MisReportsPage() {
       setRefreshing(true);
     } else {
       setLoading(true);
-      setReport(null); // avoid showing previous period while the new one loads
+      // Keep previous report visible so the page does not flash empty while reloading
     }
     try {
       const params = new URLSearchParams({ dateRange });
@@ -110,39 +210,73 @@ export default function MisReportsPage() {
         params.set('from', customFrom);
         params.set('to', customTo);
       }
-      // Bust caches so period switches always get fresh aggregates
+      if (canSelectEmployee && scopedUserId) {
+        params.set('userId', scopedUserId);
+      }
       params.set('_', String(Date.now()));
       const res = await authenticatedFetch(`/api/mis/reports?${params}`, {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' },
       });
       const data = await res.json().catch(() => ({}));
-      if (seq !== requestSeq.current) return; // stale response — ignore
+      if (seq !== requestSeq.current) return;
       if (!res.ok) throw new Error(data.message || 'Failed to load MIS reports');
       setReport(data);
       setLastSyncedAt(data.generatedAt ? new Date(data.generatedAt) : new Date());
     } catch (err) {
       if (seq !== requestSeq.current) return;
-      if (!silent) {
-        toast.error(err.message || 'Failed to load MIS reports');
-        setReport(null);
-      }
+      if (!silent) toast.error(err.message || 'Failed to load MIS reports');
     } finally {
       if (seq === requestSeq.current) {
         setLoading(false);
         setRefreshing(false);
       }
     }
-  }, [isAllowed, dateRange, customFrom, customTo, toast]);
+  }, [isAllowed, dateRange, customFrom, customTo, canSelectEmployee, scopedUserId, toast]);
+
+  const loadQuality = useCallback(async (kind) => {
+    if (!kind || !canSelectEmployee) {
+      setQualityDetail(null);
+      return;
+    }
+    const seq = ++qualitySeq.current;
+    setQualityLoading(true);
+    try {
+      const params = new URLSearchParams({ kind, dateRange });
+      if (dateRange === 'custom') {
+        params.set('from', customFrom);
+        params.set('to', customTo);
+      }
+      if (scopedUserId) params.set('userId', scopedUserId);
+      const res = await authenticatedFetch(`/api/mis/reports/quality?${params}`);
+      const data = await res.json().catch(() => ({}));
+      if (seq !== qualitySeq.current) return;
+      if (!res.ok) throw new Error(data.message || 'Unable to load this review list');
+      setQualityDetail(data);
+    } catch (err) {
+      if (seq !== qualitySeq.current) return;
+      toast.error(err.message || 'Unable to load this review list');
+      setQualityDetail({ rows: [], total: 0, label: '', kind });
+    } finally {
+      if (seq === qualitySeq.current) setQualityLoading(false);
+    }
+  }, [canSelectEmployee, dateRange, customFrom, customTo, scopedUserId, toast]);
+
+  const openQuality = useCallback((kind) => {
+    setQualityKind(kind);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (qualityKind) loadQuality(qualityKind);
+  }, [qualityKind, loadQuality]);
 
-  // Keep numbers live: refresh on focus and every 2 minutes while the page is open
+  // Hourly auto-refresh + refresh when the tab regains focus
   useEffect(() => {
     if (!isAllowed) return undefined;
     const onFocus = () => { load({ silent: true }); };
     window.addEventListener('focus', onFocus);
-    const id = window.setInterval(() => { load({ silent: true }); }, 120000);
+    const id = window.setInterval(() => { load({ silent: true }); }, HOUR_MS);
     return () => {
       window.removeEventListener('focus', onFocus);
       window.clearInterval(id);
@@ -151,11 +285,16 @@ export default function MisReportsPage() {
 
   const totals = report?.totals || {};
   const dup = report?.duplicacy || {};
+  const quality = report?.quality || {};
+  const integrity = report?.integrity || {};
+  const showQuality = canSelectEmployee && !isSelfScope;
   const byStatus = Array.isArray(report?.byStatus) ? report.byStatus : [];
-  const bySource = Array.isArray(report?.bySource) ? report.bySource : [];
   const trend = Array.isArray(report?.trend) ? report.trend : [];
-  const deskMix = Array.isArray(report?.deskMix) ? report.deskMix : [];
+  const employeeMix = Array.isArray(report?.employeeMix) ? report.employeeMix : [];
+  const byContributor = Array.isArray(report?.byContributor) ? report.byContributor : [];
   const showLoading = loading && !report;
+  const riskLevel = integrity.riskLevel || 'ok';
+  const granularity = report?.granularity === 'weekly' ? 'weekly' : 'daily';
 
   const statusChartData = useMemo(
     () => byStatus.map((row) => ({
@@ -166,436 +305,615 @@ export default function MisReportsPage() {
     [byStatus]
   );
 
-  const sourceChartData = useMemo(
-    () => bySource.map((row) => ({
-      label: row.source,
-      fullLabel: row.source,
-      value: Number(row.count) || 0,
-    })),
-    [bySource]
-  );
-
   const trendChartData = useMemo(
     () => trend.map((row) => ({
       date: row.date,
-      label: formatTrendTick(row.date),
+      endDate: row.endDate,
+      label: formatTrendTick(row.date, row.label),
       count: Number(row.count) || 0,
     })),
     [trend]
   );
 
-  const deskSlices = useMemo(
-    () => deskMix.map((row) => ({
-      name: row.label,
-      count: Number(row.count) || 0,
-    })).filter((row) => row.count > 0),
-    [deskMix]
+  const employeeSlices = useMemo(
+    () => (employeeMix.length
+      ? employeeMix
+      : byContributor.map((row) => ({ label: row.name, key: row.userId, count: row.added }))
+    )
+      .map((row) => ({
+        name: row.label || row.name || 'Unknown',
+        count: Number(row.count || row.added) || 0,
+      }))
+      .filter((row) => row.count > 0)
+      .slice(0, 10),
+    [employeeMix, byContributor]
   );
 
-  const deskTotal = deskSlices.reduce((sum, row) => sum + row.count, 0);
-  const periodTotal = Number(totals.inPeriod) || deskTotal || 0;
+  const employeeTotal = employeeSlices.reduce((sum, row) => sum + row.count, 0);
+  const periodTotal = Number(totals.inPeriod) || employeeTotal || 0;
+  const allTimeTotal = Number(totals.allTime) || 0;
+  const uploadedN = Number(totals.uploadedInPeriod ?? integrity.trulyNewInPeriod) || 0;
+  const priorN = Number(totals.previousPeriod) || 0;
+  const deltaCaption = priorN > 0
+    ? `${Number(totals.inPeriod || 0).toLocaleString()} this period · ${priorN.toLocaleString()} prior period`
+    : null;
+
+  const statusTableRows = useMemo(
+    () => byStatus.map((row, index) => ({
+      id: String(row.status || index),
+      status: formatLabel(row.status),
+      count: Number(row.count) || 0,
+      color: PIE_COLORS[index % PIE_COLORS.length],
+    })),
+    [byStatus]
+  );
+
+  const employeeTableRows = useMemo(
+    () => employeeSlices.map((row, index) => ({
+      id: row.name + index,
+      name: row.name,
+      count: row.count,
+      color: PIE_COLORS[index % PIE_COLORS.length],
+    })),
+    [employeeSlices]
+  );
+
+  const teamTableRows = useMemo(
+    () => byContributor.map((row) => ({
+      id: row.userId,
+      name: row.name,
+      email: row.email || row.role || '',
+      added: Number(row.added) || 0,
+      conflicts: Number(row.recycledTrackerDates) || 0,
+      risk: row.risk || 'ok',
+      userId: row.userId,
+    })),
+    [byContributor]
+  );
 
   if (user && !isAllowed) {
     return <Navigate to="/dashboard" replace />;
   }
 
   return (
-    <div className="page-shell-ats font-sans text-stone-900" role="main" aria-label="MIS Reports">
+    <div className="page-shell-ats animate-page-enter font-sans text-stone-900 overflow-x-hidden min-w-0" role="main" aria-label="MIS Reports">
       <PageHeader
         icon={FileBarChart}
         title="MIS Reports"
         subtitle={scopeSubtitle}
-        gradientTitle
       >
         <button
           type="button"
           onClick={() => load()}
           disabled={loading || refreshing}
-          className="inline-flex h-10 w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3 text-sm font-semibold text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-50"
-          title={
-            lastSyncedAt
-              ? `Last updated ${lastSyncedAt.toLocaleTimeString()}`
-              : 'Refresh report'
-          }
+          className="btn-secondary"
         >
-          <RefreshCw size={15} className={(loading || refreshing) ? 'animate-spin' : ''} />
+          <RefreshCw size={16} className={(loading || refreshing) ? 'animate-spin' : ''} />
           Refresh
         </button>
       </PageHeader>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,280px)_1fr] gap-4 mb-6 min-w-0">
-        <div className="card-ats-bordered p-4 sm:p-5 min-w-0" data-tour="mis-reports-period">
-          <AnalyticsPeriodSelect
-            dateRange={dateRange}
-            setDateRange={setDateRange}
-            customFrom={customFrom}
-            setCustomFrom={setCustomFrom}
-            customTo={customTo}
-            setCustomTo={setCustomTo}
-            periodLabel={periodLabel}
-          />
-        </div>
-        <div className="rounded-xl border border-brand-100/80 bg-gradient-to-r from-brand-50/70 via-white to-white px-4 py-3 text-sm text-stone-600 leading-snug min-w-0 flex flex-col sm:flex-row sm:items-start gap-2">
-          <span className="inline-flex items-start gap-2 min-w-0 flex-1">
-            <BarChart3 size={16} className="text-brand-600 shrink-0 mt-0.5" />
-            <span>
-              {scopeHint}
-            </span>
-          </span>
-          {lastSyncedAt ? (
-            <span className="text-[11px] font-semibold text-stone-400 tabular-nums shrink-0 sm:pt-0.5">
-              Updated {lastSyncedAt.toLocaleTimeString()}
-              {refreshing ? ' · refreshing…' : ''}
-            </span>
-          ) : null}
-        </div>
-      </div>
+      <p className="text-[12px] text-stone-400 -mt-2 mb-3">
+        {loading || refreshing ? (
+          <span className="text-brand-600 font-medium">Refreshing figures…</span>
+        ) : lastSyncedAt ? (
+          `Last updated ${lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+        ) : (
+          'Current figures'
+        )}
+        {' · Auto-refresh every hour'}
+      </p>
 
-      {/* Overview KPIs */}
+      <section className="card-ats-bordered relative overflow-hidden mb-6 min-w-0" data-tour="mis-reports-filters">
+        <div className="h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
+        <div className="p-4 sm:p-5">
+          <div className={`grid grid-cols-1 gap-5 min-w-0 ${canSelectEmployee ? 'xl:grid-cols-2' : ''}`}>
+            {canSelectEmployee ? (
+              <EmployeeScopeSelect
+                value={employeeScope.employeeParam}
+                employees={employeeScope.employees}
+                onChange={employeeScope.setEmployee}
+                loading={employeeScope.loadingEmployees}
+                statsLoading={loading || refreshing}
+                orgDescription="Organisation-wide MIS metrics"
+                personDescriptionSuffix="MIS desk"
+                personHint="Contacts created by this employee"
+              />
+            ) : null}
+            <AnalyticsPeriodSelect
+              dateRange={dateRange}
+              setDateRange={setDateRange}
+              customFrom={customFrom}
+              setCustomFrom={setCustomFrom}
+              customTo={customTo}
+              setCustomTo={setCustomTo}
+              periodLabel={periodLabel}
+            />
+          </div>
+        </div>
+      </section>
+
+      {dateRange === 'custom' && customFrom && customTo && customFrom > customTo ? (
+        <div className="rounded-xl border border-red-200 bg-red-50/80 px-4 py-2.5 text-[13px] text-red-800 mb-6">
+          End date must be on or after the start date.
+        </div>
+      ) : null}
+
       <MetricSection
-        title="Period overview"
+        title="Overview"
         timeLabel={periodLabel}
-        hint={
-          isSelfScope
-            ? 'Contacts you added in this period'
-            : isVisibleScope
-              ? 'Shared directory and your own records in this period'
-              : 'Contacts across the organisation directory'
-        }
+        hint={isDeskScope && !isOrgScope && !isEmployeeScope
+          ? 'Organisation directory and your records'
+          : 'Directory activity for this period'}
       >
-        <div className="grid grid-cols-1 min-[420px]:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+        <div className={`grid grid-cols-1 min-[420px]:grid-cols-2 gap-3 sm:gap-4 min-w-0 ${isOrgScope || isEmployeeScope ? 'xl:grid-cols-4' : 'xl:grid-cols-3'}`}>
           <StatCard
             icon={Inbox}
             label="Contacts in period"
             value={totals.inPeriod ?? 0}
-            caption={
-              isSelfScope
-                ? `Your all-time total: ${(totals.allTime ?? 0).toLocaleString()}`
-                : isVisibleScope
-                  ? `All-time visible: ${(totals.allTime ?? 0).toLocaleString()}`
-                  : `All-time directory: ${(totals.allTime ?? 0).toLocaleString()}`
-            }
+            caption={[
+              allTimeTotal ? `${outOf(totals.inPeriod ?? 0, allTimeTotal)} all-time` : null,
+              uploadedN ? `${uploadedN.toLocaleString()} uploaded in period` : null,
+              deltaCaption,
+            ].filter(Boolean).join(' · ')}
             gradient="from-sky-500 to-brand-400"
             loading={showLoading}
             aligned
           />
           <StatCard
             icon={Building2}
-            label={isSelfScope || isVisibleScope ? 'Shared desk' : 'Organisation'}
+            label="Organisation directory"
             value={totals.companyInPeriod ?? 0}
-            caption={
-              isSelfScope
-                ? 'Your contacts saved to the shared directory'
-                : isVisibleScope
-                  ? 'Shared directory contacts in period'
-                  : 'Shared directory contacts in period'
-            }
+            caption={`${outOf(totals.companyInPeriod ?? 0, periodTotal)} contacts in period`}
             gradient="from-indigo-500 to-blue-400"
             loading={showLoading}
             aligned
           />
           <StatCard
             icon={UserRound}
-            label="My records"
+            label={isOrgScope || isEmployeeScope ? 'Employee records' : 'My records'}
             value={totals.personalInPeriod ?? 0}
             caption={
-              isSelfScope
-                ? 'Contacts on your My records desk in this period'
-                : 'Contacts created by team members in this period'
+              isOrgScope || isEmployeeScope
+                ? `${outOf(totals.personalInPeriod ?? 0, periodTotal)} from employee desks`
+                : 'Contacts you added in this period'
             }
             gradient="from-brand-500 to-teal-500"
             loading={showLoading}
             aligned
           />
+          {showQuality ? (
           <StatCard
-            icon={Copy}
-            label="Duplicate phone groups"
-            value={dup.phoneDuplicateGroups ?? 0}
-            caption={`${Number(dup.phoneDuplicateRows || 0).toLocaleString()} contacts share a phone`}
+            icon={ShieldAlert}
+            label="Date alignment"
+            value={quality.dateAlignment ?? dup.recycledTrackerDates ?? 0}
+            caption={`${outOf(quality.dateAlignment ?? dup.recycledTrackerDates ?? 0, periodTotal)} dated in period, imported earlier`}
             gradient="from-amber-500 to-orange-400"
             loading={showLoading}
             aligned
+            onClick={() => openQuality('dateAlignment')}
           />
+          ) : null}
         </div>
       </MetricSection>
 
-      {/* Charts — status + desk mix */}
       <MetricSection
-        title="Status & desk mix"
+        title={isOrgScope ? 'Status distribution' : 'Status distribution'}
         timeLabel={periodLabel}
-        hint="Same layout style as the dashboard cohort charts"
+        hint="Contact lifecycle status for this period"
       >
-        <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 sm:gap-6 min-w-0">
-          <div className="xl:col-span-3 card-ats-bordered p-4 sm:p-6 relative overflow-hidden min-w-0">
+        <div className={`grid grid-cols-1 gap-4 sm:gap-6 min-w-0 ${isOrgScope ? 'xl:grid-cols-5' : ''}`}>
+          <div className={`${isOrgScope ? 'xl:col-span-3' : ''} card-ats-bordered p-4 sm:p-6 relative overflow-hidden min-w-0`}>
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-teal-400 to-brand-600" />
-            <h3 className="text-sm font-bold text-stone-900">Status breakdown</h3>
-            <p className="text-xs text-stone-500 mt-0.5 mb-4">
-              How contacts in {periodLabel} are distributed by MIS status.
-            </p>
+            <h3 className="text-sm font-bold text-stone-900 mb-4">By status</h3>
             {showLoading ? (
               <div className="h-64 flex items-center justify-center text-sm text-stone-400">Loading…</div>
             ) : statusChartData.length > 0 ? (
-              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] gap-4 items-start">
-                <CategoryBarChart data={statusChartData} limit={10} name="Contacts" height={280} />
-                <CategoryRankList data={statusChartData} limit={10} total={periodTotal} />
+              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4 items-start min-w-0">
+                <div className="min-w-0 overflow-hidden">
+                  <CategoryBarChart data={statusChartData} limit={10} name="Contacts" height={300} horizontal />
+                </div>
+                <div className="card-ats-bordered overflow-hidden min-w-0">
+                  <ReportTable
+                    columns={[
+                      {
+                        key: 'status',
+                        label: 'Status',
+                        render: (row) => (
+                          <span className="inline-flex items-center gap-2 min-w-0 max-w-[16rem]">
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
+                            <span className="truncate font-medium" title={row.status}>{row.status}</span>
+                          </span>
+                        ),
+                      },
+                      {
+                        key: 'count',
+                        label: 'Contacts',
+                        align: 'right',
+                        render: (row) => row.count.toLocaleString(),
+                      },
+                      {
+                        key: 'share',
+                        label: 'Of period',
+                        align: 'right',
+                        className: 'text-stone-600',
+                        render: (row) => outOf(row.count, periodTotal),
+                      },
+                    ]}
+                    rows={statusTableRows.slice(0, 10)}
+                  />
+                </div>
               </div>
             ) : (
-              <p className="text-sm text-stone-500 py-10 text-center">
-                {isSelfScope ? 'No contacts you added in this period.' : 'No MIS contacts in this period.'}
-              </p>
+              <p className="text-sm text-stone-500 py-10 text-center">No contacts in this period.</p>
             )}
           </div>
 
-          <div className="xl:col-span-2 card-ats-bordered p-4 sm:p-6 relative overflow-hidden min-w-0 bg-gradient-to-b from-white to-indigo-50/30">
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-500 to-blue-400" />
-            <h3 className="text-sm font-bold text-stone-900">Desk mix</h3>
-            <p className="text-xs text-stone-500 mt-0.5 mb-4">
-              Shared directory versus My records in this period.
-            </p>
-            {showLoading ? (
-              <div className="h-56 flex items-center justify-center text-sm text-stone-400">Loading…</div>
-            ) : deskSlices.length > 0 ? (
-              <div className="grid grid-cols-1 gap-4 items-center min-w-0">
-                <div className="relative h-56 mx-auto w-full max-w-[240px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={deskSlices}
-                        dataKey="count"
-                        nameKey="name"
-                        innerRadius={68}
-                        outerRadius={96}
-                        paddingAngle={2}
-                        stroke="#fff"
-                        strokeWidth={2}
-                      >
-                        {deskSlices.map((slice, index) => (
-                          <Cell key={slice.name} fill={DESK_COLORS[index % DESK_COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(value, name) => [`${Number(value).toLocaleString()} contacts`, name]}
-                        contentStyle={CHART_TOOLTIP_STYLE}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                    <p className="text-2xl font-bold text-stone-900 tabular-nums">{deskTotal.toLocaleString()}</p>
-                    <p className="text-[11px] font-medium text-stone-500">contacts</p>
+          {isOrgScope ? (
+            <div className="xl:col-span-2 card-ats-bordered p-4 sm:p-6 relative overflow-hidden min-w-0">
+              <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-500 to-blue-400" />
+              <h3 className="text-sm font-bold text-stone-900 mb-4">By employee</h3>
+              {showLoading ? (
+                <div className="h-56 flex items-center justify-center text-sm text-stone-400">Loading…</div>
+              ) : employeeSlices.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4 min-w-0">
+                  <div className="relative h-48 mx-auto w-full max-w-[220px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={employeeSlices}
+                          dataKey="count"
+                          nameKey="name"
+                          innerRadius={58}
+                          outerRadius={84}
+                          paddingAngle={2}
+                          stroke="#fff"
+                          strokeWidth={2}
+                        >
+                          {employeeSlices.map((slice, index) => (
+                            <Cell key={slice.name} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(value, name) => [`${outOf(value, employeeTotal)} contacts`, name]}
+                          contentStyle={CHART_TOOLTIP_STYLE}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                      <p className="text-xl font-bold text-stone-900 tabular-nums">{employeeTotal.toLocaleString()}</p>
+                      <p className="text-[11px] font-medium text-stone-500">contacts</p>
+                    </div>
+                  </div>
+                  <div className="card-ats-bordered overflow-hidden min-w-0">
+                    <ReportTable
+                      columns={[
+                        {
+                          key: 'name',
+                          label: 'Employee',
+                          render: (row) => (
+                            <span className="inline-flex items-center gap-2 min-w-0 max-w-[12rem]">
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
+                              <span className="truncate font-medium" title={row.name}>{row.name}</span>
+                            </span>
+                          ),
+                        },
+                        {
+                          key: 'count',
+                          label: 'Contacts',
+                          align: 'right',
+                          render: (row) => outOf(row.count, employeeTotal),
+                        },
+                      ]}
+                      rows={employeeTableRows}
+                    />
                   </div>
                 </div>
-                <div className="min-w-0 flex flex-col gap-1">
-                  {deskSlices.map((item, index) => {
-                    const pct = deskTotal > 0 ? Math.round((item.count / deskTotal) * 100) : 0;
-                    return (
-                      <div
-                        key={item.name}
-                        className="w-full min-w-0 grid grid-cols-[0.625rem_minmax(0,1fr)_auto] items-start gap-x-2.5 rounded-xl px-2.5 py-1.5"
-                      >
-                        <span
-                          className="mt-1.5 w-2.5 h-2.5 rounded-full"
-                          style={{ background: DESK_COLORS[index % DESK_COLORS.length] }}
-                        />
-                        <span className="text-sm font-medium text-stone-800 break-words">{item.name}</span>
-                        <span className="text-sm font-semibold tabular-nums text-stone-900 whitespace-nowrap">
-                          {item.count.toLocaleString()} · {pct}%
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-stone-500 py-10 text-center">No desk data for this period.</p>
-            )}
-          </div>
+              ) : (
+                <p className="text-sm text-stone-500 py-10 text-center">No employee activity in this period.</p>
+              )}
+            </div>
+          ) : null}
         </div>
       </MetricSection>
 
-      {/* Trend */}
       <MetricSection
-        title="Intake trend"
+        title="Volume trend"
         timeLabel={periodLabel}
-        hint={isSelfScope ? 'Contacts you added by day' : 'Contacts added by day'}
+        hint={granularity === 'weekly' ? 'Weekly contact volume' : 'Daily contact volume'}
       >
         <div className="card-ats-bordered p-4 sm:p-6 relative overflow-hidden min-w-0">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-400" />
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-4">
             <TrendingUp size={15} className="text-emerald-600" />
-            <h3 className="text-sm font-bold text-stone-900">Daily volume</h3>
+            <h3 className="text-sm font-bold text-stone-900">
+              {granularity === 'weekly' ? 'Weekly volume' : 'Daily volume'}
+            </h3>
           </div>
-          <p className="text-xs text-stone-500 mb-4">
-            Day-by-day contact volume for the selected period.
-          </p>
           {showLoading ? (
             <div className="h-56 flex items-center justify-center text-sm text-stone-400">Loading…</div>
           ) : trendChartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={trendChartData} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="misTrendFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#0d9488" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="#0d9488" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 10, fill: '#78716c' }}
-                  axisLine={false}
-                  tickLine={false}
-                  interval="preserveStartEnd"
-                  minTickGap={28}
-                />
-                <YAxis
-                  allowDecimals={false}
-                  tick={{ fontSize: 10, fill: '#78716c' }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={36}
-                />
-                <Tooltip
-                  contentStyle={CHART_TOOLTIP_STYLE}
-                  formatter={(value) => [`${Number(value).toLocaleString()} contacts`, 'Volume']}
-                  labelFormatter={(_, payload) => payload?.[0]?.payload?.date || ''}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="count"
-                  stroke="#0d9488"
-                  strokeWidth={2.25}
-                  fill="url(#misTrendFill)"
-                  name="Contacts"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-sm text-stone-500 py-10 text-center">No daily trend data for this period.</p>
-          )}
-        </div>
-      </MetricSection>
-
-      {/* Sources */}
-      <MetricSection
-        title="Sources"
-        timeLabel={periodLabel}
-        hint="Where contacts in this period came from"
-      >
-        <div className="card-ats-bordered p-4 sm:p-6 relative overflow-hidden min-w-0">
-          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-500 to-fuchsia-400" />
-          <h3 className="text-sm font-bold text-stone-900">Top sources</h3>
-          <p className="text-xs text-stone-500 mt-0.5 mb-4">
-            Leading source channels for contacts in {periodLabel}.
-          </p>
-          {showLoading ? (
-            <div className="h-48 flex items-center justify-center text-sm text-stone-400">Loading…</div>
-          ) : sourceChartData.length > 0 ? (
-            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] gap-4 items-start">
-              <CategoryBarChart data={sourceChartData} limit={8} name="Contacts" horizontal />
-              <CategoryRankList data={sourceChartData} limit={8} total={periodTotal} />
+            <div className="min-w-0 w-full overflow-hidden">
+              <ResponsiveContainer width="100%" height={280}>
+                <ComposedChart data={trendChartData} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 10, fill: '#78716c' }}
+                    axisLine={false}
+                    tickLine={false}
+                    interval="preserveStartEnd"
+                    minTickGap={28}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    tick={{ fontSize: 10, fill: '#78716c' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={36}
+                  />
+                  <Tooltip
+                    contentStyle={CHART_TOOLTIP_STYLE}
+                    formatter={(value) => [`${Number(value).toLocaleString()} contacts`, 'Volume']}
+                    labelFormatter={(_, payload) => {
+                      const row = payload?.[0]?.payload;
+                      if (!row) return '';
+                      if (row.endDate && row.endDate !== row.date) return `${row.date} → ${row.endDate}`;
+                      return row.date || '';
+                    }}
+                  />
+                  <Bar dataKey="count" name="Volume" fill="#5eead4" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                </ComposedChart>
+              </ResponsiveContainer>
             </div>
           ) : (
-            <p className="text-sm text-stone-500 py-10 text-center">No source data for this period.</p>
+            <p className="text-sm text-stone-500 py-10 text-center">No volume data for this period.</p>
           )}
         </div>
       </MetricSection>
 
-      {/* Duplicacy */}
+      {isOrgScope ? (
+        <MetricSection
+          title="Team performance"
+          timeLabel={periodLabel}
+          hint="Contacts added and date-alignment review by team member"
+        >
+          <div className="card-ats-bordered overflow-hidden min-w-0">
+            {showLoading ? (
+              <div className="p-8 text-center text-sm text-stone-400">Loading…</div>
+            ) : (
+              <ReportTable
+                emptyLabel="No team activity in this period."
+                columns={[
+                  {
+                    key: 'member',
+                    label: 'Team member',
+                    render: (row) => (
+                      <button
+                        type="button"
+                        onClick={() => employeeScope.setEmployee(row.userId)}
+                        className="text-left min-w-0 hover:text-brand-700 max-w-[18rem]"
+                      >
+                        <p className="font-semibold text-stone-900 truncate">{row.name}</p>
+                        <p className="text-[11px] text-stone-500 truncate">{row.email}</p>
+                      </button>
+                    ),
+                  },
+                  {
+                    key: 'added',
+                    label: 'Contacts added',
+                    align: 'right',
+                    render: (row) => outOf(row.added, periodTotal),
+                  },
+                  {
+                    key: 'conflicts',
+                    label: 'Date alignment',
+                    align: 'right',
+                    render: (row) => outOf(row.conflicts, row.added || 0),
+                  },
+                  {
+                    key: 'health',
+                    label: 'Health',
+                    align: 'right',
+                    render: (row) => <RiskBadge level={row.risk} />,
+                  },
+                ]}
+                rows={teamTableRows}
+              />
+            )}
+          </div>
+        </MetricSection>
+      ) : null}
+
+      {showQuality ? (
       <MetricSection
-        title="Duplicacy"
-        hint={
-          isSelfScope
-            ? 'Checks across your MIS records (not limited to the selected period)'
-            : isVisibleScope
-              ? 'Checks across contacts you can see (not limited to the selected period)'
-              : 'Organisation-wide checks (not limited to the selected period)'
-        }
+        title="Directory quality"
+        timeLabel={periodLabel}
+        hint="Review lists for the selected period. Select a card to open matching records."
       >
-        <div className="grid grid-cols-1 min-[420px]:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+        <div className={`mb-4 rounded-xl border px-4 py-3 text-sm flex flex-wrap items-center gap-3 ${RISK_TONE[riskLevel] || RISK_TONE.ok}`}>
+          <RiskBadge level={riskLevel} />
+          <p className="min-w-0 flex-1 leading-snug text-stone-700">
+            Volume uses each contact’s Date field. Import time is used only when Date is blank. Quality review covers the selected period.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 min-[420px]:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 mb-4 min-w-0">
           <StatCard
-            icon={Phone}
-            label="MIS phone collisions"
-            value={dup.phoneDuplicateGroups ?? 0}
-            caption={
-              isSelfScope
-                ? 'Same phone on multiple contacts you added'
-                : 'Same phone on multiple MIS contacts'
-            }
-            gradient="from-rose-500 to-orange-400"
+            icon={ShieldAlert}
+            label="Date alignment"
+            value={quality.dateAlignment ?? dup.recycledTrackerDates ?? 0}
+            caption={`${outOf(quality.dateAlignment ?? dup.recycledTrackerDates ?? 0, periodTotal)} dated in period, imported earlier`}
+            gradient="from-amber-500 to-orange-400"
             loading={showLoading}
             aligned
-          />
-          <StatCard
-            icon={MailWarning}
-            label="Email already in Candidates"
-            value={dup.emailOverlapWithCandidates ?? 0}
-            caption={
-              isSelfScope
-                ? 'Your MIS emails that also exist in ATS'
-                : 'MIS emails that also exist in ATS'
-            }
-            gradient="from-violet-500 to-fuchsia-400"
-            loading={showLoading}
-            aligned
+            onClick={() => openQuality('dateAlignment')}
           />
           <StatCard
             icon={Phone}
-            label="Phone already in Candidates"
-            value={dup.phoneOverlapWithCandidates ?? 0}
-            caption={
-              isSelfScope
-                ? 'Your MIS phones that also exist in ATS'
-                : 'MIS phones that also exist in ATS'
-            }
+            label="Shared phone numbers"
+            value={quality.sharedPhoneGroups ?? dup.phoneDuplicateGroups ?? 0}
+            caption={`${outOf(quality.sharedPhoneGroups ?? dup.phoneDuplicateGroups ?? 0, periodTotal)} shared-number groups in period`}
             gradient="from-stone-500 to-stone-600"
             loading={showLoading}
             aligned
+            onClick={() => openQuality('sharedPhone')}
+          />
+          <StatCard
+            icon={MailWarning}
+            label="Also in Candidates — email"
+            value={quality.directoryOverlapEmail ?? dup.emailOverlapWithCandidates ?? 0}
+            caption={`${outOf(quality.directoryOverlapEmail ?? dup.emailOverlapWithCandidates ?? 0, periodTotal)} emails also on Candidates`}
+            gradient="from-violet-500 to-fuchsia-400"
+            loading={showLoading}
+            aligned
+            onClick={() => openQuality('directoryOverlapEmail')}
+          />
+          <StatCard
+            icon={Phone}
+            label="Also in Candidates — phone"
+            value={quality.directoryOverlapPhone ?? dup.phoneOverlapWithCandidates ?? 0}
+            caption={`${outOf(quality.directoryOverlapPhone ?? dup.phoneOverlapWithCandidates ?? 0, periodTotal)} numbers also on Candidates`}
+            gradient="from-indigo-500 to-blue-400"
+            loading={showLoading}
+            aligned
+            onClick={() => openQuality('directoryOverlapPhone')}
+          />
+          <StatCard
+            icon={Users}
+            label="Previously on file"
+            value={quality.priorOnFile ?? 0}
+            caption={`${outOf(quality.priorOnFile ?? 0, periodTotal)} imported in period, already on file`}
+            gradient="from-rose-500 to-orange-400"
+            loading={showLoading}
+            aligned
+            onClick={() => openQuality('priorOnFile')}
+          />
+          <StatCard
+            icon={Users}
+            label="Imported in period"
+            value={uploadedN}
+            caption={`${outOf(uploadedN, periodTotal)} created or imported in period`}
+            gradient="from-emerald-500 to-teal-400"
+            loading={showLoading}
+            aligned
+          />
+          <StatCard
+            icon={AlertTriangle}
+            label="Updates to earlier records"
+            value={quality.recentUpdates ?? dup.touchedOldContacts ?? 0}
+            caption={`${outOf(quality.recentUpdates ?? dup.touchedOldContacts ?? 0, periodTotal)} earlier records updated in period`}
+            gradient="from-amber-600 to-stone-500"
+            loading={showLoading}
+            aligned
+            onClick={() => openQuality('recentUpdate')}
           />
         </div>
-      </MetricSection>
 
-      {/* Status table */}
-      <MetricSection title="Status table" timeLabel={periodLabel} hint="Exact counts by MIS status">
-        {showLoading ? (
-          <div className="card-ats-bordered p-8 text-center text-sm text-stone-400">Loading…</div>
-        ) : byStatus.length === 0 ? (
-          <div className="card-ats-bordered p-8 text-center text-sm text-stone-400">
-            {isSelfScope ? 'No contacts you added in this period.' : 'No MIS contacts in this period.'}
+        {qualityKind ? (
+          <div className="card-ats-bordered overflow-hidden min-w-0">
+            <div className="px-4 py-3 border-b border-stone-100 bg-stone-50/80 flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-stone-900">{qualityDetail?.label || 'Review list'}</h3>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  {qualityLoading
+                    ? 'Loading matching records…'
+                    : `${Number(qualityDetail?.total || 0).toLocaleString()} matching record${Number(qualityDetail?.total || 0) === 1 ? '' : 's'}`}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                onClick={() => {
+                  const params = new URLSearchParams({ desk: 'all', quality: qualityKind });
+                  if (dateRange && dateRange !== 'custom') params.set('dateRange', dateRange);
+                  if (dateRange === 'custom' && customFrom && customTo) {
+                    params.set('dateRange', 'custom');
+                    params.set('from', customFrom);
+                    params.set('to', customTo);
+                  }
+                  navigate(`/mis?${params.toString()}`);
+                }}
+              >
+                Open in directory
+              </button>
+            </div>
+            {qualityLoading ? (
+              <div className="p-8 text-center text-sm text-stone-400">Loading…</div>
+            ) : (
+              <ReportTable
+                emptyLabel="No matching records for this period."
+                columns={[
+                  { key: 'name', label: 'Name', render: (row) => <span className="font-medium">{row.name || '—'}</span> },
+                  { key: 'email', label: 'Email', className: 'text-stone-600', render: (row) => row.email || '—' },
+                  { key: 'phone', label: 'Phone', className: 'text-stone-600', render: (row) => row.phone || '—' },
+                  { key: 'recordDate', label: 'Contact date', align: 'right', className: 'text-amber-800 font-semibold', render: (row) => row.recordDate || '—' },
+                  { key: 'createdAt', label: 'Imported', align: 'right', className: 'text-stone-500', render: (row) => row.createdAt || '—' },
+                ]}
+                rows={(qualityDetail?.rows || []).map((row) => ({ ...row, id: row.id }))}
+              />
+            )}
           </div>
-        ) : (
-          <div className="card-ats-bordered overflow-hidden overflow-x-auto">
-            <table className="w-full text-sm min-w-[280px]">
-              <thead>
-                <tr className="bg-stone-50 text-left text-[11px] uppercase tracking-wider text-stone-500">
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold text-right">Count</th>
-                  <th className="px-4 py-3 font-semibold text-right">Share</th>
-                </tr>
-              </thead>
-              <tbody>
-                {byStatus.map((row, index) => {
-                  const count = Number(row.count || 0);
-                  const share = periodTotal > 0 ? Math.round((count / periodTotal) * 100) : 0;
-                  return (
-                    <tr key={row.status} className="border-t border-stone-100">
-                      <td className="px-4 py-2.5 font-medium text-stone-800">
-                        <span className="inline-flex items-center gap-2">
-                          <span
-                            className="w-2 h-2 rounded-full shrink-0"
-                            style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }}
-                          />
-                          {formatLabel(row.status)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-stone-700">{count.toLocaleString()}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-stone-500">{share}%</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        ) : Array.isArray(dup.samples) && dup.samples.length > 0 ? (
+          <div className="card-ats-bordered overflow-hidden min-w-0">
+            <div className="px-4 py-3 border-b border-stone-100 bg-stone-50/80">
+              <h3 className="text-sm font-bold text-stone-900">Date alignment sample</h3>
+              <p className="text-xs text-stone-500 mt-0.5">Contacts dated in this period that were imported earlier. Select a card for the full list.</p>
+            </div>
+            <ReportTable
+              columns={[
+                { key: 'name', label: 'Name', render: (row) => <span className="font-medium">{row.name || '—'}</span> },
+                { key: 'email', label: 'Email', className: 'text-stone-600', render: (row) => row.email || '—' },
+                { key: 'recordDate', label: 'Contact date', align: 'right', className: 'text-amber-800 font-semibold', render: (row) => row.recordDate || '—' },
+                { key: 'createdAt', label: 'Imported', align: 'right', className: 'text-stone-500', render: (row) => row.createdAt || '—' },
+              ]}
+              rows={dup.samples.map((row) => ({ ...row, id: row.id }))}
+            />
           </div>
-        )}
+        ) : null}
+      </MetricSection>
+      ) : null}
+
+      <MetricSection
+        title="Status detail"
+        timeLabel={periodLabel}
+        hint="Full status breakdown for this period"
+      >
+        <div className="card-ats-bordered overflow-hidden min-w-0">
+          {showLoading ? (
+            <div className="p-8 text-center text-sm text-stone-400">Loading…</div>
+          ) : (
+            <ReportTable
+              emptyLabel="No contacts in this period."
+              columns={[
+                {
+                  key: 'status',
+                  label: 'Status',
+                  render: (row) => (
+                    <span className="inline-flex items-center gap-2 min-w-0">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
+                      <span className="font-medium break-words whitespace-normal max-w-[28rem]">{row.status}</span>
+                    </span>
+                  ),
+                },
+                {
+                  key: 'count',
+                  label: 'Contacts',
+                  align: 'right',
+                  render: (row) => row.count.toLocaleString(),
+                },
+                {
+                  key: 'ofPeriod',
+                  label: 'Of period total',
+                  align: 'right',
+                  className: 'text-stone-600',
+                  render: (row) => outOf(row.count, periodTotal),
+                },
+              ]}
+              rows={statusTableRows}
+            />
+          )}
+        </div>
       </MetricSection>
     </div>
   );

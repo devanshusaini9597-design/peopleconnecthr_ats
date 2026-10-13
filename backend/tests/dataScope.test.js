@@ -575,6 +575,33 @@ describe('dataScope', () => {
     expect(blob).not.toContain('organizationId":null');
   });
 
+  test('HR manager can read and update organisation MIS data', () => {
+    const { misWriteFilter, canViewMisOrgData } = require('../utils/dataScope');
+    const manager = { id: recruiterId, role: 'hr_manager', organizationId: orgId };
+    expect(canViewMisOrgData(manager)).toBe(true);
+    expect(canViewMisOrgData({ role: 'recruiter' })).toBe(false);
+    const write = misWriteFilter(orgId, manager);
+    expect(write.createdBy).toBeUndefined();
+    expect(JSON.stringify(write)).toContain(String(orgId));
+    const { misListFilter } = require('../utils/dataScope');
+    const admin = { id: recruiterId, role: 'admin', organizationId: orgId };
+    for (const leader of [manager, admin]) {
+      const list = misListFilter(orgId, leader);
+      expect(list.createdBy).toBeUndefined();
+      expect(list.$and).toBeUndefined();
+      expect(JSON.stringify(list)).toContain(String(orgId));
+    }
+    const recruiterList = misListFilter(orgId, { id: recruiterId, role: 'recruiter', organizationId: orgId });
+    expect(JSON.stringify(recruiterList)).toContain('personal');
+    const visibility = recruiterList.$and.find((part) => Array.isArray(part?.$or));
+    expect(visibility.$or).toEqual(expect.arrayContaining([
+      { deskScope: { $ne: 'personal' } },
+      expect.objectContaining({ deskScope: 'personal' }),
+    ]));
+    expect(JSON.stringify(visibility)).toContain(String(recruiterId));
+    expect(JSON.stringify(visibility)).not.toContain('createdBy":{"$exists"');
+  });
+
   test('MIS list and write are empty for freelancers', () => {
     const { misListFilter, misWriteFilter, isMisCompanyRole } = require('../utils/dataScope');
     expect(isMisCompanyRole({ role: 'freelancer' })).toBe(false);
